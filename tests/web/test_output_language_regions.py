@@ -21,7 +21,10 @@ reported.
 
 Two halves, and the second is what keeps the first from being satisfied by tagging the whole page:
 
-  - every string the policy says *mirrors* is inside an unknown-language region (must fire);
+  - every string the policy says *mirrors* is inside an unknown-language region (must fire), with
+    one stated exception -- the tab `<title>`, which cannot be split and keeps the document's `en`;
+    `test_the_tab_title_is_a_stated_gap_rather_than_an_oversight` holds that decision still rather
+    than letting this list quietly overstate what is pinned;
   - the English chrome is not, the decision brief's own content is not, and the document still
     declares English (must not fire).
 
@@ -33,7 +36,9 @@ English PRD, stories, criteria and epic. The brief anchors English, and the page
 """
 from __future__ import annotations
 
+import html
 import json
+import re
 from html.parser import HTMLParser
 
 from requivo.services.sessions import SessionService
@@ -94,9 +99,9 @@ class _LangRegions(HTMLParser):
             self.inherited_language.append(text)
 
 
-def _regions(html: str) -> _LangRegions:
+def _regions(page: str) -> _LangRegions:
     parser = _LangRegions()
-    parser.feed(html)
+    parser.feed(page)
     return parser
 
 
@@ -163,6 +168,46 @@ def test_a_question_and_its_stake_are_not_announced_in_the_pages_language(client
     assert WHY_FR in tagged, "the question's stake still inherits the document language"
 
 
+# Six questions is the contract's own ceiling and one more than `PRIORITY_QUESTIONS`, so the sixth
+# lands in `more_questions` -- the only way to make `_traceability.html`'s "All open questions" block
+# render at all. Its markup is a second, hand-written copy of the tagging in `_questions.html`, and
+# without a session this shape nothing in this file ever parses it.
+OVERFLOW_SLOTS = ("problem", "workflow", "permissions", "integrations", "edge_cases", "business_rules")
+OVERFLOW_Q_FR = "Que fait-on d'une tournée annulée après la facturation ?"
+OVERFLOW_WHY_FR = "Le rattrapage facturé deux fois est le coût que personne n'a chiffré."
+
+
+def test_the_overflow_questions_under_traceability_are_tagged_too(client):
+    """`_traceability.html` renders its own copy of the question markup, behind
+    `{% if s.more_questions %}` -- so it is invisible to every other test here, all of which build a
+    one-question session. A regression scoped to that copy would have passed the whole file."""
+    slug = "tournees-maintenance"
+    svc = SessionService()
+    svc.create_session(REQUEST_FR, slug=slug)
+    questions = [{"q": f"{QUESTION_FR} ({slot})", "slot": slot, "why": WHY_FR}
+                 for slot in OVERFLOW_SLOTS[:-1]]
+    questions.append({"q": OVERFLOW_Q_FR, "slot": OVERFLOW_SLOTS[-1], "why": OVERFLOW_WHY_FR})
+    svc.update_model(slug, json.dumps({
+        "model": full_model(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
+        "questions": questions,
+        "summary": {"objective": OBJECTIVE_FR},
+    }))
+
+    page = client.get(f"/sessions/{slug}").text
+    regions = _regions(page)
+    tagged = " ".join(regions.unknown_language)
+
+    assert "All open questions" in page, (
+        "the traceability overflow block did not render, so this test asserted nothing about it -- "
+        "the session needs more questions than PRIORITY_QUESTIONS for that branch to be reached"
+    )
+    assert OVERFLOW_Q_FR in tagged, (
+        "the sixth question is shown only under Traceability details, and that copy of the markup "
+        "still inherits the document's English"
+    )
+    assert OVERFLOW_WHY_FR in tagged, "its stake, in the same block, likewise"
+
+
 def test_the_home_rows_title_is_not_announced_in_the_pages_language(client):
     """A row's title is the opening of the request itself (`viewmodels/sessions.py::_title`), so the
     listing carries the client's words too."""
@@ -210,6 +255,44 @@ def test_the_decision_briefs_own_content_still_declares_english(client):
             f"the brief's own content {artifact_prose!r} was tagged as being of unknown language. "
             f"The policy anchors it in English; only what mirrors the request is tagged."
         )
+
+
+def test_the_tab_title_is_a_stated_gap_rather_than_an_oversight(client):
+    """The one region this change leaves declared English while it may hold the engine's mirroring
+    prose, and it is a decision rather than a miss.
+
+    `<title>`'s content model is text, so the objective cannot be wrapped and tagged apart from the
+    " — Requivo" it is concatenated with; and no single `lang` value is true of that whole string,
+    so `lang=""` on the element would declare the product's own name to be of unknown language on
+    every page. Leaving the document's `en` is wrong for the objective half and right for the rest.
+
+    This test exists so the trade-off cannot be quietly reversed: it goes red both if someone tags
+    the title without revisiting the reason written beside it in `sessions/detail.html`, and if the
+    title stops carrying the objective at all -- which is what would make the gap disappear for
+    real."""
+    slug = _french_session()
+
+    page = client.get(f"/sessions/{slug}").text
+    title = re.search(r"<title[^>]*>(.*?)</title>", page, re.S)
+
+    assert title is not None, "the page rendered no <title> at all"
+    # `<title>` is text-only, so Jinja's autoescaping is still in force inside it -- the apostrophe
+    # in the French objective arrives as `&#39;`. Comparing the escaped form would make this test
+    # about the escaping rather than about the language declaration.
+    rendered = html.unescape(title.group(1))
+    assert "lang=" not in title.group(0), (
+        "the tab title now declares a language. That may well be the better call -- but the reason "
+        "it did not is written in sessions/detail.html and has to be revisited with it, not left "
+        "standing as an explanation for something that is no longer true."
+    )
+    assert OBJECTIVE_FR in rendered, (
+        f"the gap this test documents rests on the title carrying the engine's objective; it now "
+        f"holds {rendered!r}"
+    )
+    assert "Requivo" in rendered, (
+        "and on that objective being concatenated with English chrome, which is why no single "
+        "`lang` value is true of the string"
+    )
 
 
 def test_the_english_chrome_is_not_swept_into_the_unknown_language_regions(client):

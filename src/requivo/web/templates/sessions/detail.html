@@ -61,9 +61,16 @@ CLI — they read the same session.</div>
 
 {% else %}
 {# The objective is the engine's prose, in the request's language; the slug fallback is neither, and
-   an unknown language is the truthful claim for both. The `<title>` above cannot carry the same tag
-   -- an element with no content model has no language of its own to declare -- so the tab keeps the
-   document's `en`. #}
+   an unknown language is the truthful claim for both.
+   The `{% raw %}{% block title %}{% endraw %}` at the top of this file is deliberately left untagged,
+   and *not* because a `<title>` cannot carry `lang` -- it is a global attribute and it can. Two real
+   constraints: `<title>`'s content model is text, so there is no element to wrap the objective alone
+   in; and the string it renders is that objective concatenated with " — Requivo", so no single
+   `lang` value is true of the whole of it, and `lang=""` on the element would declare the product's
+   own name to be of unknown language on every page extending base.html. The tab therefore keeps the
+   document's `en`, which is wrong for the objective half and right for the rest. A stated gap rather
+   than an oversight, pinned by `test_the_tab_title_is_a_stated_gap_rather_than_an_oversight` so that
+   changing the decision goes red beside the reason. #}
 <h1 lang="">{{ s.understood.objective if s.understood.objective else s.slug }}</h1>
 {# State at a glance, beside the title, so the page answers "where is this?" before it is scrolled.
    Every value here is already computed and already stated in full further down — this is a summary
