@@ -8,8 +8,12 @@ anything in `core/` or `services/` — several of them look like details and are
 **Requivo — a requirements engine.** It turns a vague client request into a *structured solution
 model* ready for dev. It is **not a chatbot**: the chat is only an interface. The product is the
 **model** (a set of typed slots) and the engine that progressively fills it until it is precise enough
-to build from. Everything in the repo — code, comments, docs, prompts, context cards, and the engine's
-own output — is in English.
+to build from. Everything in the repo — code, comments, docs, prompts and context cards — is in English.
+The engine's **output** is split, and deliberately so: the questions and the understanding it renders
+each turn mirror the language of the client's request, while every buildable artifact — the decision
+brief, PRD, stories, criteria, epic, release notes — anchors English, because those feed dev teams
+and trackers. The policy, and the prompt sentences that enforce it, are in
+`docs/requirements-model.md` under "The language of the outputs".
 
 ## Run and test
 

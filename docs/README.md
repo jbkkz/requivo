@@ -15,7 +15,8 @@ depth — each has one clear responsibility; the README links to them rather tha
 ## Reference
 
 - [Architecture](architecture.md) — Core, providers, services, interfaces
-- [Requirements model](requirements-model.md) — slots, evidence/coverage, readiness, dependencies
+- [Requirements model](requirements-model.md) — slots, evidence/coverage, readiness, dependencies,
+  and which outputs mirror the client's language
 - [Session format](session-format.md) — the `.requivo/` layout, revisions, provenance
 - [Compatibility](compatibility.md) — what is public, what may change, what is deprecated
 - [Providers](providers.md) — the Anthropic provider, models, cost

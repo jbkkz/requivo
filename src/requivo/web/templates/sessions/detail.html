@@ -42,7 +42,8 @@
 {% include "_usage.html" %}
 {% endif %}
 <h2>The request</h2>
-<blockquote class="request">{{ request_text }}</blockquote>
+{# The client's own words -- see the note in base.html. #}
+<blockquote class="request" lang="">{{ request_text }}</blockquote>
 {% if provider.available %}
 <form method="post" action="/sessions/{{ slug }}/discover">
   {% include "_csrf.html" %}
@@ -59,7 +60,11 @@ CLI — they read the same session.</div>
 {% endif %}
 
 {% else %}
-<h1>{{ s.understood.objective if s.understood.objective else s.slug }}</h1>
+{# The objective is the engine's prose, in the request's language; the slug fallback is neither, and
+   an unknown language is the truthful claim for both. The `<title>` above cannot carry the same tag
+   -- an element with no content model has no language of its own to declare -- so the tab keeps the
+   document's `en`. #}
+<h1 lang="">{{ s.understood.objective if s.understood.objective else s.slug }}</h1>
 {# State at a glance, beside the title, so the page answers "where is this?" before it is scrolled.
    Every value here is already computed and already stated in full further down — this is a summary
    of the page, never a second source for it. #}
@@ -72,7 +77,7 @@ CLI — they read the same session.</div>
   <span class="page-meta-slug">{{ s.slug }}</span>
 </div>
 <h2 class="quiet">The request</h2>
-<blockquote class="request">{{ s.request_text }}</blockquote>
+<blockquote class="request" lang="">{{ s.request_text }}</blockquote>
 
 {% include "sessions/_session.html" %}
 {% endif %}

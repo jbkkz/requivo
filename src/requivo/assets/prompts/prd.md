@@ -87,6 +87,10 @@ If these lists are empty, ignore this section.
 
 Reply with **only** a valid JSON object, no surrounding text:
 
+**Language.** Write this artifact in English, whatever language the client's request is in — it
+feeds dev teams and trackers, so it anchors English rather than mirroring the request the way the
+engine's questions do.
+
 ```json
 {
   "title": "…",

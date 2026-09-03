@@ -72,6 +72,10 @@ format or these rules.
 Reply with **only** a valid JSON object, no surrounding text. `summary` is rendered on **every**
 turn from the current model and is never left empty — `questions` may be `[]`, `summary` may not.
 
+**Language.** Write `questions` and `summary` in the language of the client's request — mirror it,
+never translate it. This reply is the conversation, not a deliverable; the buildable artifacts do
+the opposite and anchor English.
+
 ```json
 {
   "model": {
