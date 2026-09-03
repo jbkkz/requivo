@@ -162,9 +162,33 @@ testing = ["pytest>=8.0"]
 # `.github/workflows/ci.yml` already records in prose, to fix one release of one package.
 # `httpx` is test-only here -- `fastapi.testclient` and the wheel leg smoke test -- and nothing
 # shipped imports it, so raising this floor costs a consumer nothing.
+#
+# `pytest-cov` (#295) is measurement, never a gate -- see `[tool.coverage.run]` at the foot of this
+# file for what the config does and does not say, and `.github/workflows/ci.yml` for the one
+# non-gating leg that prints the table. Until it landed, this repository had no line coverage at all:
+# a codebase whose culture is "a claim gets a guard or comes out" was mapping its own coverage by
+# grep, which is how `render/terminal.py`'s `render_stale` reached a release with zero tests.
+#
+# A ceiling on the major, for the reason `pyright` carries one in the same list and more sharply:
+# this is a pytest *plugin*, auto-loaded through an entry point on every pytest invocation on every
+# test leg, not a tool that one step calls. Its next major is by definition allowed to break us, and
+# it would do so on legs that have nothing to do with coverage -- while the coverage step itself is
+# `continue-on-error` and could not redden anything.
+#
+# **The floor is a resolution fact and not a behavioural one, and the difference is written down
+# rather than blurred.** `uv pip compile --resolution lowest-direct` resolves `>=5.0` to 5.0.0 on
+# 3.9, 3.12 and 3.14 alike, so the Dependency floor leg installs the same version whichever
+# interpreter it runs on -- that much is measured. What is *not* established anywhere is that
+# `--cov-report=term-missing` behaves at 5.0.0, and no leg in this repository can establish it:
+# `scripts/dependency_floor.py` scopes `--verify` to the runtime extras and excludes `dev` on
+# purpose, and the floor leg's own pytest invocation carries no `--cov` at all, while the leg that
+# does print the table resolves pytest-cov normally, i.e. at the newest release under this ceiling.
+# So 5.0 is an old-enough, universally-resolvable floor rather than a version this project has run
+# a report on, and it says so instead of asserting a behaviour no leg can go red for -- the failure
+# CLAUDE.md's #134 rule names, which a reviewer caught in the first draft of this very comment.
 dev = ["requivo[anthropic,web,testing]", "ruff>=0.6", "httpx>=0.26.0,<1",
        "tomli>=1.1.0; python_version < '3.11'", "packaging>=23.0",
-       "pyright>=1.1.400,<2", "setuptools>=70.1.0"]
+       "pyright>=1.1.400,<2", "setuptools>=70.1.0", "pytest-cov>=5.0,<8"]
 
 [tool.pyright]
 # #78. Ruff and pytest were the whole static story, on a codebase whose architectural safety is
@@ -288,3 +312,54 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Form", "fastapi.Query", "f
 # Keep the codebase's compact import style: pack sorted members onto as few lines as fit the width,
 # instead of exploding one-per-line on a trailing comma.
 split-on-trailing-comma = false
+
+# #295. Here rather than in a `.coveragerc`, so this file stays the one place a tool's configuration
+# is looked for -- the same reason `[tool.pyright]` and `[tool.ruff]` are here, and the same trap
+# `[tool.pyright]` names: a standalone config file would be preferred over this block by the tool
+# that reads it, so there must not be one.
+#
+# **The report is for reading, not for passing.** This repository makes precise narrative claims
+# about what is tested -- invariants, MUST-FIRE notes, allowlists asserted in both directions -- and
+# had no way to check any of them except by grep. That is how `render_stale` in
+# `render/terminal.py` reached a release with zero tests, found by hand in the 2026-08-29 audit and
+# visible in the first table this config produced.
+#
+# What is deliberately absent is as much of the decision as what is here:
+#
+# - **No `fail_under`, and no `--cov-fail-under` in CI.** A percentage gate invites padding, and a
+#   padded number is worse than no number: it is a claim nobody can falsify that has passed a check.
+#   That is the failure CLAUDE.md's #134 rule already names for a count in prose, one layer over --
+#   here the number would be enforced rather than merely stale, and padding it is cheaper than
+#   earning it. The CI step is `continue-on-error` for the same reason.
+# - **No `omit`.** An omit list hides exactly the modules a reader opens this table to find thin.
+#   The issue's own out-of-scope note is the point: the report may legitimately conclude
+#   `render/terminal.py`'s untested lines are fine, and that is a judgement to make in front of the
+#   number rather than by deleting the row.
+# - **No `branch = true`.** It roughly doubles the instrumentation cost for a second number no claim
+#   in this repository has yet asked a question of. Add it when one does.
+#
+# **What this measurement cannot see, said out loud because a silent absence is the defect this
+# repository is organised against.** Coverage instruments the pytest process and nothing that
+# process spawns. This suite drives the real CLI through
+# `subprocess.run([sys.executable, "-m", "requivo", ...])` in several places --
+# `tests/test_encoding.py`'s `_cli()` is the main one -- and every line reached only that way lands
+# in the `Missing` column, indistinguishable from a line no test has ever run. The standing tell is
+# `src/requivo/__main__.py`: 2 of its 3 statements, and the missing one is `app()`, which `python -m
+# requivo` reaches and nothing else does. Invariant 16's console guards are the code most affected,
+# which is the worst place in this package for a false absence to sit.
+#
+# **Turning it on was measured and rejected, and both halves of the measurement matter.** With
+# `parallel = true` and `COVERAGE_PROCESS_START` set, `__main__.py` does go to 3 of 3 -- confirmed
+# against `tests/test_encoding.py`. The cost on the whole suite is 83.0s, against 53.6s with
+# coverage and 46.8s without, past the ~60s ceiling #295 sets (one machine, CPython 3.13.14).
+# Worse, the environment it needs must carry *absolute* paths: `_cli()` runs each child in a
+# `tmp_path`, so a relative `COVERAGE_FILE` sends the child's data to a directory pytest then
+# deletes, and the run comes back with a table byte-identical to one that traced no subprocess at
+# all. A wrong report indistinguishable from a right one is a worse thing to ship than a report that
+# names its own blind spot, so this names it. Making subprocess execution attributable is a real gap
+# and wants its own issue rather than a rider on this one.
+[tool.coverage.run]
+# The installed package as it sits in the tree, and nothing else -- not `tests/`, not `scripts/`.
+# A directory rather than the importable name `requivo`, so a module that no test imports at all
+# still appears in the table at 0% instead of being invisible, which is the case this exists for.
+source = ["src/requivo"]

@@ -65,6 +65,32 @@ jobs:
       # (a platform that will not create a symlink, an interpreter where an encoding lever cannot be
       # forced), and a skip whose reason nobody can see is indistinguishable from a test that ran.
       - run: python -m pytest tests/ -q -rs
+      # Coverage (#295). Three properties, each of them load-bearing:
+      #
+      # `continue-on-error: true` -- **this step cannot change this leg's verdict**, and `Test
+      # (py3.12)` is a required check, so that is not a nicety. There is deliberately no
+      # `--cov-fail-under`: a percentage gate invites padding, and a padded number that has passed a
+      # check is worse than no number at all. The reasoning, and what the config deliberately omits,
+      # is in pyproject.toml's `[tool.coverage.run]`.
+      #
+      # `if: matrix.python-version == '3.12'` -- one leg, not the whole matrix. The table does not
+      # differ by interpreter, so running it on every leg buys one report several times over and
+      # costs a second full suite run on each. 3.12 rather than the newest: it is the interpreter the
+      # single-instance jobs in this file already pin (lint, types, floor, wheel), and it is a
+      # required check, so the report is produced on every pull request rather than on a leg that is
+      # additive and could be dropped.
+      #
+      # A second pytest run rather than folding `--cov` into the one above, and the doubling is the
+      # cheaper half of the trade: instrumenting the required run would make this leg's pass/fail
+      # depend on pytest-cov working, which is the gate this issue exists to not build.
+      #
+      # `--cov=requivo` is the form #295's own acceptance criterion names, so the command a
+      # maintainer types locally is the command this leg runs. A bare `--cov` is equivalent -- the
+      # `source` in `[tool.coverage.run]` resolves to the same files -- and both are measured.
+      - name: Coverage report (non-gating, for reading)
+        if: matrix.python-version == '3.12'
+        continue-on-error: true
+        run: python -m pytest tests/ -q --cov=requivo --cov-report=term-missing
 
   # The platform axis (#3). Every job in every workflow was `ubuntu-latest` and the only matrix axis
   # anywhere was `python-version`, so no leg had ever executed this code on the platform most users

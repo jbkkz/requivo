@@ -75,12 +75,38 @@ the layer is tracked here rather than kept in a personal config.
 python -m build --wheel                        # the wheel must still build (needs `pip install build`)
 ```
 
-CI runs the tests and `ruff check` on Python 3.9–3.13, runs `pyright`, and builds the wheel (then
+CI runs the tests and `ruff check` on Python 3.9–3.14, runs `pyright`, and builds the wheel (then
 imports it and builds every prompt from the installed package). It runs more legs than these four —
 the platform matrix, a dependency-floor install, secret scanning, plugin-manifest validation and the
 changelog gate — but these four are the ones that reproduce locally in seconds. Please run them
 first. The project lints with ruff but does **not** enforce `ruff format` — match the surrounding
 style rather than reformatting.
+
+### Coverage is measured and never gated
+
+```bash
+.venv/bin/python -m pytest tests/ -q --cov=requivo --cov-report=term-missing
+```
+
+Deliberately not in the list above: **there is no coverage threshold and no coverage check**, and a
+pull request cannot fail on this number. `Test (py3.12)` prints the same table into its log through
+one `continue-on-error` step, so the report is there to read on every pull request without ever being
+something to pass. Adding a `fail_under` would turn it into a percentage to pad, and a padded number
+that has cleared a check is worse than no number at all.
+
+Read it for what it says about *your* change: a module whose new code lands entirely in the
+`Missing` column is worth a second look. It is not a target to raise. Some uncovered lines are
+correctly uncovered — `render_stale`'s empty-input early return has no caller in the tree that can
+reach it, and a test for it would assert the renderer's own contract rather than any behaviour a user
+gets. Say so in the pull request instead of writing the test.
+
+**The table cannot see inside a process pytest spawned.** Code this suite exercises only by running
+the real CLI in a subprocess — `tests/test_encoding.py` drives `python -m requivo` that way — is
+reported as `Missing` even though a test runs it on every leg, every time. `src/requivo/__main__.py`'s
+`app()` line is the standing example: it is covered by the encoding suite and the table says it is
+not. So check *how* a line is reached before reading its absence as a gap. `pyproject.toml`'s
+`[tool.coverage.run]` block records what enabling subprocess tracing was measured to cost, and why it
+is not on.
 
 ### What the changelog gate does not cover
 
