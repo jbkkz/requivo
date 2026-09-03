@@ -33,11 +33,13 @@
   <h2>What Requivo understood</h2>
   <div class="card">
     {% if s.understood.has_content %}
-    {% if s.understood.objective %}<p class="lead">{{ s.understood.objective }}</p>{% endif %}
-    {% if s.understood.scope %}<p>{{ s.understood.scope }}</p>{% endif %}
+    {# Engine prose, in the request's language -- see the note in base.html. The heading between them
+       is the product's own English vocabulary and stays outside the tagged region. #}
+    {% if s.understood.objective %}<p class="lead" lang="">{{ s.understood.objective }}</p>{% endif %}
+    {% if s.understood.scope %}<p lang="">{{ s.understood.scope }}</p>{% endif %}
     {% if s.understood.assumptions %}
     <h3>What we are assuming</h3>
-    <ul class="clean tight">{% for a in s.understood.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+    <ul class="clean tight" lang="">{% for a in s.understood.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
     {% endif %}
     {% else %}
     <p class="muted">Nothing captured yet.</p>
@@ -51,7 +53,7 @@
   {% if s.understood.blind_spot %}
   <aside class="unsurveyed">
     <span class="unsurveyed-label">Least explored</span>
-    <p>{{ s.understood.blind_spot }}</p>
+    <p lang="">{{ s.understood.blind_spot }}</p>
   </aside>
   {% endif %}
 

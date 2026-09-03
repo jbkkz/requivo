@@ -34,6 +34,21 @@ skipped, exactly as a user pressing Enter skips it, and a turn that answers noth
 **Cost:** an interactive request is `K × GOLDEN_TURNS` calls (15 at the defaults) where a single-pass
 one is `K`. Capture it on its own, not as part of a full-set run.
 
+## The non-English request
+
+`maintenance-rounds-fr` is the one block that varies the **language** rather than the problem form,
+and it is a deliberate exception to the one-request-per-form rule above. The output-language policy
+(`docs/requirements-model.md`, "The language of the outputs") says the questions and the
+understanding mirror the client's request while every buildable artifact anchors English — behaviour
+that until #277 was emergent, unstated, and measured by nothing, because every request here was
+English. A capture of it answers, per run, whether the questions really did come back in French; a
+`--brief` capture answers the other half, whether the assessment held English.
+
+It is single-pass, so a bare `golden_run.py` picks it up with the rest of the set at the ordinary
+`K` calls. Nothing in the harness reads the language: `golden_diff`'s lenses compare slots,
+questions and the assessment exactly as they do for the English blocks, and the language claim is
+read off `--questions` by a person.
+
 ### leave-approval
 form: approval
 card: b2b-platform
@@ -63,6 +78,11 @@ request: We need an app for staff to check attendees in at the venue entrance on
 form: mutate-signed-artifact
 card: document-management
 request: We'd like managers to edit and re-approve documents after they've already been signed.
+
+### maintenance-rounds-fr
+form: schedule-recurring-visits
+card: b2b-platform
+request: Nous aimerions planifier les visites de maintenance chez nos clients, avec une tournée par technicien et une replanification quand un client annule au dernier moment.
 
 ### training-budget
 form: allocate-scarce-pool

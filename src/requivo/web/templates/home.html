@@ -112,7 +112,10 @@ still be saved, and you can analyse it from Claude Code or the CLI: they share t
        link: the session screen is where the full error is stated, and that is the one place a reader
        can act on it. #}
     <a class="session-item" href="/sessions/{{ s.slug }}">
-      <span class="session-title">{{ s.title }}</span>
+      {# The row's title is the opening of the request itself (`viewmodels/sessions.py::_title`), so
+         it is the client's own words, not ours -- see base.html. On an unreadable row it is the
+         slug instead, which has no known language either. #}
+      <span class="session-title" lang="">{{ s.title }}</span>
       <span class="session-meta">
         {% if s.state == 'ready' %}<span class="badge ok">{{ s.status_label }}</span>
         {% elif s.state == 'awaiting' %}<span class="badge">{{ s.status_label }}</span>

@@ -14,8 +14,11 @@
   <ol class="questions">
     {% for q in s.questions %}
     <li>
-      <div class="q">{{ q.q }}</div>
-      <div class="why"><b>Why it matters</b> — {{ q.why }}</div>
+      {# The question and its stake are the engine's own words, in the request's language; the label
+         before the stake and the topic name after it are the product's English vocabulary, which is
+         why the stake is a span of its own rather than the whole line -- see base.html. #}
+      <div class="q" lang="">{{ q.q }}</div>
+      <div class="why"><b>Why it matters</b> — <span lang="">{{ q.why }}</span></div>
       <div class="area muted">Likely impact: {{ q.label }}</div>
     </li>
     {% endfor %}

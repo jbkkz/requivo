@@ -95,3 +95,36 @@ new one.
 Readiness is binary: a high-impact slot must be both `explicit` **and** covered above the soft
 boundary to stop blocking the build. A high-impact gap — empty, unknown, or stated-but-thin — keeps a
 session out of "ready". Requivo does not invent graded "nearly ready" levels; it shows what blocks.
+
+## The language of the outputs
+
+A request often arrives in the client's own language — a forwarded French or Spanish email. Requivo
+splits its outputs in two, because the two halves have different readers:
+
+- **The conversation mirrors the request.** The questions Requivo asks back, and the understanding it
+  renders every turn — the objective, the likely scope, the assumptions and the least-explored area —
+  are written in the language the request arrived in. They are read by the person who received that
+  email and who has to take the questions back to their client, so mirroring is what makes them
+  usable. Requivo mirrors; it does not translate the request into English and answer in English.
+- **The buildable artifacts anchor English.** The decision brief, the PRD, the stories, the
+  acceptance criteria, the epic and the release notes are written in English whatever language the
+  request was in. They feed dev teams and trackers — a GitHub or GitLab issue body, a backlog, a
+  spec a build team reads — and those are English-speaking destinations by default. The decision
+  brief sits on this side rather than with the conversation because its reasoning is folded into the
+  model and every later generator is prompted with that model: a brief in the request's language
+  would carry that language into all five artifacts downstream of it.
+
+So a French request produces French questions and a French understanding, and an English PRD. That
+is the intended behaviour, not a limitation to work around.
+
+The policy is stated to the model in each prompt asset's *Output format* block — one sentence in
+`engine.md` for the mirroring half, one identical sentence in the six artifact prompts for the
+English half — so it is enforced on every call rather than left to emerge. Requivo does **not**
+detect the request's language: nothing is stored about it and nothing branches on it. Both halves
+are instructions to the model about what it is writing, not a routing decision made in Python.
+
+Requivo Web reflects the same split. The page declares `lang="en"` for its own chrome, and the
+regions the policy says mirror the request — the request itself, the understanding, the questions —
+declare an empty `lang`, which is HTML's way of saying the language is unknown. Unknown is the
+honest claim: nothing here knows what language the client wrote in, and a guess that is usually
+right is still a guess.

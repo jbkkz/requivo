@@ -25,8 +25,8 @@
     <ol class="questions">
       {% for q in s.questions + s.more_questions %}
       <li>
-        <div class="q">{{ q.q }}</div>
-        <div class="why">{{ q.why }} · <span class="muted">{{ q.label }}</span></div>
+        <div class="q" lang="">{{ q.q }}</div>
+        <div class="why"><span lang="">{{ q.why }}</span> · <span class="muted">{{ q.label }}</span></div>
       </li>
       {% endfor %}
     </ol>
@@ -36,6 +36,11 @@
     <h3>Decisions on record</h3>
     {% for d in s.decisions %}
     <div class="reason">
+      {# Deliberately *not* tagged, unlike the questions above. Decisions, challenges and
+         opportunities are the decision brief's own content, and the brief is a buildable artifact:
+         under the output-language policy it anchors English whatever the request's language, so the
+         document's `lang="en"` is the true claim here. See base.html, and
+         `test_the_decision_briefs_own_content_still_declares_english`, which asserts this side. #}
       <div class="head">{{ d.decision }}</div>
       <dl>
         {% if d.why %}<dt>Why</dt><dd>{{ d.why }}</dd>{% endif %}
