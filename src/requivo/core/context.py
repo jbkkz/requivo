@@ -36,12 +36,10 @@ from requivo.paths import CONTEXT, FRAMEWORK, PROMPTS, user_context_dir
 # would raise without listing them twice. `ContextUnreadableError` is deliberately absent: "we could
 # not look" is not a verdict about the selection, and `check_selection` lets it propagate.
 #
-# `UnsafeSelectorTokenError` has to be in here rather than escaping (#40). A hostile card name only
-# ever arrives *persisted* — `create_session` resolves the selection against the installed cards, so
-# the door is `session import` or a hand-edited `session.json` — which means the first code to see
-# one is a health check. A health check that raises takes the whole listing down with it rather than
-# degrading the one row (invariant 15), and `doctor` would then answer nothing at all about a
-# workspace containing one tampered session. Reported, never raised.
+# `UnsafeSelectorTokenError` is in here rather than escaping (#40): a hostile card name only arrives
+# *persisted*, so the first code to see one is a health check, and a health check that raises takes
+# the whole listing down instead of degrading one row (invariant 15). Reported, never raised —
+# `test_check_selection_reports_a_hostile_persisted_card_rather_than_raising`.
 _SELECTION_REFUSALS = (
     NoContextCardsError, EmptySelectionError, EmptySelectorTokenError, UnknownContextCardError,
     UnsafeSelectorTokenError,
@@ -84,20 +82,14 @@ def _cards_for_selection() -> dict[str, Path]:
     """The card table a **selection** is resolved against: `_card_paths()` with the empty-install
     guard already applied.
 
-    It exists because "call `_require_any_card` too" is a rule three functions each had to remember,
-    and one of them did not (#41). The miss had a mechanism worth naming: `load_context` and
-    `check_selection` reach the table through `_card_paths()` directly, while `resolve_cards` reached
-    it through `available_cards()` — so a sweep over the callers of `_card_paths()` found two of the
-    three and reported itself complete. One name, called by all three, makes that sweep exhaustive
-    and makes a fourth selector inherit the guard instead of re-deriving it.
+    One name every selector shares, so a fourth inherits the guard instead of re-deriving it; without
+    it a selector answers `unknown_context_card` where its siblings answer `no_context_cards` (#41) —
+    `test_every_card_selector_reports_the_same_code_for_the_same_install`.
 
-    `available_cards()` deliberately does **not** route through here, and that is the reason the
-    guard cannot simply live in `_card_paths()` itself: `doctor` reports the card vocabulary in three
-    states — `ok`, `empty`, `unreadable` — and `empty` is a public `--json` field it can only produce
-    by *observing* an install with no cards rather than raising on one. A table that refused to be
-    empty would leave the one caller whose job is to see the emptiness unable to. So the split is
-    between looking (`_card_paths`, `available_cards`) and selecting (this), not between guarded and
-    unguarded by accident.
+    `available_cards()` deliberately does **not** route through here, which is why the guard cannot
+    live in `_card_paths()` itself: observing an empty install is that function's job, and `doctor`'s
+    `empty` state is a public `--json` field only an observation can produce. The split is between
+    looking and selecting, not between guarded and unguarded by accident.
     """
     paths = _card_paths()
     _require_any_card(paths)
@@ -116,31 +108,24 @@ def available_cards() -> list[str]:
 def card_byte_size(path: Path) -> int:
     """The bytes one card contributes to a prompt — **not** its size on disk.
 
-    `st_size` is the wrong measurement and the difference is a platform, not a rounding: git checks
-    a text file out with CRLF line endings on Windows by default and this repository declares no
-    `.gitattributes`, while `load_context()` reads in text mode, where the decoder collapses CRLF to
-    LF before a single byte reaches `{{CONTEXT}}`. So `st_size` over-counts by one byte per line on
-    exactly one platform, and the number #257 exists to disclose — what a card costs you per call —
-    was inflated there in the CLI's pre-call line and the Web create form's hint alike.
-
-    Decoding and re-encoding is what makes the answer the same everywhere, because it is the same
-    operation the loader performs. It also means an undecodable card raises here rather than
-    reporting a plausible size for a file `load_context()` would refuse — the disclosure and the
-    loader now fail on the same inputs, which is the point (invariant 16).
+    `st_size` over-counts by one byte per line on Windows, where git checks text out with CRLF and
+    the text-mode read collapses it before `{{CONTEXT}}` sees it, so the figure #257 exists to
+    disclose was inflated on exactly one platform:
+    `test_a_card_weighs_the_same_whatever_its_line_endings`. Decoding and re-encoding is the loader's
+    own operation, so an undecodable card raises here rather than reporting a plausible size for a
+    file `load_context()` would refuse (invariant 16).
     """
     return len(path.read_text(encoding="utf-8").encode("utf-8"))
 
 
 def average_card_byte_size() -> int | None:
     """Average prompt weight, in bytes, across every loadable card (bundled + user) — `None` for an
-    empty install. Used only to disclose the cost/dilution tradeoff of the all-cards default before a
-    paid call (#257): the CLI's pre-call line and the Web create form's hint both read this rather
-    than a number typed into prose, so the figure moves itself when a card is added, removed or
-    resized, instead of quietly going stale the way a hardcoded one would (CLAUDE.md's own rule about
-    a count nothing can falsify). Deliberately observational, like `available_cards()` beside it —
-    a UI hint has no business raising on an empty install any more than the card list does.
-
-    Measured through `card_byte_size`, never `st_size`; that function says why."""
+    empty install. It discloses the cost/dilution tradeoff of the all-cards default before a paid
+    call (#257), measured rather than typed into prose so the figure cannot go stale, and
+    observational like `available_cards()` beside it: a UI hint has no business raising on an empty
+    install. `test_average_card_byte_size_matches_an_independent_computation` and
+    `test_average_card_byte_size_is_none_on_an_empty_install`; measured through `card_byte_size`,
+    never `st_size`, for the reason that function gives."""
     paths = _card_paths()
     if not paths:
         return None
@@ -151,37 +136,18 @@ def resolve_cards(tokens: Iterable[str]) -> list[str] | None:
     """Map caller-supplied card names to card stems, case-insensitively. Returns None when *no*
     selection was made (== all cards), and raises on a name that does not exist or on an empty token.
 
-    The failure mode this closes is silent *widening*: filtering unknown names out of the list leaves
-    an empty selection, which every downstream reader treats as "load every card" — so a typo in a
-    two-card selection quietly loads all of them. One resolver, shared by the CLI and the Web, so no
-    surface can be lenient where another is strict.
+    The failure mode this closes is silent *widening*: filtering unknown names out leaves an empty
+    selection, and every downstream reader spells that "load every card". One resolver, shared by the
+    CLI and the Web, so no surface is lenient where another is strict; the empty-token entrance into
+    the same widening is closed by `normalize_tokens`
+    (`test_resolve_cards_refuses_an_empty_token_instead_of_returning_all_cards`).
 
-    It used to leave one door into that same widening open. `if not key: continue` dropped an empty
-    token, so a selection of *only* empty tokens (`--context ","`) fell through to `picked or None`
-    and bought every card — the widening this function's own docstring says it closes, reached
-    through the empty-token entrance. The empty-token rule now lives in `normalize_tokens`, shared
-    with every other selector, so `picked` can only be empty when `tokens` itself was.
-
-    **An install with no cards at all is refused here too, ahead of the whole selection** (#41) —
-    ahead of the name lookup and ahead of the token-shape checks, so on a card-less install even a
-    stray comma reports the install rather than the comma. That precedence is not new and is not this
-    function's to choose: `load_context` has diagnosed the install ahead of `_selection_keys` since
-    #33, deliberately and with a test on it, and the two are read side by side. This used to run off
-    a bare `available_cards()`, so on a card-less install it answered
-    `unknown_context_card` for a name that was typed correctly — sending the reader to check their
-    spelling when the fault is that there is nothing to match against, which is the sentence
-    `_require_any_card`'s own docstring gives as the reason it must run first. This is the earliest
-    and therefore the worst place to get it wrong: every surface resolves its selection here, at
-    session creation, so a broken install blamed the reader (400 in the Web) and then blamed itself
-    (500) on the very next call — one condition wearing two verdicts, the wrong one arriving first.
-
-    **A selection of no tokens at all is deliberately left outside that guard**, and the reason is
-    uniformity rather than leniency. `[]` is not an empty token: `normalize_tokens` documents it as
-    *no selection was made*, and the answer is `None`, the every-card sentinel. `SessionService`,
-    the CLI and the deterministic verbs all skip this function entirely when no cards were named, so
-    refusing `[]` would make the Web — the one caller that passes it through — the single surface
-    that refuses, which is the lenient/strict split this function exists to prevent. The install is
-    still caught, by `load_context`, at the point the cards are actually read.
+    **An install with no cards at all is refused here, ahead of the whole selection** (#41), so a
+    card-less install reports itself instead of blaming the reader's spelling
+    (`test_resolve_cards_on_a_zero_card_install_names_the_install_not_the_card`, with
+    `test_the_install_is_diagnosed_ahead_of_a_malformed_token_too` for the precedence). A selection
+    of no tokens at all stays outside that guard, for uniformity rather than leniency —
+    `test_no_selection_at_all_is_still_no_selection`.
     """
     tokens = list(tokens)
     if not tokens:
@@ -216,38 +182,23 @@ def load_context(only: list[str] | None = None) -> str:
     Selection is per-session, so the assembled system stays byte-identical across a run's calls and
     the prompt cache still holds.
 
-    **A selection that resolves to nothing is a refusal, not an empty context.** `resolve_cards` is
-    the guard on the way in, but it runs once, at session creation; this function is called on every
-    later turn with the list read back out of `session.json`. A card renamed, or a session opened on
-    a machine where a `user_context_dir()` card does not exist, therefore used to swap `{{CONTEXT}}`
-    for the empty string on every subsequent call — the engine reasoning with no product context at
-    all, which is the `information_value = uncertainty x impact` driver gone, silently, mid-session.
-    Refusing does break a session that used to appear to work — it appeared to work while producing
-    worse questions for an invisible reason — and the recovery is to put the card back, or to point
-    `REQUIVO_CONTEXT_DIR` at wherever it now lives. There is deliberately no fallback to "then load
-    nothing": that is the bug. The refusal is no longer *discovered* by the next paid turn either —
-    `check_selection` asks this same guard as a question, and `doctor` and `session verify` both run
-    it. Restoring the card is one recovery; `session rescope` (#168) is the other, and re-scopes a
-    session's `context_cards` without touching `session.json` by hand.
-
-    `only=[]` is refused for the same reason: a selection that selects nothing is not the same thing
-    as `None`, the explicit "no restriction" sentinel, and guessing which one was meant is how this
-    class of bug gets written.
-
-    **An install with no cards at all is refused too** (#33), and that is the wide instance the two
-    narrow guards above left open. Both of them are about a *selection*; `only=None` never reaches
-    either, and `only=None` is exactly what a session with no card selection sends on every turn. So
-    a wheel or container layer that shipped `assets/` without `assets/context/` produced an empty
-    `{{CONTEXT}}` on every paid call, forever, and nothing on that path said so. One rule covers all
-    three: an empty context is never a legitimate thing to send a provider, whatever emptied it.
+    **An empty `{{CONTEXT}}` is never a legitimate thing to send a provider, whatever emptied it** —
+    a selection that no longer resolves, `only=[]`, or an install with no cards at all (#33). The
+    cost is the `information_value = uncertainty x impact` driver silently off on a call that was
+    billed anyway, so there is deliberately no "then load nothing" fallback; recovery is to restore
+    the card, point `REQUIVO_CONTEXT_DIR` at it, or `session rescope` (#168).
+    `test_load_context_refuses_a_selection_that_matched_nothing`,
+    `test_load_context_refuses_an_empty_selection_and_an_empty_token`,
+    `test_a_persisted_card_selection_is_visible_when_the_card_is_gone`,
+    `test_load_context_refuses_an_install_with_no_cards_at_all` and
+    `test_build_prompt_never_sends_an_empty_context_to_a_paid_call`.
     """
     paths = _cards_for_selection()
     # `only` is materialised before the guard iterates it — a generator read twice yields nothing
     keep = _selection_keys(list(only), paths) if only is not None else None
-    # `encoding` is explicit because `read_text()` defaults to the *locale's* encoding, not the file's:
-    # every bundled card carries an em dash or an arrow, so on a cp1252 Windows console they decoded to
-    # mojibake and were sent to the provider that way, and under an ASCII locale the read raised
-    # outright. Neither is visible from a UTF-8 machine, which is every developer machine here.
+    # `encoding` is explicit because `read_text()` defaults to the *locale's* encoding, not the file's,
+    # and mojibake sent to the provider is invisible from a UTF-8 machine (invariant 16) —
+    # `test_the_prompt_assembly_path_never_decodes_an_asset_with_the_locale_encoding`.
     cards = [f"## {stem}\n{paths[stem].read_text(encoding='utf-8')}"
              for stem in sorted(paths)
              if keep is None or stem.lower() in keep]
@@ -284,12 +235,10 @@ def _selection_keys(only: list[str], paths: dict[str, Path]) -> set[str]:
     """
     wanted = normalize_tokens(only, what="context card")
     if not wanted:
-        # `EmptySelectionError`, not `EmptySelectorTokenError` (#35). They are two facts, as
-        # `normalize_tokens`' own docstring argues: an empty *token inside* a selection carries a
-        # `position`, a selection that is *itself* empty has no position to carry. They shared one
-        # code with two `details` shapes behind it, so a consumer following the documented advice —
-        # match the code — and reading `details["position"]` got a KeyError from a payload that
-        # correctly carried the code it matched.
+        # `EmptySelectionError`, not `EmptySelectorTokenError` (#35): an empty *token inside* a
+        # selection carries a `position` and a selection that is itself empty has none, so one code
+        # over two `details` shapes handed a consumer following the documented advice a KeyError —
+        # `test_an_empty_token_and_an_empty_selection_are_two_codes`.
         raise EmptySelectionError(
             "an empty context-card selection selects nothing. Pass no selection at all to load "
             "every card, or name the cards to load.",
@@ -313,23 +262,17 @@ def check_selection(only: list[str] | None) -> RequivoError | None:
     `None` when it loads; otherwise the exact `RequivoError` `load_context` would raise, so a caller
     gets the stable code and the offending names in `details` rather than a re-derived message.
 
-    `only=None` — the "every card" sentinel — used to short-circuit to `None` here on the grounds
-    that it cannot fail. That was true until #33 and false after it: with no cards installed at all,
-    `load_context(None)` refuses, and a checker that reports a session as fine while the call it
-    predicts refuses is this module's own defect class one level up. It now asks the same two guards
-    the loader applies, in the same order.
+    It asks the loader's own guards rather than reimplementing the rule: a checker that answers a
+    slightly different question from the call it predicts is this module's defect class one level up
+    (`test_check_selection_agrees_with_load_context_on_every_selection`, and
+    `test_check_selection_agrees_with_load_context_on_a_zero_card_install` for the `only=None`
+    short-circuit that was true until #33 and false after it). What it buys is `doctor` and
+    `session verify` saying so offline and for free, rather than the next paid turn discovering that
+    a selection validated once at creation no longer resolves —
+    `test_a_persisted_card_selection_is_visible_when_the_card_is_gone`.
 
-    Why a session needs asking at all: `resolve_cards` validates a selection **once**, at creation,
-    but the cards live outside the session — in the installed package or in `user_context_dir()`. A
-    card renamed, an install replaced, a session opened on another machine, and the selection
-    persisted in `session.json` no longer resolves. Since that is now a refusal rather than a silent
-    empty context, such a session is hard-stopped at its next provider call; this lets `doctor` and
-    `session verify` say so first, offline and for free.
-
-    It deliberately does not swallow a failure of the *card directory* itself. An unreadable
-    `CONTEXT` raises out of here, because "we could not look" is a different answer from "we looked
-    and the card is gone", and the caller owes its reader that distinction rather than a selection
-    reported as fine.
+    It deliberately does not swallow a failure of the *card directory* itself: "we could not look" is
+    a different answer from "we looked and the card is gone".
     """
     try:
         paths = _cards_for_selection()

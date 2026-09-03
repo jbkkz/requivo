@@ -17,29 +17,28 @@ and exits non-zero, `session import` refuses the archive, `doctor` names the ses
 Raising on the first one would answer a different, less useful question — "is it broken?" instead of
 "what is broken?".
 
-**The evidence is the directory, and only the directory.** That is one rule, and it binds in both
-directions — they look like separate concerns and are the same sentence read forwards and backwards:
+**The evidence is the directory, and only the directory.** One rule binding in both directions — an
+integrity answer is derived from the directory's own bytes, importing no fact from the environment
+and exporting no question to it:
 
 - *Nothing outside becomes a verdict.* Whether a session's context cards still resolve is a fact
-  about the machine, not about the session, so it is not checked here. The same directory would be
-  coherent on one machine and broken on another, which is not a property this function can have —
-  and because `session import` refuses an archive on these problems, it would make a colleague's
-  perfectly good session unimportable for want of a card you do not have. That check lives in
-  `core.context.check_selection`, reported beside these problems by `doctor` and `session verify`.
-- *Nothing inside sends us outside.* A claim in `session.json` is untrusted input, so it must not be
-  able to aim a filesystem call anywhere else. `ArtifactStatus.filename` was joined into `artifacts/`
-  and stat-ed unvalidated, and under `pathlib` an absolute component replaces the prefix outright —
-  so the answer leaked whether an arbitrary path existed. See the artifact loop below.
+  about the machine, so the same directory would be coherent on one machine and broken on another —
+  and `session import` refusing on these problems would make a colleague's good session unimportable
+  for want of a card you do not have. That check lives in `core.context.check_selection`, reported
+  beside these problems (`test_a_context_card_that_no_longer_resolves_is_not_an_integrity_problem`).
+- *Nothing inside sends us outside.* A claim in `session.json` is untrusted input: the recorded
+  artifact filename was joined into `artifacts/` and stat-ed unvalidated, and under `pathlib` an
+  absolute component replaces the prefix outright, so the answer leaked whether a path existed
+  (`test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session`). See
+  the artifact loop below.
 
-Reading them together is what makes the pair coherent: an integrity answer is derived from the
-directory's own bytes, and it neither imports facts from the environment nor exports questions to it.
-
-**Not everything worth naming is a defect.** A finding carries a `severity`, and the second value is
-what `docs/compatibility.md` needs it to be: an artifact type this build has no generator for is a
-*note* rather than a problem, because that page lists "a new artifact type" among the changes that
-need no `format_version` bump and this module used to refuse one outright (#260). `check_session_dir`
-returns the blocking half, so the default answer every existing caller already asks for is the safe
-one; `inspect_session_dir` returns everything, for the two surfaces that report rather than gate.
+**Not everything worth naming is a defect.** A finding carries a `severity`, and an artifact type
+this build has no generator for is a *note* rather than a problem, because `docs/compatibility.md`
+lists "a new artifact type" among the changes needing no `format_version` bump and this module used
+to refuse one outright (#260) — a diagnostic must be at least as permissive as the loader.
+`check_session_dir` returns the blocking half, so every existing caller's default is the safe one;
+`inspect_session_dir` returns everything, for the surfaces that report rather than gate.
+`test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`.
 """
 
 from __future__ import annotations
@@ -184,23 +183,18 @@ def newest_readable_revision(d: Path, n: int, *,
     for.
 
     **A file that parses is not automatically trustworthy, and `session restore` (#210) exists to be
-    trustworthy** (found in review). A revision file tampered with *after* it was frozen still parses
-    as a perfectly good model — `inspect_session_dir` catches exactly this with
-    `revision_hash_mismatch`, comparing the same recorded hash. Restoring from such a file without
-    the identical check would let a repair tool trust what the diagnostic it is paired with already
-    refuses to. `expected_hashes` is `{revision: model_hash}`, the shape `SessionMeta.revisions`
-    already carries; a revision absent from the map, or recorded with an empty hash, is treated as
-    unconfirmed rather than refused — this function still answers *can this build open it*, not
-    *is there a hash to check it against*.
+    trustworthy.** A revision file tampered with after it was frozen still parses as a perfectly good
+    model, and `inspect_session_dir` already refuses it as `revision_hash_mismatch` — so restoring
+    without the identical check would let a repair tool trust what its paired diagnostic does not.
+    `test_newest_readable_revision_skips_a_revision_whose_hash_no_longer_matches`, with
+    `test_newest_readable_revision_with_no_expected_hashes_trusts_anything_that_parses` for the
+    unconfirmed case: a revision absent from `expected_hashes`, or recorded with an empty hash, is
+    unconfirmed rather than refused, because this answers *can this build open it*.
 
-    Exists for `session verify` (names the file its remedy line points at) and `session restore`
-    (#210) — deliberately *not* a verdict about the session. It never raises and does not decide
-    whether a torn `model.json` should be repaired, only which history this session actually has
-    that this build can open **and trust**. It re-validates each candidate independently rather than
-    reusing `inspect_session_dir`'s own findings, whose per-revision loop keeps going past the *first*
-    problem in reading order rather than returning "which revisions parsed" in a form a caller could
-    recover without re-deriving this same loop from them — at which point two statements of the
-    check exist regardless of which file holds the second one.
+    Deliberately *not* a verdict about the session: it never raises and decides nothing about repair,
+    only which history this build can open and trust. It re-validates each candidate independently
+    rather than recovering that from `inspect_session_dir`'s findings, which do not carry "which
+    revisions parsed" in a form a caller could use without re-deriving this same loop.
     """
     for i in range(n, 0, -1):
         found = _try_revision(d, i, expected_hashes)
@@ -218,9 +212,8 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
 
     **`check_session_dir` is the one to call to decide something**; this one is for a surface that
     reports. The split is which way the *default* fails (#260): a caller asking "is this session
-    sound" and getting the whole list back would gate on a note, which is the defect that change
-    removed, and it would do so silently — the list is non-empty either way. So the plain name keeps
-    the plain meaning it always had and this one carries the longer answer.
+    sound" and getting the whole list back would gate on a note, silently, since the list is non-empty
+    either way. `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`.
     """
     findings: list[IntegrityProblem] = []
 
@@ -360,33 +353,23 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
                 f"the {atype!r} artifact is recorded as {st.filename!r}, but that type is stored as "
                 f"{ARTIFACT_FILENAMES[atype]!r}")
 
-        # `st.filename` is an unconstrained `str` read out of session.json, and the two branches
-        # above only *record* a problem — execution used to carry on to the join with the untrusted
-        # value still in hand, so neither was a guard. `pathlib` makes the absolute case the sharp
-        # one: an absolute component replaces everything before it, so `artifacts / "/etc/passwd"`
-        # is `/etc/passwd` and the join never had to escape upwards at all. Nothing is ever read, so
-        # this disclosed no content — it disclosed *existence*, because whether the row came back
-        # `missing_artifact_file` answered whether that outside path was there.
+        # `st.filename` is an unconstrained `str` out of session.json, and the two branches above only
+        # *record* a problem -- execution carried on to the join with the untrusted value in hand, so
+        # neither was a guard. `pathlib` makes the absolute case the sharp one: an absolute component
+        # replaces everything before it, so the join never had to escape upwards at all, and the row
+        # coming back `missing_artifact_file` disclosed whether an outside path existed.
+        # `test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session`.
         #
-        # The name goes through the same `validate_filename` chokepoint every artifact write uses,
-        # plus the containment confirmation `artifact_path` makes, and a refused name is *reported*
-        # instead of probed. `artifact_path()` itself is deliberately not reused: it builds from
-        # `canonical_dir(slug)`, the store, while this function is also handed a directory extracted
-        # from an archive that is not in the store — it would answer confidently about the wrong
-        # directory, which is this module's own defect class.
-        #
+        # `artifact_path()` is deliberately not reused: it builds from `canonical_dir(slug)`, while
+        # this function is also handed a directory extracted from an archive that is not in the store
+        # -- it would answer confidently about the wrong directory, this module's own defect class.
         # The containment confirmation is `is_contained`, the store's, rather than a third statement
-        # of the same rule (#3). It used to be written out here, and was then corrected twice for
-        # defects the sibling copies had each been corrected for separately: a spurious disagreement
-        # between two resolutions, reporting `unsafe_artifact_filename` about a perfectly bare name,
-        # and a dangling symlink out of the session reported as a *missing* file on the one platform
-        # whose resolver cannot follow one. Both are this module's own defect class — a confident
-        # answer about the wrong thing — from the verb whose job is saying whether a session is
-        # intact.
+        # of the rule that had to be corrected twice for defects its siblings were each corrected for
+        # separately (#3, invariant 17) --
+        # `test_an_artifact_symlink_is_reported_unsafe_where_the_platform_cannot_resolve_it`.
         #
-        # The classification runs before the existence check below, and that ordering is what makes
-        # the second of those visible at all: a name refused here is reported as refused, never
-        # probed and then reported as absent.
+        # The classification runs before the existence check below, and that ordering is what keeps a
+        # refused name reported as refused rather than probed and then reported as absent.
         try:
             f = artifacts / validate_filename(st.filename)
             safe = is_contained(f, artifacts)

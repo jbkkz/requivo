@@ -122,6 +122,11 @@ def test_break_meta_defeats_the_strict_read(workspace):
 # ── the listing survives, and names what it could not read ───────────────────
 
 def test_one_unreadable_session_no_longer_takes_the_listing_down(workspace):
+    """`SessionService.list_entries` is the *source* of the rows, and that is where invariant 15 has
+    to be enforced: guarding the calls a row makes leaves the comprehension that produced the rows
+    unguarded, which is the line that breaks first. `read_meta` refuses an unreadable `session.json`
+    and a `format_version` newer than this build — so a user who ran a newer Requivo once, or
+    imported a colleague's archive, lost the listing of every *other* session too."""
     _seed(HEALTHY)
     _seed(AWAITING, analysed=False)
     _seed(BROKEN_META)

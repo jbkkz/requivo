@@ -885,7 +885,19 @@ def test_a_lock_whose_session_still_exists_is_not_flagged(workspace):
 def test_a_session_removed_through_session_delete_leaves_no_lock_residue(workspace):
     """The must-not-fire control against a fresh false positive: unlike the hand-deleted case below,
     `session delete` (#238) unlinks its own `<slug>.lock` as the last step, so it must not show up
-    here at all -- the same clean report a workspace with no lock files ever had."""
+    here at all -- the same clean report a workspace with no lock files ever had.
+
+    Windows needed `_LockHandle.unlink_on_release` to get here (#469): the in-lock unlink that works
+    on POSIX raises there, because a handle `os.open` opened permits no same-process delete, and the
+    old code caught the raise and left the file. Deferring to `session_lock`'s own teardown is
+    second-best and stated as such at that class. The window it opens -- release, close, unlink, with
+    no Python between them -- is two syscalls wide where holding the lock makes it zero, and in that
+    window a `create_session` for the same slug (lock-free by design, invariant 11) followed by a
+    third actor's `session_lock` could open the inode this unlink then removes, after which a fourth
+    actor's `O_CREAT` mints a new one and two holders each believe they hold the only lock. That is
+    the same race `delete_session`'s docstring names, narrowed rather than eliminated; it is not the
+    ordering #22 rejected, which put a whole teardown, a return into the caller and a fresh
+    `lock_path` validation between the release and the unlink."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _take_lock("s")
     _run(["session", "delete", "s", "--json"])

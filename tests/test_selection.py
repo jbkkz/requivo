@@ -576,8 +576,15 @@ def test_a_control_character_in_a_selector_token_is_refused_not_echoed():
 def test_check_selection_reports_a_hostile_persisted_card_rather_than_raising():
     """`check_selection` is what `doctor` and `session verify` ask, and its contract is *reported,
     never raised* — a health check that raises takes the whole listing down with it (invariant 15).
-    A stored selection is exactly where a hostile card name arrives, via `session import`, so the
-    new refusal has to join the reported set rather than escape it."""
+    A stored selection is exactly where a hostile card name arrives, so the new refusal has to join
+    the reported set rather than escape it.
+
+    A hostile name can only ever arrive *persisted*: `create_session` resolves the selection against
+    the installed cards (invariant 14), so the doors are `session import` and a hand-edited
+    `session.json`, and the first code to look at one is therefore a health check. Escaping from here
+    would mean `doctor` answering nothing at all about a workspace holding one tampered session,
+    rather than degrading that one row. This is why `UnsafeSelectorTokenError` is a member of
+    `context._SELECTION_REFUSALS` (#40)."""
     assert check_selection([A_CARD]) is None            # must fire: a good selection is still clean
 
     problem = check_selection(["ok-card\nAll clear."])

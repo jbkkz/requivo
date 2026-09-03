@@ -72,15 +72,11 @@ class SessionSnapshot:
 class SessionEntry:
     """One slug in the store, with either its metadata or the reason it could not be read (#7).
 
-    The third state, made representable. `list_sessions()` can only answer *here is the metadata* or
-    *this whole listing raised*, so an aggregate built on it has no way to say **we could not read
-    this one** — and the only shapes left are to raise for the set (one bad session hides every good
-    one) or to drop the member (the reader is told nothing is wrong and the session is gone). Both
-    were live: the first is #7, the second is what a naive fix for it produces.
-
-    `error` is the exception's own text rather than a code. A user whose session was written by a
-    newer Requivo needs to read *upgrade requivo*, not `unreadable` — the remedy is the part worth
-    keeping, and a flattened code discards exactly it."""
+    The third state, made representable: without it an aggregate can only raise for the set (one bad
+    session hides every good one) or drop the member (the reader is told nothing is wrong), and both
+    were live. `error` is the exception's own text rather than a code, because the remedy is the part
+    worth keeping. `test_one_unreadable_session_no_longer_takes_the_listing_down` and
+    `test_the_degraded_row_carries_the_reason_because_the_reason_is_the_remedy`."""
 
     slug: str
     meta: SessionMeta | None = None
@@ -159,35 +155,23 @@ class SessionService:
         path to a model.json — under either the canonical `.requivo/sessions/` or legacy `out/` root.
 
         `accept_path=False` refuses anything path-shaped outright, naming the reference exactly as
-        given (#402). The eight generator verbs (`answer`, `brief`, `prd`, `stories`, `estimate`,
-        `criteria`, `epic`, `release`) pass it: they resolve a *slug* and then read and write the
-        store's own copy of the session -- `ArtifactService.save` refuses anything that is not
-        `has_meta(slug)` -- so they never truly "open" a file they are handed the way `status` and
-        `impact` do, and a path was never a meaningful input for them. Before this, a stray or
-        fabricated path was mined for its parent directory's name regardless, and reported on --
-        or, worse, silently resolved against -- whatever session happens to carry that name, which
-        is the wrong-cause class this refuses instead of producing.
+        given (#402): the eight generator verbs pass it, because they resolve a *slug* and then read
+        and write the store's own copy, so a path was never a meaningful input for them --
+        `test_resolve_slug_refuses_a_model_json_path_when_the_caller_opted_out`, with
+        `test_resolve_slug_still_accepts_a_bare_slug_when_paths_are_refused` for the other half.
+        "Path-shaped" is decided from the string alone, never from what happens to exist on disk at
+        that name (invariant 17), so filesystem noise cannot refuse a bare slug as a path.
 
-        "Path-shaped" is decided from the string alone -- a separator, or a `model.json`/`session.json`
-        basename -- never from whether something happens to exist on disk at that name (invariant 17):
-        a bare slug that coincidentally collides with an unrelated directory in the caller's cwd must
-        still resolve as the slug it was typed as, not be refused as a path because of filesystem noise
-        nothing about the command line suggested.
-
-        When paths are still accepted (every `deterministic/` verb, and the directory branch below),
-        the same wrong-cause failure is closed at its root: a `model.json`/`session.json` reference
-        is only mined for its parent directory's name when the file is actually there. A reference to
-        a file that was never written falls through unchanged, so the caller's `exists()` check fails
-        naming the path itself, never a slug carved out of a segment of it.
-
-        **The directory branch itself carried the identical defect and had no such guard** (#414):
-        `p.exists() and p.is_dir()` mined ANY directory's own name, whether or not a session lived
-        behind it -- so a directory that merely shared its final path segment with an unrelated real
-        session silently resolved to that session, one branch over from the bug #402 fixed above. It
-        now mines a directory's name only when the directory carries its own session marker
-        (`session.json` or `model.json`), the directory-shaped analogue of "the file is actually
-        there"; a directory with neither is refused naming the path exactly as given, not a slug
-        carved from it."""
+        Where paths are still accepted, **a reference is only mined for a name when a session really
+        is there**: a `model.json`/`session.json` when the file exists (#402), a directory when it
+        carries its own session marker (#414). Mining unconditionally resolved a reference that
+        merely shared its final segment with an unrelated real session *to that session*, which is
+        the wrong-cause class this refuses instead of producing.
+        `test_resolve_slug_no_longer_mines_a_nonexistent_model_json_path`,
+        `test_a_directory_reference_does_not_silently_use_an_unrelated_real_session` and
+        `test_resolve_slug_refuses_a_directory_that_is_not_a_session`, with
+        `test_resolve_slug_still_mines_a_real_saved_model_json` and
+        `test_resolve_slug_still_mines_a_real_session_directory` for the must-fire half."""
         ref = str(reference)
         p = Path(ref)
         if not accept_path:
@@ -196,14 +180,10 @@ class SessionService:
                 or os.sep in ref or (os.altsep and os.altsep in ref)
             )
             if looks_like_a_path:
-                # `ref` is untrusted user input reaching a message that gets printed verbatim
-                # (`cli.py`'s `app()` writes a `RequivoError` straight to stderr) -- every mention
-                # goes through `display_token` (invariant 14, #40; the same call `no_session_message`
-                # makes on this identical field), not only the first as it read before. A raw second
-                # occurrence would leave a control character or an ANSI escape in `ref` free to forge
-                # a line the refusal never wrote. `display_token` returns the value unchanged when it
-                # is already one safe line, so an ordinary path still reads exactly as typed; only an
-                # unsafe one is escaped, the same tradeoff `no_session_message` already makes.
+                # `ref` is untrusted input reaching a message printed verbatim, so *every* mention
+                # goes through `display_token` (invariant 14, #40), not only the first: a raw second
+                # occurrence leaves a control character free to forge a line the refusal never wrote.
+                # `test_the_path_refusal_cannot_forge_a_second_line_of_its_own_message`.
                 safe_ref = display_token(ref)
                 raise SessionNotFoundError(
                     f"{safe_ref} looks like a path, but this command takes a session slug -- it "
@@ -214,13 +194,11 @@ class SessionService:
                 )
             return ref
         if p.name in ("model.json", "session.json"):
-            # `Path.is_file()` swallows ENOENT/ENOTDIR into `False`, which is what "mine only a
-            # real file" needs -- but it re-raises everything else, including `PermissionError` on
-            # a directory this process cannot traverse into. `core/persistence.py`'s `_probe` exists
-            # for exactly this shape (`Path.exists()` has two returns and three outcomes) and this
-            # is the same probe one field over, so it gets the same third state rather than an
-            # uncaught traceback escaping a verb that promises every clean failure surfaces without
-            # one (#402, found in review).
+            # `Path.is_file()` swallows ENOENT/ENOTDIR into `False` -- what "mine only a real file"
+            # needs -- but re-raises `PermissionError`, so this gets the same third state `_probe`
+            # exists for rather than a traceback escaping a verb that promises every clean failure
+            # surfaces without one (#402) --
+            # `test_an_unreadable_model_json_path_refuses_cleanly_instead_of_crashing`.
             try:
                 is_real_file = p.is_file()
             except OSError as e:
@@ -229,23 +207,13 @@ class SessionService:
                     details={"ref": ref},
                 ) from e
             return p.parent.name if is_real_file else ref
-        # **The same wrong-cause class #402 closed for the model.json/session.json branch, one
-        # branch over** (#414). This used to mine ANY directory's own name, unconditional on
-        # whether a session actually lived behind it -- so a path merely sharing its final segment
-        # with an unrelated real session silently resolved to that session, and a failure on a
-        # path that resolved to nothing named a slug the user never wrote. On the same terms as
-        # the file branch above ("only mined when the file is actually there"), a directory is
-        # only mined for its own name when it carries a session's own marker -- canonical
-        # `session.json` or legacy `model.json`.
-        #
-        # **Two probes here, not one, and both re-raise -- found in review of this same change.**
-        # `p.exists()`/`p.is_dir()` independently stat `p` itself, which fails with `PermissionError`
-        # when an ANCESTOR of the reference denies traversal, a distinct case from the marker probe
-        # below failing on the referenced directory's *own* contents. Wrapping only the marker probe
-        # left the entry gate itself able to raise a bare, uncaught traceback for a directory that
-        # is otherwise perfectly healthy, purely because something above it on the path could not be
-        # examined -- the identical third state `is_file()` above is already guarded against, missed
-        # one probe over.
+        # A directory is mined for its own name only when it carries a session's own marker (#414) --
+        # see the docstring for the wrong-cause class unconditional mining produced. Two probes, and
+        # both re-raise: `p.exists()`/`p.is_dir()` stat `p` itself and fail when an ANCESTOR denies
+        # traversal, a distinct case from the marker probe failing on the directory's own contents,
+        # so guarding only the second left the entry gate able to raise a bare traceback for an
+        # otherwise healthy directory (`test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too`,
+        # `test_an_unreadable_session_directory_refuses_cleanly_instead_of_crashing`).
         try:
             is_dir = p.exists() and p.is_dir()
         except OSError as e:
@@ -276,18 +244,15 @@ class SessionService:
     def slug_hint(text: str) -> str:
         """Turn arbitrary text into a slug-shaped name — the surface's route to slug derivation.
 
-        Not a repository method: deriving a name from a request is a naming policy, and it is the
-        same policy whatever backs the store. It is here rather than left to each caller because
-        `cli.py` was reaching into `core.persistence` for the slug derivation itself (#76), which
-        is a surface holding a core implementation detail — the one direct storage call in that file
-        that had no defensible reason. What keeps a surface out of the store is this seam, not the
-        underscore `derive_slug` used to carry.
+        Not a repository method: deriving a name from a request is a naming policy, the same whatever
+        backs the store. It is a seam because `cli.py` was reaching into `core.persistence` for the
+        derivation itself (#76) — a surface holding a core implementation detail, and what keeps a
+        surface out of the store is this seam rather than the underscore `derive_slug` used to carry
+        (`test_the_surfaces_reach_the_store_only_through_the_named_filesystem_concerns`).
 
-        The two callers want it for different inputs and the same reason: `create_session` derives
-        a slug from the request text, and `requivo discover <file>` derives a *hint* from a
-        filename stem, because "Leave Approval v2.md" has a space and a capital and a slug names a
-        directory. Passing the raw stem through turned an ordinary input file into an
-        `invalid_slug` error.
+        Two callers, two inputs: `create_session` derives a slug from the request text, and
+        `requivo discover <file>` derives a *hint* from a filename stem — passing a raw
+        "Leave Approval v2.md" stem through turned an ordinary input file into an `invalid_slug`.
         """
         return store.derive_slug(text)
 
@@ -299,27 +264,20 @@ class SessionService:
                    details: dict | None = None) -> SessionNotFoundError:
         """The refusal for "there is no such session" — the surface's route to it (#243).
 
-        The sentence itself names the sessions root, so it is the store's fact to state — read off
-        *this service's own repository*, not the process ambient default (#272's cosmetic fourth).
-        Before this an explicitly-rooted `SessionService` still reported the ambient workspace's root
-        in this one message, which is exactly the kind of silent disagreement #272 exists to close:
-        every other read on this service went to the right store, and only the error text about
-        *why a session could not be found there* named a different one. Instance method now, not
-        `@staticmethod`, for that reason alone — every caller already writes `svc.no_session(...)`
-        on an instance, so nothing at any call site changes.
+        The sentence names the sessions root, so it is read off *this service's own repository*, not
+        the process ambient default: an explicitly-rooted `SessionService` naming the ambient
+        workspace here is the silent disagreement #272 exists to close, with every other read on the
+        service going to the right store (`test_no_session_names_the_root_of_an_explicitly_rooted_repository`
+        and `test_no_session_still_names_the_ambient_root_for_the_default_repository`). It is an
+        instance method for that reason alone.
 
-        What this method exists for beyond that is the *seam*: `cli.py` and
-        `deterministic/sessions.py` raise this at six sites, and reaching into `core.persistence`
-        for it would put a copy concern in the allowlist of justified **filesystem** concerns —
-        which is the one thing that list must not start meaning (#76). A message is not a path, even
-        when it contains one, so it comes through the service like everything else a surface needs.
+        It is a seam because six sites in `cli.py` and `deterministic/sessions.py` raise this, and
+        reaching into `core.persistence` for it would put a *copy* concern in an allowlist of
+        justified **filesystem** concerns (#76) — a message is not a path, even when it contains one.
 
-        `what` widens the noun for `_resolve_ref`, the one caller whose absence is genuinely wider:
-        it accepts a path to a `model.json` as well as a slug. `details` is explicit for the same
-        caller and for a harder reason: its published key is `ref`, not `slug`, because what it was
-        handed may be a path — and `details` is a **contract** (`docs/compatibility.md`), so a
-        rewording of the message must not be able to move it. Defaulting it here rather than letting
-        each site build one is what keeps the other five identical.
+        `what` widens the noun for `_resolve_ref`, which accepts a path as well as a slug. `details`
+        is explicit for the same caller: its published key is `ref` rather than `slug`, and `details`
+        is a contract (`docs/compatibility.md`), so a rewording of the message must not move it.
         """
         message = self._store_for_error_text().no_session_message(ref, what=what)
         return SessionNotFoundError(message,
@@ -327,12 +285,11 @@ class SessionService:
 
     def _store_for_error_text(self) -> Store:
         """The `core.persistence.Store` this service's own repository addresses, for the one place
-        outside any repository method that reads the workspace root: `no_session`'s error text
-        (#272's cosmetic fourth). Duck-typed against `self.repo.store()` rather than added to the
-        `SessionRepository` protocol, for the identical reason `DiscoveryService._store_for_repo`
-        gives — a Postgres backing has no filesystem root to hand back, and the fallback below is
-        exactly what this call had *unconditionally* before #272, since it read the ambient default
-        regardless of what `self.repo` addressed."""
+        outside any repository method that reads the workspace root: `no_session`'s error text (#272).
+        Duck-typed against `self.repo.store()` rather than added to the `SessionRepository` protocol,
+        for the reason `DiscoveryService._store_for_repo` gives — a Postgres backing has no
+        filesystem root to hand back, and the fallback below is what this call had unconditionally
+        before #272."""
         get_store = getattr(self.repo, "store", None)
         if callable(get_store):
             return cast(Store, get_store())
@@ -350,27 +307,19 @@ class SessionService:
         """Create a fresh session from a request (no model yet). If `slug` is omitted it is derived
         from the request and made collision-safe against existing sessions.
 
-        Creation is idempotent on *identity*, and identity is the request **and its context cards** —
-        not the request alone. The cards are part of the provenance of everything a session will
-        reason: the same request read against `b2b-platform` and against `event-ops` gets different
-        impact estimates, so different questions. Keying on the request alone meant the second call
-        silently returned the first session, with cards the caller had not asked for and had no way to
-        notice. A different selection now gets its own session instead.
-
-        The claim on a slug is `repo.create` itself, which is atomic — a check-then-create here would
+        Creation is idempotent on *identity*, and identity is the request **and its context cards**
+        (invariant 11): the same request read against different cards gets different impact
+        estimates, so keying on the request alone silently returned the first session with cards the
+        caller never asked for — `test_the_same_request_under_different_cards_is_a_different_session`.
+        The claim on a slug is `repo.create` itself, which is atomic; a check-then-create here would
         let two concurrent callers both decide the session was theirs to make.
 
-        The card selection is resolved here rather than trusted. The CLI and the Web both call
-        `resolve_cards` before they get this far, which made it look like the service could rely on
-        them — but "the interfaces are careful" is not an integrity boundary, and an external consumer calls
-        exactly this layer. An unknown card recorded on a session is not inert: every later turn reads
-        the selection back, and an empty resolved selection means *every* card, so a bad name silently
-        widens the context instead of narrowing it.
-
-        The same argument holds for the request's *size* (#255): the Web checks `MAX_REQUEST_CHARS`
-        in `routes/sessions.py` for its own friendly re-render, but that is the interface being
-        careful, not a guarantee — this is the one place every request is captured before it can
-        reach a provider or land on disk, so this is where the cap actually has to live."""
+        The card selection and the request's size (#255) are both checked here rather than trusted,
+        because the interfaces being careful is not an integrity boundary and an external consumer
+        calls exactly this layer (invariant 14). An unknown card is not inert — an empty resolved
+        selection means *every* card, so a bad name widens the context instead of narrowing it.
+        `test_the_service_refuses_a_context_card_that_does_not_exist` and
+        `test_create_only_refuses_an_oversized_request_too`."""
         require_input_within_bounds(request, field="request")
         context_cards = resolve_cards(context_cards) if context_cards else None
         base = slug or self.slug_hint(request)
@@ -396,14 +345,14 @@ class SessionService:
     # ── deletion ─────────────────────────────────────────────────────────────
     def delete_session(self, slug: str) -> None:
         """Irreversibly remove a session (#238). Refuses a missing slug with the structured
-        `session_not_found` error, raised by the repository's own locked existence check
-        (invariant 9) rather than a separate check here — a check here-and-there would be the exact
-        precondition-not-held-across-the-write shape invariant 9 is written against.
+        `session_not_found` error, raised by the repository's own *locked* existence check rather
+        than a separate check here — a check here-and-there is the precondition-not-held-across-the-
+        write shape invariant 9 is written against
+        (`test_deleting_a_nonexistent_slug_is_refused_with_session_not_found`).
 
-        A thin delegation on purpose: the ordering that actually matters (lock, remove the
-        directory, release, unlink the lock file last) is the repository/store's own concern, so a
-        Postgres backing can implement the identical guarantee its own way underneath this call —
-        see `SessionRepository.delete`'s docstring."""
+        A thin delegation on purpose: the ordering that matters (lock, remove the directory, release,
+        unlink the lock file last) is the repository/store's own concern, so a Postgres backing can
+        implement the identical guarantee its own way underneath this call."""
         self.repo.delete(slug)
 
     @staticmethod
@@ -457,41 +406,31 @@ class SessionService:
     def list_entries(self) -> list[SessionEntry]:
         """Every session, degrading per member instead of raising for the whole set (#7).
 
-        This is the *source* of the rows, and it is where invariant 15 has to be enforced: guarding
-        the calls made on each row leaves the comprehension that produced the rows unguarded, which
-        is the line that breaks first. `read_meta` refuses an unreadable `session.json` and a
-        `format_version` newer than this build — so a user who ran a newer Requivo once, or imported
-        a colleague's archive, loses the listing of every *other* session too.
+        This is the *source* of the rows, and where invariant 15 has to be enforced: guarding the
+        calls made on each row leaves the comprehension that produced them unguarded, which is the
+        line that breaks first. A member that cannot be read is reported, never dropped — a listing
+        that silently omits it tells the reader nothing is wrong and loses the session.
+        `test_one_unreadable_session_no_longer_takes_the_listing_down` and
+        `test_the_degraded_row_states_no_fact_it_could_not_read`.
 
-        The catch is bare `Exception`, deliberately. An aggregate's contract is that one member
-        cannot take the view down, and the set of ways a member can be broken is open — a truncated
-        JSON file, a permissions fault, a pydantic `ValidationError`, a code this build has not been
-        written yet. Naming a family here is how the guard ends up nominally on and effectively off
-        for the next failure mode, which is the shape of #7 itself. `doctor`'s `_session_health`
-        already made this call for the same question; this is that decision, reused rather than
-        re-litigated. `BaseException` is *not* caught: a `KeyboardInterrupt` is not a broken session.
+        The catch is bare `Exception`, deliberately: an aggregate's contract is that one member
+        cannot take the view down, and the set of ways a member can be broken is open, so naming a
+        family here is how a guard ends up nominally on and effectively off for the next failure
+        mode — the shape of #7 itself. `doctor`'s `_session_health` already made this call for the
+        same question. `BaseException` is *not* caught: a `KeyboardInterrupt` is not a broken
+        session.
 
-        A member that cannot be read is reported, never dropped. A listing that silently omits it
-        tells the reader nothing is wrong and loses the session — the same absence, one step
-        quieter.
+        Failing to list the slugs at all is **not** caught here and propagates: that is not one
+        member failing but the aggregate having no members to speak for, and answering `[]` would
+        tell a reader their sessions were deleted.
 
-        Failing to list the slugs at all is **not** caught here and propagates. That is not one
-        member failing, it is the aggregate having no members to speak for: there is no row to name
-        the problem in, and answering `[]` would tell a reader their sessions were deleted. It is
-        the same distinction `_session_health` draws with `total: None` versus `total: 0`.
-
-        **Between those two sits a third source of rows** (#80). `list_unexaminable` returns the
-        names the store found and could not decide about — a directory the process cannot stat into
-        is the file backing's case. That is neither a member failing to load nor the aggregate
-        having no members: it is a name that may or may not be a session, and until #80 it was not a
-        row at all, because the failure happened inside the scan and took the whole listing with it.
-        It is a degraded row here for the reason every other degraded row is one: the alternatives
-        are to drop it, which loses it silently, or to call it a session, which is what nobody
-        established.
-
-        Sorted by slug at the end so the two sources interleave into one listing. `list_slugs` is
-        already sorted, so a workspace with nothing unexaminable in it comes back in exactly the
-        order it always did.
+        **Between those two sits a third source of rows** (#80) — `list_unexaminable`, the names the
+        store found and could not decide about. Dropping one loses it silently and calling it a
+        session claims what nobody established, so it is a degraded row like any other:
+        `test_one_unexaminable_entry_no_longer_takes_the_whole_listing_down` and
+        `test_the_row_states_no_fact_it_could_not_read`. Sorted by slug at the end so the two
+        sources interleave into one listing; `list_slugs` is already sorted, so a workspace with
+        nothing unexaminable comes back in exactly the order it always did.
         """
         entries = []
         for slug in self.repo.list_slugs():
@@ -535,36 +474,26 @@ class SessionService:
     def rescope(self, slug: str, context_cards: list[str] | None) -> RescopeResult:
         """Re-scope an existing session's context-card selection (`session rescope`).
 
-        Argued out in #168, against the issue's own four questions, so the reasoning lives here
-        rather than only in the issue:
+        Four questions, argued out in #168 and each decided in a test rather than restated here:
 
-        1. **New revision, or mutate in place?** Both, depending on what is on disk. Once a model
-           exists, every revision already there was reasoned under the *old* selection — silently
-           overwriting `context_cards` would leave the history claiming a switch never happened. So
-           this is recorded as its own revision: the model carries forward **unchanged** (same
-           content, same hash) and the provenance names the surface as a re-scope rather than a
-           reasoning turn (`surface="session-rescope"`), which is exactly what
-           `RevisionRecord.surface` exists to distinguish. Before any model exists (revision 0)
-           there is no provenance yet for the old selection to describe — nothing has been reasoned
-           against it — so this is a plain metadata write, no revision minted for content that was
-           never there.
-        2. **Does it mark existing artifacts stale?** No. Staleness is the dependency graph
-           (invariant 1), and `ARTIFACT_SLOTS`/`REASONING_CONSUMERS` — the only two edge sets that
-           feed it — know slots and reasoning, not context. Nothing an artifact already on disk
-           reads has moved: the model is unchanged, so every artifact still faithfully describes
-           what it was generated from. Inventing a context edge would be a real feature (a fifth
-           kind of dependency `core/dependencies.py` does not have), not a re-scope.
-        3. **Does it re-run anything?** No. `DiscoveryService` reads `context_cards` off a fresh
-           `SessionSnapshot` on every call (`snapshot().context_cards`, read straight from
-           `meta.context_cards`), so writing the new selection here is already the whole effect —
-           the *next* turn reasons against it, nothing already produced is touched or redone.
-        4. **Untrusted input, same as creation.** `resolve_cards` runs here exactly as it does in
-           `create_session` (invariant 14's second door): a persisted `context_cards` is untrusted
-           the moment it is read back, and a re-scope is a second entrance onto the same value, so
-           an unknown name is refused here rather than recorded and discovered on the next turn.
+        1. **New revision, or mutate in place?** Both, depending on what is on disk — a plain
+           metadata write at revision 0, its own revision (unchanged model, unchanged hash,
+           `surface="session-rescope"`) once one exists, so the history cannot claim a switch never
+           happened. `test_rescope_before_any_model_only_mutates_metadata` and
+           `test_rescope_after_a_model_records_a_new_revision_with_unchanged_content`.
+        2. **Does it mark existing artifacts stale?** No — context is not a fifth kind of dependency
+           edge, and the model has not moved (invariant 1).
+           `test_rescope_does_not_mark_existing_artifacts_stale`, with
+           `test_a_model_change_still_marks_the_same_artifact_stale` as its positive control.
+        3. **Does it re-run anything?** No; writing the selection *is* the whole effect, and the
+           next turn reasons against it.
+           `test_rescope_does_not_re_run_anything_the_next_snapshot_reads_the_new_cards`.
+        4. **Untrusted input, same as creation.** `resolve_cards` runs here too — a re-scope is
+           invariant 14's second entrance onto a persisted `context_cards`.
+           `test_rescope_resolves_and_normalizes_cards_like_creation`.
 
         Re-scoping to the selection a session already has (order aside — this is a set) is a no-op:
-        `changed=False`, nothing written, no revision spent on a switch that is not one.
+        `test_rescope_to_the_current_selection_is_a_no_op`.
         """
         self._ensure_canonical(slug)
         resolved = resolve_cards(context_cards) if context_cards else None
@@ -581,12 +510,10 @@ class SessionService:
                 model = self.load_model(slug)
                 revision, meta = self.repo.save_revision(slug, model,
                                                          provenance={"surface": "session-rescope"})
-                # This is `sessions.py`'s *second* `save_revision` call site (`_plan`'s is the
-                # first) -- a re-scope mints a real revision on disk even though the model's
-                # content is unchanged (see this method's own docstring, point 1), and an operator
-                # watching this logger for "a revision landed" must see this one too, not only an
-                # `update_model`-driven apply. Found in this lane's own self-review (#435): both
-                # call sites predate this change, but only `_plan`'s was wired to log at first.
+                # The second `save_revision` call site here (`_plan`'s is the first): a re-scope
+                # mints a real revision even with unchanged content, so an operator watching this
+                # logger for "a revision landed" must see it too (#435) --
+                # `test_a_rescope_that_mints_a_revision_is_logged_too`.
                 logger.info("session rescoped: slug=%s revision=%d", slug, revision)
             else:
                 # No model yet — nothing was reasoned under `previous`, so there is no revision to
