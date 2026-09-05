@@ -21,6 +21,9 @@ Must-fire pair in `tests/test_suite_hermeticity.py`:
 `test_no_ambient_credential_reaches_a_test` (the probe) and
 `test_the_net_fires_when_a_credential_is_ambient` (the probe re-run under a planted key).
 """
+import os
+from pathlib import Path
+
 import pytest
 from _credentials import _CREDENTIAL_ENV, SINKHOLE_BASE_URL
 
@@ -43,3 +46,32 @@ def _no_ambient_credentials(monkeypatch):
     # set, and a future path may hand the SDK a key some other way — dies on an unroutable loopback
     # port in milliseconds, unpaid, instead of reaching Anthropic.
     monkeypatch.setenv("ANTHROPIC_BASE_URL", SINKHOLE_BASE_URL)
+
+
+def _workspace_entries(root):
+    try:
+        root.lstat()
+    except FileNotFoundError:
+        return set()
+
+    def scan_failed(error):
+        raise error  # os.walk otherwise silently ignores an unreadable directory.
+
+    entries = {"."}
+    for directory, dirs, files in os.walk(root, onerror=scan_failed):
+        relative = Path(directory).relative_to(root)
+        entries.update((relative / name).as_posix() for name in dirs + files)
+    return entries
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_workspace_leaks():
+    # Observe, never redirect: test_the_workspace_guard_catches_a_real_unisolated_dump pins #432.
+    root = Path.cwd() / ".requivo"
+    before = _workspace_entries(root)
+    yield
+    added = _workspace_entries(root) - before
+    assert not added, (
+        f"Test suite created new entries under {root}: {', '.join(sorted(added))}. "
+        "Set REQUIVO_WORKSPACE to a per-test tmp_path for tests that write application data."
+    )

@@ -69,10 +69,12 @@ def test_run_returns_engine_output_and_wires_schema_and_context():
     assert "## b2b-platform" in system    # context card injected ({{CONTEXT}})
 
 
-def test_run_rejects_a_model_missing_required_slots():
+def test_run_rejects_a_model_missing_required_slots(tmp_path, monkeypatch):
     # A discovery reply missing a required slot is refused: the completeness invariant is enforced at
     # the boundary. The FakeClient returns the same incomplete reply every retry, so run() gives up.
     from requivo.core.errors import ProviderOutputError
+
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
     incomplete = json.dumps({
         "model": {"problem": slot(80, "explicit", "high")},  # 1 of 15 required
         "questions": [], "summary": {"objective": "o"},
