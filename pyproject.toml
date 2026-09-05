@@ -202,12 +202,35 @@ include = ["src/requivo"]
 # The floor `requires-python` declares, not the interpreter the leg happens to run. A checker at 3.12
 # accepts what the oldest supported interpreter refuses, which is the same shape of unverified claim
 # the Dependency floor leg exists for (#91).
+#
+# **And it is a claim about symbols, not about signatures** (#470). Typeshed version-gates whole
+# names and does not gate individual *parameters*, so `pythonVersion` has nothing to bite on for a
+# keyword a newer interpreter added to a function that has always existed. Measured, not assumed:
+# `pyright --pythonversion 3.9` reports 0 errors on `Path("x").write_text("a", newline="")`, the
+# 3.10+ keyword #469 shipped, which then failed 518 tests apiece on the three 3.9 legs. Whoever reads
+# the paragraph above as a guarantee that the floor is checked will be wrong in exactly that way.
+# The two instances this repo has actually met are covered by a test rather than by this setting --
+# `test_no_text_call_passes_a_keyword_the_declared_floor_rejects` in `tests/test_encoding.py`, whose
+# table is deliberately two rows long, per CLAUDE.md's bar on funding coverage from named instances.
 pythonVersion = "3.9"
 
 # `All` is the stricter setting, not a convenience. It type-checks the Windows-only locking path from
 # the Linux leg, on a codebase bitten by Windows-only behaviour three times (invariants 17 and 18).
 # Left at the host's platform it reported `msvcrt.locking` as missing — a fact about the machine
 # running the check, not about the code.
+#
+# Its limit is the same one, one setting along, and it was measured while answering #470 rather than
+# left as the "unknown" that issue recorded. Typeshed's *platform* gating is complete where its
+# version gating is: at the level of a symbol, and not at the level of a parameter.
+#   - symbol, both directions, caught: `os.startfile` under `--pythonplatform Linux` and `os.getuid`
+#     under `--pythonplatform Windows` each report `reportAttributeAccessIssue`.
+#   - parameter, not caught: `subprocess.run(..., preexec_fn=...)` under `--pythonplatform Windows`
+#     reports 0 errors, and CPython raises `ValueError("preexec_fn is not supported on Windows ...")`
+#     there.
+# So the answer for both keys is one sentence: **this leg checks that a name exists on the declared
+# floor and platform; it does not check that a signature does.** No guard is added for the platform
+# half, because unlike the version half this repo has met zero real instances of it, and one
+# plausible class does not fund coverage here (CLAUDE.md, #288).
 pythonPlatform = "All"
 
 typeCheckingMode = "basic"
