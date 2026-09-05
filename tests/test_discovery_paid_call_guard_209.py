@@ -55,6 +55,32 @@ class _CountingProvider:
                     "here, and the msvcrt branch takes the same non-blocking path. "
                     "REASONED, NOT OBSERVED on Windows -- see #209.")
 def test_a_concurrent_first_discovery_is_refused_before_any_provider_call():
+    """The finding, and the three shape decisions behind the guard that this test is what goes red
+    for.
+
+    **A different file from `session_lock`, deliberately.** That lock covers a compound write and is
+    released *before* a provider call starts -- a call runs seconds to minutes and cannot hold a
+    write lock open that long, by that lock's own docstring. That released window is exactly what two
+    concurrent first-discovery requests both walk into: both read revision 0, both pass
+    `_require_revision_zero`, and both are free to pay. This guard serialises *that* window without
+    touching the write lock at all.
+
+    **Non-blocking, unlike `session_lock`.** A second caller does not wait its turn, because there is
+    no turn: a first discovery is one operation that either lands the session's very first revision
+    or does not, and telling the loser immediately -- before it has spent anything -- beats making it
+    wait out `session_lock`'s 30-second deadline for a write that was never going to be its own. The
+    `assert provider.calls == 0` below is what states that as a fact rather than a hope.
+
+    **Not re-entrant, unlike `session_lock`.** Nothing here legitimately nests this guard around
+    itself, and the plain non-reentrant shape is what keeps "a losing caller makes zero provider
+    calls" a fact about the lock file rather than about a depth counter a nested call could quietly
+    increment past.
+
+    `flock` is taken on the *open file description*, so a crashed holder -- a killed CLI, a restarted
+    web worker -- releases it the instant the process dies, with no mtime heuristic needed to tell a
+    stuck holder from a dead one. The refusal is `SessionLockedError` (`session_locked`, already
+    mapped to 503): nothing about the loser's request was wrong, and resubmitting once the winner
+    finishes is the correct next step rather than a different one."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
 

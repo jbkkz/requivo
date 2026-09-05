@@ -75,12 +75,8 @@ except ImportError:  # pragma: no cover - POSIX
 # vocabulary of "things a generation produces a document for"; `stories` and `estimate` are absent on
 # purpose — they are terminal analyses that feed the estimate pipeline, not deliverables with a file.
 #
-# Typed `Callable[[Any], str]` rather than left to infer, deliberately (#271): each writer's own
-# signature is narrow (`prd_markdown(prd: PRD)`, `criteria_markdown(ac: AcceptanceCriteria)`, …), so
-# an untyped dict literal infers a *union* of those four narrow callables, and calling `writer(...)`
-# below then demands an argument assignable to all four contracts at once — which nothing is. `Any`
-# is the honest static type at this one dispatch point: which writer a given `artifact_type` string
-# resolves to is a runtime fact `_WRITERS` encodes, not one pyright can see through a dict lookup.
+# The annotation is load-bearing: dropping it makes pyright infer a union of four narrow callables
+# that no argument satisfies. `decision: typed-generation-seam`
 _WRITERS: dict[str, Callable[[Any], str]] = {
     "prd": prd_markdown,
     "criteria": criteria_markdown,
@@ -103,17 +99,9 @@ class Generated(Generic[_A]):
     exports) without paying for a second provider call; `model` is the model it was rendered from —
     which for the assessment is the *post-absorption* model, not the one read at the start.
 
-    **Generic, and the type parameter is resolved by `generate()`'s overloads, not by this class**
-    (#271). `artifact` used to be a bare `object`: correct about what the *implementation* can prove
-    (dispatch is by a runtime string, `provider.generate(artifact_type, …)`, so no single code path
-    can promise a single contract) and useless to every caller — every call site in `cli.py` that
-    reads `result.artifact` was an unchecked `object` use. A plain `Union` of the five
-    contracts `generate()` can produce was considered and rejected: it moves the same cast to every
-    call site instead of removing it, since `render_brief(gen.model, gen.artifact)` still needs
-    `gen.artifact` narrowed from the Union to `Brief` before it type-checks. `Literal`-keyed
-    `@overload`s on `generate()` let each call site's own string argument do that narrowing for
-    free — `disco.generate(slug, "prd")` resolves to `Generated[PRD]` at the call site, with no cast
-    anywhere the caller can see."""
+    Generic, and the type parameter is resolved by `generate()`'s overloads rather than here — a bare
+    `object` costs every caller a cast and a plain `Union` moves it rather than removing it.
+    `decision: typed-generation-seam`"""
 
     status: ArtifactStatus
     artifact: _A
@@ -171,23 +159,12 @@ def _require_no_conflict_yet(slug: str, expected_revision: int | None, snap: Ses
 
 
 def _require_a_model(slug: str, snap: SessionSnapshot) -> EngineOutput:
-    """Generation may only run on a session that *has* a model — the mirror of the rule above (#152).
+    """Generation may only run on a session that *has* a model — the mirror of the rule above.
 
-    `SessionSnapshot.model` is `None` before the first model, which it says on the field, and
-    `generate`/`reason` unpacked it and handed it to the provider unchecked. Every generator builds
-    its user message as `out.model_dump_json(...)`, so the failure landed as an `AttributeError`
-    while assembling the prompt: no API call, nothing written, and a raw traceback where every other
-    refusal in this codebase is a structured error naming the remedy.
-
-    Written here rather than at each call site for the reason its sibling gives in the paragraph
-    above: the Web already had this rule — `if meta.current_revision == 0` in `routes/sessions.py`,
-    which renders an "offer to run discovery" page instead — and the CLI had nothing, so the rule was
-    enforced on one surface out of three. Hiding a button is good on top of an enforced rule and is
-    not one.
-
-    Returning the model rather than returning `None` is deliberate: the caller binds the result, so
-    the narrowing is in the type as well as in the control flow, and the eight Pyright errors this
-    closes cannot come back as a new call site that forgets the guard."""
+    Without it an unchecked `snap.model` reaches the prompt assembly and the user gets an
+    `AttributeError` traceback instead of a structured refusal. Returns the model rather than `None`
+    so the narrowing is in the type too, which is what stops a new call site forgetting the guard.
+    Pinned by `test_generating_from_a_session_with_no_model_is_refused_before_the_provider`."""
     if snap.model is None:
         raise RevisionConflictError(
             f"session '{slug}' has no model yet (revision 0) — there is nothing to generate from. "
@@ -251,33 +228,19 @@ def _discovery_guard_path(slug: str, store: Store) -> Path:
 
 @contextmanager
 def _discovery_guard(slug: str, store: Store) -> Iterator[None]:
-    """Refuse a second, concurrent first-discovery on `slug` before it can pay for anything (#209).
+    """Refuse a second, concurrent first-discovery on `slug` before it can pay for anything.
 
-    Held for exactly the span a paid provider call plus its one write can take — acquired right
-    before the provider is called, released on every exit, success, failure, or an interrupt.
+    Held for exactly the span a paid provider call plus its one write can take. Non-blocking and not
+    re-entrant, both deliberately; without it two concurrent callers both pass
+    `_require_revision_zero` and both pay. Pinned by
+    `test_a_concurrent_first_discovery_is_refused_before_any_provider_call`, whose docstring carries
+    the three shape decisions, with `test_run_discovery_still_succeeds_once_the_guard_is_free` as the
+    must-fire control.
 
-    **Non-blocking, unlike `session_lock`.** A second caller does not wait its turn, because there is
-    no turn to wait for: a first discovery is not a queue, it is one operation that either lands the
-    session's very first revision or does not, and telling the loser immediately — before it has
-    spent anything — is strictly better than making it wait out `session_lock`'s own 30-second
-    deadline for a write that was never going to be its own.
-
-    `flock` on the *open file description*, exactly like `session_lock`'s own lock, so a crashed
-    holder (a killed CLI, a restarted web worker) releases it the instant the process dies — no mtime
-    heuristic is needed to tell a genuinely stuck holder from a dead one, because the kernel already
-    knows the difference. The refusal is `SessionLockedError` (`session_locked`, already mapped to
-    503 — "the write never started; retrying it unchanged is correct"): nothing about the loser's own
-    request was wrong, and resubmitting once the winner has finished is the correct next step, not a
-    different one.
-
-    Deliberately not re-entrant, unlike `session_lock`: nothing here legitimately nests this guard
-    around itself, and the plain non-reentrant shape is what keeps "a losing caller makes zero
-    provider calls" a fact about the lock file rather than about a depth counter a nested call could
-    quietly increment past.
-
-    **`store` is the same one `DiscoveryService._store_for_repo()` resolved (#272)**, so two
-    `DiscoveryService`s over two explicitly-rooted repositories serialise independently rather than
-    contending on one ambient guard file neither of them may even be addressing.
+    `store` is the one `DiscoveryService._store_for_repo()` resolved, so two services over two
+    explicitly-rooted repositories serialise independently rather than contending on one ambient
+    guard file neither may be addressing. Pinned by
+    `test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one`.
     """
     p = _discovery_guard_path(slug, store)
     store.ensure_store_dir(p.parent)
@@ -319,20 +282,14 @@ def _discovery_guard(slug: str, store: Store) -> Iterator[None]:
 def _usage_since(before: int) -> dict:
     """The token/rate provenance for however many provider calls a `DiscoveryService` operation made
     since `before` (a `len(ledger.calls)` saved right before the call), shaped as the extra
-    `RevisionRecord` fields `_provenance` merges in (#292).
+    `RevisionRecord` fields `_provenance` merges in.
 
-    `{}` — not zero-filled — when there is no active ledger (`usage.track_usage()` never opened, as
-    most of the offline test suite runs) or it recorded no calls in that span. Both are "nothing to
-    report", never "spent nothing": invariant 6's rule about provenance, applied to this ledger.
-
-    More than one call can still land in one span if a future caller opens one around several —
-    every call site today closes its span around exactly one provider call (since #467 split
-    `start(..., finalize=True)`'s `analyze` and its brief's own `generate` into two separate applies,
-    each with its own span, the last caller that spanned more than one) — and such a span sums the
-    tokens, because the revision it produced would embody all of them. The rate is stamped only when
-    every call in the span agrees on it: the ordinary case is one provider, one model, one price table
-    for the whole span, and a genuine disagreement is refused rather than guessed at — the same
-    argument `UsageLedger`'s own docstring makes for cost."""
+    `{}` — never zero-filled — when there is no active ledger or it recorded no calls in the span:
+    both are "nothing to report", never "spent nothing", which is invariant 6 applied to this ledger.
+    A span sums its calls and stamps a rate only when they agree on one. Pinned by
+    `test_a_provider_backed_apply_stamps_token_and_rate_provenance_onto_its_revision`, with
+    `test_a_provider_call_made_with_no_active_ledger_still_leaves_usage_absent` for the absent
+    case."""
     ledger = current_ledger()
     if ledger is None:
         return {}
@@ -415,20 +372,17 @@ class DiscoveryService:
 
     @contextmanager
     def _provider_call(self, operation: str) -> Iterator[None]:
-        """Log a provider call's start and finish (or failure), with the operation and its
-        duration -- the orchestration-level seam `docs/cloud-boundary.md` §6 promises for
-        `requivo.services.discovery` (#435): DEBUG on start, INFO on a clean finish, WARNING (with
-        the exception re-raised unchanged) on failure. Wraps every `provider.analyze`/
-        `provider.generate` call site in this class, the same chokepoint `_check_spend` already
-        names in its own docstring.
+        """Log a provider call's start and finish (or failure), with the operation and its duration
+        -- the orchestration-level seam `docs/cloud-boundary.md` §6 promises for
+        `requivo.services.discovery`: DEBUG on start, INFO on a clean finish, WARNING (with the
+        exception re-raised unchanged) on failure. Wraps every provider call site in this class.
 
-        Deliberately not the attempts/tokens `CallRecord` already carries per HTTP call -- that is
-        `completion.py`'s own optional `requivo.providers` logger, the one place attempts are
-        actually known. This is service-level wall-clock duration from the call site itself, which
-        for a caching turn (e.g. `draft_turn`, one call per invocation from here) is the same figure
-        either way, but is not guaranteed to be in general (a future looping caller, a provider that
-        retries outside `_complete`). Silent unless a caller attaches a handler -- see
-        `requivo/__init__.py`'s `NullHandler` (invariant 7)."""
+        Service-level wall-clock duration, deliberately not the attempts/tokens `CallRecord` carries
+        per HTTP call -- those belong to `completion.py`'s own logger, the one place attempts are
+        known. Silent unless a caller attaches a handler (invariant 7). Pinned by
+        `test_a_successful_provider_call_logs_started_and_finished` and
+        `test_a_failed_provider_call_logs_a_warning_and_still_raises`, with
+        `test_default_run_leaves_the_conflict_refused_warning_off_every_stream` for the silence."""
         started = time.perf_counter()
         logger.debug("provider call started: operation=%s", operation)
         try:
@@ -485,17 +439,14 @@ class DiscoveryService:
         given (a finalized discovery), its reasoning is absorbed into the model first. Shared by the
         CLI's interactive loop (which produced `out` itself) and `start()`.
 
-        A first discovery lands on revision 0 and nothing else. Session creation is idempotent — the
-        same request reuses its session — so without that precondition a re-run would quietly replace a
-        model that had been refined over several turns with a naive first-turn one, and a write that
-        landed while the provider was reasoning would be overwritten the same way. Both cases are a
-        `revision_conflict`, which is recoverable; a silent replacement is not.
+        A first discovery lands on revision 0 and nothing else: creation is idempotent, so without
+        that precondition a re-run silently replaces a model refined over several turns with a naive
+        first-turn one. A `revision_conflict` is recoverable; a silent replacement is not. Pinned by
+        `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
 
-        `usage` (#292) is optional and threaded through rather than computed here: this method makes
-        no provider call of its own, so it has no `before` index of its own to measure from. `start()`
-        passes what its own call(s) spent; the CLI's interactive loop, which reaches this after up to
-        nine calls of its own, currently does not, and the revision it produces carries no usage
-        provenance — absent rather than wrong, per invariant 6."""
+        `usage` is threaded through rather than computed here — this method makes no provider call of
+        its own, so it has no `before` index to measure from. A caller that passes none produces a
+        revision with no usage provenance: absent rather than wrong, per invariant 6."""
         meta = self.claim_session(request, cards=cards, slug=slug)
         if brief is not None:
             absorb_reasoning(out, brief)
@@ -557,18 +508,17 @@ class DiscoveryService:
 
     # ── interactive drafting (before there is a session) ─────────────────────────
     # An interactive surface reasons several turns against a request that has not been persisted
-    # yet, shows each one, collects answers and reasons again — and only then claims a session and
-    # applies the result. The two operations below are that loop's provider calls, so a surface can
-    # own the *loop* (prompting, rendering, when to stop) without owning a client (#77).
+    # yet, then claims a session and applies the result. The operations below are that loop's
+    # provider calls, so a surface owns the *loop* and never a client -- the arrow
+    # `tests/test_boundaries.py` guards from both ends, via
+    # `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns` and
+    # `test_the_loop_reasons_through_the_service_and_carries_the_model_not_a_transcript`.
     #
-    # Deliberately not a callback and not a generator: the service is handed the state and returns a
-    # result, exactly as every other operation here does. A seam that reached back into the caller to
-    # ask a question would have moved the coupling rather than removed it, and `DiscoveryService`
-    # would be the layer that knows a terminal exists.
+    # Not a callback and not a generator: the service is handed state and returns a result. A seam
+    # that reached back into the caller to ask a question would move the coupling rather than remove
+    # it, and `DiscoveryService` would be the layer that knows a terminal exists.
     #
-    # Nothing here writes, so there is no revision, no provenance and no lock to get wrong. What is
-    # drafted becomes real through `finalize_discovery`, which is where the revision-zero gate and the
-    # validated apply path live.
+    # Nothing here writes, so there is no revision, provenance or lock to get wrong.
 
     def draft_turn(self, request: str, *, current_model: EngineOutput | None = None,
                    answers: str | None = None, cards: list[str] | None = None) -> EngineOutput:
@@ -579,17 +529,18 @@ class DiscoveryService:
         current model, and the new answers, and nothing else — which is what lets the same operation
         serve a blocking TTY loop, a web form and a Claude Code turn.
 
-        `reuse_system=True` because this is the one operation on this service that a caller repeats:
-        a drafting loop makes several calls off a byte-identical system prompt (the CLI's caps at
-        eight), so the cache breakpoint is genuinely read back and earns its 1.25x write. Every other
-        operation here is one call per invocation and says the opposite (#9, #58).
+        `reuse_system=True` because this is the one operation here a caller repeats, so the cache
+        breakpoint is genuinely read back and earns its 1.25x write; every other operation is one
+        call per invocation and says the opposite. Pinned by
+        `test_the_loop_declares_its_repeated_prompt_at_the_seam`, which carries its own must-fire
+        control.
 
-        **The size cap runs here too, not only where a session is finally created (#255).** This is
-        an interactive surface's own un-persisted turn -- the request is resent on every call and
-        nothing here is claimed or written yet -- so relying on `SessionService.create_session`'s
-        check alone would let a wide request pay for up to `GOLDEN_TURNS` billed calls before the
-        loop ever reaches `finalize_discovery`. `request` is checked on every call since every call
-        resends it; `answers` only when a caller actually supplied one."""
+        The size cap runs here too, not only where a session is finally created: this turn is
+        un-persisted and resends the request every call, so `create_session`'s check alone would let
+        a wide request pay for a whole loop of billed calls before `finalize_discovery` is reached.
+        `answers` is checked only when a caller supplied one. Pinned by
+        `test_draft_turn_refuses_an_oversized_request_before_reasoning` and
+        `test_draft_turn_refuses_oversized_answers_before_reasoning`."""
         require_input_within_bounds(request, field="request")
         if answers is not None:
             require_input_within_bounds(answers, field="answers")
@@ -609,20 +560,13 @@ class DiscoveryService:
         /sessions/{slug}/discover` route reaches this directly; the Web only offers the button at
         revision 0, but that is a rendering decision, not a rule.
 
-        **`_discovery_guard` is what actually serialises two concurrent callers of this route
-        (#209).** `_require_revision_zero` above cannot: a second tab or a refresh-and-resubmit reads
-        the same revision-0 snapshot before either caller has written anything, so both pass it and
-        both would otherwise reach the provider — the guard is the first point either caller can lose
-        the race, and it is checked before either has spent anything.
-
-        **The pre-guard check is a fast-fail, not the guarantee — the snapshot is re-taken *inside*
-        the guard, right before the provider is called (found in review).** A caller whose own
-        revision-0 read genuinely was current at the time, but whose own guard-acquire attempt is
-        merely delayed (scheduling, a slow request pipeline) past the point the winner has already
-        finished *and released* the guard, would otherwise acquire the guard uncontended on a stale
-        belief and still pay for a call it was always going to lose at `update_model`. Re-reading the
-        revision after winning the guard, before spending anything, closes that window the same way
-        the outer check closes the wide-open one."""
+        `_discovery_guard` is what actually serialises two concurrent callers of this route —
+        `_require_revision_zero` cannot, since both read the same revision-0 snapshot before either
+        has written. And the pre-guard check is a fast-fail, not the guarantee: the snapshot is
+        re-taken *inside* the guard, so a caller merely slow to reach it cannot acquire it
+        uncontended on a stale belief and pay for a call it was always going to lose. Pinned by
+        `test_a_concurrent_first_discovery_is_refused_before_any_provider_call` and
+        `test_a_late_caller_with_a_stale_outer_check_still_pays_nothing`."""
         self.sessions.ensure_canonical(slug)
         snap = self.sessions.snapshot(slug)
         _require_revision_zero(slug, snap.revision)
@@ -715,16 +659,10 @@ class DiscoveryService:
             return self._need_provider().generate(artifact_type, model, only=snap.context_cards,
                                                   **kwargs)
 
-    # `generate()`'s public signature is these six overloads, not the implementation below (#271).
-    # Five are keyed by `Literal` on the artifact type it actually saves a document for -- the same
-    # five names `_WRITERS`/`GENERATABLE` minus `"brief"` plus `"brief"` itself -- so a call site
-    # written with a literal string, which is every call site in this codebase today, gets back
-    # exactly the contract that type produces with no cast anywhere the caller can see:
-    # `disco.generate(slug, "prd")` is `Generated[PRD]`. The sixth, plain-`str` overload is the
-    # fallback for a caller that only has a *variable* holding the type name at that point (a route
-    # parameter, e.g. `web/routes/artifacts.py`'s `generate_artifact`) — `Literal` matching cannot
-    # narrow a `str`, so that caller gets `Generated[object]` back, exactly what it had before this
-    # issue and exactly as much as a runtime-chosen type can honestly promise.
+    # `generate()`'s public signature is these six overloads, not the implementation below. Five are
+    # `Literal`-keyed so a call site written with a literal string gets that type's contract back;
+    # the sixth takes a plain `str` for a caller holding the name in a variable (a route parameter,
+    # e.g. `web/routes/artifacts.py`'s `generate_artifact`). `decision: typed-generation-seam`
     @overload
     def generate(self, slug: str, artifact_type: Literal["brief"], *, surface: str = "generate",
                 **kwargs) -> Generated[Brief]: ...
@@ -786,16 +724,12 @@ class DiscoveryService:
                     slug, out.model_dump_json(), expected_revision=source_revision,
                     provenance=self._provenance("brief", cards=cards, surface=surface, usage=usage))
             except RevisionConflictError as e:
-                # The paid assessment is not thrown away merely because the apply lost the race
-                # (#208). `ArtifactService.save` already knows how to file a document against an
-                # older source revision, honestly flagged stale — invariant 2's own words: "saving
-                # against an older revision stays legal". What genuinely did not happen is the
-                # reasoning's absorption into the model: the decisions/challenges/opportunities just
-                # derived from `out` were never written, because the apply that would have written
-                # them is exactly the one that lost. Both facts, and the remedy, go in one message —
-                # not just the conflict — so a caller reading only `.message` (the CLI's generic
-                # `except RequivoError` handler, the Web's generic exception handler) is told the
-                # whole story with no special-casing needed on either surface.
+                # The paid assessment is not thrown away merely because the apply lost the race:
+                # filing it against an older source revision, flagged stale, is legal by invariant 2.
+                # What genuinely did not happen is the reasoning's absorption, so both facts and the
+                # remedy go in one message — a caller reading only `.message` gets the whole story
+                # with no special-casing. Pinned by
+                # `test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded`.
                 try:
                     status = self._save_generated(slug, "brief", brief_markdown(out, brief), source_revision)
                 except ArtifactWriteFailedError as write_err:
@@ -844,15 +778,13 @@ class DiscoveryService:
         provider path: the same hazard reaches a Claude Code turn saving a document it wrote earlier.
         Passing the honest source revision is the whole contribution this layer needs to make.
 
-        **And the one place every generated artifact's write is caught (#208).** The content reaching
-        here was already paid for — a provider call that ran for seconds to minutes — so a write that
-        then fails at the filesystem (a full disk, a permissions error, anything `_atomic_write` did
-        not itself turn into a `RequivoError`) must not surface as a bare traceback out from under
-        that call. `ArtifactWriteFailedError` names what was lost and where it was going — the target
-        path, through the same `artifact_path` chokepoint `_wrote()` prints a successful write's path
-        through, since a disclosed path is a disclosed path whether the write succeeded or not — and
-        the caller still has to regenerate, because the content itself was never handed back to be
-        retried."""
+        And the one place every generated artifact's write is caught. The content reaching here was
+        already paid for, so a filesystem failure must not surface as a bare traceback out from under
+        that call: `ArtifactWriteFailedError` names what was lost and where it was going. The caller
+        still has to regenerate — the content was never handed back to be retried. Pinned by
+        `test_an_oserror_writing_a_generated_artifact_is_a_structured_refusal_not_a_traceback`, and
+        `test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one` for the case where
+        both go wrong at once."""
         try:
             return self.artifacts.save(slug, artifact_type, content, source_revision=source_revision)
         except OSError as e:

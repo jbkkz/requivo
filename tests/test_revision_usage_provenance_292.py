@@ -44,6 +44,18 @@ class _SpendingProvider:
 
 
 def test_a_provider_backed_apply_stamps_token_and_rate_provenance_onto_its_revision():
+    """The span `_usage_since` measures is "however many calls this operation made", not "one call".
+
+    More than one can land in one span if a caller opens one around several, and such a span sums
+    the tokens, because the revision it produced would embody all of them. Every call site today
+    closes its span around exactly one provider call -- #467 split `start(..., finalize=True)`'s
+    `analyze` and its brief's own `generate` into two applies with two spans, and was the last
+    caller that spanned more than one.
+
+    The rate is stamped only when every call in the span agrees on it. The ordinary case is one
+    provider, one model, one price table for the whole span; a genuine disagreement is refused
+    rather than averaged, which is the same argument `UsageLedger`'s own docstring makes for cost.
+    """
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     provider = _SpendingProvider(CallRecord(
