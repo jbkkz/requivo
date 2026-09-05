@@ -363,33 +363,18 @@ def _scan_legacy_root(root: Path) -> tuple[list[str], list[UnexaminableEntry]]:
     examined -- the scan `_cmd_session_migrate` reads its per-slug rows from, one directory over
     from `core.persistence._scan_session_root`'s identical partition of the *canonical* root.
 
-    **Three outcomes, not two, for the same reason (#411).** `(p / "model.json").exists()` is
-    what decides whether a name under the legacy root is a legacy session, and `Path.exists()`
-    re-raises everything outside `pathlib._IGNORED_ERRNOS` -- `EACCES` chief among them. That
-    escaped this comprehension uncaught and aborted the whole `session migrate` pass with a raw
-    `PermissionError`, before any of the per-slug guards `#371` hardened the loop body with were
-    ever reached: invariant 15's "a guard above the rows is only as good as the scan that
-    produced them", one layer below where `#371` had already applied it once.
+    **Three outcomes, not two.** The probe deciding whether a name is a legacy session can itself
+    raise -- `Path.exists()` re-raises `EACCES` -- and one unreadable directory used to abort the
+    whole `session migrate` pass with a raw `PermissionError`. An entry it could not examine goes in
+    neither other bucket: excluded it is invisible, counted it claims the one thing the probe did not
+    establish. Invariant 15's "a guard above the rows is only as good as the scan that produced
+    them". Pinned by
+    `test_the_bulk_migrate_command_degrades_an_unreadable_legacy_directory_rather_than_crashing`.
 
-    A directory the probe could not examine belongs in neither of the other two buckets: silently
-    excluded it would never reach `_cmd_session_migrate`'s per-slug loop at all -- the invisible
-    entry `#67`'s own class, one module over -- and counted as a legacy session it would claim
-    the one thing the failed probe did not establish. `UnexaminableEntry` (`core/persistence.py`)
-    is reused rather than re-declared: same shape, same "we could not tell" semantics, already a
-    public name `services/repository.py` imports outside its home module.
-
-    A root that does not exist has nothing to migrate and returns two empty lists, on the same
-    terms `_scan_session_root` states for the canonical root.
-
-    **A root that exists but cannot itself be *listed* is not the same answer, and this still
-    raises rather than flattening the two -- found in review of this same change.** Wrapping only
-    the per-entry probe left `root.iterdir()` itself outside any guard: a legacy `out/` root the
-    process cannot even open into (as opposed to one unreadable entry inside an otherwise-listable
-    root, the case the rest of this function closes) raised uncaught past this function and past
-    its caller, the identical crash #411 was filed to fix, one level up. That failure is genuinely
-    the whole root -- there is no entry to name it against -- so on the same terms
-    `_scan_session_root` already states for itself, this raises rather than guessing; the caller
-    is the one that has to be able to say `we could not look`."""
+    A root that does not exist returns two empty lists; a root that exists and cannot be *listed*
+    still raises, because that failure is the whole root and there is no entry to name it against.
+    The caller is what has to say *we could not look*. Pinned by
+    `test_a_totally_unlistable_legacy_root_refuses_cleanly_instead_of_crashing`."""
     if not root.exists():
         return [], []
     slugs: list[str] = []
@@ -422,21 +407,18 @@ def _cmd_session_migrate(a, client) -> None:
     between the check and the migration is the TOCTOU window the check cannot close, and the correct
     outcome there is the same skip.
 
-    **A canonical session already occupying the slug is not one fact, it is two, and folding them
-    together used to be a false receipt** (#262). `migrate_legacy` claims the slug via `create_session`
-    and only afterwards, under a separate lock, applies the legacy model — a crash between the two
-    leaves a revision-0 shell at the canonical slug. Reporting that as `skipped_already_present`, which
-    means *the work is done*, told the user their session had migrated when the model never arrived
-    and `out/` was the only copy. It renders under its own key, `interrupted`, naming the recovery
-    step, and counts toward `EXIT_DEGRADED` below like a bad legacy session does — the same shape as
-    `skipped_already_present` would be if the phrase did not already mean something else.
+    **A canonical session already occupying the slug is two facts, not one, and folding them was a
+    false receipt.** A crash between `migrate_legacy`'s slug claim and its model apply leaves a
+    revision-0 shell; reporting that as `skipped_already_present` — which means *the work is done* —
+    told the user their session had migrated when `out/` was still the only copy. It renders as
+    `interrupted` and counts toward `EXIT_DEGRADED`. Pinned by
+    `test_an_interrupted_migration_is_reported_distinctly_from_already_present`.
 
-    **`current_revision == 0` is necessary and, on its own, not sufficient — found in review of this
-    same change.** An ordinary session (`session init`, or discovery not yet through its first turn)
-    can legitimately sit at revision 0 too, and if its slug happens to coincide with a legacy `out/`
-    directory's, calling it `interrupted` prints a remedy — delete `.requivo/sessions/<slug>` and
-    re-run — that would destroy that session's real, unrelated work. `_legacy_request_text` is the
-    second check: `create_session` writes `request.md` from the exact request text it is passed, so a
+    **`current_revision == 0` is necessary and not sufficient.** An ordinary session can sit at
+    revision 0 too, and calling one `interrupted` prints a remedy — delete it and re-run — that would
+    destroy real, unrelated work. `_legacy_request_text` is the second check; pinned by
+    `test_an_unrelated_revision_zero_session_at_a_legacy_slug_is_not_called_interrupted`.
+    `create_session` writes `request.md` from the exact request text it is passed, so a
     genuine crash window (where `migrate_legacy` claimed the slug with the *legacy* request) leaves
     `repo.request_text(slug)` identical to the legacy directory's own request text, and an unrelated
     session, created with its own request, does not match. Both conditions have to hold.
@@ -700,8 +682,9 @@ def _cmd_session_verify(a, client) -> None:
     reasoning turn, and a verb that answers "is this session usable" with a tick right up to that
     moment is the failure this whole change is about.
 
-    **Three answers, three exit codes (#86).** The rendering has always distinguished them and the
-    exit code distinguished two, in the verb whose whole job is to answer *is this session sound*:
+    **Three answers, three exit codes.** The rendering always distinguished them and the exit code
+    distinguished two, in the verb whose whole job is to answer *is this session sound*. Pinned by
+    `test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken`:
 
     - `problems` — checked, the session is inconsistent. A complete answer. **1**.
     - `cards["problem"]` — checked, its product context is broken. Also complete. **1**.
@@ -716,7 +699,8 @@ def _cmd_session_verify(a, client) -> None:
     and there is one. Nothing is withheld at either code: `--json` carries the whole story either
     way, and `ok` keeps the meaning it always had — it is false in all three failing states.
 
-    **A fourth thing is reported and is none of the three** (#260): a `note` is a finding that is not
+    **A fourth thing is reported and is none of the three**, pinned by
+    `test_session_verify_passes_and_still_names_the_unknown_type`: a `note` is a finding that is not
     a defect, and today the only one is an artifact type this build has no generator for. It prints,
     it rides in `--json` under `notes`, and it changes neither `ok` nor the exit code — because
     `docs/compatibility.md` lists a new artifact type among the changes that need no `format_version`
@@ -955,16 +939,15 @@ def _cmd_session_restore(a, client) -> None:
 
 
 def _cmd_session_rescope(a, client) -> None:
-    """Re-scope an existing session's context-card selection (#168). The reasoning behind what this
-    does and does not do (a new revision only once a model exists, existing artifacts left alone,
-    nothing re-run) lives on `SessionService.rescope`, which is the single place it is decided.
+    """Re-scope an existing session's context-card selection. What this does and does not do (a new
+    revision only once a model exists, existing artifacts left alone, nothing re-run) is decided on
+    `SessionService.rescope`, the single place it lives.
 
-    `--context` is **required**, unlike `session init`'s optional flag: there the omission is the
-    ordinary default (every card), but here the whole point of the command is a deliberate new
-    selection, and silently resetting to every card because the flag was left off is exactly the
-    accident a re-scope should not be able to cause. Its empty-string spelling still means "every
-    card", the same as everywhere else `--context` is read — so resetting a narrowed session back
-    to no restriction is `--context ""`, spelled out rather than left implicit."""
+    `--context` is **required**, unlike `session init`'s optional flag: silently resetting to every
+    card because the flag was left off is the accident a re-scope must not be able to cause. Its
+    empty-string spelling still means "every card", so widening back is `--context ""`, spelled out
+    rather than implicit. Pinned by `test_session_rescope_requires_context` and
+    `test_session_rescope_to_all_cards_reports_none`."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     cards = _resolve_cards(a.context)
@@ -993,14 +976,14 @@ def _cmd_session_rescope(a, client) -> None:
 # filesystem filling up, and so decompression cannot be used as an amplifier.
 MAX_ARCHIVE_FILES = 2_000
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
-# `MAX_ARCHIVE_FILES` and `MAX_ARCHIVE_BYTES` are both computed over files alone -- directory entries
-# are filtered out of `infos` below before either sum runs. So an archive built entirely of directory
-# entries declares zero files and ~zero bytes and sailed past both, while the extraction loop still
-# iterated the *whole* `z.infolist()` and created every one of them: an inode/dir-creation exhaustion
-# DoS through a door neither file-only cap covers (#219). This bounds the raw entry count -- files and
-# directories together -- before either file-only cap runs. A real `session export` never writes a
-# directory entry at all (`_cmd_session_export` walks `f.is_file()` only), so a small multiple of
-# `MAX_ARCHIVE_FILES` is loose for the legitimate case and tight for the hostile one.
+# Both caps above are computed over files alone, so an archive built entirely of *directory* entries
+# declared zero files and ~zero bytes and passed both while the extraction loop still created every
+# one of them -- inode exhaustion through a door neither file-only cap covers. This bounds the raw
+# entry count, files and directories together, before either runs. A real `session export` writes no
+# directory entry at all, so a small multiple is loose for the legitimate case and tight for the
+# hostile one. Pinned by
+# `test_import_refuses_an_archive_bounded_by_files_and_bytes_but_not_by_directory_entries`, with
+# `test_an_archive_with_directory_entries_just_under_the_cap_still_imports` as the control.
 MAX_ARCHIVE_ENTRIES = MAX_ARCHIVE_FILES * 4
 
 
@@ -1012,16 +995,15 @@ def _inspect_archive(z: zipfile.ZipFile) -> tuple[str, list[zipfile.ZipInfo]]:
     `invalid_model` until then, on a path where nobody had proposed a model and where the arm on
     either side of it already named the archive.
 
-    **The returned entry list is what the caller must extract, and only that** (#219). Before this,
-    the caller re-read `z.infolist()` itself for the extraction loop -- a second, independent call
-    that happened to return the same entries every time, but "happened to" is not what "the extracted
-    set is exactly the validated set" means. Handing back the one list this function already counted
-    and bounded makes that a structural guarantee rather than a coincidence of two calls agreeing.
+    **The returned entry list is what the caller must extract, and only that.** The caller used to
+    re-read `z.infolist()` for the extraction loop — a second call that happened to agree every time,
+    which is not what "the extracted set is exactly the validated set" means. Handing back the one
+    list this function counted and bounded makes it structural rather than a coincidence.
 
-    Checking names by string prefix (the previous guard: `str(target).startswith(str(root))`) is not a
-    containment test — `/…/sessions-evil` starts with `/…/sessions`. Here every entry is decomposed
-    into path components instead, so a separator, a drive letter, a root, or a `..` segment is
-    unrepresentable rather than merely unlikely."""
+    Names are decomposed into path components, never prefix-matched: `str(target).startswith(root)`
+    is not a containment test, since `/…/sessions-evil` starts with `/…/sessions`. A separator, a
+    drive letter, a root or a `..` segment is unrepresentable rather than merely unlikely. Pinned by
+    `test_import_refuses_unsafe_entries` and `test_every_refusal_on_the_import_path_names_what_it_is_about`."""
     all_infos = z.infolist()
     if len(all_infos) > MAX_ARCHIVE_ENTRIES:
         raise InvalidArchiveError(
@@ -1199,12 +1181,11 @@ def _validate_extracted(d: Path, slug: str) -> None:
     malformed in either, only the relationships are broken. `check_session_dir` is the same check
     `requivo session verify` runs, so an archive is held to exactly the standard a live session is.
 
-    **Exactly the same standard, and deliberately not the same output** (#260). `session verify`
-    calls `inspect_session` and gates on `blocking(...)`; this calls `check_session_dir`, which *is*
-    that gate. What verify has and this does not is the `notes` half — an artifact type this build
-    has no generator for, which is a fact about the session rather than a reason to refuse it, so it
-    has nothing to say on a path whose only question is accept or reject. If that ever becomes worth
-    surfacing at import, it belongs in the success message, not in this refusal."""
+    **Exactly the same standard, and deliberately not the same output.** What `session verify` has
+    and this does not is the `notes` half — an artifact type this build has no generator for is a
+    fact about the session, not a reason to refuse it, so it has nothing to say on a path whose only
+    question is accept or reject. Pinned by
+    `test_a_future_artifact_type_survives_an_export_import_round_trip`."""
     problems = check_session_dir(d, expected_slug=slug)
     if problems:
         raise InconsistentArchiveError(
@@ -1243,11 +1224,12 @@ def _cmd_session_import(a, client) -> None:
         # A conflict with the store's current state, not a malformed proposal: `session_exists`
         # exists for exactly this fact and answers 409 where `invalid_model` answered 400 (#101).
         #
-        # **This answer is remembered, never asked twice** (#111). It used to be re-decided as
-        # `replaced = target.exists()` *after* the whole archive had been unzipped, and the two
-        # decisions disagreeing is a session created during that window being moved aside and then
-        # `rmtree`d — destroyed without `--force`, because at the moment the user would have been
-        # asked to force there was nothing to force past. That is invariant 9 ("a precondition is
+        # **This answer is remembered, never asked twice.** Re-deciding it as `target.exists()`
+        # *after* the unzip let a session created in that window be moved aside and `rmtree`d —
+        # destroyed without `--force`, because when the user would have been asked to force there was
+        # nothing to force past. Pinned by
+        # `test_a_session_created_during_the_extraction_window_is_refused_not_destroyed`.
+        # That is invariant 9 ("a precondition is
         # held across the writes it authorises") in the one verb that writes a whole session, and it
         # is why the two arms below are two arms rather than one flag.
         occupied = repo.exists(slug)
@@ -1269,14 +1251,13 @@ def _cmd_session_import(a, client) -> None:
             target = store.canonical_dir(slug)
             if not occupied:
                 # The slug was free when it was checked, so **the rename is the claim** and nothing
-                # steps aside — invariant 11's rule, and the only thing that makes the window above
-                # safe rather than merely narrow. `os.replace` refuses a non-empty destination
-                # directory — POSIX on `ENOTEMPTY`, Windows on any existing directory at all, which
-                # is stricter still — so a session that appeared while the archive was unzipping
-                # stops this import instead of being destroyed by it. The caller gets the refusal
-                # the guard would have given them, which is the answer they were entitled to either
-                # way. Read without the platform qualifier, that sentence is how #114 happened: the
-                # safety claim holds on both, and the *answer* did not.
+                # steps aside — invariant 11's rule, and what makes the window above safe rather than
+                # merely narrow. `os.replace` refuses a non-empty destination (POSIX `ENOTEMPTY`;
+                # Windows any existing directory, stricter still), so a session that appeared during
+                # the unzip stops this import rather than being destroyed by it. Read without that
+                # platform qualifier the sentence is how #114 happened: the safety claim holds on
+                # both platforms and the *answer* did not. Pinned by
+                # `test_that_window_refusal_names_the_conflict_rather_than_a_move_failure`.
                 #
                 # **What `os.replace` does *not* answer the same way on every platform is a
                 # destination that holds no session at all** (#114), which is what
@@ -1301,12 +1282,11 @@ def _cmd_session_import(a, client) -> None:
                 # `--force` was given against a session that is really there.
                 #
                 # **The swap holds `session_lock`**, which for one release it could not: the lock
-                # was an open handle on `.lock` inside the very directory being renamed, and Windows
-                # refuses that — `WinError 5` on all four legs (#112). Moving the lock out of the
-                # session (`lock_root()`) is what made the design #112 wanted available, and
-                # `_swap_in` carries the three consequences that closes (#113). Locking somewhere
-                # else *in addition* would have serialised nothing; this is the one lock every
-                # writer already takes.
+                # was an open handle inside the very directory being renamed, and Windows refuses
+                # that on all four legs. Moving the lock out of the session is what made this
+                # available; locking anywhere else *in addition* would serialise nothing, since this
+                # is the one lock every writer already takes. Pinned by
+                # `test_a_forced_import_serialises_against_a_concurrent_writer`.
                 #
                 # What closes #111 is still the arm above and the single decision it rests on, not
                 # this lock: losing a session the caller was never asked about is a question about
@@ -1320,11 +1300,10 @@ def _cmd_session_import(a, client) -> None:
             shutil.rmtree(scratch, ignore_errors=True)
 
     if a.json:
-        # `slug`/`path`, the spelling every sibling session verb uses (#84). It was
-        # `imported`/`into`, so a consumer looping over the session verbs and reading `row["slug"]`
-        # got a `KeyError` from the one verb that had just put the session there. Both old keys are
-        # gone rather than kept as duplicates: removing a key is breaking, so the rename ships
-        # in the 1.0 release or never.
+        # `slug`/`path`, the spelling every sibling session verb uses; it was `imported`/`into`, so
+        # a consumer looping over the verbs and reading `row["slug"]` got a `KeyError` from the one
+        # verb that had just put the session there. Pinned by
+        # `test_import_json_names_the_session_and_its_directory_the_way_its_siblings_do`.
         #
         # `path` is the session's own directory, which is what `session init --json` means by the
         # word and what the line below already prints. `into` carried the session *root*; renaming
@@ -1341,16 +1320,16 @@ def _cmd_session_import(a, client) -> None:
 
 
 def _cmd_session_delete(a, client) -> None:
-    """Irreversibly remove a session (#238) -- the directory and its lock file, under the same lock
-    every other compound mutation on it takes (see `Store.delete_session`). There is deliberately no
-    soft-delete, trash or undo here (the issue's own out-of-scope list): `session export` first is
-    the undo story, which is why the confirmation copy on the Web side points at it rather than at a
-    recovery this verb does not offer.
+    """Irreversibly remove a session -- the directory and its lock file, under the same lock every
+    other compound mutation takes. No soft-delete, trash or undo, deliberately: `session export`
+    first is the undo story, which is why the Web's confirmation copy points there rather than at a
+    recovery this verb does not offer. Pinned by
+    `test_a_session_removed_through_session_delete_leaves_no_lock_residue`.
 
-    `a.session` may be a slug or a path, like every other verb that takes `session` (`resolve_slug`);
-    the existence check runs before the delete so a nonexistent slug is refused with the structured
-    `session_not_found` error rather than reaching the store's own (also correct, but less specific
-    to this entry point) refusal."""
+    `a.session` may be a slug or a path, like every verb taking `session`; the existence check runs
+    before the delete so a nonexistent slug is refused as `session_not_found` rather than reaching
+    the store's own, less specific refusal. Pinned by
+    `test_session_delete_refuses_a_nonexistent_slug_with_session_not_found`."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     if not svc.exists(slug):
