@@ -1,0 +1,52 @@
+{
+  "_comment": "Written by scripts/shoot_doc_images.py. `surface_digest` is what tests/test_doc_images.py compares against the tree; when it goes red the web surface moved after these shots were taken - re-run the script.",
+  "shot_at": "2026-09-05",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "device_scale_factor": 2,
+  "surface_digest": "752491eac8881d6aa6a69e879ae29d3611929e43e1c20db19719f1f176ced19b",
+  "images": {
+    "web-brief": {
+      "route": "/sessions/{slug}/artifacts/brief",
+      "frame": {
+        "top": null,
+        "bottom": "h2:text-is('Decisions made')"
+      },
+      "caption": "The decision brief as a rendered document: request and objective, current understanding, what is confirmed, and the important assumptions.",
+      "width": 2560,
+      "height": 4244
+    },
+    "web-home": {
+      "route": "/",
+      "frame": {
+        "top": null,
+        "bottom": null
+      },
+      "caption": "The home page: the request box, the context-card cost note, and the recent sessions.",
+      "width": 2560,
+      "height": 2190
+    },
+    "web-questions": {
+      "route": "/sessions/{slug}",
+      "frame": {
+        "top": "h2:text-is('What could change the solution')",
+        "bottom": "h2:text-is('Documents')"
+      },
+      "caption": "The open questions with why each matters, the answer form, and the readiness verdict.",
+      "width": 2560,
+      "height": 3456
+    },
+    "web-session": {
+      "route": "/sessions/{slug}",
+      "frame": {
+        "top": null,
+        "bottom": "h2:text-is('What could change the solution')"
+      },
+      "caption": "The session page: the objective, the request as read, and what is confirmed vs assumed.",
+      "width": 2560,
+      "height": 3586
+    }
+  }
+}

@@ -89,13 +89,18 @@ paste a request
 Four moments from one session, in order. The engine's own vocabulary — slots, coverage, revisions —
 is not on any of these screens; the translation is defined once in `web/viewmodels/labels.py`.
 
+All four are produced by `python scripts/shoot_doc_images.py`, from the bundled example seeded as a
+real session — no key, no network. `tests/test_doc_images.py` fails when the web surface moves after
+they were taken, which is the half that was missing when two of them went stale in content and
+nothing noticed (#329).
+
 ![The home page: a single request box, with the sessions already in progress listed below it.](images/web-home.webp)
 
-![The session page: the objective Requivo derived, the request it read, and what it understood, split into what is confirmed and what is being assumed.](images/web-session.webp)
+![The session page: the objective Requivo derived, the request it read, and its reading of the request — with what it is assuming stated as assumptions.](images/web-session.webp)
 
 ![What could change the solution: each open question with why it matters and the area it would move, the answer form below it, and the Are we ready? verdict with its reasons.](images/web-questions.webp)
 
-![The decision brief: what is confirmed, what is being assumed, the decisions on record and the premises worth contesting.](images/web-brief.webp)
+![The decision brief, rendered as a document: the request and objective, the current understanding, what is confirmed, and the assumptions that matter.](images/web-brief.webp)
 
 - **Explore a worked example** — one button under the request box, and the way to see a finished
   analysis *and* its decision brief without a key (#429). (It is not the only keyless thing here:
