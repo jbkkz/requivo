@@ -508,10 +508,12 @@ def _cmd_doctor(a, client) -> None:
         + ([f"{len(locked)} locked (could not check)"] if locked else [])
     # Three glyphs for three states, on the line a reader actually scans: `bad`/`lost` earn ❌;
     # `unchecked`/`blind`/`locked` are a *could not look*, which must read neither as broken nor as
-    # clean, so they share the middle glyph -- pinned for `locked` by
-    # `test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken`. `noted` is
-    # deliberately absent from this expression: a note is not a defect and not a could-not-look, so
-    # it moves no glyph, only the row's tally. Pinned by
+    # clean, so they share the middle glyph -- pinned for `unchecked` by
+    # `test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty`, for `blind` by
+    # `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick`, and for
+    # `locked` by `test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken`. `noted`
+    # is deliberately absent from this expression: a note is not a defect and not a could-not-look,
+    # so it moves no glyph, only the row's tally. Pinned by
     # `test_a_note_does_not_move_the_sessions_glyph`.
     glyph = "❌" if (bad or lost) else (warn if (unchecked or blind or locked) else ok)
     print(f"  {glyph} sessions        {h['total']} in this workspace"
