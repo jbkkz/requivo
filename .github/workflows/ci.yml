@@ -284,3 +284,25 @@ jobs:
           assert rejected.status_code == 403, f"cross-site guard not active: {rejected.status_code}"
           print("web wheel OK: templates + static shipped, /health 200, cross-site guard 403")
           PY
+      - name: Verify the HTTP API facade ships and serves from the installed wheel
+        run: |
+          # #425: the same "packaged, not editable-install" question the web smoke test above answers,
+          # for the second FastAPI surface. No cross-site check -- slice 1 ships no bind/token/CORS
+          # posture yet (that lands with a later slice of the same issue).
+          WHEEL=$(ls dist/*.whl)
+          /tmp/cleanenv/bin/pip install "${WHEEL}[api]" httpx
+          cd /tmp/workdir
+          /tmp/cleanenv/bin/python - <<'PY'
+          from fastapi.testclient import TestClient
+          from requivo.api.app import create_api
+          app = create_api()
+          client = TestClient(app, base_url="http://127.0.0.1:8765")
+          r = client.get("/api/v1/health")
+          assert r.status_code == 200 and r.json()["status"] == "ok", r.text
+          # OpenAPI docs ON, with the experimental notice -- the one deliberate difference from the
+          # web app's own factory, which keeps all three off.
+          spec = client.get("/openapi.json")
+          assert spec.status_code == 200, spec.text
+          assert "EXPERIMENTAL" in spec.json()["info"]["description"]
+          print("api wheel OK: /api/v1/health 200, OpenAPI on with the experimental notice")
+          PY

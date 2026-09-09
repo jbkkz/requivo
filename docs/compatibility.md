@@ -1304,6 +1304,15 @@ migrate` still converts them, and it is now the only thing that reads that layou
   output. `GET /health` and `GET /sessions/{slug}/export` are the two exceptions and return data.
 - **The `code` on Requivo Web's error banner.** Presentational, and outside the error vocabulary the
   `--json` outputs publish. Branch on the HTTP status.
+- **The `[api]` extra (`requivo.api`, `pip install 'requivo[api]'`) -- the whole surface, paths and
+  bodies alike, until a named freeze event.** `create_api()` exists as of #425 and ships behind an
+  optional extra; no route, method, status or response shape it answers with is stable, and none of
+  them is a breaking change to move. The freeze is a specific event, not a version number:
+  `docs/decisions/0004-the-http-api-facade.md` states it and the three preconditions gating it (the
+  workspace becoming constructor state, `session delete`, and the estimate-artifact decision), after
+  which this page gains its own API section -- paths, methods, statuses, the error envelope, and
+  each response's top-level shape -- in the same "stable" form as everything above it. Until then,
+  this page's silence about the API is the promise: there isn't one yet.
 
 Everything **not** on this list and not promised above is in neither column, which is the state #89
 was filed about. If you find one, that is a bug in this page rather than a licence to assume: file it.

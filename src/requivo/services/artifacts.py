@@ -239,6 +239,33 @@ class ArtifactService:
                 details={"slug": slug, "type": artifact_type})
         return content
 
+    def show_with_status(self, slug: str, artifact_type: str) -> tuple[str, dict]:
+        """One coherent read of an artifact's saved content and its freshness row -- the two facts
+        the HTTP API's artifact envelope reports together (#425): `{type, filename, source_revision,
+        updated_at, stale, content}`.
+
+        `show()` and `list()`, called separately, are two reads at two different instants: a
+        regeneration landing between them could hand back content from one revision beside a
+        freshness row describing another, and the disagreement is undetectable afterwards -- the
+        exact shape invariant 12 names for a provider snapshot, one layer over, for a plain read
+        rather than a paid one. This takes the lock once, the way `mark_stale` already does for a
+        compound *write*, and reads both under it.
+
+        Raises `SessionNotFoundError` if nothing has ever been saved under `artifact_type` -- the
+        same refusal `show()` raises alone."""
+        filename = self._filename(artifact_type)
+        with self.repo.lock(slug):
+            content = self.repo.load_artifact(slug, filename)
+            if content is None:
+                raise SessionNotFoundError(
+                    f"session '{slug}' has no saved {artifact_type!r} artifact",
+                    details={"slug": slug, "type": artifact_type})
+            meta = self.repo.read_meta(slug)
+        status = meta.artifact_status.get(artifact_type)
+        row = ({"revision": status.revision, "filename": status.filename,
+                "updated_at": status.updated_at, "stale": status.stale} if status else {})
+        return content, row
+
     def mark_stale(self, slug: str, changed_slots: list[str]) -> list[str]:
         """Flag every generated artifact in the blast radius of `changed_slots` stale, and return the
         types flagged. Used after a model change made outside `update_model`.

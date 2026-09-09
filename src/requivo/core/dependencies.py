@@ -138,11 +138,17 @@ class DecisionImpact:
     decision: str
     rests_on: list[str]  # labels of the changed slots this decision was derived from
 
+    def to_dict(self) -> dict:
+        return {"decision": self.decision, "rests_on": self.rests_on}
+
 
 @dataclass
 class ChallengeImpact:
     headline: str
     rests_on: list[str]  # labels of the changed slots whose premise this challenge contests
+
+    def to_dict(self) -> dict:
+        return {"headline": self.headline, "rests_on": self.rests_on}
 
 
 @dataclass
@@ -161,6 +167,15 @@ class ImpactReport:
     @property
     def empty(self) -> bool:
         return not self.decisions and not self.challenges and not self.artifacts
+
+    def to_dict(self) -> dict:
+        """The wire shape for the API's `/impact` route (#425) -- the first `--json`-style payload
+        this report has ever needed, since `requivo impact` has always been terminal-only. Not a
+        second vocabulary: the field names are this dataclass's own, unrenamed."""
+        return {"changed": self.changed,
+                "decisions": [d.to_dict() for d in self.decisions],
+                "challenges": [c.to_dict() for c in self.challenges],
+                "artifacts": self.artifacts}
 
 
 def propagate(out: EngineOutput, changed: list[str]) -> ImpactReport:

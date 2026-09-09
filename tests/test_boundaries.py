@@ -608,6 +608,14 @@ _SURFACE_PROVIDER_ALLOWLIST = {
         "stays, and the call site now carries the argument. It comes from `providers.errors` since "
         "#167 -- provider-neutral, SDK-free, and no longer a name only the Anthropic module has."
     ),
+    ("api/app.py", "EngineError"): (
+        "the identical shape as the `cli.py` entry above, one surface over (#425): an exception "
+        "type, not a call, raised by `create_api()` when the `[api]` extra's own fastapi import "
+        "fails, so a missing optional install reports the same `provider_unavailable` code every "
+        "other optional-install refusal in this project already uses (`new_client()` for "
+        "`[anthropic]`, `_cmd_web` for `[web]`) rather than a bare `ImportError` traceback. Nothing "
+        "on the provider is called or constructed."
+    ),
     ("web/config.py", "Anthropic"): (
         "the SDK handle, probed inside a try/except to answer one boolean -- is the SDK installed? "
         "-- that crosses to the template as `ProviderStatus.sdk_installed`, never as a client. "
@@ -697,6 +705,12 @@ PROVIDER_TREES = (
     (RENDER, RENDER_PACKAGE),
     (REPO_ROOT / "src" / "requivo" / "web", "requivo.web"),
     (REPO_ROOT / "src" / "requivo" / "deterministic", "requivo.deterministic"),
+    # #425: the second HTTP surface. It touches HTTP the same way `web/` does, so it is a surface by
+    # this guard's own "touches argv, stdout or HTTP" test, and it is walked as a tree for the same
+    # reason `web/` is -- route modules will be added under it slice by slice, and a hand-listed
+    # subject would go quietly narrower with each one, exactly the trap `render/`, `web/` and
+    # `deterministic/` were each added here to close.
+    (REPO_ROOT / "src" / "requivo" / "api", "requivo.api"),
 )
 
 
@@ -825,13 +839,13 @@ def test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns
 
 def test_the_provider_guard_names_what_it_scanned():
     """The #10 rule, for this scan set. Everything above is a negative assertion, and `render/`,
-    `web/` and `deterministic/` are packages rather than modules -- a walk that silently found
-    nothing under one of them would be an all-clear over exactly the layer #167 (render/) and #183
-    (web/, deterministic/) found unguarded."""
+    `web/`, `deterministic/` and `api/` are packages rather than modules -- a walk that silently
+    found nothing under one of them would be an all-clear over exactly the layer #167 (render/), #183
+    (web/, deterministic/) and #425 (api/) found unguarded."""
     labels = sorted(label for _, _, label in provider_subjects())
     assert "cli.py" in labels
     assert "http.py" in labels, "the provider guard did not scan http.py; it scanned " + str(labels)
-    for expected in ("render/terminal.py", "web/config.py", "deterministic/sessions.py"):
+    for expected in ("render/terminal.py", "web/config.py", "deterministic/sessions.py", "api/app.py"):
         assert expected in labels, f"the provider guard did not scan {expected}; it scanned {labels}"
 
 
@@ -932,6 +946,9 @@ SURFACE_TREES = (
     # #355. Not a surface by this guard's own name -- see the module docstring for the argument --
     # but the one other tree outside `services/` capable of reaching `core.persistence` directly.
     (REPO_ROOT / "src" / "requivo" / "providers", "requivo.providers"),
+    # #425: the second HTTP surface, walked for the identical reason `web/` is -- route modules
+    # arrive slice by slice, and a hand-listed subject would go quietly narrower with each one.
+    (REPO_ROOT / "src" / "requivo" / "api", "requivo.api"),
 )
 PERSISTENCE_MODULE = "requivo.core.persistence"
 
@@ -1014,6 +1031,19 @@ _SURFACE_STORAGE_ALLOWLIST = {
         "the creation-time half, at the route that takes a slug from a form field. Deliberately "
         "*not* the conditional pair the dependency above uses: `POST /sessions` can bring a slug "
         "into existence, so it gets the unconditional refusal #221 specifies."
+    ),
+    ("api/dependencies.py", "_slug_shape"): (
+        "the identical call as `web/dependencies.py`'s entry above, one surface over (#425): "
+        "refuses a slug-shaped path segment at the HTTP boundary before it reaches any service. "
+        "Slice 1 has no creation route, so only the read-time half exists here so far -- see the "
+        "sibling entry immediately below."
+    ),
+    ("api/dependencies.py", "_refuse_new_reserved_slug"): (
+        "the other half, mirroring `web/dependencies.py`'s pair: every `{slug}` route this slice "
+        "ships addresses a session that must already exist, so the reserved-device-name refusal is "
+        "conditional on a name already occupying the session root (#372's read-time form). A "
+        "private name because core owns the creation/read split; no repository method can answer "
+        "it, since it is a question about a *name* before any session is in hand."
     ),
     ("providers/anthropic/completion.py", "_atomic_write"): (
         "writes the final malformed reply the JSON retry loop gave up on into `.requivo/debug/`, so "
@@ -1212,11 +1242,12 @@ def test_the_storage_guard_names_what_it_scanned():
     `providers/anthropic/completion.py` is here since #355: before that fix `SURFACE_TREES` held only
     `deterministic/` and `web/`, so this assertion is what would have gone red the moment `providers/`
     dropped out of the tuple above -- the same "could not look" the module docstring points at,
-    applied to one directory this scan set used to skip entirely."""
+    applied to one directory this scan set used to skip entirely. `api/dependencies.py` joined with
+    #425, the identical reasoning one surface later."""
     labels = sorted(label for _, _, label in surface_subjects())
     assert "cli.py" in labels
     for expected in (
         "deterministic/sessions.py", "deterministic/doctor.py", "web/dependencies.py",
-        "providers/anthropic/completion.py",
+        "providers/anthropic/completion.py", "api/dependencies.py",
     ):
         assert expected in labels, f"the storage guard did not scan {expected}; it scanned {labels}"
