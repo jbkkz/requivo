@@ -136,12 +136,11 @@ _RENDER_FAILED_TAIL = (
 class Drafted(NamedTuple):
     """What the drafting loop came back with: the model, and whether the *user* ended it.
 
-    Two outcomes that used to be one value and must not be. A loop that converged (no more questions)
-    or hit the turn limit should go on to the decision brief; a loop the user stopped should not,
-    because the brief is a paid call they did not ask for. Returning `None` for the second collapsed
-    them into "nothing to do" and discarded the turns as well (#202).
-
-    `model` is None only when the very first turn produced nothing to stop *from*.
+    Two outcomes that used to be one value and must not be: a converged or turn-limited loop should
+    go on to the decision brief, a user-stopped one should not, since the brief is a paid call they
+    did not ask for. Returning `None` for the second collapsed them into "nothing to do" and
+    discarded the turns as well. `model` is `None` only when the very first turn produced nothing to
+    stop *from*. Pinned by `test_stopping_early_stops_reasoning_and_says_so`.
     """
 
     model: EngineOutput | None
@@ -174,22 +173,24 @@ class DraftingFailed(Exception):
 def converse(disco: DiscoveryService, request: str, only: list[str] | None = None) -> Drafted:
     """Fill the model, ask, feed answers back, until no high-value question remains.
     Returns a `Drafted`: the model, and whether the *user* ended the loop. Never `None` and never a
-    bare model — a caller has to read `.stopped`, because a stop must not go on to buy a decision
-    brief nobody asked for, and a `Drafted` is truthy either way so the old `if not converse(...)`
-    idiom would be silently wrong (#320). Finalization (brief, save) is
-    handled by the caller so the interactive and --from paths share it. `only` restricts the context
-    cards for every turn — held constant across the loop so the cached system prefix survives.
+    bare model — a caller has to read `.stopped`, since a `Drafted` is truthy either way and the old
+    `if not converse(...)` idiom would be silently wrong. Finalization (brief, save) is handled by
+    the caller so the interactive and --from paths share it. `only` restricts the context cards for
+    every turn — held constant across the loop so the cached system prefix survives. Pinned by
+    `test_stopping_early_keeps_the_turns_it_paid_for`.
 
     This is the CLI's job and all of it: prompting, rendering, and deciding when to stop. The
     reasoning is `DiscoveryService.draft_turn`, so the loop holds no provider client of its own and a
-    second interactive surface reuses the same operation instead of copying this function (#77).
+    second interactive surface reuses the same operation instead of copying this function. Pinned by
+    `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`.
 
     **The model is the state that is carried, not a transcript.** Each turn hands back the model so
     far plus the answers just given — the same shape `requivo answer` and the Web form already use,
     so there is one turn operation across every surface rather than a conversational one here and a
     stateless one everywhere else. Turns 1 and 2 send exactly what the old in-CLI loop sent; from
     turn 3 the earlier rounds of question-and-answer are no longer re-sent, because the evidence they
-    produced is in the model being carried."""
+    produced is in the model being carried. Pinned by
+    `test_the_loop_reasons_through_the_service_and_carries_the_model_not_a_transcript`."""
     out = None
     answers = None
     for turn in range(1, MAX_TURNS + 1):
@@ -199,12 +200,11 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         except (RequivoError, KeyboardInterrupt) as e:
             # `RequivoError`, not `EngineError`: `ProviderOutputError` (the JSON retry loop giving
             # up) is a `RequivoError` sibling of `EngineError`, not a subclass of it, and used to
-            # reach `app()` as a bare, un-rescued failure -- every turn already drafted lost with no
-            # message naming the claimed session or the kept turns (found in review of #206).
+            # reach `app()` as a bare, un-rescued failure with every turn already drafted lost.
             # `out` still holds the last turn that succeeded, because the failed assignment did not
-            # land — and that model is every answer the client has given so far, since the model is
-            # what this loop carries. Handing it to the caller is the difference between a transient
-            # 529 costing one turn and it costing all of them (#202).
+            # land, and handing it to the caller is the difference between a transient failure
+            # costing one turn and it costing all of them. Pinned by
+            # `test_a_provider_output_failure_mid_turn_also_names_the_claimed_session`.
             raise DraftingFailed(e, out, turn) from e
         render_turn(out)
 
@@ -762,14 +762,13 @@ def _cmd_brief(a, client) -> None:
 def _cmd_prd(a, client) -> None:
     slug, disco = _generator_service(a, client)
     result = disco.generate(slug, "prd", surface="cli-prd")
-    # `display_document`, not `display_text` (#449 -- the #213 class, on the path that fires on
-    # every generation rather than only on a later `artifact show`): `prd_markdown` returns a full
-    # multi-paragraph document -- headings, bullet lists, a requirements table -- whose newlines and
-    # tabs are its layout, exactly `display_document`'s own reason for existing (#430). At print time
-    # only, the same way `_cmd_artifact_show` guards a saved artifact's content: the string written
-    # to disk two lines below, via `_wrote`, is `result.artifact` rendered by the same `prd_markdown`
-    # call inside `disco.generate` -- untouched, so the byte-identical-on-disk promise
-    # `core/integrity.py`'s hashing rests on stays intact. Only what reaches this terminal changes.
+    # `display_document`, not `display_text`, on the path that fires on every generation rather than
+    # only on a later `artifact show`: `prd_markdown` returns a full multi-paragraph document --
+    # headings, bullet lists, a requirements table -- whose newlines and tabs are its layout. At
+    # print time only, the same way `_cmd_artifact_show` guards a saved artifact's content: the
+    # string written to disk two lines below, via `_wrote`, is untouched, so the byte-identical-on-
+    # disk promise `core/integrity.py`'s hashing rests on stays intact. Pinned by
+    # `test_the_same_document_renders_identically_through_generation_and_read_back`.
     print(display_document(prd_markdown(result.artifact)))
     _wrote(slug, result, "PRD")
 
@@ -823,11 +822,12 @@ def _cmd_epic(a, client) -> None:
         # already-saved artifact and are deliberately untracked — no type, no ArtifactService
         # staleness row. Giving them full artifact status would put three rows in `artifact list`
         # that no generator can refresh. Direct, and it stays direct until a second surface writes
-        # them. They are not provenance-free, though (#274): `result.status.revision` is the same
+        # them. They are not provenance-free, though: `result.status.revision` is the same
         # `Generated.status.revision` the paired `epic.md` save just used above — one snapshot, per
-        # invariant 12 — so the export is stamped with exactly the revision a reader can compare
-        # against `requivo status --json`'s `artifacts.epic.stale` for a freshness verdict. The
-        # stamp identifies the basis; it does not itself judge staleness (invariant 1).
+        # invariant 12 — so a reader can compare the stamp against `requivo status --json`'s
+        # `artifacts.epic.stale` for a freshness verdict; the stamp identifies the basis and does not
+        # itself judge staleness (invariant 1). Pinned by
+        # `test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_against`.
         print(f"Wrote neutral epic export → "
               f"{store.write_artifact_file(slug, 'epic.json', epic_export_json(epic, slug, result.status.revision))}")
     if a.github:
@@ -882,11 +882,11 @@ def _cmd_web(a, client) -> None:
             # A wildcard bind address names every interface the machine has, not one a browser could
             # ever send back in a `Host` header — no client addresses a server as "0.0.0.0", it
             # addresses whatever IP or hostname it actually connected to. Auto-allowlisting the
-            # literal wildcard string used to make `--host 0.0.0.0` *look* like it worked (the process
-            # bound, printed a URL, opened a browser on loopback) while every LAN client got 403
-            # `host_not_allowed` with no clue why (#217). The guard staying fail-closed here is right;
-            # the gap was that the one thing an operator actually needs to do next — name the address
-            # LAN clients will use — was never said.
+            # literal wildcard string used to make `--host 0.0.0.0` *look* like it worked while every
+            # LAN client got 403 `host_not_allowed` with no clue why. The guard staying fail-closed
+            # here is right; the gap was that the one thing an operator actually needs to do next --
+            # name the address LAN clients will use -- was never said. Pinned by
+            # `test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var`.
             print(f"⚠  Binding to {host} (every interface): Requivo Web has NO authentication and "
                   "must not be exposed on an untrusted network. A wildcard bind address is not a "
                   "valid Host header, so it is NOT auto-allowlisted — every request will be refused "
@@ -1193,14 +1193,15 @@ def app(argv: list[str] | None = None, client=None) -> None:
             # Every clean, expected failure surfaces without a traceback (the arm above); Ctrl-C was
             # the one interruption that did not, because it is not a `RequivoError` and used to
             # propagate straight past this function -- skipping the usage summary, and, for any
-            # command with no rescue logic of its own, naming nothing at all (#206).
+            # command with no rescue logic of its own, naming nothing at all.
             #
             # `_cmd_discover`'s own handlers (`_rescue_drafted`, the quick path's own claim above, and
             # the brief-generation catch) print what a claimed session held and how to continue,
             # *then re-raise the bare interrupt* rather than exiting themselves -- so this is where
             # every one of them, discover included, actually ends: no traceback, the spend so far, and
             # the conventional SIGINT code rather than 1, so a script can tell "the operator stopped
-            # it" from "the operator got back a clean refusal".
+            # it" from "the operator got back a clean refusal". Pinned by
+            # `test_a_top_level_interrupt_on_an_existing_session_exits_130_with_no_traceback`.
             _render_usage_safely(ledger)
             safe_write(sys.stderr, "\nInterrupted.\n")
             raise SystemExit(EXIT_INTERRUPTED) from None
@@ -1209,8 +1210,12 @@ def app(argv: list[str] | None = None, client=None) -> None:
             # `UnicodeEncodeError` escaping a handler was raised by a `print`, which means the
             # handler had already finished the work it was reporting. Letting it surface as a
             # traceback tells the operator the command failed when the revision has landed and the
-            # artifact has been written — so they re-run, and pay for a second provider call on top
-            # of the first (#29). Say what actually happened instead.
+            # artifact has been written -- so they re-run, and pay for a second provider call on top
+            # of the first. Say what actually happened instead, and whether it was billed -- pinned
+            # by `test_a_glyph_that_cannot_be_encoded_exits_three_rather_than_a_traceback` for the
+            # exit code, and `test_the_render_failure_message_does_say_so_when_a_call_was_billed`
+            # with `test_the_render_failure_message_does_not_claim_a_call_was_billed_when_none_was`
+            # for the two arms of the billed claim.
             #
             # Reached only where `configure_streams` reported `could-not` for this stream, which
             # `requivo doctor` prints. Narrow on purpose: a broad `except Exception` here would
