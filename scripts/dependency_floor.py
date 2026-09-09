@@ -167,12 +167,12 @@ With no arguments, write the `name==floor` constraints (one per runtime dependen
                 non-zero (with a reason on stderr) if it is not.
   -h, --help    show this message and exit.
 
-Any other leading-dash argument is refused rather than treated as an output path: this script
-used to write a file named after any unrecognised flag, including a typo of --verify -- and did
-so silently, with a success exit code (#494)."""
+Any other leading-dash argument is refused rather than treated as an output path."""
 
-# The only flags this script understands. Anything else that starts with "-" is refused rather
-# than treated as an output path -- see _HELP and #494 above.
+# The only flags this script understands. Anything else starting with "-" is refused rather than
+# treated as an output path: a typo of --verify used to write a file of that name and exit 0, so a
+# reader believed a verification had run that never did (#494). Pinned by
+# test_an_unrecognised_flag_is_refused_not_written_as_a_path.
 _RECOGNISED_FLAGS = ("--verify", "-h", "--help")
 
 

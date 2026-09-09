@@ -18,6 +18,7 @@ from packaging.utils import canonicalize_name
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import dependency_floor  # noqa: E402
 from dependency_floor import (  # noqa: E402
     RUNTIME_EXTRAS,
     UndeclaredFloor,
@@ -161,9 +162,6 @@ def test_verify_reports_a_dependency_that_is_not_installed_at_all():
 # believes a check ran that never did. These five tests pin the shapes the fix must produce: a
 # real --help that writes nothing, a refused unrecognised flag that writes nothing and exits
 # non-zero, and the existing behaviours (--verify, a bare output path, no args at all) left alone.
-
-import dependency_floor  # noqa: E402
-
 
 def test_help_prints_and_writes_nothing(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
