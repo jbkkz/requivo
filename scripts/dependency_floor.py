@@ -155,12 +155,47 @@ def verify(pyproject: dict) -> list[str]:
     return wrong
 
 
+_HELP = """usage: dependency_floor.py [--verify | -h | --help | OUTPUT_PATH]
+
+Generate, or verify, the pinned constraints file for this project's runtime dependency floors --
+the lower bounds pyproject.toml promises to whoever runs `pip install requivo`.
+
+With no arguments, write the `name==floor` constraints (one per runtime dependency) to stdout.
+
+  OUTPUT_PATH   write the constraints to this file instead of stdout.
+  --verify      check that the *installed* environment is actually at those floors, and exit
+                non-zero (with a reason on stderr) if it is not.
+  -h, --help    show this message and exit.
+
+Any other leading-dash argument is refused rather than treated as an output path: this script
+used to write a file named after any unrecognised flag, including a typo of --verify -- and did
+so silently, with a success exit code (#494)."""
+
+# The only flags this script understands. Anything else that starts with "-" is refused rather
+# than treated as an output path -- see _HELP and #494 above.
+_RECOGNISED_FLAGS = ("--verify", "-h", "--help")
+
+
 def main(argv: list[str]) -> int:
+    args = argv[1:]
+
+    if any(a in ("-h", "--help") for a in args):
+        print(_HELP)
+        return 0
+
+    unrecognised = [a for a in args if a.startswith("-") and a not in _RECOGNISED_FLAGS]
+    if unrecognised:
+        print(
+            f"dependency_floor.py: unrecognised option {unrecognised[0]!r} -- "
+            f"run with --help for usage",
+            file=sys.stderr,
+        )
+        return 2
+
     root = Path(__file__).resolve().parents[1]
     # Explicit codec (#11): `read_text()` with no encoding decodes with the *locale* codepage, and
     # this file carries em dashes.
     pyproject = _load_toml((root / "pyproject.toml").read_text(encoding="utf-8"))
-    args = argv[1:]
     if args and args[0] == "--verify":
         wrong = verify(pyproject)
         for line in wrong:

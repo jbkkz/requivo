@@ -151,3 +151,59 @@ def test_verify_reports_a_dependency_that_is_not_installed_at_all():
     wrong = verify(pyproject)
     assert len(wrong) == 1
     assert "not installed at all" in wrong[0]
+
+
+# -- argument handling (#494) -----------------------------------------------------------------
+#
+# The bare positional argument used to be "whatever args[0] is, treat it as an output path" with
+# exactly one carve-out (--verify). That means --help writes a file named --help and exits 0,
+# and any typo of --verify does the same -- silently, with a success exit code, so the reader
+# believes a check ran that never did. These five tests pin the shapes the fix must produce: a
+# real --help that writes nothing, a refused unrecognised flag that writes nothing and exits
+# non-zero, and the existing behaviours (--verify, a bare output path, no args at all) left alone.
+
+import dependency_floor  # noqa: E402
+
+
+def test_help_prints_and_writes_nothing(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    exit_code = dependency_floor.main(["dependency_floor.py", "--help"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip(), "must print something to stdout"
+    assert not (tmp_path / "--help").exists(), "must not write a file called --help"
+
+
+def test_an_unrecognised_flag_is_refused_not_written_as_a_path(tmp_path, monkeypatch, capsys):
+    """A typo of --verify is the worse case named in the issue: it must not exit 0, because a
+    reader would believe the verification ran and passed."""
+    monkeypatch.chdir(tmp_path)
+    exit_code = dependency_floor.main(["dependency_floor.py", "--verfiy"])
+    captured = capsys.readouterr()
+    assert exit_code != 0
+    assert captured.err.strip(), "must say something on stderr"
+    assert not (tmp_path / "--verfiy").exists(), "must not write a file called --verfiy"
+
+
+def test_verify_still_runs_when_named_explicitly(monkeypatch, capsys):
+    monkeypatch.setattr(dependency_floor, "verify", lambda pyproject: [])
+    exit_code = dependency_floor.main(["dependency_floor.py", "--verify"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "declared floor" in captured.out
+
+
+def test_a_bare_output_path_still_writes_the_constraints_file(tmp_path):
+    out = tmp_path / "floor-constraints.txt"
+    exit_code = dependency_floor.main(["dependency_floor.py", str(out)])
+    assert exit_code == 0
+    assert out.exists()
+    lines = out.read_text(encoding="utf-8").strip().splitlines()
+    assert lines == constraints(_real_pyproject())
+
+
+def test_no_args_still_writes_to_stdout(capsys):
+    exit_code = dependency_floor.main(["dependency_floor.py"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip().splitlines() == constraints(_real_pyproject())
