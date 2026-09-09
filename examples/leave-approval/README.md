@@ -10,13 +10,9 @@ a changed answer that moves the scope. Read it in order; no install required.
 | 3 | [`solution-assessment.md`](solution-assessment.md) | The decision brief — what to review before committing to the scope. |
 | 4 | [`prd.md`](prd.md) | A PRD generated from the *same* understanding. |
 | 5 | [`acceptance-criteria.md`](acceptance-criteria.md) | Given/When/Then checklist, from the *same* understanding. |
-| 6 | [`epic.md`](epic.md) | A delivery epic — work broken into trackable issues. |
-| 7 | [`epic.json`](epic.json) | The same epic as a tool-neutral, GitHub/GitLab-importable export. |
-| 8 | [`release-notes.md`](release-notes.md) | Client-facing release notes. |
-| 9 | [`epic.github.json`](epic.github.json) | A GitHub issue-creation plan (adapter over the neutral export). |
-| 10 | [`epic.gitlab.json`](epic.gitlab.json) | A GitLab plan — `depends_on` becomes structured issue links. |
+| 6 | delivery outputs — [`epic.md`](epic.md), [`epic.json`](epic.json), [`epic.github.json`](epic.github.json), [`epic.gitlab.json`](epic.gitlab.json), [`release-notes.md`](release-notes.md) | Once scoping is settled: a delivery epic, its tool-neutral export, GitHub/GitLab issue-creation plans, and client-facing release notes — all still views of step 2. |
 
-Steps 3 through 10 are all views of step 2. Any other document (user stories, an estimate) comes from
+Steps 3 through 6 are all views of step 2. Any other document (user stories, an estimate) comes from
 the same `model.json` — that is the point: the shared understanding is the source of truth, and every
 document is generated from it.
 
