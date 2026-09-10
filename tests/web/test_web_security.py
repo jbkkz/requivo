@@ -180,14 +180,33 @@ def test_slug_traversal_is_rejected(client):
 # CodeQL's py/url-redirection flags all four RedirectResponse call sites that concatenate a slug
 # onto a fixed literal prefix (#500): sessions.py's analysis_failed, discovery.py's run_discovery
 # and submit_answers, and artifacts.py's generate_artifact. Each is a false positive for the same
-# reason the API layer's own path-parameter guard is (#425/#499): a regex-validated slug is a
-# sanitizer CodeQL's default query does not recognise -- but that reasoning is a reading of the
-# code, which this repository does not accept without a guard that goes red if it stops being true.
-# The standing position on this whole query class is `decision: codeql-sanitizers-it-cannot-see`.
+# reason CodeQL's py/path-injection alerts are (see `decision: codeql-sanitizers-it-cannot-see` for
+# the full argument): a regex-validated slug is a sanitizer CodeQL's default query does not
+# recognise -- but that reasoning is a reading of the code, which this repository does not accept
+# without a guard that goes red if it stops being true.
 
-_REDIRECT_SLUG_ATTEMPTS = [
+# `_FORM_FIELD_SLUG_ATTEMPTS` is for the one site whose slug is a `Form` field
+# (`create_session`) rather than a `{slug}` path parameter: a form value is never subject to a
+# client's own URL-path normalisation, so every one of these reaches `validate_slug` unchanged --
+# verified directly against `create_app()`, each returns 400 `invalid_slug`.
+_FORM_FIELD_SLUG_ATTEMPTS = [
     "../etc", "../../etc/passwd", "%2e%2e%2fetc", "%2e%2e%252fetc", "..%5cwindows",
     "/etc/passwd", "....//etc", "C:\\Windows", "evil.com", "@evil.com", "evil.com%2f%2f",
+]
+
+# `_PATH_PARAM_SLUG_ATTEMPTS` is for the three sites whose slug is a `{slug}` path parameter
+# (`Depends(safe_slug)`). Several of the form-field attempts above never reach `safe_slug` at all
+# on these routes: httpx's own URL-path normalisation and/or Starlette's single-segment route
+# matching resolve or refuse a raw `../etc`, an encoded `%2e%2e%2fetc`, and their kin *before* the
+# request is dispatched, so the app answers a bare 404 with the dependency never invoked -- one
+# level past the client-side dot-segment normalisation this same file's `test_slug_traversal_is_rejected`
+# already lives beside: it reaches whole traversal-shaped segments here, not only a bare `.`/`..`.
+# Every entry below was verified directly against `create_app()` to return 400 `invalid_slug` --
+# i.e. to actually reach and be refused by `safe_slug` -- rather than a 404 that would pass
+# `_assert_never_off_site` for the wrong reason (no guard exercised at all).
+_PATH_PARAM_SLUG_ATTEMPTS = [
+    "a..b", "..%5cwindows", "C:\\Windows", "evil.com", "@evil.com", "leave%2Dapproval%00",
+    "leave-approval..", "..leave-approval", "under_score", "with space",
 ]
 
 
@@ -204,7 +223,7 @@ def _assert_never_off_site(resp):
 
 def test_the_discover_redirect_never_leaves_this_origin_under_a_hostile_slug(client):
     """discovery.py:48 -- `RedirectResponse(url=f"/sessions/{slug}")` after `run_discovery`."""
-    for attempt in _REDIRECT_SLUG_ATTEMPTS:
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
         _assert_never_off_site(client.post(f"/sessions/{attempt}/discover", follow_redirects=False))
 
 
@@ -212,10 +231,10 @@ def test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_
     """discovery.py:121 -- the no-JS (non-htmx) branch of `submit_answers`. Driven through
     `raw_client` with the CSRF field rather than `client`, which would tag `/answers` posts
     `HX-Request: true` and reach the fragment branch instead of the `RedirectResponse` under test."""
-    for attempt in _REDIRECT_SLUG_ATTEMPTS:
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
         resp = raw_client.post(f"/sessions/{attempt}/answers",
-                               data={"answers": "x", "expected_revision": "0",
-                                     CSRF_FIELD: csrf_token()},
+                               data={"answers": "x", "expected_revision": "0"},
                                follow_redirects=False)
         _assert_never_off_site(resp)
 
@@ -223,9 +242,9 @@ def test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_
 def test_the_generate_artifact_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_client):
     """artifacts.py:60 -- the no-JS branch of `generate_artifact`, same reason `raw_client` is used
     above rather than `client`."""
-    for attempt in _REDIRECT_SLUG_ATTEMPTS:
-        resp = raw_client.post(f"/sessions/{attempt}/artifacts/brief",
-                               data={CSRF_FIELD: csrf_token()}, follow_redirects=False)
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
+        resp = raw_client.post(f"/sessions/{attempt}/artifacts/brief", follow_redirects=False)
         _assert_never_off_site(resp)
 
 
@@ -235,28 +254,40 @@ def test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_ho
     whose `slug` is a `Form` field validated by `validate_slug` before `analysis_failed` is ever
     called. Driven through that route rather than by calling `analysis_failed` directly, so the
     assertion is about the guard actually standing between the form field and the redirect, not
-    about the function's own string formatting."""
-    for attempt in _REDIRECT_SLUG_ATTEMPTS:
+    about the function's own string formatting. Uses `_FORM_FIELD_SLUG_ATTEMPTS` rather than
+    `_PATH_PARAM_SLUG_ATTEMPTS`: a `Form` field is never subject to the client-side URL
+    normalisation that makes several of those entries unreachable as a `{slug}` path parameter, so
+    every entry here does reach `validate_slug` (verified directly, each returns 400
+    `invalid_slug`)."""
+    for attempt in _FORM_FIELD_SLUG_ATTEMPTS:
         resp = client.post("/sessions", data={"request_text": "x", "slug": attempt,
                                               "provider": "create_only"}, follow_redirects=False)
         _assert_never_off_site(resp)
 
 
-def test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session(client, raw_client):
-    """The must-fire half, and the reason the four loops above are not enough on their own -- the
-    same shape as the API layer's own path-parameter guard test (#425/#499), translated to the
-    Web's HTML routes. A 404 from a nonsense slug proves nothing, since no session of that name
-    exists either. The refusal has to be the guard's own 400, naming `invalid_slug`, or widening
-    `_SLUG_RE` later would leave every assertion above still green for the wrong reason."""
+def test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session(raw_client):
+    """The must-fire half, and the reason the four tests above are not enough on their own: a 404
+    from a nonsense slug proves nothing, since no session of that name exists either. The refusal
+    has to be the guard's own 400, naming `invalid_slug`, or widening `_SLUG_RE` later would leave
+    every assertion above still green for the wrong reason.
+
+    Built on `raw_client` alone, with the request token set directly on the header, rather than
+    also requesting `client`: `client` is `raw_client` with its own `.post` mutated in place
+    (`tests/web/conftest.py`), so requesting both fixtures in one test hands back the *same* mutated
+    object under two names, and every `/answers` or `/artifacts/` call below would then silently
+    carry `client`'s auto-injected `HX-Request: true`, reaching the fragment branch rather than the
+    plain-post branch. `safe_slug`/`validate_slug` raise before that branch split is ever reached,
+    so the assertions below would still pass either way -- but only by relying on the fragment and
+    full-page error templates happening to render the same `(code: ...)` text, which is not a
+    coincidence this test should depend on."""
+    raw_client.headers[CSRF_HEADER] = csrf_token()
     responses = [
-        client.post("/sessions/Not_A_Slug/discover", follow_redirects=False),
+        raw_client.post("/sessions/Not_A_Slug/discover", follow_redirects=False),
         raw_client.post("/sessions/Not_A_Slug/answers",
-                        data={"answers": "x", "expected_revision": "0", CSRF_FIELD: csrf_token()},
-                        follow_redirects=False),
-        raw_client.post("/sessions/Not_A_Slug/artifacts/brief",
-                        data={CSRF_FIELD: csrf_token()}, follow_redirects=False),
-        client.post("/sessions", data={"request_text": "x", "slug": "Not_A_Slug",
-                                       "provider": "create_only"}, follow_redirects=False),
+                        data={"answers": "x", "expected_revision": "0"}, follow_redirects=False),
+        raw_client.post("/sessions/Not_A_Slug/artifacts/brief", follow_redirects=False),
+        raw_client.post("/sessions", data={"request_text": "x", "slug": "Not_A_Slug",
+                                           "provider": "create_only"}, follow_redirects=False),
     ]
     for resp in responses:
         assert resp.status_code == 400, resp.text

@@ -51,10 +51,12 @@ sanitizer stopped holding, and add the guard the open-redirect class was missing
 `test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_hostile_slug`, with
 `test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session` as the must-fire half
 (a 404 from a nonsense slug would prove nothing) and `test_a_legitimate_slug_still_redirects_where_it_should`
-as the must-not-fire control. These four sites had no equivalent before #500; the API layer's own
-path-parameter guard (#425/#499) already covers the path-injection class through the API's own
-`{slug}`/`{artifact_type}` parameters, with its own must-fire/must-not-fire pair of the same shape,
-which the Web tests above translate to the HTML routes rather than duplicate reasoning about.
+as the must-not-fire control. These four sites had no equivalent before #500. A guard of the same
+shape over the path-injection class, through the API's own `{slug}`/`{artifact_type}` parameters, is
+being added separately on the not-yet-merged pull request #499 (issue #425) -- named here for
+provenance, not as something this record leans on: that guard living on a different branch was not
+verified as part of writing this record, and the reasoning above stands on its own regardless of
+when or whether that pull request lands.
 
 **Do not turn the query off, add a path filter, or exclude `core/persistence.py` (or any file) from
 scanning.** The alerts are wrong today because the sanitizers hold today; the value of the query is
@@ -103,8 +105,11 @@ that recounts why something is safe, with no test that goes red if it stops bein
 indistinguishable from a comment that used to be true. The four new tests plus the five existing
 guards listed under *Decision* are what make the dismissal auditable rather than a shrug.
 
-## What would reverse this
-
+**What would reverse this position.** None of the three alternatives above is a plausible future
+change to this repository's own code, which is why they are rejected rather than merely deferred.
+What *would* reverse the position is a change to the sanitizers themselves — a different shape of
+argument, recorded here as a labelled paragraph inside this section rather than as a fifth top-level
+heading this repository's own decision-record shape (`docs/decisions/README.md`) does not sanction.
 Any of the following would mean the position no longer holds, and the alerts it was dismissed for
 would need to be reopened and re-triaged rather than assumed still safe:
 
