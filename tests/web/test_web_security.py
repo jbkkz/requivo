@@ -19,6 +19,9 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from requivo.core.errors import InputTooLargeError
+from requivo.providers.errors import EngineError
+from requivo.services.discovery import DiscoveryService
+from requivo.services.sessions import SessionService
 from requivo.web.security import (
     CSRF_FIELD,
     CSRF_HEADER,
@@ -170,6 +173,185 @@ def test_slug_traversal_is_rejected(client):
     assert client.get("/sessions/a..b").status_code == 400   # matches {slug}, fails validation
     assert client.post("/sessions", data={"request_text": "x", "slug": "../escape",
                                           "provider": "create_only"}).status_code == 400
+
+
+# ── open redirect: every RedirectResponse target stays same-origin ──────────────
+#
+# CodeQL's py/url-redirection flags all four RedirectResponse call sites that concatenate a slug
+# onto a fixed literal prefix (#500): sessions.py's analysis_failed, discovery.py's run_discovery
+# and submit_answers, and artifacts.py's generate_artifact. Each is a false positive for the same
+# reason CodeQL's py/path-injection alerts are (see `decision: codeql-sanitizers-it-cannot-see` for
+# the full argument): a regex-validated slug is a sanitizer CodeQL's default query does not
+# recognise -- but that reasoning is a reading of the code, which this repository does not accept
+# without a guard that goes red if it stops being true.
+
+# `_FORM_FIELD_SLUG_ATTEMPTS` is for the one site whose slug is a `Form` field
+# (`create_session`) rather than a `{slug}` path parameter: a form value is never subject to a
+# client's own URL-path normalisation, so every one of these reaches `validate_slug` unchanged --
+# verified directly against `create_app()`, each returns 400 `invalid_slug`.
+_FORM_FIELD_SLUG_ATTEMPTS = [
+    "../etc", "../../etc/passwd", "%2e%2e%2fetc", "%2e%2e%252fetc", "..%5cwindows",
+    "/etc/passwd", "....//etc", "C:\\Windows", "evil.com", "@evil.com", "evil.com%2f%2f",
+]
+
+# `_PATH_PARAM_SLUG_ATTEMPTS` is for the three sites whose slug is a `{slug}` path parameter
+# (`Depends(safe_slug)`). Several of the form-field attempts above never reach `safe_slug` at all
+# on these routes: httpx's own URL-path normalisation and/or Starlette's single-segment route
+# matching resolve or refuse a raw `../etc`, an encoded `%2e%2e%2fetc`, and their kin *before* the
+# request is dispatched, so the app answers a bare 404 with the dependency never invoked -- one
+# level past the client-side dot-segment normalisation this same file's `test_slug_traversal_is_rejected`
+# already lives beside: it reaches whole traversal-shaped segments here, not only a bare `.`/`..`.
+# Every entry below was verified directly against `create_app()` to return 400 `invalid_slug` --
+# i.e. to actually reach and be refused by `safe_slug` -- rather than a 404 that would pass
+# `_assert_never_off_site` for the wrong reason (no guard exercised at all).
+_PATH_PARAM_SLUG_ATTEMPTS = [
+    "a..b", "..%5cwindows", "C:\\Windows", "evil.com", "@evil.com", "leave%2Dapproval%00",
+    "leave-approval..", "..leave-approval", "under_score", "with space",
+]
+
+
+def _assert_never_off_site(resp, attempt):
+    """A hostile slug must be **refused**, never redirected -- and the refusal is the assertion that
+    always runs.
+
+    The obvious shape for this, `if 300 <= status < 400: check the Location`, is vacuous and was
+    written that way first. A hostile slug never produces a redirect, so the branch never executes
+    and the body asserts nothing: with the fixed `/sessions/` prefix deleted from a route *and*
+    `_SLUG_RE` widened to admit `/` and `:` -- both halves of the failure this file exists to catch,
+    applied at once -- all four callers stayed green. A test that cannot go red for the thing it is
+    named after is decoration, and this one had review's attention twice without it being noticed.
+
+    So the always-firing claim is the status: 4xx or 5xx, never a 3xx. It is strictly stronger than
+    the same-origin check (a redirect to a *local* path under an attacker-chosen slug would also be
+    wrong here) and it is falsifiable -- any change that lets a refused slug reach a
+    `RedirectResponse` turns it red. The Location check is kept underneath as belt and braces, for
+    the case where a 3xx appears anyway and the message should say where it pointed."""
+    assert resp.status_code >= 400, (
+        f"slug {attempt!r} was not refused -- got {resp.status_code} "
+        f"-> {resp.headers.get('location', '(no Location)')!r}; a hostile slug must never reach a "
+        f"redirect")
+    if 300 <= resp.status_code < 400:  # unreachable while the assertion above holds
+        location = resp.headers.get("location", "")
+        assert location.startswith("/") and not location.startswith("//"), (
+            f"redirected off-site: {location!r}")
+        assert "://" not in location, f"redirected off-site: {location!r}"
+
+
+def test_the_discover_redirect_never_leaves_this_origin_under_a_hostile_slug(client):
+    """discovery.py:48 -- `RedirectResponse(url=f"/sessions/{slug}")` after `run_discovery`."""
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
+        _assert_never_off_site(
+            client.post(f"/sessions/{attempt}/discover", follow_redirects=False), attempt)
+
+
+def test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_client):
+    """discovery.py:121 -- the no-JS (non-htmx) branch of `submit_answers`. Driven through
+    `raw_client` with the CSRF field rather than `client`, which would tag `/answers` posts
+    `HX-Request: true` and reach the fragment branch instead of the `RedirectResponse` under test."""
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
+        resp = raw_client.post(f"/sessions/{attempt}/answers",
+                               data={"answers": "x", "expected_revision": "0"},
+                               follow_redirects=False)
+        _assert_never_off_site(resp, attempt)
+
+
+def test_the_generate_artifact_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_client):
+    """artifacts.py:60 -- the no-JS branch of `generate_artifact`, same reason `raw_client` is used
+    above rather than `client`."""
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+    for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
+        resp = raw_client.post(f"/sessions/{attempt}/artifacts/brief", follow_redirects=False)
+        _assert_never_off_site(resp, attempt)
+
+
+def test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_hostile_slug(client):
+    """sessions.py:109 -- `analysis_failed`'s own redirect. It is never reached off a `{slug}` path
+    parameter; the only route that can drive it with an attacker-chosen slug is `create_session`,
+    whose `slug` is a `Form` field validated by `validate_slug` before `analysis_failed` is ever
+    called. Driven through that route rather than by calling `analysis_failed` directly, so the
+    assertion is about the guard actually standing between the form field and the redirect, not
+    about the function's own string formatting. Uses `_FORM_FIELD_SLUG_ATTEMPTS` rather than
+    `_PATH_PARAM_SLUG_ATTEMPTS`: a `Form` field is never subject to the client-side URL
+    normalisation that makes several of those entries unreachable as a `{slug}` path parameter, so
+    every entry here does reach `validate_slug` (verified directly, each returns 400
+    `invalid_slug`)."""
+    for attempt in _FORM_FIELD_SLUG_ATTEMPTS:
+        resp = client.post("/sessions", data={"request_text": "x", "slug": attempt,
+                                              "provider": "create_only"}, follow_redirects=False)
+        _assert_never_off_site(resp, attempt)
+
+
+def test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session(raw_client):
+    """The must-fire half, and the reason the four tests above are not enough on their own: a 404
+    from a nonsense slug proves nothing, since no session of that name exists either. The refusal
+    has to be the guard's own 400, naming `invalid_slug`, or widening `_SLUG_RE` later would leave
+    every assertion above still green for the wrong reason.
+
+    Built on `raw_client` alone, with the request token set directly on the header, rather than
+    also requesting `client`: `client` is `raw_client` with its own `.post` mutated in place
+    (`tests/web/conftest.py`), so requesting both fixtures in one test hands back the *same* mutated
+    object under two names, and every `/answers` or `/artifacts/` call below would then silently
+    carry `client`'s auto-injected `HX-Request: true`, reaching the fragment branch rather than the
+    plain-post branch. `safe_slug`/`validate_slug` raise before that branch split is ever reached,
+    so the assertions below would still pass either way -- but only by relying on the fragment and
+    full-page error templates happening to render the same `(code: ...)` text, which is not a
+    coincidence this test should depend on."""
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+    responses = [
+        raw_client.post("/sessions/Not_A_Slug/discover", follow_redirects=False),
+        raw_client.post("/sessions/Not_A_Slug/answers",
+                        data={"answers": "x", "expected_revision": "0"}, follow_redirects=False),
+        raw_client.post("/sessions/Not_A_Slug/artifacts/brief", follow_redirects=False),
+        raw_client.post("/sessions", data={"request_text": "x", "slug": "Not_A_Slug",
+                                           "provider": "create_only"}, follow_redirects=False),
+    ]
+    for resp in responses:
+        assert resp.status_code == 400, resp.text
+        assert "invalid_slug" in resp.text, resp.text
+
+
+def test_a_legitimate_slug_still_redirects_where_it_should(raw_client, with_provider, monkeypatch):
+    """Must-not-fire control for every test above: a guard refusing a hostile slug means nothing
+    next to proof that an honest slug still reaches the redirect it is supposed to, at all four
+    sites.
+
+    Deliberately built on `raw_client` alone rather than `client` as well: `client` is `raw_client`
+    with its own `.post` mutated in place (`tests/web/conftest.py`), so requesting both fixtures in
+    one test hands back the *same* mutated object under two names, and every `/answers` or
+    `/artifacts/` post then carries `client`'s auto-injected `HX-Request: true` -- which reaches the
+    fragment branch, not the `RedirectResponse` this test means to exercise. The request token is
+    set on the header once, exactly what `client` itself does, without the HTMX injection.
+    """
+    raw_client.headers[CSRF_HEADER] = csrf_token()
+
+    # discover (discovery.py:48): a fresh create_only session, at the revision-0 discovery is
+    # required to run from. `answer()` reasons a turn of its own further down, so the fake carries
+    # a second reply for it in the same order the two calls fire.
+    SessionService().create_session("A leave approval system.", slug="leave-only")
+    with_provider(engine_reply(converged=True), engine_reply(converged=True))
+    r = raw_client.post("/sessions/leave-only/discover", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/sessions/leave-only"
+
+    # answers (discovery.py:121): a seeded, already-discovered session.
+    _make_session("leave-approval")
+    r = raw_client.post("/sessions/leave-approval/answers",
+                        data={"answers": "x", "expected_revision": "1"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/sessions/leave-approval"
+
+    # generate_artifact (artifacts.py:60).
+    with_provider(BRIEF_REPLY)
+    r = raw_client.post("/sessions/leave-approval/artifacts/brief", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/sessions/leave-approval"
+
+    # analysis_failed (sessions.py:109), reached through create_session's own failure branch.
+    def boom(self, slug, *, surface="discover"):
+        raise EngineError("Anthropic API unavailable (529).")
+    monkeypatch.setattr(DiscoveryService, "run_discovery", boom)
+    r = raw_client.post("/sessions", data={"request_text": "x", "slug": "leave-failed",
+                                           "provider": "anthropic"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/sessions/leave-failed?analysis_failed=")
 
 
 # ── cross-site protection ─────────────────────────────────────────────────────
