@@ -210,11 +210,27 @@ _PATH_PARAM_SLUG_ATTEMPTS = [
 ]
 
 
-def _assert_never_off_site(resp):
-    """If the request produced a redirect at all, its target must be same-origin -- a bare path,
-    never a scheme, never a protocol-relative `//host` prefix. A non-redirect response says nothing
-    is wrong either: it means the guard refused before any `RedirectResponse` was ever built."""
-    if 300 <= resp.status_code < 400:
+def _assert_never_off_site(resp, attempt):
+    """A hostile slug must be **refused**, never redirected -- and the refusal is the assertion that
+    always runs.
+
+    The obvious shape for this, `if 300 <= status < 400: check the Location`, is vacuous and was
+    written that way first. A hostile slug never produces a redirect, so the branch never executes
+    and the body asserts nothing: with the fixed `/sessions/` prefix deleted from a route *and*
+    `_SLUG_RE` widened to admit `/` and `:` -- both halves of the failure this file exists to catch,
+    applied at once -- all four callers stayed green. A test that cannot go red for the thing it is
+    named after is decoration, and this one had review's attention twice without it being noticed.
+
+    So the always-firing claim is the status: 4xx or 5xx, never a 3xx. It is strictly stronger than
+    the same-origin check (a redirect to a *local* path under an attacker-chosen slug would also be
+    wrong here) and it is falsifiable -- any change that lets a refused slug reach a
+    `RedirectResponse` turns it red. The Location check is kept underneath as belt and braces, for
+    the case where a 3xx appears anyway and the message should say where it pointed."""
+    assert resp.status_code >= 400, (
+        f"slug {attempt!r} was not refused -- got {resp.status_code} "
+        f"-> {resp.headers.get('location', '(no Location)')!r}; a hostile slug must never reach a "
+        f"redirect")
+    if 300 <= resp.status_code < 400:  # unreachable while the assertion above holds
         location = resp.headers.get("location", "")
         assert location.startswith("/") and not location.startswith("//"), (
             f"redirected off-site: {location!r}")
@@ -224,7 +240,8 @@ def _assert_never_off_site(resp):
 def test_the_discover_redirect_never_leaves_this_origin_under_a_hostile_slug(client):
     """discovery.py:48 -- `RedirectResponse(url=f"/sessions/{slug}")` after `run_discovery`."""
     for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
-        _assert_never_off_site(client.post(f"/sessions/{attempt}/discover", follow_redirects=False))
+        _assert_never_off_site(
+            client.post(f"/sessions/{attempt}/discover", follow_redirects=False), attempt)
 
 
 def test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_client):
@@ -236,7 +253,7 @@ def test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_
         resp = raw_client.post(f"/sessions/{attempt}/answers",
                                data={"answers": "x", "expected_revision": "0"},
                                follow_redirects=False)
-        _assert_never_off_site(resp)
+        _assert_never_off_site(resp, attempt)
 
 
 def test_the_generate_artifact_redirect_never_leaves_this_origin_under_a_hostile_slug(raw_client):
@@ -245,7 +262,7 @@ def test_the_generate_artifact_redirect_never_leaves_this_origin_under_a_hostile
     raw_client.headers[CSRF_HEADER] = csrf_token()
     for attempt in _PATH_PARAM_SLUG_ATTEMPTS:
         resp = raw_client.post(f"/sessions/{attempt}/artifacts/brief", follow_redirects=False)
-        _assert_never_off_site(resp)
+        _assert_never_off_site(resp, attempt)
 
 
 def test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_hostile_slug(client):
@@ -262,7 +279,7 @@ def test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_ho
     for attempt in _FORM_FIELD_SLUG_ATTEMPTS:
         resp = client.post("/sessions", data={"request_text": "x", "slug": attempt,
                                               "provider": "create_only"}, follow_redirects=False)
-        _assert_never_off_site(resp)
+        _assert_never_off_site(resp, attempt)
 
 
 def test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session(raw_client):
