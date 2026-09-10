@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The same surveyor's-station brand mark as `web/static/favicon.svg` (#241), copied rather than
+       shared: this surface's own static mount, self-hosted per #504 so `/docs`'s `<link
+       rel="shortcut icon">` never reaches `https://fastapi.tiangolo.com/img/favicon.png`. -->
+  <rect width="32" height="32" rx="7" fill="#10131a"/>
+  <g transform="translate(4,4)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round">
+    <path d="M12 2v20M2 12h20"/>
+    <circle cx="12" cy="12" r="5.5"/>
+  </g>
+</svg>

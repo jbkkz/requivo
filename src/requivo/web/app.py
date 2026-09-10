@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from requivo.core.errors import RequivoError
 from requivo.http import http_status_for as _status_for
+from requivo.security_headers import CACHE_CONTROL, DEFAULT_CSP, REFERRER_POLICY, apply_security_headers
 from requivo.web.routes import artifacts, discovery, health, home, sessions
 from requivo.web.security import install_cross_site_guard
 from requivo.web.templating import STATIC_DIR, templates
@@ -30,9 +31,10 @@ from requivo.web.templating import STATIC_DIR, templates
 # tests/test_http_status_table.py.
 
 # A locked-down CSP: everything is same-origin, images may be inline data URIs. No external hosts, so
-# the vendored HTMX and local CSS are the only scripts/styles — nothing loads from a CDN.
-_CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
-        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+# the vendored HTMX and local CSS are the only scripts/styles — nothing loads from a CDN. This is
+# `requivo.security_headers.DEFAULT_CSP` (#503) — restated as `_CSP` here only so the long comment
+# above, which is what a reader actually wants when they land on this line, keeps a name to attach to.
+_CSP = DEFAULT_CSP
 
 # `no-referrer` here made the app unusable in a browser, and the mechanism is worth stating in full
 # because both halves were individually correct (#47).
@@ -74,7 +76,11 @@ _CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 
 # be, and `same-origin` itself nulls it only when the request *is* cross-origin.
 # `test_the_policy_this_app_sends_and_the_origin_guard_it_runs_agree` asserts that composition — the
 # defect lived between two files, so no per-file test could see it.
-_REFERRER_POLICY = "same-origin"
+#
+# This is `requivo.security_headers.REFERRER_POLICY` (#503) — restated as `_REFERRER_POLICY` here
+# only so the argument above, which is what a reader actually wants on arriving at this line, keeps
+# a name to attach to.
+_REFERRER_POLICY = REFERRER_POLICY
 
 # Nothing this app answers with may be written to the browser's disk cache, except the assets it
 # ships (#218).
@@ -101,7 +107,9 @@ _REFERRER_POLICY = "same-origin"
 # `test_a_bundled_asset_stays_cacheable` are the two halves.
 _BUNDLED_ASSET_PREFIXES = ("/static/",)
 _BUNDLED_ASSET_PATHS = ("/favicon.ico",)
-_CACHE_CONTROL = "no-store"
+# `requivo.security_headers.CACHE_CONTROL` (#503), restated under this app's own name for the same
+# reason as `_REFERRER_POLICY` above.
+_CACHE_CONTROL = CACHE_CONTROL
 
 
 def _is_bundled_asset(path: str) -> bool:
@@ -124,17 +132,14 @@ def _apply_security_headers(response, path: str):
     responses' header sets rather than a list of names, so it fails on a header it was never told
     about.
 
-    `setdefault`, not assignment, so a route that deliberately set its own value keeps it. The
-    bundled-asset exemption is applied here for both callers, which decides the one question the
-    duplicated version left open: a 500 raised while serving `/static/` is an error page, not the
-    asset, and is `no-store` like every other error page.
+    The actual header-setting is `requivo.security_headers.apply_security_headers` (#503) — moved
+    out of this module once a second FastAPI app (`api/app.py`) needed the identical policy and
+    found nothing here it could reach without importing this optional `[web]` extra. This wrapper
+    stays so both call sites below read unchanged, and so the bundled-asset exemption
+    (`_is_bundled_asset`, a fact about *this* app's own static mount) is supplied once, here, rather
+    than at every caller.
     """
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Referrer-Policy", _REFERRER_POLICY)
-    response.headers.setdefault("Content-Security-Policy", _CSP)
-    if not _is_bundled_asset(path):
-        response.headers.setdefault("Cache-Control", _CACHE_CONTROL)
-    return response
+    return apply_security_headers(response, path, csp=_CSP, is_bundled_asset=_is_bundled_asset)
 
 # Under `requivo web` this rides uvicorn's handler, so a traceback lands in the terminal the user
 # started the server in — the only place a local, single-user app has to put one.

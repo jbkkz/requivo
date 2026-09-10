@@ -186,6 +186,23 @@ The spec is generated from `create_api()` — FastAPI produces it from the route
 factory turns `docs_url`/`openapi_url` **on**, where Requivo Web deliberately keeps all three off
 (and keeps keeping them off; a browser app's routes are not an invitation to script it).
 
+**Docs are on, and the assets are local — the paragraph this section was missing (#504).** Turning
+`docs_url` on was this decision; *how* `/docs` and `/redoc` get their JavaScript, CSS, favicon and
+fonts was never weighed, and FastAPI's own default is a CDN — `swagger-ui-dist@5`, a floating major
+with no lockfile, plus a third-party favicon and a Google Fonts stylesheet, all loaded into the same
+origin `GET /api/v1/sessions` answers 200 with no credential. That is not the trade this decision
+made; it is an unconsidered side effect of it, found by the v3.2.0 release audit alongside the
+missing security-header middleware (#503) landing three weeks after this decision shipped. The
+remedy keeps the decision and removes the side effect: `swagger-ui-dist` and `redoc`'s standalone
+bundles are vendored into `src/requivo/api/static/` (pinned versions, refreshed by hand — see
+`THIRD-PARTY-NOTICES.md`), `api/routes/docs.py` serves `/docs` and `/redoc` from that mount instead
+of FastAPI's CDN-backed defaults, and neither page's Google Fonts request survives (ReDoc renders in
+the browser's own default sans-serif instead). This is also what makes `script-src 'self'` — the one
+CSP directive `requivo.security_headers` never widens for this app, unlike `style-src` (see
+`api/app.py`'s own comment for why that one directive does widen) — land without a CDN exception:
+the two issues were fixed together because either alone leaves the other broken, not because they
+shared an author's convenience.
+
 What the spec's existence promises, precisely: **paths, methods, statuses and the error envelope
 are the contract; the generated JSON document is not byte-stable and never will be promised as
 such** — FastAPI's rendering moves under it release to release. The pin is a committed skeleton

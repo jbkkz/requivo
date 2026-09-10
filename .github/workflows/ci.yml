@@ -289,20 +289,41 @@ jobs:
           # #425: the same "packaged, not editable-install" question the web smoke test above answers,
           # for the second FastAPI surface. No cross-site check -- slice 1 ships no bind/token/CORS
           # posture yet (that lands with a later slice of the same issue).
+          #
+          # #503/#504: extended in place, not as a second step -- the security-header policy and the
+          # self-hosted docs assets are both "does the installed wheel actually carry what it needs"
+          # questions, the exact question this step already exists to answer for the API surface.
           WHEEL=$(ls dist/*.whl)
           /tmp/cleanenv/bin/pip install "${WHEEL}[api]" httpx
           cd /tmp/workdir
           /tmp/cleanenv/bin/python - <<'PY'
+          import re
           from fastapi.testclient import TestClient
           from requivo.api.app import create_api
           app = create_api()
           client = TestClient(app, base_url="http://127.0.0.1:8765")
           r = client.get("/api/v1/health")
           assert r.status_code == 200 and r.json()["status"] == "ok", r.text
+          # #503: every response carries the same header set Requivo Web's does, from the installed
+          # package -- the middleware and the vendored `requivo.security_headers` module both have to
+          # actually ship, not just import cleanly under an editable install.
+          assert r.headers.get("X-Content-Type-Options") == "nosniff", r.headers
+          assert "script-src 'self'" in r.headers.get("Content-Security-Policy", ""), r.headers
           # OpenAPI docs ON, with the experimental notice -- the one deliberate difference from the
           # web app's own factory, which keeps all three off.
           spec = client.get("/openapi.json")
           assert spec.status_code == 200, spec.text
           assert "EXPERIMENTAL" in spec.json()["info"]["description"]
-          print("api wheel OK: /api/v1/health 200, OpenAPI on with the experimental notice")
+          # #504: the vendored Swagger UI/ReDoc assets and favicon ship inside the wheel and are
+          # served from this app's own static mount, not a CDN, from the installed package.
+          for path in ("/docs", "/redoc"):
+              page = client.get(path)
+              assert page.status_code == 200, f"{path}: {page.status_code}"
+              assert not re.search(r"https?://", page.text), f"{path} references an external origin"
+          swagger_css = client.get("/api-static/vendor/swagger-ui/swagger-ui.css")
+          assert swagger_css.status_code == 200, "vendored Swagger UI CSS missing from the wheel"
+          redoc_js = client.get("/api-static/vendor/redoc/redoc.standalone.js")
+          assert redoc_js.status_code == 200, "vendored ReDoc bundle missing from the wheel"
+          print("api wheel OK: /api/v1/health 200 with security headers, OpenAPI on with the "
+                "experimental notice, /docs and /redoc self-hosted with no external origin")
           PY

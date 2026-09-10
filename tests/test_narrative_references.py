@@ -103,6 +103,26 @@ _HISTORICAL_MENTION = re.compile(r"[Ss]plit out of `(test_[a-z0-9_]+)\.py`")
 # which stays mechanical and applies to this file exactly like every other.
 RESOLUTION_EXEMPT_FILES = (Path(__file__).resolve(),)
 
+# A second, distinct reason a file is resolution-exempt: vendored, minified third-party code, where
+# a `test_`-shaped identifier is somebody else's library function, never a claim about this suite.
+# `htmx.min.js` needed no such exemption when it was vendored -- measured then: zero `test_`-shaped
+# identifiers in it -- so this tuple did not exist until #504 vendored `swagger-ui-bundle.js`, whose
+# own cookie-parsing helpers are functions literally named `test_cookie_name`/`test_cookie_value`,
+# coincidentally shaped exactly like this guard's own reference pattern (verified directly against
+# the vendored file, not assumed --
+# `test_a_vendored_bundles_coincidental_identifier_is_not_a_dangling_reference` below re-verifies it
+# on every run so a future re-vendor that drops the collision is caught rather than leaving a stale
+# exemption). Kept separate from `RESOLUTION_EXEMPT_FILES` above
+# -- a set of one, by construction, and asserted as such by
+# `test_the_wrap_scan_still_reaches_one_file_further_than_the_resolution_scan` -- so the two reasons
+# ("this guard's own file" and "not first-party prose at all") stay individually named rather than
+# merged into one tuple that means neither thing precisely. Resolution-exempt only: the *wrap* check
+# stays mechanical and reaches this file exactly like any other, and passes today because a single
+# giant minified line gives `_WRAPPED` no line boundary to catch anything at.
+VENDORED_RESOLUTION_EXEMPT_FILES = (
+    (SRC / "api" / "static" / "vendor" / "swagger-ui" / "swagger-ui-bundle.js").resolve(),
+)
+
 # The wrap check has no pointer-versus-mention problem -- it is purely mechanical, so `tests/` was
 # already here before #190 widened `RESOLUTION_ROOTS` to match it: it is where the motivating
 # instance for #156 actually sat (`busy_harness.js`, truncated mid-identifier since the day it was
@@ -168,11 +188,12 @@ def _scan_subjects(roots: tuple[Path, ...], extra: tuple[Path, ...] = ()) -> lis
 
 
 def subjects() -> list[Path]:
-    """Every file the *resolution* check reads. See `RESOLUTION_ROOTS` for the roots and
-    `RESOLUTION_EXEMPT_FILES` for the one file excluded from this list by identity rather than by
-    root."""
-    return [p for p in _scan_subjects(RESOLUTION_ROOTS, EXTRA_SUBJECTS)
-            if p.resolve() not in RESOLUTION_EXEMPT_FILES]
+    """Every file the *resolution* check reads. See `RESOLUTION_ROOTS` for the roots,
+    `RESOLUTION_EXEMPT_FILES` for the one file excluded from this list by identity (this guard's own
+    module), and `VENDORED_RESOLUTION_EXEMPT_FILES` for the other reason a file is excluded here
+    (vendored third-party code, not narrative at all)."""
+    exempt = set(RESOLUTION_EXEMPT_FILES) | set(VENDORED_RESOLUTION_EXEMPT_FILES)
+    return [p for p in _scan_subjects(RESOLUTION_ROOTS, EXTRA_SUBJECTS) if p.resolve() not in exempt]
 
 
 def wrap_subjects() -> list[Path]:
@@ -300,15 +321,18 @@ def test_the_wrap_scan_still_reaches_one_file_further_than_the_resolution_scan()
     """#190's decision, pinned rather than left as something only the comments above `RESOLUTION_ROOTS`
     and `WRAP_ROOTS` state. `tests/` is now in *both* roots -- `busy_harness.js`, the motivating
     instance for #156, resolves cleanly today and belongs in the resolution scan exactly like any
-    other file, not exempted by directory or suffix. The one remaining gap between the two scans is
-    this guard's own module, excluded from resolution by identity via `RESOLUTION_EXEMPT_FILES` --
-    see `test_this_guards_own_file_is_wrap_checked_but_not_resolution_checked` for that half."""
+    other file, not exempted by directory or suffix. The gap between the two scans is this guard's
+    own module (`RESOLUTION_EXEMPT_FILES`, excluded by identity -- see
+    `test_this_guards_own_file_is_wrap_checked_but_not_resolution_checked`) plus, since #504, the one
+    vendored bundle named in `VENDORED_RESOLUTION_EXEMPT_FILES`."""
     resolution_files = set(subjects())
     wrap_files = set(wrap_subjects())
     assert resolution_files < wrap_files, "the wrap scan must be a strict superset of the resolution scan"
-    assert wrap_files - resolution_files == set(RESOLUTION_EXEMPT_FILES), (
-        "the only file the wrap scan reaches and the resolution scan does not should be this guard's "
-        "own module -- anything else means a root or an exemption drifted from what the comments claim"
+    expected_gap = set(RESOLUTION_EXEMPT_FILES) | set(VENDORED_RESOLUTION_EXEMPT_FILES)
+    assert wrap_files - resolution_files == expected_gap, (
+        "the only files the wrap scan reaches and the resolution scan does not should be this guard's "
+        "own module and the vendored bundle named above -- anything else means a root or an "
+        "exemption drifted from what the comments claim"
     )
     assert any(p.name == "busy_harness.js" for p in wrap_files), (
         "tests/web/busy_harness.js is not in the wrap scan — the motivating instance for #156 would "
@@ -320,6 +344,28 @@ def test_the_wrap_scan_still_reaches_one_file_further_than_the_resolution_scan()
     )
     assert not any(p.name == "CHANGELOG.md" for p in wrap_files), (
         "CHANGELOG.md must never be swept, wrap check included"
+    )
+
+
+def test_a_vendored_bundles_coincidental_identifier_is_not_a_dangling_reference():
+    """`swagger-ui-bundle.js` (#504) bundles real library functions named `test_cookie_name` and
+    `test_cookie_value` -- coincidentally shaped exactly like this guard's own reference pattern, and
+    not a claim about this suite. Two must-fire halves: the raw file really does contain the
+    collision (so this test is not proving an exemption for a problem that no longer exists), and the
+    exemption keeps it out of the *resolution* scan specifically, not out of scanning altogether."""
+    vendored = VENDORED_RESOLUTION_EXEMPT_FILES[0]
+    raw = vendored.read_text(encoding="utf-8")
+    assert "test_cookie_name" in raw and "test_cookie_value" in raw, (
+        "the vendored file no longer contains the collision this exemption exists for -- if it was "
+        "re-vendored at a version that dropped these helpers, VENDORED_RESOLUTION_EXEMPT_FILES should "
+        "shrink back to empty rather than carry a stale entry"
+    )
+    resolution_files = {p.resolve() for p in subjects()}
+    assert vendored not in resolution_files, "the vendored bundle must not be in the resolution scan"
+    wrap_files = {p.resolve() for p in wrap_subjects()}
+    assert vendored in wrap_files, (
+        "the vendored bundle dropped out of the wrap scan too -- the exemption is about resolution "
+        "only, never about no longer looking at this file at all"
     )
 
 
