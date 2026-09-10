@@ -12,6 +12,203 @@ fragments in `changelog.d/` are the material to summarize from.
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-10
+
+### Highlights
+
+- A local HTTP API behind a new `[api]` extra — read routes over the same services the CLI and Web use, OpenAPI on and self-hosted, shipping experimental until a named freeze event.
+- `requivo session delete` completes the session lifecycle: an irreversible, locked removal that refuses a nonexistent slug rather than half-succeeding.
+- A spend ceiling you can set — `SpendPolicy(ceiling_usd=…)` refuses the next provider call once a session's estimated spend reaches it, before the money is spent.
+- The all-cards default now states what it will cost before the first paid call, instead of being knowable only by reading the source.
+- The engine's output language is a stated rule: questions and the understanding mirror the client's language, while every buildable artifact stays English for dev teams and trackers.
+- Windows text is correct end to end — files the store writes no longer gain `\r\n`, and generated documents no longer print a visible `\r` on every line.
+
+### Added
+
+- `requivo session delete <session>` irreversibly removes a session — its directory and its `.requivo/locks/<slug>.lock` file — and refuses a nonexistent slug with the structured `session_not_found` error. The store's own locked removal is now on the `SessionRepository` protocol too, so a non-file backing (a hosted Postgres repository) can implement the identical operation. Requivo Web gained the matching control: a *Delete this session…* affordance in a "Danger zone" on the session page, behind an explicit confirmation page that suggests `session export` first as the undo story — there is no trash. This is the product's erasure primitive: until now nothing removed a session end-to-end, and the only cleanup was an `rm -rf` the docs never suggested, which skipped the lock file entirely (#238).
+
+- The all-cards default now discloses its own cost before the paid call, rather than only being knowable by reading the source. `requivo discover` prints which cards it is about to reason over (and the measured average per-card weight) whenever `--context`/`--cards` was not given; the Web create form's card selector carries a matching one-line hint. Measured on 2026-09-03: the 4 bundled cards total 23,262 bytes (~5.8k tokens) and are 65–78% of every generator's assembled system prompt. This is disclosure only — the all-cards default is unchanged, and a card is loaded exactly as before either way; `docs/context-cards.md` states the measured figures and cites the existing `financial-reporting`/`doc-reapproval` dilution finding (#257).
+
+- The neutral epic export (`epic.json`, plus its `--github`/`--gitlab` tracker plans) now stamps `source_revision` and `slug` into the envelope, bumping `EPIC_EXPORT_VERSION` 1 → 2. These files are written outside `ArtifactService` and carry no staleness row of their own, so the one consumer that cannot exercise judgment about freshness — an n8n flow acting on `epic.json` directly — previously had no signal at all that the session had moved on since the export was written. `source_revision` identifies the basis it was rendered from; it never judges freshness by itself — that verdict is `requivo status --json`'s `artifacts.epic.stale`, per invariant 1. `_cmd_epic` stamps it from the same `Generated.status.revision` snapshot the paired `epic.md` save used, never a second read of the session's current revision (#274).
+
+- Line coverage is now measured: `pytest-cov` joins the `[dev]` extra, a `[tool.coverage.run]` block in `pyproject.toml` points it at `src/requivo`, and the `Test (py3.12)` CI leg gains one `continue-on-error` step that prints a `term-missing` table into its log. Deliberately not a gate — there is no threshold, no `fail_under`, no `omit` list and no report upload, and the step cannot change that leg's pass/fail status: a percentage a pull request must clear invites padding, and a padded number that has passed a check is worse than no number at all. Until now this repository, whose culture is that a claim gets a guard or comes out, was mapping its own coverage by grep. The first table it produced corrected that map: `render/terminal.py`'s `render_stale` was recorded as having zero tests on the strength of a name search over `tests/`, and it is in fact exercised indirectly through the CLI at 7 of its 8 lines — the one uncovered line being an early return no caller in the tree can reach. The table also states its own blind spot rather than leaving one: coverage instruments the pytest process and nothing it spawns, so code exercised only by running the real CLI in a subprocess reads as `Missing` even though a test runs it every time -- `src/requivo/__main__.py`'s `app()` line is the standing example, and both `pyproject.toml` and `CONTRIBUTING.md` say so at the point a reader would otherwise mistake it for a gap. Enabling subprocess tracing was measured and declined: it works, and it costs 83.0s against 53.6s, past the ceiling this change is held to. Running the suite under coverage otherwise costs about 14% of its runtime, measured on one machine, and nothing else in the project changes: the plugin is inert on every run that does not ask for it (#295).
+
+- CI's compatibility-axis matrix gained a sixth leg, `Test (py3.14)`, beside the existing `3.9`–`3.13` five (step 1 of #298). This does not move the supported floor: `requires-python`, `[tool.ruff] target-version`, `[tool.pyright] pythonVersion`, the `tomli` marker and the platform matrix's `3.9`/`3.13` ends are all unchanged — raising the floor off the now-EOL `3.9` is a separate decision pending pypistats download-share data (step 2, not in this change). The new leg is not yet in `main`'s branch-protection required-checks list; that is a manual, documented API call the maintainer makes by hand (#298).
+
+- Added the local HTTP API facade as a new `requivo.api` package behind the optional `[api]` extra (`pip install 'requivo[api]'`) -- slice 1 of #425: `create_api()` builds a FastAPI app with OpenAPI docs on (the `/docs`, `/redoc` and `/openapi.json` routes, with an EXPERIMENTAL notice in the spec description), a `RequivoError -> {code, message}` error handler at the correct HTTP status, `/api/v1/health`, and the read routes for sessions, models, revisions, status, artifacts and a new dependency-graph impact query -- each backed 1:1 by an existing `SessionService`/`ArtifactService` method, with no second implementation of an apply, a generation or a staleness rule. **The whole surface ships experimental**: no path, method, status or response shape here is promised yet, and none of them is a breaking change to move until the freeze event `docs/decisions/0004-the-http-api-facade.md` defines actually lands. Write routes, the bind/token/cross-site posture and the `requivo api serve` CLI verb are later slices of the same issue, not part of this change.
+
+- `DiscoveryService` accepts an optional injected `SpendPolicy(ceiling_usd=...)`, consulted immediately before every provider call. When the session-scoped ledger's estimated USD spend is already at or above the ceiling, the next call is refused with a new structured error code, `spend_ceiling_reached` (HTTP 403), before it is ever constructed — so the ledger shows the refusal cost nothing. A call already sitting in the ledger with no rate on file also refuses, rather than being silently priced at $0. With no policy injected, behaviour is unchanged. This is a service-layer seam only: no CLI flag or web setting wires a ceiling yet (#427).
+
+- `requivo.services.discovery`, `.sessions` and `.artifacts` (plus `requivo.providers.anthropic.completion`) now carry named stdlib loggers, emitting INFO/DEBUG/WARNING records at real seams -- a session created, a model applied to a new revision, a write conflict refused, an artifact saved with its stale verdict, and a provider call started/finished/failed (with its own attempts and latency). No handler is configured anywhere in this package, so a default run is silent exactly as before -- an embedding operator (a hosted API facade, `requivo web` under systemd) attaches a handler to any of these loggers to see them. `CallRecord` (`requivo.usage`) also grows an optional `operation` field, stamped with the same verb vocabulary `cli.py`'s subcommands already use (`analyze`, `brief`, `stories`, `prd`, ...), so a ledger read back after the fact can split spend per verb without reconstruction. Both changes are additive and behaviour-preserving for every existing consumer: `operation` defaults to `None` and nothing currently reads it, `render_usage()`'s output is unchanged, and nothing prints to any stream unless a caller explicitly attaches a `logging.Handler` (#435).
+
+### Changed
+
+- README's How-it-works, `docs/roadmap.md`'s Available-today list, and the canonical example's table now lead with the pre-commitment arc — the decision brief and computed change impact — before any generated document. In README's narrative prose, tracker adapters (GitHub/GitLab issue plans) and release notes are named only once, in a trailing clause after that arc, rather than getting equal billing with the brief — an emphasis fix in the two passages that shape a first read, not a literal single-mention rule for the repo: `docs/roadmap.md`'s own tracker-adapter bullet and Jira-adapter line, and the canonical example's untouched `## Reproduce it` command reference, still name GitHub/GitLab where they always did. The canonical example's table groups the five delivery files (epic, its export, both tracker plans, release notes) under one "delivery outputs" row instead of listing them as steps 6 through 10. README's audience line now leads with the self-serve technical persona (solutions engineers, consultants, technical PMs, agency leads) and states the PM/client hand-off as one sentence, rather than naming Product Managers first for a product every install path requires a shell to reach. Copy only — no verb changed, removed, or hidden in code (#231).
+
+- Requivo's output-language policy is now stated and enforced rather than emergent: the questions and the understanding rendered each turn **mirror the language of the client's request**, while every buildable artifact -- the decision brief, PRD, stories, acceptance criteria, epic and release notes -- is written in **English**, because those feed dev teams and trackers. It is anchored as one sentence in `engine.md`'s output-format block and one identical sentence in the six artifact prompts, written up in `docs/requirements-model.md` ("The language of the outputs"), and corrected in `CLAUDE.md`, whose opening claimed the engine's own output was English throughout. Two edges are deliberately left open and named as such in the write-up rather than decided here. The saved decision brief is **bilingual by construction**: `brief_markdown` is the only writer that also receives the model, and its objective, current understanding, confirmed topics and inferred assumptions are projected from it verbatim -- the design rule being that a restatement can drift from the model while a projection cannot -- so the English anchor on the brief covers the judgment the provider writes, and moving the whole artifact to the mirroring side is the larger decision this change does not take. And `estimate`: it is the one generator that produces no file, so its reader is the person at the terminal rather than a dev team or a tracker, and assigning it either way would extend the decision rather than record it. No language detection is added and nothing is stored about a session's language: both halves are instructions to the model about what it is writing (#277).
+- Requivo Web no longer announces the client's language as English. `base.html` declared `<html lang="en">` and nothing else in the template tree carried a `lang` attribute, so a French objective, question or request blockquote was read out by a screen reader with English pronunciation rules. The regions the policy says mirror the request now declare an empty `lang` -- HTML's "the language is unknown", which is the strongest true claim available without detection -- while the chrome, and the decision brief's own content, keep the document's `en`. What this buys is stated with what it does not: an empty `lang` removes a false claim, it does not satisfy [WCAG 3.1.2](https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts), and a reader defaulting to English still pronounces French with English rules. Closing that needs a real BCP 47 value, which needs detection or a question to the user, and neither is decided (#277).
+- `fixtures/golden/requests.md` gains `maintenance-rounds-fr`, a single-pass French request, so the next paid golden capture measures this behaviour for the first time; no baseline is committed for it yet, which the harness already treats as "nobody has paid for this capture" rather than as drift (#277).
+
+- Applied the repository's own bug-narrative rule -- CLAUDE.md's *Where a bug narrative lives* -- to
+  the four worst call-site prose files: `core/persistence.py` (2,344 -> 1,963 lines), `core/context.py`
+  (349 -> 292), `services/sessions.py` (723 -> 650) and `core/integrity.py` (451 -> 434), 528 lines of
+  comment and docstring in total. Each recounted bug story is now one line at the call site -- the
+  invariant, the cost of breaking it, and the name of the test that goes red when the guard is removed
+  -- with the full narrative living in that test's docstring, where a reader cannot skim past it. The
+  four files went from 31 issue-citing blocks naming no test to none; across `src/` and `scripts/` the
+  same scan drops from 152 to 117. Nothing was deleted for being verbose: reasons attached to a guard,
+  MUST-FIRE notes, `docs/compatibility.md` contracts and the invariant list are all untouched, and the
+  two narratives no test held -- #40's persisted-card door and #469's lock-file unlink window -- were
+  moved into `test_check_selection_reports_a_hostile_persisted_card_rather_than_raising` and
+  `test_a_session_removed_through_session_delete_leaves_no_lock_residue` rather than dropped.
+  Comment-and-docstring only, with zero behaviour change: the AST minus docstrings is byte-identical
+  to `main` for every file touched, and an independent per-line count puts `src/` at the same 6,681
+  code lines and 1,680 blank lines before and after (#285).
+- Compatibility: compatible - no code line, public `--json` payload, session-format key or error code
+  changed; `src/` prose is 52.0% -> 50.5% of lines.
+
+- The licence metadata moves to PEP 639's SPDX form: `license = "Apache-2.0"` with `[project] license-files`, and the `License :: OSI Approved :: Apache Software License` classifier is removed rather than swapped, because PEP 639 rejects a build carrying both. The wheel now publishes `License-Expression: Apache-2.0` at `Metadata-Version: 2.4`. This trade-off had been recorded as declined in `pyproject.toml` and was re-taken rather than reversed in passing: all three checks #337 named were run, and all three pass -- setuptools 82.0.1 installs on Python 3.9.6 (the oldest interpreter here, and the question the original decision turned on), the built wheel carries the expression and no `License:` field, and pip 21.2.4 (the declared pip floor) on Python 3.9 installs it and reads the metadata back. LICENSE, NOTICE and THIRD-PARTY-NOTICES.md still ship, so the Apache-2.0 section 4(d) compliance argument is untouched; they now land in `dist-info/licenses/` rather than directly in `dist-info/` (#337).
+- Compatibility: compatible - no runtime dependency, no public payload and no session-format key changes. The two floors that move are build-time and dev-only: `[build-system] setuptools` to `77.0.1` (below 77 cannot parse the SPDX `license` string at all, failing in `get_requires_for_build_wheel`; 77.0.0 was never published), and the `dev` extra's `packaging` to `24.2`. A `pip install requivo` is unaffected in both cases.
+- The `packaging` dev floor rises to `24.2`, found by the dependency-floor CI leg rather than reasoned about. setuptools 77's `dist.py` imports `packaging.licenses.canonicalize_license_expression` from the **top-level** `packaging`, which an installed copy shadows over setuptools' vendored one -- so at the previously declared `packaging>=23.0` the two in-process build tests died in fixture setup with a bare `ModuleNotFoundError: No module named packaging.licenses`. Bisected: 24.0 and 24.1 do not carry the module, 24.2 is the first that does, and it installs on Python 3.9.6. This is the second real floor the leg has caught since it was added for #91 (#337).
+
+- Continued the bug-narrative sweep into `services/discovery.py`, the file with the largest remaining
+  concentration (#483). Its 13 issue-citing comment and docstring blocks that named no test are now
+  none: each call site keeps the invariant, the cost of breaking it and the name of the test that
+  goes red when the guard is removed, with the reasoning moved into that test's docstring. Across
+  `src/` and `scripts/` the same scan drops from 140 blocks in 43 files to 127 in 42.
+- Wrote the test that was missing rather than relocating a story with nowhere to go (#483):
+  `tests/test_generation_needs_a_model_152.py` pins #152's guard -- generating from a session with no
+  model is a structured refusal naming the remedy, not the `AttributeError` traceback a caller got
+  for a release -- with the provider call count as the assertion, since an `AttributeError` also
+  never reaches the provider, and a must-not-fire control so a guard that refused every session could
+  not pass.
+- Added `docs/decisions/0005-the-typed-generation-seam.md` for the three #271 typing decisions that
+  no test in this repository can reach, because their guard is the Types leg rather than pytest: why
+  `Generated` is generic, why `generate()`'s signature is six overloads, and why `_WRITERS` carries
+  an annotation instead of inferring one (#483).
+- Compatibility: compatible - comment, docstring and test only. The AST minus docstrings is identical
+  to `main` for every modified file; no code line, public `--json` payload, session-format key or
+  error code changed, and no test was deleted (1,667 -> 1,670, the three added above).
+
+- Second pass of the bug-narrative sweep, on `deterministic/sessions.py` (#483). Its 12 issue-citing
+  comment and docstring blocks that named no test are now none: each site keeps the invariant, the
+  cost of breaking it and the name of the test that goes red when the guard is removed. Across `src/`
+  and `scripts/` the same scan drops from 140 blocks in 43 files to 128 in 42.
+- Every relocated block landed on a test that already existed -- the legacy-root scan's three
+  outcomes, the interrupted-migration receipt, `session verify`'s three exit codes, the archive
+  entry-count ceiling, the remembered occupied-slug answer, the rename-as-claim window, the locked
+  forced swap, and the `slug`/`path` payload spelling. Nineteen test names were introduced and all
+  nineteen resolve (#483).
+- Compatibility: compatible - comment and docstring only. The AST minus docstrings is identical to
+  `main` for the one modified file; no code line, public `--json` payload, session-format key or
+  error code changed, and the suite is unchanged at 1,667 with no test added or deleted.
+
+- Third pass of the bug-narrative sweep, on `deterministic/doctor.py` and `cli.py` (#483). Their 16
+  issue-citing comment and docstring blocks that named no test are now none: each site keeps the
+  invariant, the cost of breaking it and the name of the test that goes red when the guard is
+  removed. Across `src/` and `scripts/` the same scan drops from 82 blocks in 37 files (already down
+  from the 109/41 the issue was filed against, after the two prior passes) to 66 in 35.
+- Fifteen of the sixteen relocated blocks landed on a test that already existed. One did not: the
+  claim that a session note must not pull `doctor`'s sessions-row glyph down to the same warning
+  state a lock timeout or an unexaminable entry earns was true of the code and untested, so
+  `tests/test_cli_doctor.py::test_a_note_does_not_move_the_sessions_glyph` was written for it and
+  confirmed red against a mutated `_print_sessions` before being confirmed green again.
+- Self-review (`Explore`) found the same gap one disjunct over: the relocated comment's own claim
+  that an *unexaminable* entry shares that middle glyph had no test either -- only the `locked` arm
+  did. `tests/test_cli_doctor.py::test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick`
+  closes it, driven by monkeypatching `scan_session_root` rather than a real `chmod 000` so it runs
+  on every platform, and confirmed red the same way. The comment now cites a test for each of the
+  three could-not-look disjuncts by name. Thirty test names were introduced across the two files and
+  all thirty resolve (#483).
+- Compatibility: compatible - comment, docstring and test only. The AST minus docstrings is identical
+  to `main` for both modified source files; no code line, public `--json` payload, session-format key
+  or error code changed. The suite grows by the two tests above (1,701 -> 1,703) and none was
+  deleted.
+
+### Fixed
+
+- Re-shot the four screenshots in `docs/images/` and added `scripts/shoot_doc_images.py`, which
+  takes all four from the bundled example seeded as a real session -- no key, no network (#329).
+  Two had gone stale in content: the home page predated the recent-first listing and human-formatted
+  timestamps, and the decision brief predated the rendered document that replaced its `<pre>` block.
+- Corrected `docs/web.md`'s caption for the session screenshot, which described a "what is confirmed"
+  section the page does not have (#329).
+- `tests/test_doc_images.py` now fails when the web surface changes after the screenshots were taken,
+  so a stale image is a red test rather than something a reader has to notice. The freshness digest
+  is recorded **per image**, not once for the manifest: the script accepts shot names, and a shared
+  digest let a partial re-run certify the screenshots it had not re-taken. It watches the whole
+  `web/viewmodels/` package rather than two of its four modules -- `sessions.py`, which decides the
+  title and ordering of every session row on the home page, was outside it (#329).
+
+- Added missing security headers (`Content-Security-Policy`, `Referrer-Policy`, `X-Content-Type-Options`, and `Cache-Control`) to unhandled 500 error responses in the web interface, ensuring they match standard responses rather than falling back to browser defaults (#340).
+
+- Isolate the incomplete-model provider test's failed-reply dump in a temporary workspace, and detect new `.requivo` entries left by the test suite without redirecting unrelated tests (#432).
+
+- `SessionService.snapshot()` — the read every provider-backed operation (`run_discovery`, `answer`, `generate`, `reason`) takes before it calls out — now names the correct workspace root when it refuses a missing session against an explicitly-rooted `SessionService`. It previously raised through the process-ambient `no_session_message`, so an embedding consumer holding a service rooted at one workspace could be told the session was missing from a different one entirely (#457).
+
+- `requivo prd`, `criteria`, `epic` and `release` no longer print a visible `\r` at the end of every line when the generated document carries Windows line endings. The same document read back with `requivo artifact show` was already rendering correctly, so the two verbs disagreed about one file; they now agree, and a lone carriage return is still escaped because it moves the cursor rather than ending a line (#460).
+
+- Fixed (#461): `golden_diff`'s baseline-freshness readout (`_show_freshness`,
+  `scripts/golden_diff.py`) had three print sites sharing one `--format` string — #456 routed `date`
+  and `sha` through `display_token` for defense in depth there, but left the third, `reason`, raw.
+  `reason` is the one of the three that actually carries text from outside the process (git's stderr,
+  or `str(exc)`), rather than a fixed git format like `%cI`/`%H`, so it had the strongest claim to the
+  guard and was the one left unguarded. No route to reach it with a crafted string was found — the two
+  `git log` invocations this function drives echo only `HEAD` or a `%H` sha, never a caller-supplied
+  path, and every other producer of `reason` stringifies to plain prose or hex — so this is
+  unranked, defense-in-depth, on the same argument #456 already made for its two siblings.
+- Compatibility: compatible - `scripts/` ships in neither the wheel nor the sdist, so this is a
+  developer-tooling fix with no session format, `--json` payload, or public API change. An ordinary
+  freshness reason renders exactly as before.
+
+- The web app's security headers are stated in one place instead of two, so a header added to the middleware can no longer go missing from the unhandled-500 page the way the whole set did before (#340, #462).
+
+- Every file the store's own atomic writer produces (`model.json`, `session.json`, each frozen revision, every saved artifact) is now written with universal-newline translation disabled. On Windows, writing text with the default `newline=None` translated every `\n` in the content to the platform's own `\r\n` — so a lone carriage return already in the content (a provider reply that carries one) became `\r\r\n` on disk, a line the document never had. The write now asks for no translation at all and lands the string's own bytes on every platform, the same guarantee `encoding="utf-8"` already made for character sets one keyword along (#464).
+
+- `docs/decisions/0004-the-http-api-facade.md` section 5 stated the spend ceiling in language that read as a machine-wide guarantee ("nothing on this box spends more than X without a human"). The `SpendPolicy` #427 shipped is scoped to the `ContextVar`-backed ledger `requivo.usage.track_usage()` opens fresh per CLI command or per web request, and resets on the next call — it bounds one operation's cost, not cumulative spend across many requests. The record now says so plainly and names what actually closes that gap: HTTP-layer rate limiting (already out-of-scope for #427) once the facade exists to put it in front of, or a future persistent, cross-request `SpendPolicy` variant. No code changed (#466).
+
+- `DiscoveryService.start(finalize=True)` no longer discards a paid `analyze()` call when the following decision-brief call fails or is refused. It used to make both provider calls before writing either, so a transport error, or the `#427` spend ceiling being reached by the `analyze()` call alone, threw away the already-billed discovery and left the session at revision 0 with nothing applied. It now persists `analyze()`'s result as revision 1 immediately, before the brief is even attempted — mirroring `#202`'s fix for the CLI's interactive loop in the same file — so a failed or refused brief leaves the discovery applied and the brief retryable through the ordinary `generate(slug, "brief")` path, rather than a total loss of the paid call (#467).
+
+- The `Dependency floor` CI leg went red on every pull request when `anyio 4.15.0` stopped exposing `anyio.abc` through its lazy `__getattr__`: the development-only `httpx>=0.25.0` floor resolves to `httpx 0.25.0`, which pins `httpcore 0.18.x`, which reads that attribute at import time — while `anyio` is transitive and deliberately left at its newest release. The floor is now `httpx>=0.26.0`, the lowest release that resolves to `httpcore 1.x` and imports cleanly under `anyio 4.15.0`, bisected rather than guessed. No upper bound was added to `anyio`: holding a transitive bound would reverse a decision `.github/workflows/ci.yml` already records. `httpx` is test-only here and nothing shipped imports it, so the raised floor costs a consumer nothing (#472).
+
+- The Claude Code plugin now writes down the field name a question is built from. `Question`'s text field is `q`; `question` is the natural guess, the contract is `extra="forbid"`, and no page named the field at all -- so the guess cost a whole validate cycle, two errors per question (12 for a six-question turn), before the reader could see which field to use. Named in `REASONING.md`'s proposal loop and at the point both the `discover` and `answer` skills ask for questions, and held by `test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of`, which checks every page that builds a proposal against the contract's own required-field set rather than against a sentence. Reported from a real plugin session by an external contributor (#489).
+- The `discover` skill now names the product context cards a session was grounded on when it presents the understanding. `context.status: ok` means the cards are present and readable; it does not mean they are *relevant*, and there is no status that does. The shipped cards describe B2B enterprise domains, impact is estimated against whichever cards a session holds, and a request from outside that domain is scored against a product it has nothing to do with -- producing a model, reaching `ready`, and saying nothing on screen about it. That is the shape the `empty` case was already warned about, one level up. Naming the cards back to the reader does not detect relevance; it puts the one fact a human can judge in front of them (#489).
+- The `discover` skill now offers `--workspace` before creating a session *about the repository the user is sitting in*. The existing warning covers running from the wrong directory; this is the case where the right directory is still the wrong one, and `.requivo/` lands untracked inside the tree the session is reasoning about (#489).
+
+- `scripts/dependency_floor.py` no longer treats an unrecognised leading-dash argument as an
+  output filename. Running `--help` used to write the constraints list to a file literally named
+  `--help` in the current directory and exit 0; any typo of `--verify` (e.g. `--verfiy`) did the
+  same, silently, with a success exit code -- the reader believing a verification had run and
+  passed when nothing had run at all. The script now has a real `--help`/`-h`, and refuses any
+  other unrecognised `-`-prefixed argument with a message on stderr and a non-zero exit; the
+  existing `--verify` and bare-output-path behaviours are unchanged (#494).
+
+- The HTTP API now carries the same security headers Requivo Web does — `X-Content-Type-Options`, `Content-Security-Policy`, `Referrer-Policy` and `Cache-Control`, error responses included — from one shared `requivo.security_headers.apply_security_headers`, so a header added to the policy reaches both surfaces (and any future one) without a second edit (#503). `/docs` and `/redoc` no longer load Swagger UI, ReDoc, a favicon or a font from a third-party CDN into the same origin that serves session data with no credential: both are vendored into the wheel at pinned versions and served from the API's own static mount, and the spec validator badge no longer phones home either. This is also what lets the API's `Content-Security-Policy` set `script-src 'self'` with no exception carved for the CDN — the two fixes land together because either alone leaves the other broken (#504).
+
+- Corrected `docs/decisions/0006-codeql-sanitizers-it-cannot-see.md`, which still described the
+  API traversal guard on pull request #499 as not yet merged. It landed one commit later, and the
+  record now names the tests directly: `tests/api/test_api_traversal.py`'s
+  `test_no_slug_shaped_traversal_reaches_the_filesystem`,
+  `test_no_artifact_type_traversal_reaches_the_filesystem` and the must-fire
+  `test_the_refusal_is_the_slug_guard_and_not_merely_a_missing_session` (#505).
+
+### Security
+
+- Every `RedirectResponse` target under `web/routes/` is now guarded by a test proving a hostile
+  slug is *refused* rather than redirected, that the refusal is the slug guard's own -- not the
+  accident of the target being absent -- and that an honest slug still reaches the redirect it
+  should, at all four sites. The refusal is the always-firing claim on purpose: the obvious shape,
+  `if the response was a redirect, check its target`, is vacuous, because a hostile slug never
+  produces a redirect, so the branch never runs. Written that way first, it survived two review
+  rounds and stayed green with the fixed `/sessions/` prefix deleted from a route *and* `_SLUG_RE`
+  widened to admit `/` and `:` -- both halves of the failure it is named after, applied at once. This closes the gap CodeQL's `py/url-redirection` query correctly
+  found: the four sites (`sessions.py`'s `analysis_failed`, `discovery.py`'s `run_discovery` and
+  `submit_answers`, `artifacts.py`'s `generate_artifact`) had no equivalent to the API layer's own
+  path-traversal guard (#425/#499). A new decision record, `docs/decisions/0006-codeql-sanitizers-it-cannot-see.md`,
+  states the standing position on both open CodeQL query classes on this repo (`py/path-injection`,
+  `py/url-redirection`) -- why the existing sanitizers make today's 31 open alerts false positives,
+  which test would go red if any of them stopped holding, and what would reverse the position (#500).
+
 ## [3.1.0] - 2026-09-02
 
 ### Added
@@ -5233,7 +5430,8 @@ robustness holes that real input exposes were closed, and the regression lens an
   generators (PRD, user stories, estimate, acceptance criteria, delivery epic with GitHub/GitLab
   exports), and the MIT license.
 
-[Unreleased]: https://github.com/jbkkz/requivo/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/jbkkz/requivo/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/jbkkz/requivo/releases/tag/v3.2.0
 [3.1.0]: https://github.com/jbkkz/requivo/releases/tag/v3.1.0
 [3.0.0]: https://github.com/jbkkz/requivo/releases/tag/v3.0.0
 [2.0.0]: https://github.com/jbkkz/requivo/releases/tag/v2.0.0

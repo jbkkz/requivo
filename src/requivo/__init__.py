@@ -22,4 +22,4 @@ import logging
 # adds a silent sink, it never removes or shadows one somebody else attaches.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"

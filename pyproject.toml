@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "requivo"
-version = "3.1.0"
+version = "3.2.0"
 description = "Turn a vague product request into a versioned requirements model: ask only the questions that change the solution, generate the brief and PRD from it, and compute exactly what a changed answer invalidates."
 readme = "README.md"
 requires-python = ">=3.9"
