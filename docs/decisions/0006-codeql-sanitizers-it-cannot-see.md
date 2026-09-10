@@ -4,13 +4,15 @@
 
 ## Context
 
-Code scanning on `main` carries 31 open alerts (#500): 27 high `py/path-injection`
-("uncontrolled data used in path expression"), all but one in `core/persistence.py`, the last in
-`services/discovery.py`; 4 medium `py/url-redirection`, one in each of `web/routes/sessions.py`,
-`web/routes/discovery.py` (two sites) and `web/routes/artifacts.py`. #499 is what surfaced them at
-this volume: introducing an HTTP surface with a `{slug}` path parameter gave CodeQL its first
-user-controlled *source* reaching `core/persistence.py`, and 12 of the 27 were re-attributed to that
-pull request's diff even though it does not touch the lines flagged.
+Code scanning on `main` carried 31 open alerts (#500) at the time this record was written --
+since dismissed as false positives, each naming the guard behind it, per the Decision below: 27 high
+`py/path-injection` ("uncontrolled data used in path expression"), all but one in
+`core/persistence.py`, the last in `services/discovery.py`; 4 medium `py/url-redirection`, one in
+each of `web/routes/sessions.py`, `web/routes/discovery.py` (two sites) and
+`web/routes/artifacts.py`. #499 is what surfaced them at this volume: introducing an HTTP surface
+with a `{slug}` path parameter gave CodeQL its first user-controlled *source* reaching
+`core/persistence.py`, and 12 of the 27 were re-attributed to that pull request's diff even though
+it does not touch the lines flagged.
 
 Every one of the 31 is a false positive for a structural reason, not a coincidental one:
 
