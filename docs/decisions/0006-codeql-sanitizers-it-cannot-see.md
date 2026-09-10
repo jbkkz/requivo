@@ -4,13 +4,15 @@
 
 ## Context
 
-Code scanning on `main` carries 31 open alerts (#500): 27 high `py/path-injection`
-("uncontrolled data used in path expression"), all but one in `core/persistence.py`, the last in
-`services/discovery.py`; 4 medium `py/url-redirection`, one in each of `web/routes/sessions.py`,
-`web/routes/discovery.py` (two sites) and `web/routes/artifacts.py`. #499 is what surfaced them at
-this volume: introducing an HTTP surface with a `{slug}` path parameter gave CodeQL its first
-user-controlled *source* reaching `core/persistence.py`, and 12 of the 27 were re-attributed to that
-pull request's diff even though it does not touch the lines flagged.
+Code scanning on `main` carried 31 open alerts (#500) at the time this record was written --
+since dismissed as false positives, each naming the guard behind it, per the Decision below: 27 high
+`py/path-injection` ("uncontrolled data used in path expression"), all but one in
+`core/persistence.py`, the last in `services/discovery.py`; 4 medium `py/url-redirection`, one in
+each of `web/routes/sessions.py`, `web/routes/discovery.py` (two sites) and
+`web/routes/artifacts.py`. #499 is what surfaced them at this volume: introducing an HTTP surface
+with a `{slug}` path parameter gave CodeQL its first user-controlled *source* reaching
+`core/persistence.py`, and 12 of the 27 were re-attributed to that pull request's diff even though
+it does not touch the lines flagged.
 
 Every one of the 31 is a false positive for a structural reason, not a coincidental one:
 
@@ -53,10 +55,11 @@ sanitizer stopped holding, and add the guard the open-redirect class was missing
 (a 404 from a nonsense slug would prove nothing) and `test_a_legitimate_slug_still_redirects_where_it_should`
 as the must-not-fire control. These four sites had no equivalent before #500. A guard of the same
 shape over the path-injection class, through the API's own `{slug}`/`{artifact_type}` parameters, is
-being added separately on the not-yet-merged pull request #499 (issue #425) -- named here for
-provenance, not as something this record leans on: that guard living on a different branch was not
-verified as part of writing this record, and the reasoning above stands on its own regardless of
-when or whether that pull request lands.
+in the tree now: #499 (issue #425) added `tests/api/test_api_traversal.py`, whose
+`test_no_slug_shaped_traversal_reaches_the_filesystem` and
+`test_no_artifact_type_traversal_reaches_the_filesystem` cover the two parameters and whose
+`test_the_refusal_is_the_slug_guard_and_not_merely_a_missing_session` is the must-fire half -- named
+here so a reader can go run it, not taken on trust.
 
 **Do not turn the query off, add a path filter, or exclude `core/persistence.py` (or any file) from
 scanning.** The alerts are wrong today because the sanitizers hold today; the value of the query is
