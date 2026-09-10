@@ -54,6 +54,14 @@ default behaviours the templates rely on.
 - **License:** Apache License 2.0 — the same license as this project (see `LICENSE`); no separate
   text reproduced here for that reason.
 
+`swagger-ui-bundle.js.LICENSE.txt` and `swagger-ui-standalone-preset.js.LICENSE.txt` ride along
+next to their respective bundles, unedited from the npm package — each is upstream's own webpack
+build attributing the third-party (mostly MIT) sub-dependencies compiled into that one file
+(`classnames`, `buffer`, `ieee754`, and others). Found missing by the v3.2.0 release audit
+reviewing #504: vendoring a bundle that itself bundles other people's code redistributes their
+license notices too, not only swagger-ui-dist's own Apache-2.0 one — the same "a redistributed file
+should be traceable to its source" argument this file opens with for htmx, one layer further in.
+
 **Why it is vendored rather than fetched from a CDN.** `/docs` used to load
 `swagger-ui-dist@5` (a floating major, no lockfile) from `cdn.jsdelivr.net` into the same origin
 `GET /api/v1/sessions` answers 200 with no credential (#504). This app's own CSP also sets
@@ -70,8 +78,8 @@ bundle in three files appears in no dependency manifest, so nothing scans it for
 
 1. Download `swagger-ui-dist` at the target version from npm (`npm view swagger-ui-dist@<version>
    dist.tarball`, or the registry tarball directly) and extract `swagger-ui-bundle.js`,
-   `swagger-ui-standalone-preset.js` and `swagger-ui.css`.
-2. Replace the three files under `src/requivo/api/static/vendor/swagger-ui/` verbatim — no local
+   `swagger-ui-standalone-preset.js`, `swagger-ui.css`, and their two companion `.LICENSE.txt` files.
+2. Replace the five files under `src/requivo/api/static/vendor/swagger-ui/` verbatim — no local
    edits, ever.
 3. Leave `swagger-initializer.js` alone unless the new version's own `index.html` changed which
    scripts it loads or in what order (it has not, across 5.x).
@@ -114,7 +122,10 @@ in the browser's own default sans-serif rather than a self-hosted substitute; no
 layout depends on Montserrat specifically. The worker `redoc.standalone.js` uses internally for
 search indexing is created from an in-memory `Blob`, not fetched, so no second file is needed for it
 (verified directly against the bundle: `new Blob([...])` wraps the worker source, which is
-concatenated into this same file at build time upstream).
+concatenated into this same file at build time upstream). `redoc.standalone.js.LICENSE.txt` rides
+along next to it for the same reason as swagger-ui-dist's own two `.LICENSE.txt` files above —
+upstream's webpack build attributing the third-party sub-dependencies compiled into the bundle
+(`classnames`, Stickyfill, and others), unedited from the npm package.
 
 **Known limit, found by the v3.2.0 release audit reviewing this change and not yet closed.** The
 sidebar `redoc.standalone.js` renders on every `/redoc` page carries an unconditional "API docs by
@@ -133,7 +144,8 @@ maintainer decision, not one this change makes unilaterally.
 
 **How it is updated, and who does it.** By hand, as above.
 
-1. Download `redoc` at the target version from npm and extract `bundles/redoc.standalone.js`.
-2. Replace `src/requivo/api/static/vendor/redoc/redoc.standalone.js` verbatim — no local edits, ever.
+1. Download `redoc` at the target version from npm and extract `bundles/redoc.standalone.js` and
+   its companion `bundles/redoc.standalone.js.LICENSE.txt`.
+2. Replace both files under `src/requivo/api/static/vendor/redoc/` verbatim — no local edits, ever.
 3. Bump the **Version** line above.
 4. Re-run `pytest tests/api -q`.

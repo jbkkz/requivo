@@ -40,12 +40,21 @@ _NOT_VENDORED = (
 def _text_attr(path: str) -> str:
     """The `text` attribute git would apply to `path` on checkout, per `.gitattributes` -- `"unset"`
     (`-text`, normalization off), `"unspecified"` (git's own default applies), or `"set"` (`text`,
-    normalization forced on)."""
+    normalization forced on).
+
+    Captured as **bytes** and decoded explicitly with `.decode("utf-8")` (invariant 16), not
+    `subprocess.run(text=True)` -- mirroring `scripts/golden_lib.py`'s `_git()`, whose own docstring
+    explains why: `text=True` turns on Python's universal-newlines translation, silently rewriting a
+    lone `\r`/`\r\n` in the child's stdout into `\n` before any caller-level parsing runs (#456).
+    Not live against the five hardcoded ASCII paths this file calls it with today -- `git
+    check-attr` emits one line per call and `.strip()` already removes a trailing `\r` regardless --
+    found by the v3.2.0 release audit reviewing #504 as the same pattern this repository already has
+    a named rule against, not as a reproduced defect."""
     result = subprocess.run(
-        ["git", "check-attr", "text", "--", path], cwd=REPO_ROOT,
-        capture_output=True, text=True, check=True)
+        ["git", "check-attr", "text", "--", path], cwd=REPO_ROOT, capture_output=True, check=True)
+    stdout = result.stdout.decode("utf-8")
     # `git check-attr`'s own output shape: "<path>: text: <value>".
-    return result.stdout.strip().rsplit(": ", 1)[-1]
+    return stdout.strip().rsplit(": ", 1)[-1]
 
 
 def test_every_vendored_bundle_is_exempt_from_line_ending_normalization():
