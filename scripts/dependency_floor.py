@@ -21,8 +21,8 @@ get rather than the string in the manifest. What this script owns is the two hal
 cannot supply -- *which* requirements the promise covers, and whether the environment that came out
 is the one that was asked for.
 
-Scope is the *runtime* promise: `[project] dependencies` plus the `anthropic` and `web` extras, both
-of which a user installs by name. The `dev` extra is deliberately excluded -- pytest and ruff are
+Scope is the *runtime* promise: `[project] dependencies` plus the `anthropic`, `web` and `api`
+extras, each of which a user installs by name. The `dev` extra is deliberately excluded -- pytest and ruff are
 this project's tooling, not something a user's resolver has to satisfy, and `tomli`/`packaging` are
 how the floor is measured, so flooring them is a leg checking itself.
 """
@@ -35,8 +35,13 @@ from pathlib import Path
 
 # The runtime promise, and only it. Named explicitly rather than "every extra except dev", so that a
 # new extra has to be classified by a person instead of silently joining the floor set or silently
-# escaping it.
-RUNTIME_EXTRAS = ("anthropic", "web")
+# escaping it. `api` (#425) escaped it for exactly one review round: it is user-installable by name,
+# so it is a runtime promise, and it was not listed here -- the outcome the sentence above exists to
+# prevent, on the first extra added after that sentence was written. Listing it also converts a
+# comment in `pyproject.toml` into a guard: `[api]` and `[web]` deliberately hold the same `fastapi`
+# floor, and `constraints()` refuses one name carrying two floors, so a bump to either alone now
+# fails the leg instead of quietly drifting.
+RUNTIME_EXTRAS = ("anthropic", "web", "api")
 
 # `name>=1.2.3` with optional trailing specifiers: `pydantic>=2.0,<3` -> ("pydantic", "2.0").
 _REQUIREMENT = re.compile(r"^(?P<name>[A-Za-z0-9._-]+)\s*(?P<rest>.*)$")

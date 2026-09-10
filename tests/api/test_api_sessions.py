@@ -51,6 +51,36 @@ def test_list_sessions_degrades_an_unreadable_entry_rather_than_failing_the_set(
     assert broken["error"]
 
 
+def test_the_api_list_row_is_the_same_row_session_list_json_publishes(client):
+    """`api/routes/sessions.py` restates `deterministic/sessions.py`'s private `_session_list_row`
+    rather than importing across two optional-extra surfaces. That is a defensible call and it
+    leaves a public payload shape (invariant 8) written down twice with nothing comparing them --
+    so this compares them, on both arms, against one workspace.
+
+    Not a key-set check: the *values* have to agree too. A degraded row that said `revision: 0`
+    where the other says `null` would pass a shape assertion and be the quiet-wrong-answer form of
+    exactly the bug the CLI row's own docstring is about. Found in review of #425.
+    """
+    from requivo.api.routes.sessions import _session_list_row as api_row
+    from requivo.deterministic.sessions import _session_list_row as cli_row
+
+    seed_session("good-session")
+    store.create_session("broken-session", "a request")
+    (store.canonical_dir("broken-session") / "session.json").write_text("not json", encoding="utf-8")
+
+    entries = SessionService().list_entries()
+    assert {e.readable for e in entries} == {True, False}, (
+        "fixture is blind: this needs one readable and one degraded entry to compare both arms")
+    for entry in entries:
+        assert api_row(entry) == cli_row(entry), (
+            f"the API and `session list --json` disagree about the row for {entry.slug!r}")
+
+    # And the route really is built from that function, rather than the two agreeing in a test while
+    # the response is assembled some third way.
+    served = {r["slug"]: r for r in client.get("/api/v1/sessions").json()["sessions"]}
+    assert served == {e.slug: cli_row(e) for e in entries}
+
+
 def test_get_session_returns_the_session_show_json_shape(client):
     seed_session("leave-approval")
     resp = client.get("/api/v1/sessions/leave-approval")
