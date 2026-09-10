@@ -116,6 +116,21 @@ search indexing is created from an in-memory `Blob`, not fetched, so no second f
 (verified directly against the bundle: `new Blob([...])` wraps the worker source, which is
 concatenated into this same file at build time upstream).
 
+**Known limit, found by the v3.2.0 release audit reviewing this change and not yet closed.** The
+sidebar `redoc.standalone.js` renders on every `/redoc` page carries an unconditional "API docs by
+Redocly" attribution link with a small logo image, and mounting it always attempts
+`https://cdn.redoc.ly/redoc/logo-mini.svg` regardless of any option this project passes — verified
+directly against the bundle (the component's own `useEffect` fires on mount with no gate) and
+against the rendered page. This app's CSP (`img-src 'self' data:`, no override — see `api/app.py`)
+refuses the load before any byte leaves the machine, so there is no actual disclosure; what remains
+true is narrower than "no request is attempted," which is the bar `swagger-initializer.js`'s
+`validatorUrl: null` meets for the equivalent Swagger UI case. No supported ReDoc option suppresses
+just this element — `disableSidebar` would remove the navigation sidebar entirely, which is a
+disproportionate response, and patching the vendored bundle is exactly what this file's own "no
+local edits, ever" rule forbids. Filed rather than fixed for that reason: the available remedies
+(accept the CSP-mitigated residual, patch the vendor file as a named exception, or drop ReDoc) are a
+maintainer decision, not one this change makes unilaterally.
+
 **How it is updated, and who does it.** By hand, as above.
 
 1. Download `redoc` at the target version from npm and extract `bundles/redoc.standalone.js`.

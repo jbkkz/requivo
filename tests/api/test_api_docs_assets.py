@@ -68,3 +68,20 @@ def test_works_under_the_strict_script_src_with_no_exception_carved_for_it(clien
         csp = r.headers["Content-Security-Policy"]
         assert "script-src 'self'" in csp
         assert "'unsafe-inline'" not in csp.split("script-src", 1)[1].split(";", 1)[0]
+
+
+def test_the_redoc_pages_img_src_has_no_cdn_exception_either(client):
+    """`redoc.standalone.js`'s own sidebar unconditionally attempts
+    `https://cdn.redoc.ly/redoc/logo-mini.svg` on every `/redoc` page mount -- a known limit, not
+    fixable without either patching the vendored bundle (`THIRD-PARTY-NOTICES.md`'s "no local edits,
+    ever" rule forbids it) or dropping the sidebar entirely, and recorded in
+    `THIRD-PARTY-NOTICES.md`'s own "Known limit" paragraph rather than silently accepted. What keeps
+    it from being an actual disclosure is `img-src 'self' data:` carrying no override: the browser
+    refuses the load before any byte reaches the network, so this pins the one directive load-bearing
+    for that claim -- a future widening of `img-src` on this app would reopen it with nothing here to
+    notice."""
+    for path in ("/docs", "/redoc"):
+        r = client.get(path)
+        csp = r.headers["Content-Security-Policy"]
+        img_src = csp.split("img-src", 1)[1].split(";", 1)[0]
+        assert img_src.strip() == "'self' data:", f"{path}: img-src widened to {img_src!r}"
