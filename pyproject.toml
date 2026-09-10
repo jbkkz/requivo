@@ -364,13 +364,16 @@ include = ["requivo*"]
 
 [tool.setuptools.package-data]
 # Ship the engine's assets (prompts, framework schema, context cards, demo payload) inside the wheel,
-# plus the web interface's templates and static files (CSS/JS + the vendored HTMX — no CDN at runtime).
+# plus the web interface's templates and static files (CSS/JS + the vendored HTMX — no CDN at runtime),
+# plus the API facade's own static files (the vendored Swagger UI/ReDoc bundles + favicon, self-hosted
+# per #504 — no CDN at runtime there either).
 # Without this, a `pip install` outside the clone would have no prompts/schema (every prompt-building
-# command fails) and `requivo web` would 500 on a missing template. The wheel-install CI job guards it.
+# command fails), `requivo web` would 500 on a missing template, and the API's `/docs`/`/redoc` would
+# 500 on a missing static file. The wheel-install CI job guards all three.
 # `py.typed` is the PEP 561 marker (#423): an empty file whose presence, not content, tells a type
 # checker that requivo ships its own inline types rather than needing a stub package. Nothing reads
 # it at import time -- `tests/test_public_seam_423.py` is what would go red if it stopped shipping.
-requivo = ["assets/**/*", "web/templates/**/*", "web/static/**/*", "py.typed"]
+requivo = ["assets/**/*", "web/templates/**/*", "web/static/**/*", "api/static/**/*", "py.typed"]
 
 [tool.ruff]
 line-length = 120

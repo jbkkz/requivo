@@ -5,7 +5,9 @@
 serializable envelope every other surface already publishes (`error.to_dict()` plus
 `http_status_for` for the status), and turns OpenAPI docs ON -- unlike Requivo Web, which keeps them
 off because a browser app's routes are not an invitation to script it. This *is* the invitation: a
-machine client is exactly this surface's audience.
+machine client is exactly this surface's audience. Docs are self-hosted (#504, `api/routes/docs.py`
++ `api/static/`) rather than loaded from a CDN, and every response -- docs included -- carries the
+same security-header policy Requivo Web does (#503, `requivo.security_headers`).
 
 Nothing here binds a port at import time: this is a factory, mirroring `web.app.create_app`. Slice 1
 ships no CLI verb to call it from yet -- that is slice 4's `requivo api serve` -- so a caller wanting
@@ -19,6 +21,7 @@ import logging
 
 from requivo import __version__
 from requivo.providers.errors import EngineError
+from requivo.security_headers import apply_security_headers
 
 logger = logging.getLogger("requivo.api")
 
@@ -33,6 +36,40 @@ _DESCRIPTION = (
     "estimate-artifact decision). Once they land, `docs/compatibility.md` gains an API section in "
     "the same shape as every other public payload this project promises, and this notice comes down."
 )
+
+# This app's own static mount: the vendored `/docs`/`/redoc` assets and favicon (#504) -- nothing of
+# the reader's, unlike everything under `/api/v1/`, so it is exempt from `Cache-Control: no-store`
+# below on the same argument `web/app.py` makes for `/static/`.
+_BUNDLED_ASSET_PREFIX = "/api-static/"
+
+# Widened by exactly one directive from `requivo.security_headers.DEFAULT_CSP`: `style-src` carries
+# `'unsafe-inline'` in addition to `'self'`. This is not the CDN exception #503 was filed to refuse
+# -- that is `script-src`, which stays `'self'` with no exception, here or anywhere else in this
+# app -- it is a different directive, governing presentation rather than execution, widened for a
+# different reason: the vendored `swagger-ui-bundle.js`/`swagger-ui-standalone-preset.js` (#504) are
+# a React application that sets computed layout via inline `style` attributes throughout its own
+# DOM (expand/collapse arrows, resizable panels, syntax highlighting), unconditionally and by
+# construction -- verified directly against the unmodified vendored files, not assumed. Patching a
+# vendored third-party bundle to stop doing this is exactly what `THIRD-PARTY-NOTICES.md`'s own rule
+# for htmx forbids ("no local edits, ever, or the version stops describing what is shipped"), so the
+# alternative is a broken Swagger UI page under a CSP this strict, which trades a real usability
+# regression for a directive that governs CSS, not code execution. `form-action` tightens instead,
+# to `'none'`: this surface serves no HTML form, unlike Requivo Web's `'self'`.
+_CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+
+def _is_bundled_asset(path: str) -> bool:
+    """Does this path name a file shipped inside the package rather than anything of the reader's?"""
+    return path.startswith(_BUNDLED_ASSET_PREFIX)
+
+
+def _apply_security_headers(response, path: str):
+    """State this app's header policy on one response -- mirrors `web.app._apply_security_headers`,
+    both now thin wrappers around `requivo.security_headers.apply_security_headers`, the one
+    definition #503 was filed to get. See that module for why a header added there reaches both
+    surfaces without a second edit."""
+    return apply_security_headers(response, path, csp=_CSP, is_bundled_asset=_is_bundled_asset)
 
 
 def create_api():
@@ -50,8 +87,10 @@ def create_api():
         from fastapi import FastAPI, Request
         from fastapi.exceptions import RequestValidationError
         from fastapi.responses import JSONResponse
+        from fastapi.staticfiles import StaticFiles
 
-        from requivo.api.routes import artifacts, health, sessions
+        from requivo.api.routes import artifacts, docs, health, sessions
+        from requivo.api.static_files import STATIC_DIR
     except ImportError as e:
         raise EngineError(
             "The HTTP API is not installed. Install it with `pip install 'requivo[api]'` "
@@ -66,8 +105,20 @@ def create_api():
         title="Requivo API",
         version=__version__,
         description=_DESCRIPTION,
-        docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json",
+        # `/docs` and `/redoc` are wired by hand below (`api/routes/docs.py`), not by FastAPI's own
+        # defaults -- both of which hardcode a `cdn.jsdelivr.net` URL (#504). `docs_url=None,
+        # redoc_url=None` is the same switch `web/app.py` uses to turn its docs off entirely; here it
+        # only stops FastAPI from wiring its *own* routes at these two paths, leaving them free for
+        # this module's replacements. `openapi_url` is untouched -- the spec itself is already
+        # same-origin JSON, never third-party.
+        docs_url=None, redoc_url=None, openapi_url="/openapi.json",
     )
+
+    app.mount("/api-static", StaticFiles(directory=str(STATIC_DIR)), name="api-static")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        return _apply_security_headers(await call_next(request), request.url.path)
 
     @app.exception_handler(RequivoError)
     async def _requivo_error(request: Request, exc: RequivoError):
@@ -91,10 +142,16 @@ def create_api():
     @app.exception_handler(Exception)
     async def _unexpected(request: Request, exc: Exception):
         logger.exception("unhandled error serving %s %s", request.method, request.url.path)
-        return JSONResponse(
-            {"code": "internal_error", "message": "Something went wrong on the server."},
-            status_code=500)
+        # Stated here too, not only in the middleware -- `Exception` is handled by Starlette's
+        # `ServerErrorMiddleware`, *outside* the user middleware stack, so `security_headers` above
+        # never sees this response. The identical shape as `web/app.py`'s `_unexpected` (#340, #462).
+        return _apply_security_headers(
+            JSONResponse(
+                {"code": "internal_error", "message": "Something went wrong on the server."},
+                status_code=500),
+            request.url.path)
 
+    app.include_router(docs.router)
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(sessions.router, prefix="/api/v1")
     app.include_router(artifacts.router, prefix="/api/v1")

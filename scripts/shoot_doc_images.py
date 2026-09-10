@@ -126,7 +126,9 @@ def surface_digest(root: Path = REPO) -> str:
     that should send someone back to look at the screenshots.
 
     **Line endings are normalised before hashing, and that is not tidiness.** Every file in `SURFACE`
-    is text, this repository ships no `.gitattributes`, and a Windows checkout therefore holds CRLF
+    is text, none of it lives under a `static/vendor/` directory, and `.gitattributes` (#504) covers
+    only those -- the byte-exact third-party bundles that must never be normalized -- so every file
+    here is still subject to git's ordinary default, and a Windows checkout therefore holds CRLF
     where macOS and Linux hold LF. Hashing raw bytes made the digest a fact about the checkout rather
     than about the surface, so the guard went red on `Test (py3.13, windows-latest)` alone while
     twelve other legs were green -- the same shape as #257's `card_byte_size`, which measured
