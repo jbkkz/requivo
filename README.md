@@ -13,8 +13,9 @@ can review before estimating.
 
 **The shared understanding is the source of truth. Every document is generated from it.**
 
-Built for Product Managers, Solutions Engineers and Business Analysts working on complex, configurable
-B2B products.
+Built for the person who owns scoping — solutions engineers, consultants, technical PMs and
+agency leads — on complex, configurable B2B products. Run it locally, then hand the decision brief
+(or the Requivo Web session) to the PM or client who needs to sign off.
 
 ---
 
@@ -118,16 +119,18 @@ messy multi-feature one lives in
 2. **Clarify high-impact unknowns** — Requivo asks only what would change the solution, and infers the
    rest as assumptions to confirm.
 3. **Build and validate the understanding** — a versioned, typed model that is the durable product.
-4. **Generate traceable documents** — each is a view of the model, and knows which decisions it rests on.
+4. **Write the decision brief, and see what a changed answer costs** — a computed answer to "what does
+   this invalidate?", read off the dependency graph rather than re-reasoned from scratch.
 
 The decision rule is **information value = uncertainty × impact**. Impact is estimated from the product
 context you give it, so better context means sharper questions.
 
-The main output is a **decision brief** — the smallest document a scope review can be run from: what is
-confirmed, what is assumed, the decisions on record, the premises worth contesting, and what is still
-open. It is not a PRD; it is what you read *before* writing one. A PRD, user stories, acceptance
-criteria, an uncertainty-aware estimate, a delivery epic with GitHub/GitLab issue plans and release
-notes all generate from the same understanding, without redoing the discovery.
+The **decision brief** is the smallest document a scope review can be run from: what is confirmed,
+what is assumed, the decisions on record, the premises worth contesting, and what is still open. It is
+not a PRD; it is what you read *before* writing one. And every downstream document — a PRD, user
+stories, acceptance criteria, an uncertainty-aware estimate — generates from the same understanding,
+without redoing the discovery. A delivery epic — with GitHub/GitLab issue plans — and release notes
+follow the same rule once scoping is settled.
 
 The vocabulary — what we know, what we are assuming, open question, needs updating, are we ready — and
 the model underneath it: [`docs/requirements-model.md`][requirements-model].

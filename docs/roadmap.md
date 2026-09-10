@@ -6,14 +6,12 @@
 
 - **Discovery engine** — the questions that could change the solution, multi-turn refinement, and
   the decision brief (with challenges that contest the premise)
-- **Artifact generators** — PRD, user stories, uncertainty-aware estimate, acceptance criteria,
-  delivery epic, release notes
-- **Tool-neutral epic export** (`epic.json`) and **tracker adapters** — idempotent, n8n-ready
-  issue-creation plans for GitHub and GitLab
 - **The model as a durable product** (`model.json`) — every artifact regenerable from it without
   redoing discovery
 - **A dependency graph** — `requivo impact` shows a change's blast radius; a discovery turn flags the
   generated files a change makes stale
+- **Artifact generators** — PRD, acceptance criteria, an uncertainty-aware estimate, user stories,
+  a delivery epic, release notes
 - **Three interfaces over one engine** — the CLI, the Claude Code plugin, and the local Web interface,
   each a thin layer over the same Core and session format
 - **Versioned sessions** — per-revision provenance (provider, model, surface, prompt hash), optimistic
@@ -21,6 +19,8 @@
 - **A regression harness** — consensus over repeated runs, separating a real effect from sampling noise
 - **A self-contained wheel** — prompts, schema, context cards and the Web assets ship in the package;
   a user-level context directory (`REQUIVO_CONTEXT_DIR`) adds cards without a checkout
+- **Tool-neutral epic export** (`epic.json`) and **tracker adapters** — idempotent, n8n-ready
+  issue-creation plans for GitHub and GitLab
 
 ## Next
 

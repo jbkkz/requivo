@@ -1,7 +1,8 @@
 # Example — Leave approval
 
-The canonical example. One vague sentence, taken through the questions, the brief, and — at the end —
-a changed answer that moves the scope. Read it in order; no install required.
+The canonical example. One vague sentence, taken through the questions, the brief, and then the beat
+the rest of this exists for: a changed answer, and a computed account of what it costs. Read it in
+order; no install required.
 
 | Step | File | What it is |
 |---|---|---|
@@ -10,13 +11,9 @@ a changed answer that moves the scope. Read it in order; no install required.
 | 3 | [`solution-assessment.md`](solution-assessment.md) | The decision brief — what to review before committing to the scope. |
 | 4 | [`prd.md`](prd.md) | A PRD generated from the *same* understanding. |
 | 5 | [`acceptance-criteria.md`](acceptance-criteria.md) | Given/When/Then checklist, from the *same* understanding. |
-| 6 | [`epic.md`](epic.md) | A delivery epic — work broken into trackable issues. |
-| 7 | [`epic.json`](epic.json) | The same epic as a tool-neutral, GitHub/GitLab-importable export. |
-| 8 | [`release-notes.md`](release-notes.md) | Client-facing release notes. |
-| 9 | [`epic.github.json`](epic.github.json) | A GitHub issue-creation plan (adapter over the neutral export). |
-| 10 | [`epic.gitlab.json`](epic.gitlab.json) | A GitLab plan — `depends_on` becomes structured issue links. |
+| 6 | delivery outputs — [`epic.md`](epic.md), [`epic.json`](epic.json), [`epic.github.json`](epic.github.json), [`epic.gitlab.json`](epic.gitlab.json), [`release-notes.md`](release-notes.md) | Once scoping is settled: a delivery epic, its tool-neutral export, GitHub/GitLab issue-creation plans, and client-facing release notes — all still views of step 2. |
 
-Steps 3 through 10 are all views of step 2. Any other document (user stories, an estimate) comes from
+Steps 3 through 6 are all views of step 2. Any other document (user stories, an estimate) comes from
 the same `model.json` — that is the point: the shared understanding is the source of truth, and every
 document is generated from it.
 
@@ -24,44 +21,9 @@ Every file here was generated in one sitting from the same `model.json`, which i
 each other. The filename `solution-assessment.md` is the artifact's name on disk in every session;
 what a reader is shown is a decision brief.
 
-## Reproduce it
-
-Every document below is a view of step 2, so the first thing to do is put step 2 where the engine
-keeps understandings: in a session. Both of these are offline — no API key, and no re-analysis, since
-the model already exists.
-
-```bash
-requivo session init examples/leave-approval/request.md --slug leave-approval
-requivo model apply  leave-approval examples/leave-approval/model.json --expected-revision 0
-```
-
-You now hold this example's understanding at revision 1, and two more commands read it without
-spending anything:
-
-```bash
-requivo status leave-approval                # the understanding checklist and readiness
-requivo impact leave-approval integrations   # what rests on the integration topic
-```
-
-The generators take it from there. Each is one provider call and needs `ANTHROPIC_API_KEY`:
-
-```bash
-requivo brief    leave-approval                                   # the decision brief
-requivo prd      leave-approval                                   # the PRD
-requivo criteria leave-approval                                   # the acceptance criteria
-requivo epic     leave-approval --export-json --github --gitlab   # epic.md + neutral export + tracker plans
-requivo release  leave-approval v1.0                              # the release notes
-requivo stories  leave-approval                                   # user stories (also: requivo estimate)
-```
-
-Documents land in `.requivo/sessions/leave-approval/artifacts/`, under whichever directory you ran
-from — the files you are reading here are never written to.
-
-The `model.json` here was produced by a real interactive discovery from `request.md`.
-
 ## The part a chat transcript cannot do
 
-The steps above show generation. This part shows the reason the understanding is kept at all: when an
+The table above shows generation. This part shows the reason the understanding is kept at all: when an
 answer changes, Requivo can say what that costs — and it says it from the dependency graph, not from a
 model's opinion.
 
@@ -122,3 +84,38 @@ produce the same list every time, which is exactly what a generated answer canno
 
 In the Web interface the same sequence renders as a **What changed** block with a **Needs review**
 list, immediately under the answer you just gave.
+
+## Reproduce it
+
+Every document in the table above is a view of step 2, so the first thing to do is put step 2 where
+the engine keeps understandings: in a session. Both of these are offline — no API key, and no
+re-analysis, since the model already exists.
+
+```bash
+requivo session init examples/leave-approval/request.md --slug leave-approval
+requivo model apply  leave-approval examples/leave-approval/model.json --expected-revision 0
+```
+
+You now hold this example's understanding at revision 1, and two more commands read it without
+spending anything:
+
+```bash
+requivo status leave-approval                # the understanding checklist and readiness
+requivo impact leave-approval integrations   # what rests on the integration topic
+```
+
+The generators take it from there. Each is one provider call and needs `ANTHROPIC_API_KEY`:
+
+```bash
+requivo brief    leave-approval                                   # the decision brief
+requivo prd      leave-approval                                   # the PRD
+requivo criteria leave-approval                                   # the acceptance criteria
+requivo epic     leave-approval --export-json --github --gitlab   # epic.md + neutral export + tracker plans
+requivo release  leave-approval v1.0                              # the release notes
+requivo stories  leave-approval                                   # user stories (also: requivo estimate)
+```
+
+Documents land in `.requivo/sessions/leave-approval/artifacts/`, under whichever directory you ran
+from — the files you are reading here are never written to.
+
+The `model.json` here was produced by a real interactive discovery from `request.md`.
