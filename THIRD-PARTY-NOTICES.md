@@ -49,7 +49,8 @@ default behaviours the templates rely on.
 
 - **Version:** 5.32.15
 - **Files:** `src/requivo/api/static/vendor/swagger-ui/swagger-ui-bundle.js`,
-  `swagger-ui-standalone-preset.js`, `swagger-ui.css`
+  `swagger-ui-standalone-preset.js`, `swagger-ui.css`, and their two companion `.LICENSE.txt` files
+  (`swagger-ui-bundle.js.LICENSE.txt`, `swagger-ui-standalone-preset.js.LICENSE.txt`)
 - **Upstream:** https://www.npmjs.com/package/swagger-ui-dist — https://github.com/swagger-api/swagger-ui
 - **License:** Apache License 2.0 — the same license as this project (see `LICENSE`); no separate
   text reproduced here for that reason.
@@ -90,7 +91,8 @@ bundle in three files appears in no dependency manifest, so nothing scans it for
 ## redoc
 
 - **Version:** 2.5.3
-- **File:** `src/requivo/api/static/vendor/redoc/redoc.standalone.js`
+- **Files:** `src/requivo/api/static/vendor/redoc/redoc.standalone.js` and its companion
+  `redoc.standalone.js.LICENSE.txt`
 - **Upstream:** https://www.npmjs.com/package/redoc — https://github.com/Redocly/redoc
 - **License:** MIT
 
