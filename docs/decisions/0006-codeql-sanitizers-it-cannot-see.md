@@ -53,10 +53,11 @@ sanitizer stopped holding, and add the guard the open-redirect class was missing
 (a 404 from a nonsense slug would prove nothing) and `test_a_legitimate_slug_still_redirects_where_it_should`
 as the must-not-fire control. These four sites had no equivalent before #500. A guard of the same
 shape over the path-injection class, through the API's own `{slug}`/`{artifact_type}` parameters, is
-being added separately on the not-yet-merged pull request #499 (issue #425) -- named here for
-provenance, not as something this record leans on: that guard living on a different branch was not
-verified as part of writing this record, and the reasoning above stands on its own regardless of
-when or whether that pull request lands.
+in the tree now: #499 (issue #425) added `tests/api/test_api_traversal.py`, whose
+`test_no_slug_shaped_traversal_reaches_the_filesystem` and
+`test_no_artifact_type_traversal_reaches_the_filesystem` cover the two parameters and whose
+`test_the_refusal_is_the_slug_guard_and_not_merely_a_missing_session` is the must-fire half -- named
+here so a reader can go run it, not taken on trust.
 
 **Do not turn the query off, add a path filter, or exclude `core/persistence.py` (or any file) from
 scanning.** The alerts are wrong today because the sanitizers hold today; the value of the query is
