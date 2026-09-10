@@ -660,6 +660,139 @@ def test_the_service_refuses_a_context_card_that_does_not_exist(workspace):
         "Something.", context_cards=["b2b-platform"]).context_cards == ["b2b-platform"]
 
 
+def test_impact_reports_what_a_named_slot_reaches(workspace):
+    """`SessionService.impact` -- the XS addition #425's HTTP API `/impact` route is built on -- is
+    exactly `propagate(load_model(slug), resolve_slots(...))` behind the service seam: a decision
+    derived from the named slot, and a challenge contesting it, both come back."""
+    from requivo.core.contracts import Challenge, DesignDecision
+
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    model = EngineOutput.model_validate({
+        **_full_model(**{"workflow": _slot(80, "explicit", "high")}),
+        "decisions": [DesignDecision(decision="Draft-first invoices",
+                                     derived_from=["workflow"]).model_dump()],
+        "challenges": [Challenge(headline="Invoice at signature", premise="p", alternative="a",
+                                 consequence="c", recommendation="r",
+                                 contests=["workflow"]).model_dump()],
+    })
+    svc.update_model("s", model.model_dump())
+
+    report = svc.impact("s", ["workflow"])
+    assert any(d.decision == "Draft-first invoices" for d in report.decisions)
+    assert any(c.headline == "Invoice at signature" for c in report.challenges)
+    assert report.to_dict()["decisions"][0]["decision"] == "Draft-first invoices"
+
+
+def test_impact_refuses_an_unknown_slot_naming_it_in_details(workspace):
+    """Unlike the CLI's own `_cmd_impact`, which prints a warning for an unmatched token and keeps
+    rendering whatever did match, the service raises -- a caller over HTTP gets one structured
+    refusal rather than a partial report with no signal that something was left out."""
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+
+    with pytest.raises(UnknownSlotError) as e:
+        svc.impact("s", ["not-a-real-slot"])
+    assert e.value.details["unmatched"] == ["not-a-real-slot"]
+
+
+def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal(workspace):
+    """An empty list is "no slots named", the same reading `resolve_slots([])` already gives it
+    (`normalize_tokens`'s own docstring) -- not the same thing as a token that matched nothing."""
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+
+    report = svc.impact("s", [])
+    assert report.empty
+
+
+def test_show_with_status_reads_content_and_freshness_together(workspace):
+    """`ArtifactService.show_with_status` -- the coherent read the HTTP API's artifact envelope needs
+    (invariant 12, one layer over from the provider-snapshot case it was written for): both facts
+    come from one locked read rather than two separate calls that could disagree."""
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+    art.save("s", "brief", "# Brief\n", source_revision=1)
+
+    content, row = art.show_with_status("s", "brief")
+    assert content == "# Brief\n"
+    assert row == {"revision": 1, "filename": "solution-assessment.md",
+                   "updated_at": row["updated_at"], "stale": False}
+
+
+def test_show_with_status_404s_when_nothing_was_ever_saved(workspace):
+    from requivo.core.errors import SessionNotFoundError
+
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+
+    with pytest.raises(SessionNotFoundError):
+        art.show_with_status("s", "brief")
+
+
+def test_show_with_status_is_not_interleaved_by_a_concurrent_save(workspace):
+    """The must-fire proof behind the claim in `show_with_status`'s own docstring (found in review,
+    #425): a single-threaded test that only checks content and status agree when nothing else is
+    writing would pass identically whether the lock were there or not. This drives a real second
+    thread through `save()` while the read is paused *inside* the held lock, and shows it is
+    genuinely blocked -- not merely usually-fast-enough -- until the read completes."""
+    import threading
+
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+    art.save("s", "brief", "V1", source_revision=1)
+
+    reader_inside_lock = threading.Event()
+    reader_may_finish = threading.Event()
+    real_load_artifact = art.repo.load_artifact
+
+    def paused_load_artifact(slug, filename):
+        content = real_load_artifact(slug, filename)
+        reader_inside_lock.set()
+        assert reader_may_finish.wait(timeout=5), "the writer thread below never released the reader"
+        return content
+
+    art.repo.load_artifact = paused_load_artifact
+
+    result: dict = {}
+
+    def do_show():
+        result["content"], result["row"] = art.show_with_status("s", "brief")
+
+    reader = threading.Thread(target=do_show, daemon=True)
+    reader.start()
+    assert reader_inside_lock.wait(timeout=5), "the reader never reached its locked read"
+
+    writer_finished = threading.Event()
+
+    def do_save():
+        art.save("s", "brief", "V2", source_revision=1)
+        writer_finished.set()
+
+    writer = threading.Thread(target=do_save, daemon=True)
+    writer.start()
+
+    # Must genuinely be waiting on the reader's held lock, not racing ahead of it -- the same
+    # "not merely usually fast enough" assertion `test_persistence_guards.py`'s own lock tests make.
+    assert not writer_finished.wait(timeout=0.2), (
+        "a concurrent save() proceeded while show_with_status still held the lock -- reverting to "
+        "two separate unlocked calls (show() then list()) would let this assertion fail")
+
+    reader_may_finish.set()
+    reader.join(timeout=5)
+    assert writer_finished.wait(timeout=5), "the writer never finished once the reader released"
+
+    # Because the read was atomic, content and status describe the SAME save -- the first one,
+    # since the reader's locked read ran to completion before the writer's save() could start.
+    assert result["content"] == "V1"
+    assert result["row"]["revision"] == 1
+
+
 def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(workspace):
     """`False` is not "I don't know" — it is the claim that the artifact is up to date. It was being
     returned for a session whose history could not be read at all, which is the one case where the

@@ -22,12 +22,14 @@ from requivo.core.contracts import EngineOutput
 from requivo.core.dependencies import (
     ARTIFACT_FILES,
     REASONING_CONSUMERS,
+    ImpactReport,
     ReasoningDiff,
     diff_models,
     diff_reasoning,
     propagate,
+    resolve_slots,
 )
-from requivo.core.errors import RevisionConflictError, SessionExistsError, SessionNotFoundError
+from requivo.core.errors import RevisionConflictError, SessionExistsError, SessionNotFoundError, UnknownSlotError
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
@@ -470,6 +472,35 @@ class SessionService:
                 request=self.repo.request_text(slug),
                 context_cards=meta.context_cards,
             )
+
+    def impact(self, slug: str, slots: list[str]) -> ImpactReport:
+        """Pure query over the model's dependency graph: what rests on the named slots. No provider
+        call, no write -- the XS addition the HTTP API's `/impact` route needs so it stays
+        translation-only (#425) rather than composing `resolve_slots` and `propagate` itself: exactly
+        `requivo impact`'s own two calls (`cli.py`'s `_cmd_impact`), moved behind the service seam so
+        a second surface does not restate them.
+
+        `slots` are user-typed tokens -- slot ids or label substrings, matched the same
+        case-insensitive, substring-friendly way the CLI matches them. A token matching nothing is
+        refused rather than silently dropped: `UnknownSlotError` names every one, so a caller gets a
+        single structured 400 instead of the CLI's own print-a-warning-and-keep-going, which a
+        terminal reader can see happen and a JSON response cannot represent partially. An empty list
+        is not a refusal -- `resolve_slots([])` reads it as "no slots named" and returns an empty,
+        `report.empty`-true report, which is the correct answer to "what does changing nothing
+        reach?" rather than an error about a request that asked exactly that.
+
+        Deliberately narrower than `requivo impact` with no arguments at all, which renders a full
+        per-slot dependency map (`render_dependency_map`) -- a different shape (many small reports,
+        one per schema slot) that this method does not attempt to produce; the API route requires
+        `slots` for that reason (see #425's own report for the boundary)."""
+        model = self.load_model(slug)
+        resolved, unmatched = resolve_slots(slots)
+        if unmatched:
+            raise UnknownSlotError(
+                f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
+                "(e.g. 'permissions', 'workflow', 'reporting').",
+                details={"unmatched": unmatched})
+        return propagate(model, resolved)
 
     def rescope(self, slug: str, context_cards: list[str] | None) -> RescopeResult:
         """Re-scope an existing session's context-card selection (`session rescope`).

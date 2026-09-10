@@ -80,6 +80,14 @@ anthropic = ["anthropic>=0.42.0,<2"]
 # A thin FastAPI + Jinja2 + HTMX layer over the same services as the CLI — no Node build, assets ship
 # in the wheel. Not required for the CLI or Claude Code. Add [anthropic] too for provider-backed actions.
 web = ["fastapi>=0.110,<1", "uvicorn>=0.29,<1", "jinja2>=3.1,<4", "python-multipart>=0.0.9,<1"]
+# The local HTTP API facade (#425): `pip install 'requivo[api]'`. A thin FastAPI layer over the same
+# services as the CLI and Requivo Web -- no Jinja2, no HTMX, no form parsing (every body here is
+# JSON, so `python-multipart` buys nothing). Same `fastapi` floor and ceiling as `[web]`, on purpose:
+# holding a second, independently-drifting pin for the identical dependency is how the two extras'
+# tested version ranges silently diverge. `uvicorn` is not declared here yet -- slice 1 (#425) ships
+# no CLI verb that binds a port; the serve verb lands in a later slice of the same issue and adds it
+# then, not before something needs it.
+api = ["fastapi>=0.110,<1"]
 # The repository conformance suite (#424): `pip install 'requivo[testing]'` for a consumer building a
 # non-file SessionRepository (a Postgres backing, most concretely) who wants to subclass
 # `requivo.testing.repository_conformance.SessionRepositoryConformance` in their own pytest suite.
@@ -210,7 +218,7 @@ testing = ["pytest>=8.0"]
 # So 5.0 is an old-enough, universally-resolvable floor rather than a version this project has run
 # a report on, and it says so instead of asserting a behaviour no leg can go red for -- the failure
 # CLAUDE.md's #134 rule names, which a reviewer caught in the first draft of this very comment.
-dev = ["requivo[anthropic,web,testing]", "ruff>=0.6", "httpx>=0.26.0,<1",
+dev = ["requivo[anthropic,web,api,testing]", "ruff>=0.6", "httpx>=0.26.0,<1",
        "tomli>=1.1.0; python_version < '3.11'", "packaging>=24.2",
        "pyright>=1.1.400,<2", "setuptools>=77.0.1", "pytest-cov>=5.0,<8"]
 

@@ -57,6 +57,17 @@ def test_a_requirement_with_no_lower_bound_is_refused(requirement):
 
 # ── assembling the set ─────────────────────────────────────────────────────────────────────────
 
+def _extras(**declared) -> dict:
+    """Every extra `RUNTIME_EXTRAS` names, empty unless this test declares one.
+
+    Derived rather than hand-listed. `runtime_requirements` refuses a manifest missing an extra the
+    script names -- correctly, that is the check above -- so a synthetic manifest that hardcodes the
+    set raises `declares no <extra>` before the test's own assertion can run. Three of these tests
+    did exactly that and went red the moment `api` joined `RUNTIME_EXTRAS` (#425), each with a
+    message about a missing extra rather than about the thing it was testing.
+    """
+    return {extra: list(declared.get(extra, ())) for extra in RUNTIME_EXTRAS}
+
 def test_a_named_runtime_extra_that_is_gone_is_refused():
     """`RUNTIME_EXTRAS` names the extras a user installs. If one is renamed or removed, the script
     must say so: silently covering one fewer extra is a narrower promise reported as the same one."""
@@ -70,7 +81,7 @@ def test_one_name_with_two_different_floors_is_refused():
     declared. The manifest is saying two things about one package; that is for a person to settle."""
     pyproject = {"project": {
         "dependencies": ["jinja2>=3.1,<4"],
-        "optional-dependencies": {"anthropic": ["anthropic>=0.40.0"], "web": ["jinja2>=3.0,<4"]},
+        "optional-dependencies": _extras(anthropic=["anthropic>=0.40.0"], web=["jinja2>=3.0,<4"]),
     }}
     with pytest.raises(UndeclaredFloor, match="two different floors"):
         constraints(pyproject)
@@ -81,7 +92,7 @@ def test_the_same_floor_declared_twice_is_not_a_contradiction():
     duplicate is deduplicated rather than treated as a disagreement."""
     pyproject = {"project": {
         "dependencies": ["jinja2>=3.1,<4"],
-        "optional-dependencies": {"anthropic": ["anthropic>=0.40.0"], "web": ["jinja2>=3.1,<4"]},
+        "optional-dependencies": _extras(anthropic=["anthropic>=0.40.0"], web=["jinja2>=3.1,<4"]),
     }}
     assert constraints(pyproject) == ["anthropic==0.40.0", "jinja2==3.1"]
 
@@ -128,6 +139,37 @@ def test_every_runtime_extra_named_here_exists_in_the_manifest():
         assert extra in extras, f"RUNTIME_EXTRAS names '{extra}', which pyproject.toml does not declare"
 
 
+# Extras the runtime promise deliberately does not cover, each with the reason. An entry here is a
+# classification on record; the test below is what makes the classification compulsory.
+_NOT_A_RUNTIME_PROMISE = {
+    "dev": "this project's own toolchain -- pytest, ruff, and the tomli/packaging that measure the "
+           "floor. Flooring the measuring instrument is a leg checking itself.",
+    "testing": "the repository conformance suite (#424), installed by a consumer writing their own "
+               "pytest suite against a non-file backing -- test scaffolding, not a runtime path.",
+}
+
+
+def test_every_extra_in_the_manifest_is_either_floored_or_excluded_on_record():
+    """The direction `test_every_runtime_extra_named_here_exists_in_the_manifest` does not check,
+    and the one that actually leaked. `RUNTIME_EXTRAS` is hand-maintained precisely so a new extra
+    is classified by a person -- but nothing failed when a person did not, so `[api]` shipped
+    user-installable by name and outside the floor set, which is the silent-narrower-promise this
+    whole script exists to prevent, reached through the script's own configuration (#425).
+
+    Adding an extra now forces the choice: floor it, or say here why it is not a runtime promise."""
+    extras = set(_real_pyproject()["project"]["optional-dependencies"])
+    unclassified = extras - set(RUNTIME_EXTRAS) - set(_NOT_A_RUNTIME_PROMISE)
+    assert not unclassified, (
+        f"pyproject.toml declares {sorted(unclassified)}, which is neither in RUNTIME_EXTRAS nor "
+        f"excluded on record in _NOT_A_RUNTIME_PROMISE. A user installing it by name gets a "
+        f"promise the floor leg does not test. Classify it in one place or the other."
+    )
+    assert not (set(_NOT_A_RUNTIME_PROMISE) - extras), (
+        "_NOT_A_RUNTIME_PROMISE excuses an extra pyproject.toml no longer declares -- prose that "
+        "no longer describes anything, which is how an exclusion list stops being read."
+    )
+
+
 # ── the verify half ────────────────────────────────────────────────────────────────────────────
 
 def test_verify_compares_versions_and_not_strings():
@@ -147,7 +189,7 @@ def test_verify_reports_a_dependency_that_is_not_installed_at_all():
     from dependency_floor import verify
     pyproject = {"project": {
         "dependencies": ["requivo-nonexistent-package>=9.9.9"],
-        "optional-dependencies": {"anthropic": [], "web": []},
+        "optional-dependencies": _extras(),
     }}
     wrong = verify(pyproject)
     assert len(wrong) == 1
