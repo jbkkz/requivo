@@ -18,7 +18,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
-from _cli_harness import _run, _run_json
+from _cli_harness import _full_model, _run, _run_json, _run_stdin
 
 from requivo.cli import app
 from requivo.core import persistence as store
@@ -823,6 +823,69 @@ def test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken(worksp
         "a session that is merely locked must not earn the same glyph as a broken one")
     assert "🟡" in sessions_line
     assert "locked" in sessions_line.lower()
+
+
+def test_a_note_does_not_move_the_sessions_glyph(workspace, monkeypatch):
+    """`noted` is deliberately absent from the glyph expression in `_print_sessions`: a note is not
+    a defect and not a could-not-look, so it must not pull the tick down to the warning glyph the
+    way `locked`/`blind`/`unchecked` do. It is still counted and named in the notes below the line.
+
+    Confirmed by mutation, not only by this assertion: folding `noted` into the warning condition
+    leaves this test red while every other doctor test in this file stays green, which is what tells
+    the two apart from a check that merely never got a session with a note in the first place."""
+    _run(["session", "init", "Something.", "--slug", "s", "--json"])
+    _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
+    _run_stdin(["artifact", "save", "s", "--type", "prd", "--file", "-", "--revision", "1",
+                "--json"], "# PRD", monkeypatch)
+    d = store.canonical_dir("s")
+    raw = json.loads((d / "session.json").read_text(encoding="utf-8"))
+    raw["artifact_status"]["risk-register"] = dict(raw["artifact_status"]["prd"],
+                                                    filename="risk-register.md")
+    (d / "session.json").write_text(json.dumps(raw), encoding="utf-8")
+    (d / "artifacts" / "risk-register.md").write_text("# Risk register\n", encoding="utf-8")
+
+    r = _run_json(["doctor", "--json"])["sessions"]
+    assert r["inconsistent"] == {} and r["notes"] == {"s": ["unknown_artifact_type"]}
+
+    text = _run(["doctor"])
+    sessions_line = _check_line(text, "sessions")
+    assert "✅" in sessions_line, (
+        "a note must not earn the same middle glyph as a could-not-look finding")
+
+
+def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(workspace):
+    """Review finding on #483: the sessions-row glyph docstring in `doctor.py` says `unexaminable`
+    (`blind`) shares the middle glyph with `locked`/`unchecked`, and only the `locked` half of that
+    claim had a test -- `test_unexaminable_entries.py`'s own doctor test never checks the glyph at
+    all. A blocked entry with no other finding must not tick clean: a could-not-look reading as
+    looked-and-found-nothing is the exact defect `_session_health` exists to prevent.
+
+    Driven by monkeypatching `scan_session_root` directly, not by a real `chmod 000`, so this runs
+    on every platform and every account rather than skipping wherever permission bits do not deny
+    traversal (root, some CI sandboxes, Windows). Confirmed by mutation, not only by this assertion:
+    dropping `blind` from the glyph's warning condition leaves this test red while
+    `tests/test_unexaminable_entries.py::test_doctor_reports_the_entry_instead_of_declaring_the_whole_root_unreadable`
+    stays green."""
+    from requivo.core.persistence import UnexaminableEntry
+    from requivo.deterministic import doctor as det
+
+    _run(["session", "init", "A real one.", "--slug", "real", "--json"])
+    real_scan = store.scan_session_root
+
+    def _one_blind_entry():
+        slugs, non_sessions, _blind = real_scan()
+        return slugs, non_sessions, [UnexaminableEntry(name="ghost", error="Permission denied")]
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(det.store, "scan_session_root", _one_blind_entry)
+        r = _run_json(["doctor", "--json"])["sessions"]
+        text = _run(["doctor"])
+
+    assert r["inconsistent"] == {} and r["error"] is None
+    assert [e["name"] for e in r["unexaminable"]] == ["ghost"]
+    sessions_line = _check_line(text, "sessions")
+    assert "✅" not in sessions_line, sessions_line
+    assert "🟡" in sessions_line, sessions_line
 
 
 def test_context_can_be_asked_for_by_session(workspace):

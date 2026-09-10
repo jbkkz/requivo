@@ -50,14 +50,12 @@ def doctor_report() -> dict:
     except Exception as e:  # noqa: BLE001 - doctor reports any failure rather than raising
         schema_ok, schema_err = False, str(e)
 
-    # Context cards get their own check, with their own three states. They used to have none: a
-    # failure of `available_cards()` was written into `schema_err` — a *different* check's field —
-    # with `schema_ok` left True and the message printed nowhere, while the card line printed a tick
-    # whatever the count was. A wheel that ships `assets/` but loses `assets/context/` therefore
-    # showed three green ticks (#12). `status` is the distinction that was missing: `ok` (cards
-    # loaded), `empty` (we looked and there are none — a broken install, because impact estimation
-    # is the product's central idea and it runs on these cards), `unreadable` (we could not look,
-    # which is not the same answer and must not render like the clean one).
+    # Context cards get their own check, with their own three states: `ok` (cards loaded), `empty`
+    # (we looked and there are none — a broken install, since impact estimation runs on these
+    # cards), `unreadable` (we could not look, which must not render like the clean one). Without
+    # it, a failure here was written into a *different* check's field and every wheel missing
+    # `assets/context/` showed three green ticks. Pinned by
+    # `test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadable_one`.
     cards, cards_err = [], None
     try:
         cards = available_cards()
@@ -148,13 +146,12 @@ def doctor_report() -> dict:
             "credential_problem": credential_problem,
         },
         # `locks` is here because a convention this verb does not report is a convention this verb
-        # answers about the wrong shape (#113). The write lock moved out of the session directory to
-        # `.requivo/locks/`, and it is the one path in the workspace every write touches and nothing
-        # else names: a permission fault there surfaces as `could not open the write lock for
-        # session '<slug>'` on every verb at once, with nothing telling the user which directory to
-        # look at. Additive, so a consumer reading `workspace["sessions"]` is unaffected (invariant 8).
-        # Path only, deliberately: whether it is writable is not probed, because probing means
-        # creating it, and this verb reports rather than makes.
+        # answers about the wrong shape. `.requivo/locks/` is the one path in the workspace every
+        # write touches and nothing else names: a permission fault there surfaces as `could not
+        # open the write lock for session '<slug>'` on every verb at once, with nothing telling the
+        # user which directory to look at. Additive (invariant 8), and path only — whether it is
+        # writable is not probed, because probing means creating it and this verb reports rather
+        # than makes. Pinned by `test_doctor_reports_where_the_write_lock_lives`.
         "workspace": {"root": str(workspace_root()), "sessions": str(session_root()),
                       "locks": str(lock_root())},
         # Sessions that no longer add up. Cheap (a session is a handful of small files) and this is
@@ -227,64 +224,48 @@ def _card_health(slug: str) -> dict:
 def _session_health(*, cards_readable: bool = True) -> dict:
     """The workspace's sessions, with a third state on each question it asks.
 
-    - `readable` / `total` / `error` — could the session root be listed at all? A bare `except`
-      returning `{"total": 0}` was the whole of #12's F3: twelve unreachable sessions rendered
-      byte-identically to a genuinely empty workspace, and a user reads that as "my sessions were
-      deleted". When we could not look, `total` is `None`, because `0` is a claim about the
-      workspace and we do not have one.
+    - `readable` / `total` / `error` — could the session root be listed at all? `total` is `None`,
+      never `0`, when we could not look, because `0` is a claim about the workspace we do not have.
+      Pinned by `test_doctor_tells_an_empty_workspace_from_an_unreadable_one`.
     - `inconsistent` — {slug: [integrity codes]}, the blocking half of `inspect_session` (which is
-      what `check_session` returns, so this key means exactly what it meant). A slug whose own files
-      cannot be read gets the `unreadable` code the inner loop already synthesised, now as a real
-      `IntegrityProblem` rather than an ad-hoc stand-in class.
-    - `notes` — {slug: [integrity codes]} for findings that are *not* defects (#260). Today the only
-      member is an artifact type this build has no generator for, which `docs/compatibility.md` says
-      may appear without a `format_version` bump. Kept out of `inconsistent` because that key drives
-      the ❌ on the sessions row, and a session written by a newer Requivo is not broken; kept in the
-      report because a type nobody can see is a type nobody upgrades for. A separate key rather than
-      a severity inside `inconsistent`: a consumer reading `inconsistent` to mean *these are broken*
-      predates this and must keep being right.
+      what `check_session` returns, so this key means exactly what it meant).
+    - `notes` — {slug: [integrity codes]} for findings that are *not* defects. Today the only member
+      is an artifact type this build has no generator for, which `docs/compatibility.md` says may
+      appear without a `format_version` bump. Kept out of `inconsistent` because that key drives the
+      ❌ glyph and a session written by a newer Requivo is not broken. Pinned by
+      `test_doctor_names_the_unknown_type_without_calling_the_session_inconsistent`.
     - `unresolved_cards` — {slug: error envelope} for a session whose persisted card selection no
       longer loads (see `_card_health` for why that is not an integrity code). `cards_checked` is
-      false when the card layer itself was unreadable — then nobody looked, and an empty map here
-      means nothing at all.
+      false when the card layer itself was unreadable — then nobody looked. Pinned by
+      `test_doctor_and_verify_flag_a_session_whose_context_card_is_gone`.
     - `locked` — {slug: error message} for a session `inspect_session` could not even take the lock
-      on within the deadline (#263, #265). This is deliberately **not** folded into `inconsistent`:
-      that key drives the ❌ glyph, and a lock this call could not take says nothing about whether
-      the session is sound — it is the identical accusation shape invariant 17 exists to prevent,
-      aimed at a session that is merely mid-write. It gets its own bucket and its own (warning)
-      glyph, on the same "could not look, not the same as broken" terms as `unexaminable` below.
-      Cards are not checked for a locked slug either, for the same reason `session verify` skips
-      them when its own probe could not run: nothing here was established well enough to build on.
-    - `non_sessions` — what is under the session root and is *not* a session: the name, what kind of
-      thing it is and what it holds, from `scan_session_root`'s second part. Nothing could see one of these
-      at all (#67), and the symptom is not in this report — it is the next `create_session` on that
-      name quietly landing under `<slug>-<hash>` instead. `None`, never `[]`, in the arm where the
-      root could not be listed: an empty list there reads as *we looked and there is nothing else*,
-      which is this function's own defect class one key along.
+      on within the deadline. Deliberately **not** folded into `inconsistent`: a lock timeout says
+      nothing about whether the session is sound, the identical accusation shape invariant 17 exists
+      to prevent. Cards are not checked for a locked slug either, for the same reason `session
+      verify` skips them when its own probe could not run. Pinned by
+      `test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken`.
+    - `non_sessions` — what is under the session root and is *not* a session, from
+      `scan_session_root`'s second part. `None`, never `[]`, in the arm where the root could not be
+      listed: an empty list there would read as *we looked and there is nothing else*. Pinned by
+      `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`.
     - `unexaminable` — names under the root that could not be examined at all, so nothing above knows
-      whether they are sessions (#80). Kept out of `non_sessions` because that key states a fact —
-      *this is not a session* — and here nobody established one; kept out of `total` for the same
-      reason, so the count stays what could be confirmed. `None` in the unreadable-root arm, on the
-      same terms as its neighbour.
-
-      This is the narrow claim `readable: False` used to swallow: one directory the process could
-      not stat into made the *whole root* read as unlistable, which was broader than what failed
-      and also, on the surface a user actually runs, fatal.
+      whether they are sessions. Kept out of `non_sessions` because that key states a fact — *this is
+      not a session* — and here nobody established one; kept out of `total` for the same reason, so
+      the count stays what could be confirmed. Pinned by
+      `test_doctor_reports_the_entry_instead_of_declaring_the_whole_root_unreadable`.
     """
     inconsistent: dict[str, list[str]] = {}
     noted: dict[str, list[str]] = {}
     unresolved: dict[str, dict] = {}
     locked: dict[str, str] = {}
     try:
-        # One listing for all three parts. Calling `list_session_slugs` and
-        # `list_unexaminable_entries` separately reads the directory at two instants, and a
-        # `session.json` landing between them puts a name in *no* answer at all — the invisible
-        # state this key exists to end, reintroduced by the key itself. Neither
-        # `_describe_non_session` nor the partition's third bucket raises, so what this `except`
-        # catches is the listing, which is genuinely the whole root.
-        # Which is also why this one call stays direct rather than going through the repository
-        # (#76): `list_slugs` and `list_unexaminable` are deliberately two scans there, and two
-        # scans are the very thing this key exists to avoid.
+        # One listing for all three parts, not two calls at two instants — a `session.json` landing
+        # between them would put a name in *no* answer at all, the invisible state this key exists
+        # to end. This one call stays direct rather than going through the repository, whose
+        # `list_slugs`/`list_unexaminable` are deliberately two scans -- the very thing this key
+        # exists to avoid. Neither `_describe_non_session` nor the partition's third bucket raises,
+        # so what this `except` catches is genuinely the whole root. Pinned by
+        # `test_the_parts_of_the_session_root_are_one_partition`.
         slugs, entries, blind = store.scan_session_root()
         non_sessions = [e.to_dict() for e in entries]
         unexaminable = [e.to_dict() for e in blind]
@@ -525,19 +506,15 @@ def _cmd_doctor(a, client) -> None:
         + ([f"{len(blind)} entr{'y' if len(blind) == 1 else 'ies'} that could not be examined"]
            if blind else []) \
         + ([f"{len(locked)} locked (could not check)"] if locked else [])
-    # Three glyphs for three states, on the line a reader actually scans. Leaving "not checked" to
-    # a trailing note put a tick on this line while nobody had looked — the defect this whole change
-    # is about, one line further down than where it was filed.
-    # An unexaminable entry is a *could not look*, so it takes the same middle glyph as an unchecked
-    # card layer rather than the failure glyph: nothing here is known to be broken, and spelling
-    # "we could not tell" the same way as "this is wrong" is the merge the third state exists to
-    # prevent. It must not be the clean tick either, which was the whole finding.
-    # `locked` joins that same middle glyph, for the identical reason (#263, #265): a lock this call
-    # could not take within the deadline is *could not look*, not *this is wrong*, and it must never
-    # earn the ❌ that `bad`/`lost` earn — the exact regression a reviewer caught before this shipped.
-    # `noted` is deliberately absent from this expression (#260): a note is not a defect and not a
-    # *could not look*, so it moves no glyph. It is counted in `tallies` and named in a row below,
-    # which is what keeps it from being silently dropped.
+    # Three glyphs for three states, on the line a reader actually scans: `bad`/`lost` earn ❌;
+    # `unchecked`/`blind`/`locked` are a *could not look*, which must read neither as broken nor as
+    # clean, so they share the middle glyph -- pinned for `unchecked` by
+    # `test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty`, for `blind` by
+    # `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick`, and for
+    # `locked` by `test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken`. `noted`
+    # is deliberately absent from this expression: a note is not a defect and not a could-not-look,
+    # so it moves no glyph, only the row's tally. Pinned by
+    # `test_a_note_does_not_move_the_sessions_glyph`.
     glyph = "❌" if (bad or lost) else (warn if (unchecked or blind or locked) else ok)
     print(f"  {glyph} sessions        {h['total']} in this workspace"
           + (f" · {' · '.join(tallies)}" if tallies else ""))
@@ -585,15 +562,15 @@ def _cmd_doctor(a, client) -> None:
 
 def _print_locks(entries: dict) -> None:
     """The `locks` check: candidate residue under `lock_root()`, in the same three-state discipline
-    as `sessions`/`other entries` above it and for the identical reason (#180) — a check that could
-    not look must not render like one that looked and found nothing.
+    as `sessions`/`other entries` above it -- a check that could not look must not render like one
+    that looked and found nothing. Pinned by
+    `test_the_lock_root_being_unlistable_is_not_reported_as_no_residue`.
 
-    **Never prints the word "orphan".** `session_lock` only ever creates `<slug>.lock` for a slug
-    that had a session at that instant, so a lock whose slug currently names no session is a real
-    finding — but the scan that produced `unmatched` and the scan of the current session list ran a
-    moment apart, and a session created or deleted in that gap reads exactly the same way for a tick
-    without being residue at all. The rendering says what was found and leaves the reader to draw the
-    conclusion the directory itself cannot support, on `_non_session_detail`'s own terms."""
+    **Never prints the word "orphan".** The scan that produced `unmatched` and the scan of the
+    current session list run a moment apart, so a session created or deleted in that gap reads
+    exactly the same way for a tick without being residue at all -- the rendering says what was
+    found and leaves the conclusion to the reader. Pinned by
+    `test_a_lock_whose_session_was_deleted_by_hand_is_named_but_not_concluded`."""
     if not entries["readable"]:
         print(f"  ❌ locks           unreadable — {display_token(entries['error'])}")
         print("     └─ this could not be listed. This is not the same thing as having no residue.")
@@ -633,20 +610,18 @@ def _print_locks(entries: dict) -> None:
 
 
 def _print_unexaminable(entries: list[dict], total: int | None) -> None:
-    """Names under the session root that could not be examined, under the sessions check (#80).
+    """Names under the session root that could not be examined, under the sessions check.
 
     Under *sessions* and not under *other entries*, because that is the one thing the failed probe
-    did not settle: this may be a session and it may not. `_print_non_sessions` says `Requivo does
-    not read these`, which would be a claim, and would be the wrong one on the reading where it
-    matters — a user's own session, invisible.
+    did not settle: this may be a session and it may not, and `_print_non_sessions` claiming
+    `Requivo does not read these` would be the wrong answer on the reading where it matters — a
+    user's own session, invisible. Pinned by
+    `test_doctor_reports_the_entry_instead_of_declaring_the_whole_root_unreadable`.
 
-    The count on the line above stays what could be *confirmed*, so this says so rather than leaving
-    a reader to reconcile `1 in this workspace` with a second entry named beneath it. A count that
-    silently absorbed these would be the quiet-wrong-answer form of the same bug.
-
-    The name and the error text both come off disk and both go through `display_token`: a new site
-    for the guard, and a fresh one — the name is a raw directory entry, and the `read_meta` that
-    would have refused a name carrying a newline is exactly what could not run (#40).
+    The count on the line above stays what could be *confirmed* rather than silently absorbing
+    these, and the name and error text both go through `display_token`, since the `read_meta` that
+    would ordinarily have refused a name carrying a newline is exactly what could not run. Pinned by
+    `test_an_unexaminable_name_carrying_a_control_character_cannot_forge_a_line`.
     """
     if not entries:
         # `[]` is a clean workspace and earns no row. The unreadable-root arm passes `None`, but it
@@ -671,22 +646,17 @@ def _non_session_detail(entry: dict) -> str:
 
     Every branch is an observation. There is no arm that says *a leftover lock directory*, because
     that is a conclusion the directory cannot support — `.lock` and nothing else is what an older
-    `session_lock` left (#22) and also what an interrupted unzip leaves, and this verb's evidence is
-    the directory and only the directory (invariant 14).
+    `session_lock` left and also what an interrupted unzip leaves, and this verb's evidence is the
+    directory and only the directory (invariant 14).
 
     **Every value interpolated here comes off disk, so every one goes through `display_token`** —
-    the names and the error text alike. One carrying a newline would otherwise end this line and
-    start another at column 0 of `doctor`'s own report, which is exactly what a stored context-card
-    name could do before #40.
-
-    This docstring used to state the rule for the *names* only, on a line that carries two classes of
-    value, and the two `error` interpolations below went unwrapped for a release (#90). `error` is
-    `str(e)` from a deliberately wide `except Exception` in the store, where the docstring beside it
-    says the set of ways a member can be broken is open — an open set of causes feeding an unescaped
-    interpolation is the shape #40 was. Today it misreports rather than forges, because the reachable
-    exceptions are the `OSError` family and CPython's `OSError.__str__` already `repr()`s the
-    filename; that is a fact about today's exception space and not a property of this line, which is
-    why the wrap is here and not in a comment saying it is unnecessary."""
+    the names and the error text alike, both able to end this line and start another at column 0 of
+    `doctor`'s own report. The names were wrapped first and the `error` interpolations went
+    unwrapped for a release, from the same open-ended `except Exception` in the store. Pinned by
+    `test_a_name_read_off_disk_cannot_forge_a_line_of_the_report_that_names_it` for the names and
+    `test_the_error_text_on_a_non_session_line_cannot_forge_a_line_either` for `error`, with
+    `test_no_error_string_reaches_a_printed_line_unwrapped` as the class guard over the rest of the
+    file."""
     kind, error = entry["kind"], entry["error"]
     if kind == "unknown":
         return f"could not be examined — {display_token(error)}"
