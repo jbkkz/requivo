@@ -94,8 +94,11 @@ def capture_model() -> str:
 
     Read here and threaded down rather than left to each call's own `current_model_name()` fallback,
     so the value written into the envelope is the value that reasoned, not a second read of the same
-    environment (#515, #434). Guarded by
-    `test_main_resolves_the_model_once_and_threads_it_to_every_capture`.
+    environment (#515, #434). Two tests, one per leg: that `main()` resolves once and hands the same
+    value to every `capture()` call is
+    `test_main_resolves_the_model_once_and_threads_it_to_every_capture`; that the interactive path
+    writes the model it was handed into the envelope is
+    `test_the_interactive_capture_records_the_model_it_reasoned_on`.
     """
     return current_model_name()
 
