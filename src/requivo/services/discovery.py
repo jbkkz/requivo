@@ -194,10 +194,11 @@ def _discovery_guard_path(slug: str, store: Store) -> Path:
     ambient default (#272) -- `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace`.
 
     Validated exactly as `lock_path` validates its own -- the shape unconditionally, the reserved
-    Windows device name only when nothing already occupies the slug. This function was added one
-    commit before that conditional form existed and was missed when the sibling functions were swept
-    onto it (#390), leaving a session already on disk under a reserved name reachable by every read
-    verb except this guard, which alone kept refusing it --
+    Windows device name only when nothing already occupies the slug -- because the slug reaches here
+    from the service layer, which invariant 14 says an external consumer may call directly. This
+    function was added one commit before that conditional form existed and was missed when the
+    sibling functions were swept onto it (#390), leaving a session already on disk under a reserved
+    name reachable by every read verb except this guard, which alone kept refusing it --
     `test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery_guard`."""
     root = store.lock_root()
     slug = _slug_shape(slug)
