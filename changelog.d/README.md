@@ -42,6 +42,17 @@ recognises never grades as compatible.
 The reason after the verdict is required: a bare flag is the same unsourced verdict
 one field further along, and the sentence is the part worth having.
 
+**`breaking` means correct code stops working.** Not "something observable moved":
+an exit code that now refuses an invocation which used to operate on the wrong
+session, a call that used to be paid for and discarded, a diagnostic that reports
+what it used to pass over — those moved on a path no correct code was on, and they
+grade `compatible`, with the moved observable named in the reason so a reader still
+learns it moved. The grade turns on the consequence, not on the observability,
+because a major is what the grade costs and three of them landed in thirteen days
+on observables nobody's correct code depended on. The argument, and why there is no
+third grade for the in-between case, is
+`decision: a-release-is-justified-by-its-contents`.
+
 Only `removed` is required to carry one. Every other section may, and a fragment that
 says nothing is read as compatible with the count of such fragments reported out
 loud. A field on every fragment is a field on every fragment to get wrong, so it is
