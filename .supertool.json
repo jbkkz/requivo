@@ -25,6 +25,9 @@
       "radar_tiers": {
         "gh-prs": {}
       }
+    },
+    "git-commit": {
+      "coauthor": "Claude <noreply@anthropic.com>"
     }
   },
   "validators": {
