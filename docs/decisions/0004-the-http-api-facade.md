@@ -14,7 +14,9 @@ already paid the price of its absence.
 - `RequivoError.to_dict()` is a stable serializable envelope — `{code, message, path?, details?}` —
   published in `docs/compatibility.md` with the rule *assert on the code, never the message*, and
   with per-code `details` contracts argued out one by one (#82, #35, #57).
-- Every error code has an explicit HTTP status in `web/app.py`'s `_STATUS_BY_CODE`, guarded by
+- Every error code has an explicit HTTP status in `requivo/http.py`'s `STATUS_BY_CODE`
+  (`web/app.py`'s private `_STATUS_BY_CODE` when this record was written -- relocated by #422, which
+  is section 3's own proposal below, landed), guarded by
   `test_every_error_code_has_an_explicit_http_status` so the table cannot fall behind the
   vocabulary. The 4xx/5xx split is reasoned per row (whose fault is this?), including the deliberate
   refusals of plausible-but-RFC-wrong statuses (409 over 426 for a format from the future).
@@ -25,9 +27,11 @@ already paid the price of its absence.
   unchanged is correct* — which covers both the write lock and the non-blocking first-discovery
   guard (#209).
 - `SessionService.status()` is already the status resource: a pure projection returning the exact
-  payload `requivo status --json` publishes. Fifteen `--json` payloads are shape-pinned
+  payload `requivo status --json` publishes. Every `--json` payload is shape-pinned
   (`test_every_public_json_payload_keeps_its_recorded_top_level_shape`), which is a response-body
-  discipline an API section can inherit rather than invent.
+  discipline an API section can inherit rather than invent. This said *fifteen* and the registry
+  holds sixteen since `session delete` landed -- a count in prose that no test can falsify, which is
+  `CLAUDE.md`'s own named failure mode; the property is what matters here, not the number.
 - Input caps live at the service layer (`require_input_within_bounds` in `create_session`,
   `answer`, `draft_turn` — #255), which is invariant 14 doing the API's request validation already.
 - Creation is idempotent on identity — the request **and** its context-card selection — with the
@@ -43,17 +47,22 @@ already paid the price of its absence.
   browser and a dead end for a script, which has no form to read the token out of.
   `docs/compatibility.md` promises those routes' paths and statuses but explicitly not their bodies.
 - The status table is trapped in the `[web]` extra: any second HTTP surface either imports
-  `requivo.web.app` (dragging Jinja2 and the browser middleware in) or copies the table.
+  `requivo.web.app` (dragging Jinja2 and the browser middleware in) or copies the table. (**Freed
+  since**, by this record's own §3 proposal: #422 moved it to `requivo/http.py`.)
 - The workspace root is ambient process environment (#272): `paths.py` resolves
   `REQUIVO_WORKSPACE`/cwd per call, so an API process can only ever serve the one workspace its
-  environment names, and two `FileSessionRepository` instances are indistinguishable.
+  environment names, and two `FileSessionRepository` instances are indistinguishable. (**Landed
+  since**, #446: the root is constructor state, `FileSessionRepository(root=...)`, with
+  `paths.workspace_root()` still the default a surface falls back to — see section 6.)
 - Provider calls are synchronous and non-streaming, 15–100 s typical against a 16k output ceiling
   (#256 open).
 - There is no auth story of any kind, and no spend ceiling: the one thing standing between a
   runaway client loop and the server's Anthropic key is the cross-site guard, which exists for
-  browsers.
-- Sessions have no delete (#238); `estimate` is a terminal-only analysis with no artifact type — it
-  is absent even from `ARTIFACT_FILENAMES`, so it cannot be persisted by any path.
+  browsers. (**The ceiling landed since**, #427 — read section 5 for what it is and is not; auth
+  is still nothing, and is slice 4's.)
+- Sessions have no delete (#238 — **landed since**, see section 6); `estimate` is a terminal-only
+  analysis with no artifact type — it is absent even from `ARTIFACT_FILENAMES`, so it cannot be
+  persisted by any path.
 
 **The standing cost that makes this concrete.** The hosted product — in its own private repo —
 consumes `requivo` as a PyPI dependency and was built before any facade existed to stand on. It
@@ -96,7 +105,7 @@ format (UTC, second precision, `Z`); every session envelope carries both `slug` 
 | `/sessions` | POST | `DiscoveryService.create_only` → `SessionService.create_session` | body `{request, context_cards?, slug?}`; 201 fresh, 200 idempotent re-init of the same identity; 409 `session_exists` when an explicit slug is taken by a different identity |
 | `/sessions` | GET | `SessionService.list_entries` | degraded rows come back as `{slug, error}` — *could not be read* and *not analysed yet* render differently, invariant 15's third state on the wire |
 | `/sessions/{slug}` | GET | `SessionService.meta` | the session envelope: slug, session_id, timestamps, current revision, cards, provider, artifact_status |
-| `/sessions/{slug}` | DELETE | *reserved* — #238's future service verb | not routable until the service exists; see the freeze preconditions |
+| `/sessions/{slug}` | DELETE | `SessionService.delete_session` | *not built* — slice 1 ships reads only. The service verb this row was reserved against was #238's future work when this record was written and exists now; what is still missing is the route |
 | `/sessions/{slug}/model` | GET | `SessionService.load_model` | the durable product; named `model`, not `export`, because `session export` already means an archive in this vocabulary |
 | `/sessions/{slug}/revisions` | GET | `SessionService.meta` (`revisions`) | the provenance log — provider, model, surface, prompt hash, and since #292 what each apply spent; this is also where historical usage lives, so no separate usage resource is needed |
 | `/sessions/{slug}/revisions/{n}` | GET | `SessionService.load_revision` | the basis for "what moved since?" |
@@ -149,14 +158,15 @@ that; it documents it:
 
 ### 3. The contracts
 
-- **Errors.** The failure body is `RequivoError.to_dict()` **verbatim** — the envelope the fifteen
-  `--json` verbs already publish, per-code `details` shapes included. No new wrapper, no
+- **Errors.** The failure body is `RequivoError.to_dict()` **verbatim** — the envelope every
+  `--json` verb already publishes, per-code `details` shapes included. No new wrapper, no
   problem+json translation: one envelope, three surfaces. The HTTP status comes from the existing
   table, **relocated** out of `web/app.py` into a small surface-neutral module (#422 — the
   `paths.py`/`streams.py`/`usage.py` shape: a cross-cutting facility belonging to no layer; the
   module's name is the implementation's call) so the `[web]` extra is not the price of a classification two HTTP
-  surfaces share. The table is private today, so the move is free;
-  `test_every_error_code_has_an_explicit_http_status` moves with it. This is the `usage.py` lesson
+  surfaces share. The table was private when this was written, so the move was free;
+  `test_every_error_code_has_an_explicit_http_status` moves with it. **Landed** as
+  `requivo/http.py`'s `STATUS_BY_CODE`, with that test in `tests/test_http_status_table.py`. This is the `usage.py` lesson
   (#167) applied before the leak instead of after: when a second surface needs a thing packaged
   under the first, the fix is a neutral home, not an import across.
 - **IDs.** Routes address by **slug** — the workspace-scoped, human, directory-naming id every
@@ -217,7 +227,11 @@ rule), taken on only where it pays.
 
 ### 5. Auth, and the spend ceiling
 
-**The progression, in three explicit steps:**
+**None of the three steps below is built**, and the reason is one fact rather than three: this
+extra ships **no listener**. `[api]` declares fastapi and no ASGI server, there is no `requivo api
+serve` verb, and nothing outside the package calls `create_api()` — running it at all means
+installing uvicorn yourself and writing a launcher. Auth is a property of a bind, so it arrives with
+slice 4, which is the slice that binds. **The progression, in three explicit steps:**
 
 1. **Local, loopback: no auth.** Default bind `127.0.0.1`, same wildcard-bind refusal discipline
    `requivo web` already implements. This is the CLI-parity mode: the user on the machine already
@@ -233,17 +247,33 @@ rule), taken on only where it pays.
 
 **Cross-site, without cookies.** The API deliberately does not reuse the web's synchronizer token —
 that ceremony exists because HTML forms carry ambient trust, and the API has no forms and no
-cookies. What it keeps: the host allowlist (DNS-rebinding is transport-level and applies to any
-local listener), the `Sec-Fetch-Site`/`Origin` checks on unsafe methods, and one addition that does
-the token's job for a JSON API: **unsafe methods require `Content-Type: application/json`**. A
-cross-origin page cannot send that content type without a CORS preflight, and the API sends no CORS
-headers, so the preflight fails — the browser attack the web guard exists for (a hostile page
-burning the server's key with fire-and-forget form posts) has no JSON-shaped equivalent.
+cookies. Of the web guard's four checks it keeps three, and **they do not all ship at the same
+time**, which this paragraph originally did not say (#509):
 
-**The spend ceiling is a service-layer seam, not an HTTP feature (#427).** The pieces already exist:
-`requivo.usage` scopes a ledger per operation, every call is recorded on every exit (including
-failures), and each record carries the rate it was billed at. The addition: `DiscoveryService`
-consults an optional, injected `SpendPolicy` immediately before each provider call — the same
+- **The host allowlist — shipped, since #508.** `requivo.host_policy.check_host`, the same
+  definition Requivo Web calls, installed inside the header middleware by `api/app.py`. It lands
+  ahead of the rest because DNS rebinding is transport-level and applies to **reads**, which is all
+  this surface serves today: before #508, `GET /api/v1/sessions` with `Host: evil.example.com`
+  answered 200 where Requivo Web answered 403. `tests/test_host_allowlist.py` is parameterised over
+  both surfaces.
+- **The `Sec-Fetch-Site`/`Origin` checks on unsafe methods — slice 4, with the writes they guard.**
+  There is no unsafe method on this surface yet, so there is nothing for them to run on.
+- **`Content-Type: application/json` required on unsafe methods — slice 4, same reason.** This is
+  the addition that does the token's job for a JSON API: a cross-origin page cannot send that
+  content type without a CORS preflight, and the API sends no CORS headers, so the preflight fails
+  — the browser attack the web guard exists for (a hostile page burning the server's key with
+  fire-and-forget form posts) has no JSON-shaped equivalent.
+
+**The ordering constraint, because it is the one that can go wrong:** the host guard lands with, or
+before, `requivo api serve`. A serve verb shipping first would turn a hypothetical into a default,
+which is why #508 was fixed ahead of the slice that owns the rest of this posture rather than inside
+it.
+
+**The spend ceiling is a service-layer seam, not an HTTP feature (#427). Landed**, in the shape
+proposed here. The pieces already existed: `requivo.usage` scopes a ledger per operation, every call
+is recorded on every exit (including failures), and each record carries the rate it was billed at.
+The addition, now in the tree: `DiscoveryService` consults an optional, injected `SpendPolicy`
+immediately before each provider call — the same
 chokepoint the `_usage_since` bookkeeping already brackets — and refuses with a new structured code
 (`spend_ceiling_reached`) when the ledger says the budget is spent. Proposed status: **403** — the
 server understood and refuses to authorize a costed action; 429 was considered and rejected because
@@ -280,10 +310,13 @@ and types — with the shape-pin tests landing in the same change, exactly as th
 is kept.
 
 **v1 is not frozen until all three of these land**, each named because it reshapes contract
-semantics if it lands after:
+semantics if it lands after. **Two of the three have landed since this record was written** — the
+status is marked on each below rather than left for a reader to check, and the estimate-artifact
+decision (#426) is the one still open:
 
-1. **#272 — the workspace becomes constructor state.** Until then, an API process serves whatever
-   workspace its process environment names, per call. Freezing first would bake "slug uniqueness is
+1. **#272 — the workspace becomes constructor state. Landed** (`FileSessionRepository(root=...)`,
+   #446), so this precondition is met. It read, before it did: until then, an API process serves
+   whatever workspace its process environment names, per call. Freezing first would bake "slug uniqueness is
    scoped by an environment variable" into a public contract, and would leave
    environment-swap-under-a-lock as the only multi-workspace story. (#272's own trigger — the start of real
    cloud work against this repo — is arguably met by this record; that call belongs to its issue,
@@ -294,7 +327,9 @@ semantics if it lands after:
    artifact vocabulary grows. Either answer is fine; an unrecorded answer freezes a route whose
    permanence nobody decided. (A new artifact type is additive per invariant 8/#260 — the format
    tolerates it; this is about which *routes* are promised, not about the format.)
-3. **#238 — delete.** `DELETE /sessions/{slug}` cannot be routed until the service verb exists,
+3. **#238 — delete. The service verb landed** (`SessionService.delete_session` + `requivo session
+   delete`, #469), so this precondition is met; the route itself is still slice-4 work. It read,
+   before it did: `DELETE /sessions/{slug}` cannot be routed until the service verb exists,
    with its semantics settled where they must be: the lock file at `.requivo/locks/<slug>.lock`
    removed, the slug claim genuinely released, a concurrent writer conflicting cleanly rather than
    corrupting. Shipping a frozen resource model with no lifecycle end teaches API clients to

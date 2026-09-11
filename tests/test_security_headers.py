@@ -5,51 +5,18 @@ Found by the v3.2.0 release audit: `web/app.py` installed `security_headers` as 
 defect -- it existed only in their composition (see `requivo.security_headers` for the fuller
 account). The fix is `requivo.security_headers.apply_security_headers`, one function both
 `web/app.py` and `api/app.py` now call; this file is the guard, parameterised over both apps so a
-*third* surface is a one-line addition to `_SURFACES` below rather than a forgotten one -- the
+*third* surface is a one-line addition to `tests/_surfaces.py` rather than a forgotten one -- the
 actual acceptance criterion, not merely "the API has headers now".
 
-Both apps built directly via their own factories, in-process (`TestClient`), no network, no port
-bound -- the same shape `tests/web/conftest.py` and `tests/api/conftest.py` already use, restated
-here because this file spans both and must not import a fixture scoped to only one of them.
+That table moved out of this file when #508 gave the host allowlist the same treatment and needed
+the same list: two guards over two policies, one statement of what the surfaces are.
 """
 
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from requivo.api.app import create_api
-from requivo.web.app import create_app
-
-
-class _Surface:
-    """One FastAPI app under this policy: its factory, the loopback base URL it answers to (the web
-    app's own cross-site guard refuses anything else), a route known to succeed, and the bundled,
-    fingerprint-free asset paths its own static mount serves -- exempt from `Cache-Control:
-    no-store` per `requivo.security_headers.apply_security_headers`."""
-
-    def __init__(self, name, factory, base_url, ok_path, bundled_asset_paths):
-        self.name = name
-        self.factory = factory
-        self.base_url = base_url
-        self.ok_path = ok_path
-        self.bundled_asset_paths = bundled_asset_paths
-
-    def __repr__(self):
-        return self.name
-
-    def client(self, app=None):
-        return TestClient(app or self.factory(), base_url=self.base_url,
-                          raise_server_exceptions=False)
-
-
-_SURFACES = [
-    _Surface("web", create_app, "http://127.0.0.1:8765", "/",
-             ["/static/css/app.css", "/static/vendor/htmx.min.js", "/favicon.ico"]),
-    _Surface("api", create_api, "http://127.0.0.1:8767", "/api/v1/health",
-             ["/api-static/favicon.svg", "/api-static/vendor/swagger-ui/swagger-ui.css",
-              "/api-static/vendor/redoc/redoc.standalone.js"]),
-]
+from tests._surfaces import SURFACES as _SURFACES
 
 
 @pytest.mark.parametrize("surface", _SURFACES, ids=repr)

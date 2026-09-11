@@ -830,7 +830,10 @@ session in between.
 ### Environment variables — **stable**, with one exception
 
 `REQUIVO_WORKSPACE`, `REQUIVO_CONTEXT_DIR` and `REQUIVO_WEB_ALLOWED_HOSTS` are documented user-facing
-knobs; a deployment sets them and removing or repurposing one breaks it. They are covered by the same
+knobs; a deployment sets them and removing or repurposing one breaks it. `REQUIVO_WEB_ALLOWED_HOSTS`
+keeps its `WEB` for that reason even though #508 widened it to govern the HTTP API's host allowlist
+as well: the name is the compatibility surface, and renaming it for accuracy would break a
+deployment for one word. They are covered by the same
 rule as a CLI flag: removing one, or changing what one means, is breaking.
 
 `REQUIVO_OUTPUT_DIR` is **deprecated** (see the table below). It configures the retired `out/` layout,

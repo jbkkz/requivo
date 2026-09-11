@@ -13,7 +13,11 @@ Four checks close that, in the order they run:
     waved through — a check that cannot read its input has to say so, not treat it as nothing to check
     (#45). This is the DNS-rebinding guard, and it is the only check that applies to reads as well: a
     rebound `evil.com` that resolves to 127.0.0.1 is same-origin from the browser's point of view, so
-    it would sail through every other check *and* be able to read the token.
+    it would sail through every other check *and* be able to read the token. **It lives in
+    `requivo.host_policy` now, not here** (#508): being the only read-applicable check is exactly
+    what made it the one a formless, cookieless JSON surface also needs, and `api/app.py` shipped
+    without it. The three checks below stay, because they are about an unsafe method arriving with
+    ambient form trust — which is this surface's shape, not every surface's.
   * **`Sec-Fetch-Site`** — the browser's own account of where the request came from. Free, unspoofable
     from script, and rejects `cross-site` / `same-site` outright.
   * **`Origin` / `Referer`** — when present, it must name the same trust domain as the host being
@@ -32,24 +36,39 @@ while the user browses the rest of the web, which is the actual threat model of 
 
 from __future__ import annotations
 
-import os
 import secrets
 from collections.abc import Callable
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
-from requivo.core.errors import InputTooLargeError, RequivoError
+from requivo.core.errors import InputTooLargeError
+from requivo.host_policy import (
+    ALLOWED_HOSTS_ENV,
+    CrossSiteRequestError,
+    HostNotAllowedError,
+    UndeterminedHostError,
+    allowed_hosts,
+    check_host,
+)
+from requivo.host_policy import LOOPBACK_HOSTS as _LOOPBACK_HOSTS
+from requivo.host_policy import hostname as _hostname
+
+# Re-exported under the names this module has always published them under, so every existing caller
+# and test reads unchanged after #508 moved the host axis out. `_hostname` and `_LOOPBACK_HOSTS` keep
+# their underscore here because that is how the rest of this file spells them; in `host_policy` they
+# are public, because a module two surfaces import from has no private half.
+__all__ = [
+    "ALLOWED_HOSTS_ENV", "CSRF_FIELD", "CSRF_HEADER", "CrossSiteFetchError",
+    "CrossSiteRequestError", "HostNotAllowedError", "MAX_BODY_BYTES", "MissingRequestTokenError",
+    "OPAQUE_ORIGIN", "OpaqueOriginError", "OriginMismatchError", "SAFE_METHODS",
+    "UndeterminedHostError", "allowed_hosts", "csrf_token", "install_cross_site_guard",
+]
 
 CSRF_FIELD = "csrf_token"          # the hidden form input every template renders
 CSRF_HEADER = "x-csrf-token"       # the equivalent for a scripted client
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
-
-# Where the server may legitimately be addressed. A non-loopback bind is a deliberate act (`requivo web
-# --host`), so it is an explicit opt-in here too rather than a hole left open by default.
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-ALLOWED_HOSTS_ENV = "REQUIVO_WEB_ALLOWED_HOSTS"
 
 # Bounded before the body is read, let alone parsed: an unauthenticated local endpoint should not be
 # willing to buffer an arbitrary upload just to discover it has no valid token. That claim held only
@@ -60,50 +79,6 @@ ALLOWED_HOSTS_ENV = "REQUIVO_WEB_ALLOWED_HOSTS"
 MAX_BODY_BYTES = 1_000_000
 
 _TOKEN = secrets.token_urlsafe(32)
-
-
-class CrossSiteRequestError(RequivoError):
-    """A request did not prove it came from this app's own pages — the family, not a code to raise.
-
-    Every arm below carries its own code, and that is #52. This one error was raised for six distinct
-    facts whose `details` payloads had five different shapes between them, against the rule
-    `docs/compatibility.md` states in this repository for exactly this reason (#35): **a code carries
-    one fact and one `details` shape**. A consumer matching `cross_site_request` and reading
-    `details["origin"]` gets a `KeyError` from the host arm, and the shape it was written against was
-    never the contract.
-
-    The counter-argument, which is real and which this rejects: nothing serializes `details` on the
-    Web surface — a refusal renders as HTML — so no consumer can observe the inconsistency today, and
-    an argued exception in the policy was the other defensible answer. What decides it is that the
-    cost is already being paid. Both #43 and #45 had to distinguish their new arm **by message**,
-    because the code could not tell them apart, and the same policy says never to match on the
-    message. So the only handle a caller has for the distinction is the one it is told not to use.
-    That is a present cost, not a future one, and `empty_selector_token` was split for the identical
-    shape one release ago.
-
-    The family is kept because `install_cross_site_guard` catches it and answers 403 for every arm,
-    and because a caller that wants *any* cross-site refusal should not have to enumerate six names.
-    Nothing raises it directly.
-    """
-
-    code = "cross_site_request"
-
-
-class UndeterminedHostError(CrossSiteRequestError):
-    """No host could be read from the request at all — absent, empty, or not an authority (#45, #51).
-
-    `details`: `{host_header_present, host_header, hint}`. `host_header_present` is what separates
-    *no header was sent* from *a header was sent and could not be read*; both are the same fact here
-    — nobody could attribute this request — and the same shape, so they share a code.
-    """
-
-    code = "undetermined_host"
-
-
-class HostNotAllowedError(CrossSiteRequestError):
-    """The host was read and is not one this server answers to. `details`: `{host, hint}`."""
-
-    code = "host_not_allowed"
 
 
 class CrossSiteFetchError(CrossSiteRequestError):
@@ -142,65 +117,6 @@ class MissingRequestTokenError(CrossSiteRequestError):
 def csrf_token() -> str:
     """The token for this server process — rendered into every form, required back on every write."""
     return _TOKEN
-
-
-def allowed_hosts() -> frozenset[str]:
-    """Hostnames this server accepts in a `Host` header: loopback, plus any the operator listed in
-    `REQUIVO_WEB_ALLOWED_HOSTS` (comma-separated) when deliberately binding elsewhere."""
-    extra = os.getenv(ALLOWED_HOSTS_ENV, "")
-    return frozenset(_LOOPBACK_HOSTS | {h.strip().lower() for h in extra.split(",") if h.strip()})
-
-
-# What a determined host may contain once `urlsplit` has lowercased it and removed the port and any
-# IPv6 brackets: the letter-digit-hyphen set of a DNS name, plus what an IPv6 literal leaves behind
-# (`:` between groups, `%` before a zone id) and `_`, which is not legal in a DNS hostname but does
-# occur in internal names an operator may deliberately bind to. Anything else means `urlsplit`
-# handed back a string that is not a host, and this returns the third state instead of that string.
-_HOST_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789.-_:%")
-
-
-def _hostname(value: str) -> str:
-    """The bare hostname from a `Host` header (`[::1]:8765`) or an origin URL (`http://evil.com`),
-    lowercased, port and IPv6 brackets removed — so the two are comparable. `""` when this could not
-    determine a host at all, which every caller reads as a refusal.
-
-    **Userinfo is refused rather than stripped, and that is #51.** `urlsplit` is a URL parser and
-    correctly discards the `user@` part of an authority, so `Host: evil.com@127.0.0.1` resolved to
-    `127.0.0.1`, passed `allowed_hosts()`, and `Origin: http://evil.com@127.0.0.1` came out
-    same-trust-domain. Not reachable from a browser — none of `Host`, `Origin` or `Referer` is ever
-    serialized with userinfo, and RFC 7231 requires a `Referer` to have it removed — so this closes
-    a hole with no attacker who benefits.
-
-    It is fixed for the class, not the instance. This is the third time this module's parser answered
-    *confidently* about an input it should have refused: #43 was the opaque origin parsing to the
-    plausible hostname `"null"`, #45 was an undetermined host read as *no host check needed*, and this
-    is the same shape again. The first two were closed with checks at the caller. **This one is closed
-    in the parser**, because a caller-side check is a guarantee the next caller inherits without
-    re-checking — and `_hostname` has two callers already, on two different headers.
-
-    The charset test is the general form of the same rule and is why `Host: 127.0.0.1 evil.com` now
-    refuses too: it previously came back as that whole string, which is not a hostname, and was
-    refused only by happening to miss the allowlist. A parser that returns a non-host and relies on a
-    later equality test to reject it is answering where it should be declining.
-
-    Known residue, stated rather than implied: an **unbracketed** IPv6 literal (`Host: fe80::1`) still
-    parses to `fe80` with the rest read as a port. It is malformed as an authority, no browser emits
-    it, and it fails the allowlist — but the parser does answer, so this docstring does not claim the
-    class is empty.
-    """
-    raw = value.strip()
-    if not raw:
-        return ""
-    try:
-        parts = urlsplit(raw if "//" in raw else "//" + raw)
-        host = (parts.hostname or "").lower()
-        if parts.username is not None:      # any userinfo at all, including an empty `@127.0.0.1`
-            return ""
-    except ValueError:
-        return ""
-    if not host or set(host) - _HOST_CHARS:
-        return ""
-    return host
 
 
 # The Origin header's opaque value, sent verbatim and never as part of a URL: a browser saying "a
@@ -285,37 +201,10 @@ def _submitted_token(request: Request, body: bytes) -> str:
 async def _enforce(request: Request) -> None:
     """Run the checks for one request, raising the first failure. Reads run the host check only;
     anything that can change state runs all four."""
-    # An undetermined `Host` is a **refusal**, not a skip. `_hostname` returns `""` when it could not
-    # find a host at all — an absent header, an empty or whitespace-only one, or one that will not
-    # parse — and the earlier `if host and host not in allowed_hosts()` read that as *no host check
-    # needed*. So the one request nobody could attribute walked past the only check that also runs on
-    # reads, and the guard reported nothing while it was off. Observed rather than reasoned: against
-    # the 0.10.1 candidate, `GET / HTTP/1.0` with no `Host` and `GET / HTTP/1.1` with an empty one both
-    # answered 200, because h11 requires `Host` on 1.1 only and passes an empty one straight through.
-    #
-    # This refuses a `GET`, which is a real behaviour change and the intended one. HTTP/1.1 requires a
-    # `Host` and every browser, `curl`, httpx and requests sends one; nothing here documents HTTP/1.0
-    # support; and a caller able to craft a hostless request can open a socket to this port directly,
-    # so it gains nothing from the skip that it did not already have. The cost is a caller that does
-    # not exist. What it buys is the third state stated instead of silently folded into the clean one:
-    # *could not determine the host* now reads differently from *determined it and was happy*.
-    #
-    # Since #51 this arm also covers a header that *was* sent and is not an authority — userinfo, or
-    # a character no hostname carries. The wording says "could not read" rather than "did not state"
-    # so it is true of both; `host_header_present` in `details` is what tells them apart, which is
-    # why they are one code and one shape rather than two (#52).
-    raw_host = request.headers.get("host")
-    host = _hostname(raw_host or "")
-    if not host:
-        raise UndeterminedHostError(
-            "this request did not name a host this server could read — send a Host header naming "
-            "this server",
-            details={"host_header_present": raw_host is not None, "host_header": raw_host or "",
-                     "hint": "HTTP/1.1 requires a Host header; HTTP/1.0 without one is not supported"})
-    if host not in allowed_hosts():
-        raise HostNotAllowedError(
-            f"this server does not answer to host {host!r}",
-            details={"host": host, "hint": f"set {ALLOWED_HOSTS_ENV} to bind elsewhere on purpose"})
+    # The host axis is `requivo.host_policy.check_host` since #508 -- one definition, every surface.
+    # Its own docstring carries the two narratives that used to sit here (#45's undetermined-host
+    # refusal and #51's non-authority arm), because that is where the code they describe now lives.
+    host = check_host(request.headers.get("host"))
 
     if request.method in SAFE_METHODS:
         return
