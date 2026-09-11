@@ -135,18 +135,42 @@ def _text_attr(path: str) -> str:
 # -- #510: the bytes are what was vendored ------------------------------------------------------
 
 
+def _membership_gap(present, recorded) -> tuple[list[str], list[str]]:
+    """`(vendored with no recorded digest, recorded with no file)`.
+
+    A pure function over two collections rather than an assertion pair inside the test, so the
+    *check itself* is testable -- see `test_the_membership_check_notices_each_direction_it_claims_to`
+    below. Both sets agree today, which is exactly the condition under which a comparison that had
+    quietly stopped comparing would still pass."""
+    return sorted(set(present) - set(recorded)), sorted(set(recorded) - set(present))
+
+
 def test_every_vendored_file_has_a_recorded_digest_and_every_digest_a_file():
     """Both directions, because each catches a different mistake: a newly vendored file nobody
     recorded is covered by nothing, and a recorded line whose file is gone is a check that passes by
     having nothing to check -- the same shape `test_boundaries.py`'s allowlist asserts in both
     directions for its own entries."""
-    recorded = set(_recorded_digests())
-    present = set(_vendored_files())
-    assert present - recorded == set(), (
-        f"vendored with no recorded digest: {sorted(present - recorded)} -- add it to "
-        f"{_DIGESTS.name} (`shasum -a 256 <path>`)")
-    assert recorded - present == set(), (
-        f"recorded in {_DIGESTS.name} but not in the tree: {sorted(recorded - present)}")
+    unrecorded, orphaned = _membership_gap(_vendored_files(), _recorded_digests())
+    assert not unrecorded, (
+        f"vendored with no recorded digest: {unrecorded} -- add it to {_DIGESTS.name} "
+        f"(`shasum -a 256 <path>`)")
+    assert not orphaned, (
+        f"recorded in {_DIGESTS.name} but not in the tree: {orphaned}")
+
+
+def test_the_membership_check_notices_each_direction_it_claims_to():
+    """Must-fire control for the row above, the way `test_a_single_changed_byte_fails_the_digest` is
+    for the byte-content row -- and it was missing until the review of this change asked for it.
+
+    The two sets agree in the tree, so the live row asserts two emptinesses that are already empty:
+    it is green whether the comparison works or has been narrowed to one direction, to one tree, or
+    to nothing at all. Feeding it disagreeing inputs is what pins that it would go red -- separately
+    per direction, since a check that collapsed them into one would still pass a single mixed
+    case."""
+    assert _membership_gap(["a"], {"a": "x"}) == ([], [])
+    assert _membership_gap(["a", "b"], {"a": "x"}) == (["b"], []), "a file with no digest"
+    assert _membership_gap(["a"], {"a": "x", "b": "y"}) == ([], ["b"]), "a digest with no file"
+    assert _membership_gap(["a"], {"b": "y"}) == (["a"], ["b"]), "both at once, stated separately"
 
 
 @pytest.mark.parametrize("rel", _VENDORED_BUNDLES)
