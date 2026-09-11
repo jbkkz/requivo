@@ -104,6 +104,39 @@ def test_main_prints_which_interactive_requests_it_skipped_and_how_to_capture_th
     )
 
 
+# ── the model is resolved once and threaded, never re-read per capture (#515) ──────────────────
+
+def test_main_resolves_the_model_once_and_threads_it_to_every_capture(tmp_path, monkeypatch):
+    """`capture_model()` reads the environment; `main()` calls it exactly once and passes the result
+    to every `capture()` call, so a run capturing several requests records one id even if the
+    environment `capture_model()` reads could change mid-run. Calling it again per request would let
+    two captures written by the *same run* disagree about what they ran on -- a claim about the
+    environment at each call site rather than a record of what actually reasoned."""
+    resolutions: list[str] = []
+
+    def fake_capture_model() -> str:
+        resolutions.append("called")
+        return f"model-{len(resolutions)}"
+
+    seen_models: list[str] = []
+    monkeypatch.setattr(golden_run, "GOLDEN", tmp_path)
+    monkeypatch.setattr(golden_run, "REPO", tmp_path.parent)
+    monkeypatch.setattr(golden_run, "REQUESTS", tmp_path / "requests.md")
+    (tmp_path / "requests.md").write_text("stub", encoding="utf-8")
+    monkeypatch.setattr(golden_run, "Anthropic", lambda *a, **k: object())
+    monkeypatch.setattr(golden_run, "capture_model", fake_capture_model)
+    monkeypatch.setattr(golden_run, "parse_requests",
+                        lambda _path: [_req("single-pass-a"), _req("single-pass-b")])
+    monkeypatch.setattr(golden_run, "capture",
+                        lambda _client, _req, _with_brief, *, model: seen_models.append(model))
+
+    assert golden_run.main([]) == 0
+    assert resolutions == ["called"], "capture_model() must be resolved exactly once per invocation"
+    assert seen_models == ["model-1", "model-1"], (
+        "every capture in one run must be threaded the same resolved id"
+    )
+
+
 # ── the announced cost is derived from the set, never written down as a total (#290) ───────────
 
 def test_the_announced_call_count_moves_with_the_request_set():
