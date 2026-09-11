@@ -7,7 +7,9 @@ allowed-tools: Bash(requivo:*), Read
 # /requivo:answer
 
 Refine an existing session with the user's answers. **You** reason; Requivo Core validates and applies.
-Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` first.
+Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` unless you already hold it from an earlier
+`/requivo:*` in this conversation — and read it again whenever you are unsure you still do (its
+opening rule says why, and which way to err).
 
 ## 0. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`, checking
@@ -44,20 +46,23 @@ refinement turn is not re-deriving the brief, and what is established stands on 
 reasoning layer in REASONING.md). Emitting `[]` for them means "these no longer hold", which is a real
 deletion and marks what rested on them stale.
 
-## 3. Validate → fix → apply
-Feed the full updated model in on stdin — no temp file:
+## 3. Apply → fix → re-apply
+Feed the full updated model in on stdin — no temp file, and **once**:
 ```bash
-requivo model validate - --json <<'JSON'
+requivo model apply <slug> - --expected-revision N --json <<'JSON'
 { … the full updated model … }
 JSON
-
-requivo model apply <slug> - --expected-revision N --json <<'JSON'
-{ … the same model, once it validates … }
-JSON
 ```
-Fix and re-validate on any error before applying (see REASONING.md). If the apply returns
-`revision_conflict`, someone changed the session while you were reasoning: re-read the model, tell the
-user what moved, and redo this turn against the current state — never re-apply the stale proposal.
+On any error, read `code`/`details`, fix the proposal and apply again (see the apply loop in
+REASONING.md). A refused apply wrote nothing, so `N` is still current and there is nothing to undo.
+
+Do not validate first and then apply the same JSON: `model apply` runs the identical validation
+before it writes, so the dry run buys nothing and makes you emit the whole model twice — per turn,
+into a context that keeps both copies (#511).
+
+`revision_conflict` is the one error that is not about your proposal: someone changed the session
+while you were reasoning. Re-read the model, tell the user what moved, and redo this turn against the
+current state — never re-apply the stale proposal.
 
 ## 4. Relay the result
 From the `model apply` JSON, tell the user in plain language:

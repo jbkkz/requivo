@@ -8,7 +8,9 @@ allowed-tools: Bash(requivo:*), Read
 
 Write the **decision brief** — what someone needs to review with a client, a product lead or an
 engineering lead *before* estimating this request. A judgment, not a recap, and not a PRD. **You** do
-the analysis; Requivo tracks the document. Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` first.
+the analysis; Requivo tracks the document. Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` unless you already hold it from an earlier
+`/requivo:*` in this conversation — and read it again whenever you are unsure you still do (its
+opening rule says why, and which way to err).
 
 ## 0. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`, checking

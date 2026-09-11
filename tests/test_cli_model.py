@@ -95,6 +95,39 @@ def test_apply_invalid_proposal_emits_error_envelope(workspace, tmp_path):
     assert env["code"] == "unknown_slot" and env["details"]["slots"] == ["ghost"]
 
 
+def test_a_refused_apply_writes_nothing_and_answers_like_validate(workspace, tmp_path):
+    """The plugin's mutating skills apply a proposal directly instead of validating it first, and
+    that rests on two properties of `apply` rather than on care in the prompt (#511).
+
+    `update_model` validates *inside* the session lock and *before* `_plan` writes, so a refused
+    apply is indistinguishable from a dry run: no revision, no `model.json`, the session still at its
+    old revision, and the same error envelope `model validate` produces for that payload. Were either
+    half to stop holding, the skills would be walking a session through a half-applied state on every
+    typo — so it is pinned here rather than restated in `REASONING.md` and hoped for."""
+    _run(["session", "init", "X.", "--slug", "s"])
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"model": {"ghost": _slot()}, "summary": {"objective": "o"}}))
+
+    def envelope(argv):
+        buf = io.StringIO()
+        with redirect_stdout(buf), pytest.raises(SystemExit) as e:
+            app(argv, client=None)
+        return e.value.code, json.loads(buf.getvalue())
+
+    apply_code, apply_env = envelope(
+        ["model", "apply", "s", str(bad), "--expected-revision", "0", "--json"])
+    validate_code, validate_env = envelope(["model", "validate", str(bad), "--json"])
+    assert apply_code == validate_code == 1
+    assert apply_env == validate_env, "a refused apply must answer exactly as `model validate` does"
+
+    # ...and the refusal left the store as it found it, so the caller's `--expected-revision` is
+    # still current and the corrected proposal can be applied against the same N.
+    assert SessionService().repo.read_meta("s").current_revision == 0
+    d = store.canonical_dir("s")
+    assert not (d / "model.json").exists(), "a refused apply must not write a model"
+    assert not list((d / "revisions").glob("*")), "a refused apply must not mint a revision"
+
+
 def test_model_diff_does_not_write(workspace, tmp_path):
     _run(["session", "init", "X.", "--slug", "s"])
     p = tmp_path / "p.json"

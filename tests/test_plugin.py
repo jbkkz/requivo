@@ -147,14 +147,38 @@ def test_skills_reference_only_real_cli_commands():
             assert cmd in commands, f"{p.parent.name}: references unknown `requivo {cmd}`"
 
 
-def test_mutating_skills_validate_and_apply_through_the_cli():
-    # discover/answer change the model — they MUST go through validate/apply, never by editing
-    # model.json directly.
+def test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path():
+    """discover/answer change the model — they MUST go through the CLI on stdin, never by editing
+    `model.json`, and they must say what to do when the CLI refuses.
+
+    This used to also assert `"model validate" in text`, i.e. that the dry run was mandatory. That is
+    stronger than the rule it was written for, and it cost a second full emission of the model on the
+    way to every revision — the largest block of context a plugin turn spends (#511). `model apply`
+    runs the identical validation before it writes and a refusal leaves the session untouched, so the
+    dry run buys nothing on the happy path and costs one extra emission on the unhappy one;
+    `test_a_refused_apply_writes_nothing_and_answers_like_validate` is what holds that up.
+
+    What is load-bearing is pinned instead: apply through the CLI, on stdin, under the optimistic-lock
+    precondition, with a stated route out of a refusal. A skill that emits a proposal and says nothing
+    about `code`/`details` sends the reasoning session into a retry loop with no error to read."""
     for name in ("discover", "answer"):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "model apply" in text, f"{name}: must apply via the CLI"
-        assert "model validate" in text, f"{name}: must validate before applying"
-        assert "model apply <slug> -" in text, f"{name}: must pass the proposal on stdin"
+        assert "model apply <slug> - --expected-revision" in text, (
+            f"{name}: must pass the proposal on stdin under the optimistic-lock precondition")
+        assert re.search(r"`code`\s*/\s*`details`", text), (
+            f"{name}: must name the structured error fields a refused apply is fixed from")
+        assert "revision_conflict" in text, (
+            f"{name}: must name the one refusal that is not about the proposal")
+        # And the proposal is emitted *once*. A `requivo model validate` inside a fenced block is the
+        # dry-run-then-apply shape returning: two heredocs carrying the same model, one of which
+        # decides nothing. Checked against the command blocks rather than the prose, because both
+        # skills legitimately still *discuss* `model validate` — the narrow cases it remains right
+        # for are named in REASONING.md and pointed at from here.
+        for block in re.findall(r"```[a-z]*\n(.*?)```", text, re.DOTALL):
+            assert "requivo model validate" not in block, (
+                f"{name}: runs `model validate` as a command — the mutating skills apply directly, "
+                "and a dry run ahead of the apply costs a second emission of the whole model")
     # No skill should instruct writing/editing model.json directly.
     for p in _skill_files():
         assert not re.search(r"(edit|write)\s+[^\n]*model\.json", p.read_text(encoding="utf-8"), re.IGNORECASE), \
@@ -248,6 +272,16 @@ def test_every_skill_has_an_answer_for_an_unavailable_requivo():
         assert re.search(r"preflight", body, re.IGNORECASE), \
             f"{name}: must run the shared preflight before its first `requivo` call"
         assert "REASONING.md" in body, f"{name}: must point at the shared statement"
+        # ...and a skill that instructs a *read* must make it conditional. REASONING.md has always
+        # opened with "Read this once per session"; four skills then told Claude to read it
+        # unconditionally, so a discover → answer → answer → brief flow re-read the longest document
+        # the plugin ships four times, into a context that keeps every copy (#512). The two skills
+        # that only point at the preflight section are untouched — they never asked for a read.
+        # Matched on the imperative rather than on the sentence, so the prose stays rewritable.
+        if re.search(r"Read `\$\{CLAUDE_PLUGIN_ROOT\}/REASONING\.md`", body):
+            assert "unless you already hold it" in body, (
+                f"{name}: instructs a read of REASONING.md without the once-per-session condition "
+                "that file's own opening rule states")
         # A pointer a skill cannot follow is not a pointer. `status` and `impact` shipped without the
         # Read tool, so `${CLAUDE_PLUGIN_ROOT}/REASONING.md` was unreachable from exactly the two
         # skills a new user reaches first.
