@@ -2,9 +2,9 @@
 slice 2). Both go through `DiscoveryService`, the same validated apply path (reason -> apply ->
 save) every other surface uses; no handler composes core calls or re-validates.
 
-Both are paid, so both are scoped in a `track_usage()` ledger and carry the `usage` object on the
-response -- an offline route never opens one, and `usage_view` returns `None` rather than a
-manufactured zero for a call the provider reported no figures for.
+Both are paid, so both are scoped in a `track_api_usage()` ledger -- logged on the failure path too,
+see `api/usage.py` -- and carry the `usage` object on the response; `usage_view` returns `None`
+rather than a manufactured zero for a call the provider reported no figures for.
 """
 
 from __future__ import annotations
@@ -13,9 +13,8 @@ from fastapi import APIRouter, Depends
 
 from requivo.api.dependencies import get_discovery, safe_slug
 from requivo.api.schemas import AnswersRequest
-from requivo.api.usage import usage_view
+from requivo.api.usage import track_api_usage, usage_view
 from requivo.services.discovery import DiscoveryService
-from requivo.usage import track_usage
 
 router = APIRouter()
 
@@ -27,7 +26,7 @@ def run_discovery(slug: str = Depends(safe_slug),
 
     409 `revision_conflict` above revision 0 -- the gate is taken before payment (invariant 13); 503
     `session_locked` when a concurrent first discovery already holds the non-blocking guard."""
-    with track_usage() as ledger:
+    with track_api_usage("api-discover") as ledger:
         result = discovery.run_discovery(slug, surface="api-discover")
         usage = usage_view(ledger)
     return {**result.to_dict(), "usage": usage}
@@ -43,7 +42,7 @@ def submit_answers(body: AnswersRequest, slug: str = Depends(safe_slug),
     default -- an API is a concurrent surface by definition (§1 of the decision record). A stale
     precondition is refused here, before the provider is paid (#205,
     `DiscoveryService._require_no_conflict_yet`) -- 409 `revision_conflict`."""
-    with track_usage() as ledger:
+    with track_api_usage("api-answer") as ledger:
         result = discovery.answer(slug, body.answers, expected_revision=body.expected_revision,
                                   surface="api-answer")
         usage = usage_view(ledger)

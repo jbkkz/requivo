@@ -69,10 +69,24 @@ class _FakeBlock:
 
 
 class _FakeResponse:
-    def __init__(self, text):
+    def __init__(self, text, usage=None):
         self.content = [_FakeBlock(text)]
         self.stop_reason = "end_turn"
-        self.usage = None
+        self.usage = usage
+
+
+class Spend:
+    """The token counts the SDK reports on a response, under the SDK's own attribute names --
+    `_complete` reads them by name, so a rename there breaks these tests rather than zeroing them.
+    The default fake reports `usage = None`; a test *about* the spend passes one of these, without
+    which no test could ever observe a populated `usage` object (found in review of #425 slice 2)."""
+
+    def __init__(self, input_tokens=0, output_tokens=0, cache_read_input_tokens=0,
+                 cache_creation_input_tokens=0):
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.cache_read_input_tokens = cache_read_input_tokens
+        self.cache_creation_input_tokens = cache_creation_input_tokens
 
 
 class FakeClient:
@@ -80,22 +94,24 @@ class FakeClient:
     as `tests/web/conftest.py`'s fixture of the same name, restated rather than imported since
     `tests/web/` and `tests/api/` sit behind two different optional extras."""
 
-    def __init__(self, *replies):
+    def __init__(self, *replies, spend=None):
         self._replies = list(replies)
+        self._spend = spend
         self.calls = []
         self.messages = self  # client.messages.create -> self.create
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return _FakeResponse(self._replies.pop(0))
+        return _FakeResponse(self._replies.pop(0), self._spend)
 
 
 @pytest.fixture
 def with_provider(app):
     """Swap in a `DiscoveryService` backed by a `FakeClient` (shared across requests, so replies pop
-    in order over a multi-step flow). Returns a function taking the reply sequence."""
-    def _install(*replies):
-        fake = FakeClient(*replies)
+    in order over a multi-step flow). Returns a function taking the reply sequence and an optional
+    `spend=` every reply reports."""
+    def _install(*replies, spend=None):
+        fake = FakeClient(*replies, spend=spend)
         disco = DiscoveryService(client=fake)
         app.dependency_overrides[get_discovery] = lambda: disco
         return fake

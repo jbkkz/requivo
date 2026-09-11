@@ -60,3 +60,17 @@ def test_a_get_needs_no_content_type(raw_client):
     `Content-Type`, because the guard only ever inspects unsafe ones."""
     resp = raw_client.get("/api/v1/sessions")
     assert resp.status_code == 200
+
+
+def test_a_rebound_host_is_refused_before_the_content_type_check(raw_client):
+    """Ordering, not reach: both guards refuse, but a request from a host the allowlist rejects is
+    told 403 `host_not_allowed` and not 415 -- the transport-level check runs first, as
+    `docs/decisions/0004-the-http-api-facade.md` §5 places it. A first draft registered the two the
+    other way round (found in review). The must-not-fire control is every 415 test above, which
+    all carry the allowed host."""
+    resp = raw_client.post("/api/v1/sessions", content=b'{"request": "x"}',
+                           headers={"Host": "evil.example.com"})
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "host_not_allowed"
+    # ...and the refusal still carries the header policy, from the middleware outside both guards.
+    assert "content-security-policy" in resp.headers

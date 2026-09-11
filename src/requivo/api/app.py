@@ -172,19 +172,36 @@ def create_api():
 
     app.mount("/api-static", StaticFiles(directory=str(STATIC_DIR)), name="api-static")
 
-    # Installed before the header middleware so it ends up *inside* it: a request either guard turns
-    # away still leaves with the same CSP and nosniff headers as any other response -- the same
-    # ordering, for the same reason, as `web/app.py`'s own comment on this line.
+    # Two guards, both installed before the header middleware so they end up *inside* it: a request
+    # either turns away still leaves with the same CSP and nosniff headers as any other response --
+    # the same ordering, for the same reason, as `web/app.py`'s own comment on this line.
     #
     # Both render their own refusal rather than raising, because an exception raised in a
     # `BaseHTTPMiddleware` is outside the app's `ExceptionMiddleware` and the `RequivoError` handler
     # registered below would never see it -- the caller would get a bare 500 where a 403/415 was
     # intended. `web/security.py`'s `install_cross_site_guard` makes the identical point.
     #
-    # Only the host axis, and that is the decision rather than an omission (#508). It is the one
-    # cross-site check that applies to **reads**, which is all slice 1 served, and the one a
-    # formless, cookieless JSON API needs for exactly the same transport-level reason a browser app
-    # does: DNS rebinding does not care what content type the listener speaks.
+    # `host_guard` is the host axis (#508): the one cross-site check that applies to **reads**, which
+    # is all slice 1 served, and the one a formless, cookieless JSON API needs for exactly the same
+    # transport-level reason a browser app does -- DNS rebinding does not care what content type the
+    # listener speaks.
+    #
+    # `content_type_guard` is slice 2's floor under the write routes -- see
+    # `require_json_content_type`'s own docstring for what this does and does not cover. The
+    # `Sec-Fetch-Site`/`Origin` checks that complete the posture
+    # `docs/decisions/0004-the-http-api-facade.md` §5 describes are still slice 4's.
+    #
+    # Registered *before* `host_guard` so it ends up inside it: Starlette wraps each newly added
+    # middleware around the stack so far, so the last one registered runs first per request. The
+    # host allowlist is the transport-level check §5 places ahead of everything else, and a request
+    # from a rebound host should be told 403 `host_not_allowed`, not 415 -- both refuse, but a
+    # first draft had the order inverted and an operator chasing a 415 would have been chasing the
+    # wrong code (found in review). `test_a_rebound_host_is_refused_before_the_content_type_check`.
+    @app.middleware("http")
+    async def content_type_guard(request: Request, call_next):
+        refusal = require_json_content_type(request)
+        return refusal if refusal is not None else await call_next(request)
+
     @app.middleware("http")
     async def host_guard(request: Request, call_next):
         try:
@@ -192,14 +209,6 @@ def create_api():
         except CrossSiteRequestError as exc:
             return JSONResponse(exc.to_dict(), status_code=http_status_for(exc))
         return await call_next(request)
-
-    # Slice 2's floor under the write routes -- see `require_json_content_type`'s own docstring for
-    # what this does and does not cover. The `Sec-Fetch-Site`/`Origin` checks that complete the
-    # posture `docs/decisions/0004-the-http-api-facade.md` §5 describes are still slice 4's.
-    @app.middleware("http")
-    async def content_type_guard(request: Request, call_next):
-        refusal = require_json_content_type(request)
-        return refusal if refusal is not None else await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

@@ -15,10 +15,9 @@ from pydantic import BaseModel
 
 from requivo.api.dependencies import get_artifacts, get_discovery, safe_slug
 from requivo.api.schemas import ArtifactSaveRequest
-from requivo.api.usage import usage_view
+from requivo.api.usage import track_api_usage, usage_view
 from requivo.services.artifacts import ArtifactService, UnknownArtifactTypeError
 from requivo.services.discovery import GENERATABLE, DiscoveryService
-from requivo.usage import track_usage
 
 router = APIRouter()
 
@@ -61,13 +60,14 @@ def generate_artifact(artifact_type: str, slug: str = Depends(safe_slug),
     here, so this surface offers exactly what the shared orchestration can produce.
 
     Not idempotent -- each call pays and overwrites, documented as such (§3 of the decision record).
-    Paid, so scoped in a `track_usage()` ledger; the response carries the saved artifact's
+    Paid, so scoped in a `track_api_usage()` ledger (logged on failure too, see `api/usage.py`);
+    the response carries the saved artifact's
     provenance (`ArtifactStatus`), the typed contract's own dump, and what this call spent."""
     if artifact_type not in GENERATABLE:
         raise UnknownArtifactTypeError(
             f"{artifact_type!r} is not a generated artifact; supported: {', '.join(GENERATABLE)}",
             details={"type": artifact_type})
-    with track_usage() as ledger:
+    with track_api_usage(f"api-{artifact_type}") as ledger:
         result = discovery.generate(slug, artifact_type, surface=f"api-{artifact_type}")
         usage = usage_view(ledger)
     # A runtime `artifact_type` resolves `generate()`'s `str` overload, `Generated[object]` -- the
