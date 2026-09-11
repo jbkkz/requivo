@@ -56,6 +56,11 @@ logger = logging.getLogger("requivo.web")
 # log line above is what survives that and every other case. Pinned by
 # `test_a_first_analysis_lands_on_a_page_showing_what_it_spent` and
 # `test_reloading_the_landing_page_does_not_repeat_the_spend_line`.
+#
+# Two tabs on the same slug race the same as any flash store: whichever GET arrives first pops it,
+# the other sees nothing -- harmless, since the figure is only a courtesy display of a number already
+# on the record, but it does mean a second concurrent "Analyse" on the same pending session from two
+# tabs can leave only one of the two landings showing it.
 _lock = threading.Lock()
 _pending: dict[str, dict] = {}
 

@@ -75,9 +75,13 @@ def analysis_failed(slug: str, exc: EngineError | ProviderOutputError) -> Redire
     clause (`_SAVED_NOTE_PREFIX`, matched via `endswith`) is stripped from what gets truncated, not
     only the path** -- otherwise a realistic contract violation loses the path entirely past
     `_MAX_NOTICE_CHARS`, and the shortest cause ends mid-filename at a path that does not resolve
-    (#283, #362). Best-effort: a future reword of `completion.py`'s connector text this constant is
-    not updated alongside simply stops matching, reverting to the unstripped (but never broken) clause.
-    Pinned by `test_a_failed_first_analysis_lands_on_the_session_that_was_saved` and
+    (#283, #362). Stripping the path alone and not the clause around it was tried first and reviewed
+    out: it left the notice ending "...was saved to" with nothing after it, immediately followed by
+    the template's own "was saved to <path>" sentence -- a dangling half-sentence worse to read than
+    the truncation this exists to fix. Best-effort: a future reword of `completion.py`'s connector
+    text this constant is not updated alongside simply stops matching, reverting to the unstripped
+    (but never broken) clause. Pinned by
+    `test_a_failed_first_analysis_lands_on_the_session_that_was_saved` and
     `test_a_retry_exhausted_analysis_carries_the_full_saved_reply_path_on_the_web_surface`.
     """
     message = exc.message
