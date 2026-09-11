@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from requivo.api.dependencies import get_artifacts, get_discovery, safe_slug
 from requivo.api.schemas import ArtifactSaveRequest
@@ -69,8 +70,14 @@ def generate_artifact(artifact_type: str, slug: str = Depends(safe_slug),
     with track_usage() as ledger:
         result = discovery.generate(slug, artifact_type, surface=f"api-{artifact_type}")
         usage = usage_view(ledger)
+    # A runtime `artifact_type` resolves `generate()`'s `str` overload, `Generated[object]` -- the
+    # typed seam pays off only at a literal call site (`decision: typed-generation-seam`). Every
+    # contract it can hand back is a pydantic model, so narrow by the fact rather than by a cast.
+    artifact = result.artifact
+    if not isinstance(artifact, BaseModel):  # pragma: no cover - every registered contract is one
+        raise TypeError(f"generated {artifact_type!r} is not a pydantic contract: {type(artifact)!r}")
     return {"type": artifact_type, "status": result.status.model_dump(),
-            "artifact": result.artifact.model_dump(), "usage": usage}
+            "artifact": artifact.model_dump(), "usage": usage}
 
 
 @router.put("/sessions/{slug}/artifacts/{artifact_type}")
