@@ -77,7 +77,8 @@ is a reason to tag, and neither is written anywhere as one.** Concretely:
 
 Not a hypothetical. Three majors in thirteen days is the measurement, and the first downstream
 casualty already exists: a consumer's `<2.0.0` pin went stale within a day of 2.0.0 and nothing on
-either side went red (`docs/cloud-boundary.md` §2). The cost was not a broken build — it was a
+either side went red (#440's own problem statement; `docs/cloud-boundary.md` §2 is where the
+consumption pattern that prevents it is written down). The cost was not a broken build — it was a
 ceiling that read as prudence and starved the consumer of every fix after it, silently. And the
 cost of the count trigger was a proposal to release on a morning's merges, which a human had to
 decline and record.

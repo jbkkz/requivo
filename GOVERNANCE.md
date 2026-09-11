@@ -16,9 +16,9 @@ Requivo is a young project, and its governance is intentionally light.
 - **A release is cut because of what is in it**, never on a schedule or a merge count: a user-visible
   capability, a fix somebody is waiting on, or a blocking-class security finding — which ships
   immediately, alone if need be. Breaking changes batch and ride the next release that has a reason
-  to happen. The argument and the alternatives it rejects are in
-  [docs/decisions/0010-a-release-is-justified-by-its-contents.md](docs/decisions/0010-a-release-is-justified-by-its-contents.md);
-  the consequence for an integrator is one sentence — pin exactly, `requivo==X.Y.Z`, and bump it as a
+  to happen. The argument and the alternatives it rejects are the decision record
+  `decision: a-release-is-justified-by-its-contents` under [docs/decisions/](docs/decisions/); the
+  consequence for an integrator is one sentence — pin exactly, `requivo==X.Y.Z`, and bump it as a
   routine chore gated by your own tests — and [docs/compatibility.md](docs/compatibility.md) is the
   list of what that pin protects.
 - Behaviour is covered by the [Code of Conduct](CODE_OF_CONDUCT.md), which is in force today.
