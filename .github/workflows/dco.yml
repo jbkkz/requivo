@@ -1,0 +1,42 @@
+name: DCO
+
+# Every commit in a pull request carries a `Signed-off-by:` matching its author -- the Developer
+# Certificate of Origin (https://developercertificate.org) -- `decision: adopting-the-dco` (#439),
+# which also records why a full CLA is refused and why this check is not required on day one.
+#
+# No third-party action, and that is the point rather than an economy: the one third-party action
+# this repository runs is the subject of its own supply-chain issue (#433), and a DCO check is forty
+# lines of git that nobody needs to grant a token to. The logic is in `scripts/check_dco.py` rather
+# than in a `run:` block here, so it is testable directly -- `tests/test_dco_check.py` -- instead of
+# having to be extracted back out of this YAML the way `tests/test_workflow_untrusted_output.py`
+# had to extract the plugin-validate step.
+#
+# That script prints SHAs and never an author name, an email or a subject. Those are
+# contributor-written text and a CI log is parsed, which is the class that file documents.
+
+on:
+  pull_request:
+
+concurrency:
+  group: dco-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: this job checks out and runs git. It grants no write scope, so it needs no entry in
+# `tests/test_workflow_permissions.py`'s `_WRITE_GRANTS`.
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: the check walks `base..head`, and a shallow clone has neither end of it.
+          fetch-depth: 0
+      - name: Every commit carries a Signed-off-by matching its author
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_dco.py

@@ -100,6 +100,53 @@ def render_turn(out: EngineOutput) -> None:
             print(f"     → {slot_label(q.slot)}")   # a schema-validated slot id, not free text
 
 
+def render_grounding(cards: list[str] | None) -> None:
+    """What this session's impact estimates were scored against — the cards, named, and nothing else.
+
+    **A naming, never a verdict, and that is #492's decision rather than a shortcut.** Context cards
+    can be present, readable, and about a different product entirely; that state renders identically
+    to `ok`, and it matters because `information_value = uncertainty x impact` is the whole driver
+    and the cards are what the impact half is read against. A session grounded on the wrong product
+    reaches `ready` with a question selection nothing on screen accounts for.
+
+    There is no `context.status: mismatched` and there is not going to be one until something
+    changes. Every other value of that vocabulary is decidable from the filesystem; relevance is not
+    -- it needs either a model call in the free deterministic preflight, which puts a paid and
+    fallible judgment in front of the one path whose value is that it is decidable, or a keyword
+    heuristic, which is the combination that is right often enough to be trusted and wrong silently.
+    So the human is the detector, and the product's whole job is to hand them the one fact they can
+    judge instantly. `discover` already does (#257), and `session show` does; this is `status`, the
+    verb a reader comes back to offline, which stated everything about the model and nothing about
+    what it was reasoned against.
+
+    The revisit trigger is written down rather than left to be re-derived: a **third** measured
+    instance of a card diluting its neighbour funds automatic relevance routing, per the golden
+    harness's own known-limit note. Two are on record.
+
+    `None` is not "no cards" -- it is *every card in the install*, re-resolved on each turn, so the
+    names are read now rather than stored. That is why the two branches word it differently: an
+    explicit selection was fixed at creation and is true of every turn this session has taken, and
+    an unnarrowed one is only a claim about the install as it stands today.
+    """
+    from requivo.core.context import available_cards
+    print("\nGROUNDED ON")
+    if cards:
+        print(_labeled("Product context", ", ".join(display_token(c) for c in cards), lw=20))
+        return
+    names = available_cards()
+    if not names:
+        # The `empty` state has its own remedy in `doctor`; repeating it here would be a second
+        # implementation of a diagnostic that already exists, so this states the fact and stops.
+        print(_labeled("Product context",
+                       "no cards in this install — impact is estimated from the request alone",
+                       lw=20))
+        return
+    print(_labeled("Product context", f"all {len(names)} cards in this install "
+                   f"({', '.join(display_token(n) for n in names)})", lw=20))
+    print(_labeled("", "not narrowed at creation — `requivo session rescope` if this request is "
+                       "about one product area", lw=20))
+
+
 def next_command(payload: dict) -> str | None:
     """The single next step for a status view, or None when there is not one (#246).
 

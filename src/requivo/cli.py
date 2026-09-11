@@ -43,6 +43,7 @@ from requivo.render.terminal import (
     render_brief,
     render_dependency_map,
     render_estimate,
+    render_grounding,
     render_impact,
     render_next_command,
     render_session_cost,
@@ -588,6 +589,10 @@ def _cmd_status(a, client) -> None:
         print_json(payload)
         return
     render_turn(out)
+    # What the impact estimates above were scored against (#492). After the model rather than before
+    # it, deliberately: the reader came here for where the session stands, and the grounding is what
+    # they check that answer *against* -- it is evidence about the readout, not a preamble to it.
+    render_grounding(payload.get("context_cards"))
     # A cumulative "what has this session cost so far" line, from the token/rate provenance stamped
     # onto each provider-backed revision (#292) -- silent when nothing on the session carries one, so
     # a bare model.json (no `slug` in the payload) or a session applied entirely through Claude Code

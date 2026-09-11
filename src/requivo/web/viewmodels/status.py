@@ -73,6 +73,39 @@ def understood_view(status: dict) -> dict:
     }
 
 
+def grounding_view(status: dict) -> dict:
+    """What this session's impact estimates were scored against — the product context, named.
+
+    A **naming, never a verdict** (#492). Cards can be present, readable and about a different
+    product entirely, and that state renders identically to `ok`; since `information_value =
+    uncertainty x impact` is the whole driver and the cards are what the impact half is read
+    against, a session grounded on the wrong product reaches *ready* with a question selection
+    nothing on screen accounts for. There is no `mismatched` status and this does not invent one:
+    relevance is a judgment, every other `context.status` value is decidable from the filesystem,
+    and the two ways to automate the judgment are a paid call in the free deterministic path or a
+    keyword heuristic that is wrong silently. The human is the detector; this is the fact they
+    judge.
+
+    It is on the **primary** screen rather than under *Traceability details*, unlike the history
+    line that also names the cards. The rule this repo applies is that the primary screen shows what
+    a reader must act on — and the whole of #492 is that this is exactly such a fact, since nothing
+    else on the page can tell them the grounding was wrong.
+
+    `narrowed=False` is not "no cards": it is *every card in the install*, re-resolved on each turn,
+    which is why the names are read now rather than taken from the session. An explicit selection
+    was fixed at creation and is true of every turn this session has taken; an unnarrowed one is
+    only a claim about the install as it stands today.
+
+    `available_cards()` is a read of the install, not a re-derivation of anything the Core decides,
+    so it stays inside this module's stated remit: translation and selection.
+    """
+    from requivo.core.context import available_cards
+    cards = status.get("context_cards")
+    if cards:
+        return {"narrowed": True, "cards": list(cards)}
+    return {"narrowed": False, "cards": available_cards()}
+
+
 def understanding_view(status: dict) -> list[dict]:
     """The per-topic understanding as a flat, dot-coded row list (known, then assumed, then open) —
     the model view, now shown under traceability rather than on the primary screen. Each row carries

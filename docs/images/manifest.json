@@ -1,6 +1,6 @@
 {
   "_comment": "Written by scripts/shoot_doc_images.py. Each image carries the `surface_digest` of the tree it was shot against; tests/test_doc_images.py compares each one against the tree, so a shot left out of a partial re-run stays flagged - re-run the script.",
-  "shot_at": "2026-09-08",
+  "shot_at": "2026-09-11",
   "viewport": {
     "width": 1280,
     "height": 900
@@ -16,7 +16,7 @@
       "caption": "The decision brief as a rendered document: request and objective, current understanding, what is confirmed, and the important assumptions.",
       "width": 2560,
       "height": 4244,
-      "surface_digest": "128357ceeea00643296b818b80efae114d21e5705936737b6e88fab94e0f4340"
+      "surface_digest": "3b8c023f3300116de53f1546a72a94b89d17826b80e8c50e8ab5aae333cfdc34"
     },
     "web-home": {
       "route": "/",
@@ -27,7 +27,7 @@
       "caption": "The home page: the request box, the context-card cost note, and the recent sessions.",
       "width": 2560,
       "height": 2190,
-      "surface_digest": "128357ceeea00643296b818b80efae114d21e5705936737b6e88fab94e0f4340"
+      "surface_digest": "3b8c023f3300116de53f1546a72a94b89d17826b80e8c50e8ab5aae333cfdc34"
     },
     "web-questions": {
       "route": "/sessions/{slug}",
@@ -38,7 +38,7 @@
       "caption": "The open questions with why each matters, the answer form, and the readiness verdict.",
       "width": 2560,
       "height": 3456,
-      "surface_digest": "128357ceeea00643296b818b80efae114d21e5705936737b6e88fab94e0f4340"
+      "surface_digest": "3b8c023f3300116de53f1546a72a94b89d17826b80e8c50e8ab5aae333cfdc34"
     },
     "web-session": {
       "route": "/sessions/{slug}",
@@ -48,8 +48,8 @@
       },
       "caption": "The session page: the objective, the request as read, and what is confirmed vs assumed.",
       "width": 2560,
-      "height": 3586,
-      "surface_digest": "128357ceeea00643296b818b80efae114d21e5705936737b6e88fab94e0f4340"
+      "height": 3666,
+      "surface_digest": "3b8c023f3300116de53f1546a72a94b89d17826b80e8c50e8ab5aae333cfdc34"
     }
   }
 }

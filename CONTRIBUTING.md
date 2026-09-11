@@ -225,10 +225,28 @@ that has touched Git history must be considered compromised even after removal.
 By submitting a contribution, you agree that your contribution will be licensed under the same
 **Apache License 2.0** that covers the project.
 
-There is no Contributor License Agreement (CLA) or Developer Certificate of Origin (DCO) sign-off in
-force today. A lightweight DCO or CLA may be introduced before accepting large external contributions;
-if that happens it will be documented here first. Contributing now does not assign any additional
-rights beyond the Apache-2.0 terms above.
+### Sign off your commits (DCO)
+
+This project uses the [Developer Certificate of Origin](https://developercertificate.org) 1.1. Every
+commit in a pull request must carry a `Signed-off-by:` trailer whose email matches the commit's
+author:
+
+```bash
+git commit -s               # adds the trailer for you, from your git identity
+git rebase --signoff main   # adds it to commits you already made, then force-push the branch
+```
+
+The trailer is your certification that you wrote the patch, or otherwise have the right to submit it
+under the project's licence — the DCO text linked above is the whole of what you are asserting. It is
+a statement about each **commit**, so a sign-off in a pull request description or a comment does not
+stand in for one.
+
+`.github/workflows/dco.yml` checks this on every pull request and names the commits that need it. The
+reasoning, including why a full CLA is refused, is in
+[`docs/decisions/0009-adopting-the-dco.md`](docs/decisions/0009-adopting-the-dco.md).
+
+**There is no Contributor License Agreement.** Contributing does not assign any additional rights
+beyond the Apache-2.0 terms above.
 
 ## Trademark
 
