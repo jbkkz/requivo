@@ -7,7 +7,9 @@ allowed-tools: Bash(requivo:*), Read
 # /requivo:prd
 
 Generate a **PRD as a view of the model** — not new invention. **You** write it from the model; Requivo
-tracks it. Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` first.
+tracks it. Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` unless you already hold it from an earlier
+`/requivo:*` in this conversation — and read it again whenever you are unsure you still do (its
+opening rule says why, and which way to err).
 
 ## 0. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`, checking

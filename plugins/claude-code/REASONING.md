@@ -1,7 +1,17 @@
 # Requivo — shared reasoning rules for every skill
 
-Read this once per session; every `/requivo:*` skill relies on it. It exists so the rules live in one
-place, not copied into six skills.
+**Read this once per session.** Every `/requivo:*` skill relies on it, and each one opens by sending
+you here — but a second `/requivo:*` in the same conversation does not need a second read. A
+discovery that runs discover → answer → answer → brief reads this file four times otherwise, and it
+is the longest thing any skill opens: that is the single largest block of context a multi-turn
+session spends on bytes it already holds. It exists so the rules live in one place, not copied into
+six skills.
+
+**When you are not sure you still hold it, read it again.** The condition is only safe to get wrong
+in one direction: a redundant read costs tokens, a skipped one costs the trust boundary and the
+honesty rules below. A compacted conversation is exactly the case where a session remembers *having
+read* something whose text is gone — so "I read it earlier" is not the test. "I can still state the
+preflight's four things and the trust boundary" is (#512).
 
 ## Preflight: can you run `requivo` at all?
 
@@ -157,7 +167,7 @@ what changed, and redo the turn on the current state.
 You do not need to compute staleness yourself. Save with the honest `--revision` and Core works out
 what the change touched: an artifact whose dependencies moved is recorded stale automatically.
 
-## The proposal → validate → apply loop
+## The proposal → apply loop
 
 Every skill that changes the model follows the same loop. **Pass content on stdin with `-`** — no temp
 files anywhere:
@@ -165,27 +175,36 @@ files anywhere:
 1. **Read the current revision**: `requivo status <session> --json` → `revision`. Call it `N`.
 2. Reason, then feed the proposal straight in — never edit `model.json` directly:
    ```bash
-   requivo model validate - --json <<'JSON'
+   requivo model apply <session> - --expected-revision N --json <<'JSON'
    { "model": { … }, "questions": [ … ], "summary": { … } }
    JSON
    ```
    A question is `{ "q": …, "slot": …, "why": … }` — **the text field is `q`**, not `question`. It is
    spelled out because `question` is the natural guess and the contract is `extra="forbid"`, so the
-   guess costs a whole validate cycle: two errors per question (`questions.N.q Field required` and
+   guess costs a whole apply cycle: two errors per question (`questions.N.q Field required` and
    `questions.N.question Extra inputs are not permitted`), which is 12 for a six-question turn.
    Recoverable — the first of each pair names `q` — but the round trip is avoidable, and it was
    spent for real on a plugin session before this line existed (#489).
-3. If it fails, read the JSON error (`code`, `message`, `details`) and **fix your proposal**, then
-   validate again. Repeat until valid. Common codes: `unknown_slot` (a slot id isn't in the schema),
-   `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model` (shape/JSON).
-4. **Apply** the same way:
-   ```bash
-   requivo model apply <session> - --expected-revision N --json <<'JSON'
-   { … the proposal that just validated … }
-   JSON
-   ```
-   Read back the structured result (revision, changed_slots, changed_decisions, stale_artifacts,
-   readiness) and relay it. On `revision_conflict`, see the revision contract above.
+3. If it fails, read the JSON error (`code`, `message`, `details`), **fix your proposal**, and apply
+   again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
+   `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
+   (shape/JSON). On `revision_conflict`, see the revision contract above.
+4. Read back the structured result (revision, changed_slots, changed_decisions, stale_artifacts,
+   readiness) and relay it.
+
+**A refused apply changed nothing, so there is nothing to undo.** `update_model` validates the
+proposal inside the session lock *before* it writes, so a proposal that fails validation leaves no
+revision, no `model.json`, and a session that `requivo session verify` still calls intact — and the
+envelope is the same one `requivo model validate` returns for that payload. That is why the loop above
+applies directly rather than validating first: a mandatory dry run makes you emit the whole model
+twice on the way to every revision, which is the largest single block of context a turn spends, and it
+does not make a bad proposal any safer. Pinned by
+`test_a_refused_apply_writes_nothing_and_answers_like_validate` (#511).
+
+`requivo model validate -` is still the right tool in two places, and only there: `--allow-partial`,
+which validates a projection rather than a whole model and has no apply to ride on, and a proposal you
+have already failed to fix once, where checking before committing to a revision number is worth the
+second emission.
 
 ## The reasoning layer: say nothing, or say it deliberately
 
