@@ -7,7 +7,9 @@ serializable envelope every other surface already publishes (`error.to_dict()` p
 off because a browser app's routes are not an invitation to script it. This *is* the invitation: a
 machine client is exactly this surface's audience. Docs are self-hosted (#504, `api/routes/docs.py`
 + `api/static/`) rather than loaded from a CDN, and every response -- docs included -- carries the
-same security-header policy Requivo Web does (#503, `requivo.security_headers`).
+same security-header policy Requivo Web does (#503, `requivo.security_headers`) and the same host
+allowlist (#508, `requivo.host_policy`) -- the DNS-rebinding guard, which is transport-level and so
+applies to any local listener, forms or no forms.
 
 Nothing here binds a port at import time: this is a factory, mirroring `web.app.create_app`. Slice 1
 ships no CLI verb to call it from yet -- that is slice 4's `requivo api serve` -- so a caller wanting
@@ -20,6 +22,7 @@ from __future__ import annotations
 import logging
 
 from requivo import __version__
+from requivo.host_policy import CrossSiteRequestError, check_host
 from requivo.providers.errors import EngineError
 from requivo.security_headers import apply_security_headers
 
@@ -115,6 +118,30 @@ def create_api():
     )
 
     app.mount("/api-static", StaticFiles(directory=str(STATIC_DIR)), name="api-static")
+
+    # Installed before the header middleware so it ends up *inside* it: a request the guard turns
+    # away still leaves with the same CSP and nosniff headers as any other response -- the same
+    # ordering, for the same reason, as `web/app.py`'s own comment on this line.
+    #
+    # It renders its own refusal rather than raising, because an exception raised in a
+    # `BaseHTTPMiddleware` is outside the app's `ExceptionMiddleware` and the `RequivoError` handler
+    # registered below would never see it -- the caller would get a bare 500 where a 403 was
+    # intended. `web/security.py`'s `install_cross_site_guard` makes the identical point.
+    #
+    # Only the host axis, and that is the decision rather than an omission (#508). It is the one
+    # cross-site check that applies to **reads**, which is all this surface serves today, and the
+    # one a formless, cookieless JSON API needs for exactly the same transport-level reason a
+    # browser app does: DNS rebinding does not care what content type the listener speaks. The
+    # `Sec-Fetch-Site`/`Origin` checks and the JSON content-type requirement that does the
+    # synchronizer token's job here belong with the unsafe methods, which slice 4 adds --
+    # `docs/decisions/0004-the-http-api-facade.md` §5 argues both, and marks which ships today.
+    @app.middleware("http")
+    async def host_guard(request: Request, call_next):
+        try:
+            check_host(request.headers.get("host"))
+        except CrossSiteRequestError as exc:
+            return JSONResponse(exc.to_dict(), status_code=http_status_for(exc))
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

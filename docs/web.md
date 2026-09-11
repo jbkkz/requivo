@@ -55,7 +55,9 @@ REQUIVO_WEB_ALLOWED_HOSTS=192.168.1.50 requivo web --host 0.0.0.0
 - **The bind address** (`--host`) is what the process listens on. `0.0.0.0` (or `::`) means "every
   interface", which is not itself a value a browser can ever send back — no client addresses a server
   as `0.0.0.0`, it addresses whatever hostname or IP it actually connected to.
-- **The allowed-host list** (`REQUIVO_WEB_ALLOWED_HOSTS`) is what the cross-site guard's `Host`
+- **The allowed-host list** (`REQUIVO_WEB_ALLOWED_HOSTS`) governs the HTTP API too since #508 — the
+  name stayed, the scope widened, because the DNS-rebinding guard it configures is transport-level
+  and every local listener needs it. It is what the cross-site guard's `Host`
   allowlist accepts (see [Security](#security-local-by-default)). It has to name the real address —
   the LAN IP or hostname a client's browser will put in its `Host` header — because that check runs
   on every request, reads and writes alike, and is the one line of defence against DNS rebinding.
