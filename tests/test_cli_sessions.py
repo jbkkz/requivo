@@ -17,6 +17,7 @@ from _cli_harness import _full_model, _run, _run_json, _run_stdin, _slot
 
 from requivo.cli import app
 from requivo.core import persistence as store
+from requivo.deterministic.sessions import _REPLACE_ATTEMPTS
 
 
 @pytest.fixture
@@ -655,13 +656,19 @@ def test_session_restore_still_gives_up_on_a_permanent_permission_error(workspac
     d = store.canonical_dir(slug)
     (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
     torn = (d / "model.json").read_text(encoding="utf-8")
+    attempts = {"n": 0}
 
     def always_denied(self, dst):
+        attempts["n"] += 1
         raise PermissionError(13, "Access is denied")
 
     monkeypatch.setattr(Path, "replace", always_denied)
     with pytest.raises(PermissionError):
         app(["session", "restore", slug], client=None)
+    # The attempt count is what makes this a test of the *retry* rather than of `replace`: without
+    # it every assertion here holds identically with the loop deleted (found in review of #483).
+    assert attempts["n"] == _REPLACE_ATTEMPTS, (
+        f"expected exactly {_REPLACE_ATTEMPTS} attempts before giving up, got {attempts['n']}")
     assert (d / "model.json").read_text(encoding="utf-8") == torn  # unreplaced, not half-written
     assert not list(d.glob(".*restore.tmp")), "scratch left behind after a failed restore"
 
