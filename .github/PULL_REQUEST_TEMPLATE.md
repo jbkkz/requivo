@@ -21,6 +21,7 @@ Keep unrelated reformatting out of the diff.
 
 ## Checklist
 
+- [ ] Every commit is signed off (`git commit -s`) — see CONTRIBUTING.md's *Sign off your commits*
 - [ ] `pytest tests/ -q` passes (no network / no API key needed)
 - [ ] `ruff check src tests scripts` passes
 - [ ] `.venv/bin/pyright` passes (same invocation as CI)

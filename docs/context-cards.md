@@ -136,6 +136,37 @@ nothing rather than raising when a directory is denied: the card vocabulary came
 so a card sitting in that directory was reported as unknown and you were told to put back a file that
 was already there.
 
+## A fourth state nothing detects: cards about the wrong product
+
+`ok`, `empty` and `unreadable` are the three the preflight tells apart. There is a fourth —
+**present, readable, and about a different product entirely** — and it renders identically to `ok`.
+
+It matters more than it sounds. `information_value = uncertainty × impact` is the whole driver, and
+the cards are what the impact half is read against, so a session grounded on `financial-reporting`
+while reasoning about a CI matrix produces a model, reaches *ready*, and asks duller questions for a
+reason nothing on screen names. An external validation report ran exactly that experiment (#489):
+the engine transferred well and the grounding said nothing about itself.
+
+**There is no `context.status: mismatched`, and this is a decision rather than a gap (#492).** Every
+other value of that vocabulary is decidable from the filesystem. Relevance is not. Automating it
+needs either a model call inside the free deterministic preflight — putting a paid, fallible
+judgment in front of the one path whose whole value is that it is decidable — or a keyword
+heuristic, which is the combination that is right often enough to be trusted and wrong silently.
+
+So **the human is the detector, and every surface hands them the fact.** `requivo discover` names
+the cards it is loading before it spends anything, `requivo status` and `requivo session show` name
+what the session was grounded on, the session page states it on the primary screen rather than only
+under *Traceability details*, and the Claude Code skill names them back at step 7.
+`tests/test_grounding_contract.py` is the guard, and it asserts a property rather than a wording: a
+surface that renders a session's state names what that state was reasoned against, and says
+something different when the grounding was never narrowed.
+
+**What would change this:** a third *measured* instance of a card diluting its neighbour. Two are on
+record — the `financial-reporting` / `doc-reapproval` measurement in the golden harness's own
+known-limit note, and #489 — and the third is what funds automatic relevance routing, per the bar
+`CLAUDE.md` applies to itself. Until then, narrowing is a human act and
+[`requivo session rescope`](#re-scoping-an-existing-sessions-cards) is how it is done.
+
 ## Re-scoping an existing session's cards
 
 `requivo session rescope <slug> --context <cards>` changes an existing session's selection. It

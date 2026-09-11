@@ -52,6 +52,7 @@ from requivo.render.terminal import (
     render_brief,
     render_dependency_map,
     render_estimate,
+    render_grounding,
     render_impact,
     render_session_cost,
     render_stories,
@@ -217,6 +218,29 @@ def test_a_persisted_usage_priced_as_of_cannot_forge_a_line_of_the_session_cost_
     assert "FORGED AT COLUMN ZERO" in text
 
 
+def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout():
+    """`render_grounding`'s input is a persisted `context_cards` entry, which invariant 14 names as
+    untrusted **every time it is read back**, whatever wrote it -- and #40 is the reproduced
+    instance: a stored card name forged a line at column 0 of `doctor`'s own output, on the surface
+    whose job is to answer whether an install is sound.
+
+    That is why this renderer is swept rather than exempt even though it prints no model prose.
+    `session import` is the documented channel through which someone else's archive, and its
+    `context_cards`, arrives; the service layer resolves cards at *creation* and makes no promise
+    about the value on disk (invariant 14 again, in its own words).
+
+    Two calls, not one, and the second is the must-fire half: the unnarrowed branch reads the
+    install's real card names, so it proves the renderer printed something at all -- without it the
+    assertions below would pass against a branch that emitted nothing."""
+    text = _render(render_grounding, [FORGED])
+    assert not _forged_lines(text), text
+    assert _raw_controls(text) == ""
+    assert "FORGED AT COLUMN ZERO" in text, "the forged card name was dropped rather than neutralized"
+
+    unnarrowed = _render(render_grounding, None)
+    assert "Product context" in unnarrowed, "the other branch rendered nothing to be forged through"
+
+
 # The renderer names the forged sweep below actually calls. A module-level constant rather than a
 # local variable, so `test_the_forged_sweep_covers_every_prose_renderer_in_the_module` can compare
 # against it without re-deriving the dict -- see that test for why this is checked rather than just
@@ -228,6 +252,11 @@ _SWEPT_RENDERERS = {
     # RevisionRecord.usage_priced_as_of, not model prose, so it does not fit the model/brief/
     # stories/estimate fixture shape the big sweep below is built from (#388).
     "render_session_cost",
+    # render_grounding likewise, and for the same class one field along: its input is a persisted
+    # `context_cards` entry, which is the field invariant 14 is actually written about and the one
+    # #40 forged a line of `doctor`'s output through. Swept by
+    # `test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout` (#492).
+    "render_grounding",
 }
 
 # `render_*` functions in `render/terminal.py` that render no model-authored prose, named with a

@@ -123,14 +123,20 @@ the mirroring side, so a French request produces a `solution-assessment.md` whos
 problem, solution, complexity, decisions, challenges, risks — is English and whose four projected
 sections are French.
 
-That is not a defect to render away. The projection exists because a restatement can drift from the
-model it restates and a projection cannot (CLAUDE.md: *ask the provider for judgment; read the facts
-off the model*), so translating those four sections means asking the provider to restate facts it
-was already given — the exact thing that design rejects. The alternative is to move the brief to the
-mirroring side entirely, which is coherent and is a larger decision than this page records. So the
-English anchor on the brief covers **the judgment the provider writes**, and the assignment of its
-projected half is open, in the same sense `estimate` below is open. It is confined to one function
-if it is ever changed.
+That is not a defect to render away, and since #491 it is not an open question either:
+`decision: the-decision-briefs-quoted-half` settles it. **The saved brief stays on the English
+anchor side, and its four projected sections are quotations** — the client's own words about their
+own problem, which is the one kind of text not improved by being rendered into the document's
+language. What decides it is the reader: a *saved* `solution-assessment.md` is read by the build
+side and stands as the trail behind a commitment, the same audience the anchor exists for, while the
+PM taking questions back to the client is served by the turn output, which mirrors.
+
+The two alternatives are rejected in that record with their reasons. In short: translating the
+projection means asking the provider to restate facts it was already given, which is exactly what
+CLAUDE.md refuses (*ask the provider for judgment; read the facts off the model*) — a restatement
+can drift, a projection cannot — and moving the brief to the mirroring side would put the first
+document in the build chain on the opposite side from the rest of it. Either change is confined to
+one function, `brief_markdown`, which is what keeps the cost of reversing this visible.
 
 So a French request produces French questions and a French understanding, and an English PRD. That
 is the intended behaviour, not a limitation to work around.

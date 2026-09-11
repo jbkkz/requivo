@@ -12,7 +12,13 @@ from requivo.services.discovery import GENERATABLE
 from requivo.services.sessions import SessionService
 from requivo.web.example import is_example
 from requivo.web.viewmodels.labels import PRIMARY_ARTIFACT, UNREADABLE_BADGE, artifact_label, unreadable_hint
-from requivo.web.viewmodels.status import PRIORITY_QUESTIONS, readiness_view, understanding_view, understood_view
+from requivo.web.viewmodels.status import (
+    PRIORITY_QUESTIONS,
+    grounding_view,
+    readiness_view,
+    understanding_view,
+    understood_view,
+)
 
 # How much of the request a home-page row shows. A session is recognised by what was asked, not by its
 # slug — the slug is derived from the request and truncates exactly where the meaning starts.
@@ -208,6 +214,10 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
         "more_questions": questions[PRIORITY_QUESTIONS:],
         "understanding": understanding_view(status),
         "context_cards": status.get("context_cards"),
+        # What the readiness and questions above were scored against (#492) — on the primary screen,
+        # beside the understanding rather than under *Traceability details*, where the same fact
+        # already appears as one clause of the history line.
+        "grounding": grounding_view(status),
         # `artifacts` and `generatable` stay *local*, and only the splits below are handed to a
         # template (#300). The whole lists were in this dict too, read by nothing — and the two
         # engine-shaped keys beside them, `summary` and `remaining_gaps`, were raw `status()` values
