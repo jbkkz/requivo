@@ -127,13 +127,31 @@ def render_grounding(cards: list[str] | None) -> None:
     names are read now rather than stored. That is why the two branches word it differently: an
     explicit selection was fixed at creation and is true of every turn this session has taken, and
     an unnarrowed one is only a claim about the install as it stands today.
+
+    **Reading the install is the one thing here that can fail, and it must not fail `status`.**
+    `available_cards()` enumerates a directory and raises `ContextUnreadableError` when it cannot --
+    a real state this vocabulary already names, and one that has nothing to do with the session
+    being read. Before this line existed, nothing on the `status` path touched that directory at
+    all, so adding a grounding line would have turned an offline read that always succeeded into one
+    that exits non-zero because of a permissions problem next door. Reported as its own third state
+    instead: *could not read the install's cards* is neither a card list nor an empty one, and
+    `doctor` is where the remedy lives. Found in review of #518; pinned by
+    `test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb`.
     """
     from requivo.core.context import available_cards
+    from requivo.core.errors import ContextUnreadableError
     print("\nGROUNDED ON")
     if cards:
         print(_labeled("Product context", ", ".join(display_token(c) for c in cards), lw=20))
         return
-    names = available_cards()
+    try:
+        names = available_cards()
+    except ContextUnreadableError:
+        print(_labeled("Product context",
+                       "could not be read — this install's context cards are not enumerable, so "
+                       "what the impact estimates were scored against cannot be stated here. "
+                       "`requivo doctor` says which directory and why.", lw=20))
+        return
     if not names:
         # The `empty` state has its own remedy in `doctor`; repeating it here would be a second
         # implementation of a diagnostic that already exists, so this states the fact and stops.

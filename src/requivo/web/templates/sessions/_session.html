@@ -50,6 +50,8 @@
        judgment, not a check -- so the reader is the detector and this is the fact they judge. #}
     <p class="meta">Product context:
       {%- if s.grounding.narrowed %} {{ s.grounding.cards|join(', ') }}
+      {%- elif not s.grounding.readable %} could not be read — this install's cards are not
+        enumerable, so what the estimates were scored against cannot be stated here
       {%- elif s.grounding.cards %} all {{ s.grounding.cards|length }} cards
         ({{ s.grounding.cards|join(', ') }}) — not narrowed for this session
       {%- else %} none in this install — impact is estimated from the request alone

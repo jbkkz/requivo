@@ -151,12 +151,51 @@ def test_the_view_model_states_which_of_the_two_it_is_rather_than_leaving_it_to_
     """`narrowed` is a fact about the session; the template's job is to word it. A template deciding
     it from `cards|length` would be re-deriving, which is the one thing `viewmodels/` may not do --
     and it would be wrong the day an install holds exactly as many cards as a session named."""
-    assert grounding_view({"context_cards": [CARD]}) == {"narrowed": True, "cards": [CARD]}
+    assert grounding_view({"context_cards": [CARD]}) == {
+        "narrowed": True, "readable": True, "cards": [CARD]}
     unnarrowed = grounding_view({"context_cards": None})
     assert unnarrowed["narrowed"] is False
     assert CARD in unnarrowed["cards"], (
         "an unnarrowed session is grounded on every card in the install, re-resolved per turn -- "
         "not on none")
+
+
+# The surfaces that *enumerate the install* to answer the unnarrowed case, which is the only way the
+# unreadable state can arise. `session show` is deliberately not among them: it names the session's
+# own selection and prints "all cards" without reading the directory, so it cannot meet this state
+# and a row for it would assert nothing. Naming the exclusion rather than letting the list look like
+# an oversight.
+_ENUMERATING_SURFACES = [s for s in SURFACES if s[0] != "terminal session show"]
+
+
+@pytest.mark.parametrize("surface,render", _ENUMERATING_SURFACES,
+                         ids=[s for s, _ in _ENUMERATING_SURFACES])
+def test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb(
+        surface, render, _proposal, monkeypatch):
+    """The third state, found in review of #518. `available_cards()` enumerates a directory and
+    raises `ContextUnreadableError` when it cannot -- an install-level fact with nothing to do with
+    the session being read, and a state nothing on either of these two paths touched before this
+    line existed.
+
+    Uncaught it would have been worse than a crash on the Web: `session_page`'s broad handler
+    renders *Requivo found this session on disk and could not open it*, with `session verify` and
+    `revisions/` as the remedies. Every word of that is wrong for a permissions problem next door,
+    and a reader could not tell the two apart. So the line degrades and the page does not."""
+    from requivo.core import context as context_module
+    from requivo.core.errors import ContextUnreadableError
+
+    def _refuse():
+        raise ContextUnreadableError("the card directory could not be enumerated", details={})
+
+    monkeypatch.setattr(context_module, "available_cards", _refuse)
+    rendered = render(None, _proposal)
+    assert "Product context" in rendered, (
+        f"{surface} dropped the grounding line entirely rather than degrading it")
+    assert "could not be read" in rendered, (
+        f"{surface} does not say that it could not read the install's cards -- an unreadable "
+        f"directory must not render as 'no cards' or as a card list")
+    assert "session verify" not in rendered, (
+        f"{surface} points at a session remedy for an install-level fact")
 
 
 def test_no_surface_claims_a_relevance_verdict_it_cannot_reach(_proposal, tmp_path):

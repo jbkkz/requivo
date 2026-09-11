@@ -98,12 +98,26 @@ def grounding_view(status: dict) -> dict:
 
     `available_cards()` is a read of the install, not a re-derivation of anything the Core decides,
     so it stays inside this module's stated remit: translation and selection.
+
+    **It can fail, and the failure must not reach the page.** Enumerating the card directory raises
+    `ContextUnreadableError` when permissions refuse it — an install-level fact with nothing to do
+    with the session being rendered. Uncaught, it would reach `session_page`'s broad `except
+    Exception` and render `sessions/unreadable.html`, whose copy says *Requivo found this session on
+    disk and could not open it* and whose remedies are `session verify` and recovering from
+    `revisions/`: every word of that is wrong here, and a reader could not tell a corrupt session
+    from a permissions problem next door. `readable=False` is the third state (invariant 15's rule,
+    one row up: a row that could not be read renders differently from one with nothing in it), and
+    #518's review is where this was found.
     """
     from requivo.core.context import available_cards
+    from requivo.core.errors import ContextUnreadableError
     cards = status.get("context_cards")
     if cards:
-        return {"narrowed": True, "cards": list(cards)}
-    return {"narrowed": False, "cards": available_cards()}
+        return {"narrowed": True, "readable": True, "cards": list(cards)}
+    try:
+        return {"narrowed": False, "readable": True, "cards": available_cards()}
+    except ContextUnreadableError:
+        return {"narrowed": False, "readable": False, "cards": []}
 
 
 def understanding_view(status: dict) -> list[dict]:
