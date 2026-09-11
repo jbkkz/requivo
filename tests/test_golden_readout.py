@@ -76,9 +76,15 @@ def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
 
 
 def _capture(*, impact: Impact = Impact.medium, completeness: int = 80,
-             briefs: list[dict] | None = None) -> str:
-    """A `.runs.json` envelope with K identical runs, and optionally K assessments."""
+             briefs: list[dict] | None = None, model: str | None = None) -> str:
+    """A `.runs.json` envelope with K identical runs, and optionally K assessments.
+
+    `model` defaults to **absent**, which is what every baseline written before #515 looks like --
+    so the lens tests above keep exercising the third state incidentally, the way a reader's own
+    checkout does today."""
     body: dict = {"request": "r", "runs": [_model(impact, completeness) for _ in range(K)]}
+    if model is not None:
+        body["model"] = model
     if briefs is not None:
         body["briefs"] = briefs
     return json.dumps(body, indent=2)
@@ -115,6 +121,50 @@ def diff(tmp_path, monkeypatch):
 
 def _line(lines: list[str], needle: str) -> str | None:
     return next((ln for ln in lines if needle in ln), None)
+
+
+# ── #515: the model a capture ran on, in three states ────────────────────────────────────────────
+
+
+def _model_line(lines: list[str]) -> str:
+    """The preamble's model line. Asserted to exist before anything reads it: a line that is simply
+    absent must never be the way this readout renders a state, which is half of what #515 asks."""
+    line = _line(lines, "model") or _line(lines, "captured on")
+    assert line is not None, f"no capture-model line in the readout: {lines}"
+    return line
+
+
+def test_two_captures_on_the_same_model_say_so(diff):
+    _, lines = diff(_capture(model="claude-sonnet-5"),
+                    _capture(completeness=70, model="claude-sonnet-5"))
+    line = _model_line(lines)
+    assert "claude-sonnet-5" in line
+    assert "agree" in line
+
+
+def test_a_model_swap_is_named_rather_than_left_to_read_as_prompt_movement(diff):
+    """The defect this key exists for: export `REQUIVO_MODEL=<something else>`, re-capture one
+    request, and every lens below reports the swap as a prompt edit -- #405's confident readout,
+    about something the reader did not change."""
+    _, lines = diff(_capture(model="claude-sonnet-5"),
+                    _capture(completeness=70, model="claude-opus-4-8"))
+    line = _model_line(lines)
+    assert "claude-sonnet-5" in line and "claude-opus-4-8" in line
+    assert "agree" not in line
+
+
+def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
+    """The third state, and the whole of it. Every baseline on disk the day this landed carries no
+    model key; rendering that as "same model" -- or as nothing at all -- is the collapse
+    `_freshness_from_git_data` already refuses one axis along: *`unknown` must never read as
+    `current`*."""
+    _, lines = diff(_capture(), _capture(completeness=70, model="claude-sonnet-5"))
+    line = _model_line(lines)
+    assert "unknown" in line
+    assert "agree" not in line or "nothing here says the two agree" in line
+    assert "claude-sonnet-5" in line, (
+        "the half that *is* known should still be stated -- an unknown baseline is not an unknown "
+        "candidate")
 
 
 # ── #162: every lens runs, and the verdict is the union of the ones that did ─────────────────────

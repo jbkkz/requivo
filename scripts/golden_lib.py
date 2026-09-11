@@ -110,13 +110,22 @@ def runs_path(slug: str) -> Path:
 
 
 def dump_runs(slug: str, request: str, models: list[EngineOutput],
-              briefs: list[Brief] | None = None) -> Path:
+              briefs: list[Brief] | None = None, *, model: str) -> Path:
     """Persist the K captured models for one request as a single JSON envelope.
 
     ``briefs`` is optional and captured only for the requests we watch the *assessment* on — it costs
-    a second API call per run, so it is opt-in rather than the default (see ``golden_run --brief``)."""
+    a second API call per run, so it is opt-in rather than the default (see ``golden_run --brief``).
+
+    ``model`` is **keyword-only and required**, and that is the point rather than an inconvenience
+    (#515). An envelope recorded the *input* of a capture and nothing at all about the conditions it
+    ran under; the model is the largest of those and the cheapest to change by accident — one
+    environment variable, no commit, nothing for `baseline_commits_since`'s commit scan to see. Pass
+    the id the call was actually given, never `current_model_name()` re-read here: a value derived a
+    second time is a claim about the environment at *this* line, not a record of what reasoned.
+    Making it required means a capture that cannot say what it ran on cannot be written, which is
+    strictly better than one that writes `unknown` and looks complete."""
     import json
-    payload = {"request": request, "runs": [m.model_dump() for m in models]}
+    payload = {"request": request, "model": model, "runs": [m.model_dump() for m in models]}
     if briefs is not None:
         payload["briefs"] = [b.model_dump() for b in briefs]
     path = runs_path(slug)
@@ -126,6 +135,20 @@ def dump_runs(slug: str, request: str, models: list[EngineOutput],
     # cp1252 file that the next diff reads as a prompt regression that never happened (#11).
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def captured_model(text: str) -> str | None:
+    """The model id a `.runs.json` envelope was captured on, or **None** for a baseline written
+    before #515 added the key.
+
+    None is a third state and not a default: every baseline on disk the day this landed carries no
+    key, and rendering that as agreement with whatever model is configured now is the exact collapse
+    `_freshness_from_git_data` already refuses one function along — *`unknown` must never read as
+    `current`*. Callers branch on `is None` explicitly. Both envelope shapes carry the key at the
+    same top level, so this reads a single-pass and an interactive capture identically."""
+    import json
+    value = json.loads(text).get("model")
+    return value if isinstance(value, str) and value else None
 
 
 def load_runs(text: str) -> list[EngineOutput]:
@@ -493,13 +516,18 @@ def answers_for_turn(questions, sheet: AnswerSheet) -> tuple[str | None, list[st
     return ("\n".join(replies) if replies else None), answered
 
 
-def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Turn]]) -> str:
+def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Turn]],
+                  *, model: str) -> str:
     """Serialize an interactive capture. The answer sheet is stored alongside the turns because it is
     *input*: a diff whose sheet changed is not a diff about the engine, and without the sheet on disk
-    there is no way to tell those apart."""
+    there is no way to tell those apart. ``model`` is required for the reason `dump_runs` states at
+    length (#515) — the two writers are the two places a capture's conditions can be recorded, so a
+    key present in one and absent from the other would make the readout's third state depend on
+    which shape of request you happened to capture."""
     import json
     return json.dumps({
         "request": request,
+        "model": model,
         "answers": {sid: list(vals) for sid, vals in layers.items()},
         "turns": [[{"index": t.index, "answered": t.answered, "model": t.model.model_dump()}
                    for t in run] for run in runs],
@@ -507,10 +535,10 @@ def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Tu
 
 
 def dump_turn_runs(slug: str, request: str, layers: dict[str, list[str]],
-                   runs: list[list[Turn]]) -> Path:
+                   runs: list[list[Turn]], *, model: str) -> Path:
     """Persist an interactive capture. Explicitly UTF-8 for the reason `dump_runs` gives (#11)."""
     path = runs_path(slug)
-    path.write_text(turn_envelope(request, layers, runs), encoding="utf-8")
+    path.write_text(turn_envelope(request, layers, runs, model=model), encoding="utf-8")
     return path
 
 

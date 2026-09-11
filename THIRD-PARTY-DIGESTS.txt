@@ -1,0 +1,8 @@
+1320f442151c57c447d3b70c7ffc6c4f86d08464020fe34c8cc5d3164e9944f0  src/requivo/api/static/vendor/redoc/redoc.standalone.js
+469cc94b600aac09643f70e167cd1f66f24301ebb546532fad5db7c60f7b30d0  src/requivo/api/static/vendor/redoc/redoc.standalone.js.LICENSE.txt
+a7e344f2770b2f07527ce828e0951626983b8f2dcdb7a826689c0232023f995b  src/requivo/api/static/vendor/swagger-ui/swagger-ui-bundle.js
+63818894e4b04cd0e3180d9cb20761e227a939121e7484f8e1d528227c756f89  src/requivo/api/static/vendor/swagger-ui/swagger-ui-bundle.js.LICENSE.txt
+1ad2ffd7a236dca4e570ce2ba2ef3de721d7553d4e7449db58df66cb294311e9  src/requivo/api/static/vendor/swagger-ui/swagger-ui-standalone-preset.js
+000580e4e2255ea6ccde0c47f6d75e2f703a1931298fde58756793b67c0daed9  src/requivo/api/static/vendor/swagger-ui/swagger-ui-standalone-preset.js.LICENSE.txt
+d7f39f764aa18c7b47dd05b9af5613e373e4ac0f3557c2693d52d0abc2464d76  src/requivo/api/static/vendor/swagger-ui/swagger-ui.css
+449317ade7881e949510db614991e195c3a099c4c791c24dacec55f9f4a2a452  src/requivo/web/static/vendor/htmx.min.js

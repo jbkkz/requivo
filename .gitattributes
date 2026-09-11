@@ -5,8 +5,7 @@
 # JS/CSS string literal or is merely source formatting. Found by the v3.2.0 release audit reviewing
 # #504: `redoc.standalone.js` is 1837 lines, and several of its own minified string/template
 # literals span more than one line, so an LF->CRLF rewrite on a Windows checkout could silently
-# change what this app actually serves -- and nothing in this repository's CI verifies these
-# bundles' served bytes against what was vendored, on any platform. The other vendored bundles
+# change what this app actually serves. The other vendored bundles
 # (`htmx.min.js`, the two `swagger-ui-*.js` files) happen to carry at most one trailing newline
 # today, so they are not reproduced instances of the same defect -- but the promise this file states
 # is about every vendored bundle, not only the one that has already been hit, since the next
@@ -14,5 +13,13 @@
 # `-text` disables normalization outright, on checkin and checkout alike, which is what
 # "byte-for-byte" actually requires -- git's own binary-file heuristic is not asked to guess, since
 # it can guess wrong for a file that is technically text but must never be touched.
+#
+# **This rule is enforceable rather than aspirational since #510**, and that sentence is the one
+# this comment used to have to make the other way round: for a release it read "nothing in this
+# repository's CI verifies these bundles' served bytes against what was vendored, on any platform",
+# which was true and left the rule resting on nothing. `THIRD-PARTY-DIGESTS.txt` now records a
+# SHA-256 per vendored file and `tests/test_vendored_bundles_are_not_normalized.py` recomputes them
+# on every leg, Windows included -- so a checkout that rewrote a byte inside a minified string
+# literal fails the digest instead of silently serving different code.
 src/requivo/web/static/vendor/** -text
 src/requivo/api/static/vendor/** -text

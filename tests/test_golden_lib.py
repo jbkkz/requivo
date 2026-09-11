@@ -24,6 +24,7 @@ from golden_lib import (  # noqa: E402
     baseline_commits_since,
     brief_consensus,
     brief_movements,
+    captured_model,
     consensus,
     is_interactive,
     load_answers,
@@ -301,7 +302,7 @@ def test_load_runs_reads_the_last_turn_of_each_run_when_there_is_no_runs_key():
     consumer of a baseline (consensus, movements, --questions) reads them back through here."""
     runs = [[_turn(1, ["problem"], states={"problem": ("inferred", 40)}),
              _turn(2, [], states={"problem": ("explicit", 90)})]]
-    loaded = load_runs(turn_envelope("r", {"problem": ["p"]}, runs))
+    loaded = load_runs(turn_envelope("r", {"problem": ["p"]}, runs, model="m"))
     assert len(loaded) == 1
     assert loaded[0].model["problem"].completeness == 90
 
@@ -445,8 +446,31 @@ def test_turn_lens_carries_unreached_layers_only_when_given_a_sheet():
 
 
 def test_load_answers_reads_the_persisted_sheet():
-    text = turn_envelope("r", {"problem": ["p1", "p2"]}, [[_turn(1, ["problem"])]])
+    text = turn_envelope("r", {"problem": ["p1", "p2"]}, [[_turn(1, ["problem"])]],
+                         model="m")
     assert load_answers(text) == {"problem": ["p1", "p2"]}
+
+
+def test_both_envelope_writers_record_the_model_the_capture_ran_on():
+    """#515: an envelope recorded a capture's *input* and nothing about the conditions it ran under.
+    Both shapes carry the key at the same top level, so `captured_model` reads them identically --
+    a key present in one writer and absent from the other would make the readout's third state
+    depend on which shape of request you happened to capture."""
+    interactive = turn_envelope("r", {"problem": ["p"]}, [[_turn(1, ["problem"])]],
+                                model="claude-sonnet-5")
+    assert captured_model(interactive) == "claude-sonnet-5"
+    single_pass = json.dumps({"request": "r", "model": "claude-opus-4-8", "runs": []})
+    assert captured_model(single_pass) == "claude-opus-4-8"
+
+
+def test_a_baseline_written_before_the_model_was_recorded_reads_as_unknown():
+    """The third state is `None`, never a default and never the configured model. Every baseline in
+    `fixtures/golden/` was written before this key existed, so this is what they all answer today --
+    correctly and visibly, until one paid re-capture at a time changes it."""
+    assert captured_model(json.dumps({"request": "r", "runs": []})) is None
+    # Must fire on the near-misses too: a key that is present and useless is still not an answer.
+    assert captured_model(json.dumps({"request": "r", "model": "", "runs": []})) is None
+    assert captured_model(json.dumps({"request": "r", "model": None, "runs": []})) is None
 
 
 def test_load_answers_is_empty_for_a_single_pass_capture():
