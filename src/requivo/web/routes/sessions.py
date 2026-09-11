@@ -62,39 +62,23 @@ _SAVED_NOTE_PREFIX = " — the reply that failed validation was saved to "
 
 
 def analysis_failed(slug: str, exc: EngineError | ProviderOutputError) -> RedirectResponse:
-    """Send the reader to the session that *was* saved, carrying why the analysis was not (#207).
+    """Send the reader to the session that *was* saved, carrying why the analysis was not.
 
     Public, and shared with `routes/discovery.py`: both doors onto a first analysis can fail the same
-    way and must land the reader in the same place. A second copy is a second wording.
+    way and must land the reader in the same place. A second copy is a second wording. A redirect
+    rather than a rendered page, so a refresh cannot re-POST a paid call. The cause travels as a query
+    parameter because it is the actionable half. `exc` is one of `_PROVIDER_FAILURE` -- both members
+    are `RequivoError`s with the same `.message` shape, read only for that, never the code, so the two
+    failure classes render identically on purpose (#207).
 
-    A redirect rather than a rendered page, so a refresh cannot re-POST a paid call. The cause travels
-    as a query parameter because it is the actionable half -- "API unavailable" and "the key was
-    rejected" need different things from the reader, and a generic notice makes them identical.
-
-    `exc` is one of `_PROVIDER_FAILURE` -- both members are `RequivoError`s with the same `.message`
-    shape, and this function reads only that, never the code, so the two failure classes render
-    identically here on purpose.
-
-    **The saved-reply path (#283) is carried separately, and deliberately excluded from what gets
-    truncated (#362).** `ProviderOutputError.message` puts that path at its own *tail* -- see
-    `completion.py`'s give-up exit -- so a message this long simply loses it: on a realistic contract
-    violation the full message runs past a thousand characters and the path never reaches the first
-    `_MAX_NOTICE_CHARS` of it; on the shortest possible cause the notice ends *mid-filename*, at a
-    path that does not resolve. Neither is a message that has merely lost some words -- the second is
-    actively worse than no path, since it looks complete and is not. `exc.details["raw_reply_path"]`
-    (only `ProviderOutputError` ever sets it) rides as its own query parameter, untruncated, and the
-    whole connector clause is stripped from the text `notice` is sliced from -- not only the path.
-
-    **Stripping the path alone and not the clause around it was tried first and reviewed out**: it
-    left the notice ending "...was saved to" with nothing after it, and the template's own sentence
-    for the path then repeats "was saved to" immediately underneath -- a dangling half-sentence
-    followed by its own completion, worse to read than the truncation this fix exists to close. So
-    `_SAVED_NOTE_PREFIX` below is `completion.py`'s own connector text, matched via `endswith` against
-    the *whole* clause (prefix + path). It is deliberately best-effort: a future reword of that
-    sentence in `completion.py` that this constant is not updated alongside simply stops matching, and
-    the notice reverts to carrying the unstripped clause -- redundant with the path block again, but
-    never broken, and never silently wrong. The CLI is unaffected either way: `exc.message` itself is
-    never touched, only what this function derives from a local copy of it.
+    **The saved-reply path is carried as its own untruncated query parameter, and the whole connector
+    clause (`_SAVED_NOTE_PREFIX`, matched via `endswith`) is stripped from what gets truncated, not
+    only the path** -- otherwise a realistic contract violation loses the path entirely past
+    `_MAX_NOTICE_CHARS`, and the shortest cause ends mid-filename at a path that does not resolve
+    (#283, #362). Best-effort: a future reword of `completion.py`'s connector text this constant is
+    not updated alongside simply stops matching, reverting to the unstripped (but never broken) clause.
+    Pinned by `test_a_failed_first_analysis_lands_on_the_session_that_was_saved` and
+    `test_a_retry_exhausted_analysis_carries_the_full_saved_reply_path_on_the_web_surface`.
     """
     message = exc.message
     saved_path = exc.details.get("raw_reply_path") if isinstance(exc, ProviderOutputError) else None
@@ -140,13 +124,10 @@ def create_session(
 
     def refused(status: int, code: str, message: str):
         """Hand the page back with the submission still in it, rather than sending the reader to an
-        error page whose only affordance is *Back to sessions* (#30).
-
-        Every refusal on this form goes through here, so a reader never has to learn which of them
-        keeps their work. The status is unchanged — 413 is still 413 — and so is the error code,
-        which rides the banner rather than a full page. It reads `typed_slug`, never `chosen_slug`:
-        what goes back in the form is what the reader submitted, not what the service was going to be
-        told.
+        error page whose only affordance is *Back to sessions*. Every refusal on this form goes
+        through here, and reads `typed_slug` (what the reader submitted), never `chosen_slug` (what
+        the service was going to be told) (#30). Pinned by
+        `test_an_unusable_session_name_re_renders_rather_than_navigating_away`.
         """
         return templates.TemplateResponse(request, "home.html", home_context(
             sessions, error=message, error_code=code,
@@ -219,20 +200,15 @@ def create_session(
 @router.post("/sessions/example")
 def create_example(sessions: SessionService = Depends(get_sessions),
                    artifacts: ArtifactService = Depends(get_artifacts)):
-    """Materialise the bundled example and go to it — the keyless activation path (#226).
-
-    A POST rather than a link, because it writes: it creates a session in the reader's workspace,
-    so it carries the cross-site token every other write on this app carries, and a refresh cannot
-    silently re-run it (the 303 is the same shape `create_session` above answers with).
-
-    Declared *before* `GET /sessions/{slug}` for readability only — the two differ by method, so
-    neither shadows the other however they are ordered.
-
-    Every decision this makes lives in `web/example.py`, not here: what a second click does, what
-    the revision claims about who produced it, how the sample is recognised afterwards, and — since
-    #429 — that the decision brief is seeded alongside the model. This is a redirect around one
-    service call, which is what lets a second surface reuse the operation without reimplementing the
-    policy.
+    """Materialise the bundled example and go to it -- the keyless activation path. A POST rather
+    than a link, because it writes: it creates a session in the reader's workspace, so it carries the
+    cross-site token every other write on this app carries, and a refresh cannot silently re-run it
+    (#226). Every decision this makes lives in `web/example.py`, not here -- including, since #429,
+    that the decision brief is seeded alongside the model. This is a redirect around one service
+    call, which is what lets a second surface reuse the operation without reimplementing the policy.
+    Pinned by `test_seeding_is_refused_without_the_cross_site_token`,
+    `test_one_click_yields_a_browsable_session_with_no_key_and_no_call` and
+    `test_one_click_also_seeds_the_decision_brief_no_key_needed`.
     """
     return RedirectResponse(url=f"/sessions/{seed_example(sessions, artifacts)}", status_code=303)
 

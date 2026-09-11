@@ -158,20 +158,13 @@ def session_list(sessions: SessionService) -> list[dict]:
     them, and whether its brief has drifted. Revisions, provider names and artifact internals belong
     to the session screen's traceability section, not to a list.
 
-    **The listing has to survive its own members** (invariant 15), and this used to enforce that one
-    line below where it broke (#7). Three things sat outside the guard: `list_sessions()` is a
-    single-shot comprehension over `read_meta`, so an unreadable `session.json` or a newer
-    `format_version` raised before any row existed to degrade; `request_text` was outside the `try`;
-    and the `try` named `SessionNotFoundError` alone, so a truncated `model.json` raised a pydantic
-    `ValidationError` that missed this catch *and* the app's `RequivoError` handler and rendered as a
-    500 over the whole page. Measured, per break mode: 400, 500 and 500 respectively, on a page whose
-    other sessions were all fine.
-
-    So the source is `list_entries()`, which degrades per member, and everything read *on* a row is
-    inside one bare `except Exception`. Bare because the set of ways a session can be broken is open
-    — that is the argument in `SessionService.list_entries`, and this is the call site it was made
-    for. The narrow `SessionNotFoundError` arm survives inside `_readable_row`, because *not analysed
-    yet* is a normal state and must not render like *we could not look*.
+    **The listing has to survive its own members** (invariant 15) -- one broken session must not
+    500 or 400 the whole page for every other, healthy one (#7). The source is `list_entries()`,
+    which degrades per member, and everything read *on* a row is inside one bare `except Exception`,
+    bare because the set of ways a session can be broken is open. The narrow `SessionNotFoundError`
+    arm survives inside `_readable_row`, because *not analysed yet* is a normal state and must not
+    render like *we could not look*. Pinned by
+    `test_the_home_page_renders_every_row_when_three_are_broken`.
     """
     items = []
     for entry in sessions.list_entries():

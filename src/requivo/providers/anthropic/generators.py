@@ -62,17 +62,11 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
     challenges is *quiet*, not deleting them. `carry_from` is the model being refined — the established
     reasoning is carried onto the reply, so what leaves this function is a complete model again.
 
-    `reuse_system` is the one thing this function cannot decide, so it is the caller's (#58). The
-    engine prompt is the one genuinely re-sent byte-identically — the interactive `discover` loop
-    runs up to 8 turns off it and a golden capture runs K — and the completeness `validate` hook
-    below makes a corrective retry likelier here than anywhere else, so the breakpoint earns its
-    1.25x write on those paths. It does not on the single-call ones, and since #77 the *caller* is
-    where that is known rather than the entry point: `AnthropicProvider.analyze` threads whatever it
-    was told, so `DiscoveryService.draft_turn` declares True for the loop while `start`,
-    `run_discovery` and `answer` take the one-shot default. The default here stays True because that
-    is the safe answer to an unknown — mistakenly caching costs 25% once, mistakenly not caching
-    costs full price on every repeat (`_complete`). The remaining direct callers of this function are
-    `answer_turn` and `scripts/golden_run.py`; no interface reaches it."""
+    `reuse_system` is the one thing this function cannot decide, so it is the caller's: only the
+    interactive `discover` loop (`DiscoveryService.draft_turn`) genuinely re-sends this prompt and
+    earns the breakpoint, while `start`/`run_discovery`/`answer` take the one-shot default (#58, #77).
+    Pinned by `test_the_provider_seam_is_single_call_on_both_analyze_branches`. The remaining direct
+    callers of this function are `answer_turn` and `scripts/golden_run.py`; no interface reaches it."""
     proposal = _complete(client, build_prompt("engine.md", only), messages, ModelProposal, retries,
                          validate=_require_complete_model, reuse_system=reuse_system, model=model,
                          operation="analyze")
@@ -91,18 +85,13 @@ def answer_turn(client, out: EngineOutput, request: str, answers: str,
     `only` is the context-card selection the original discovery used (from its session.json) — passing
     it keeps a refinement turn reasoning over the same cards, not silently the full set.
 
-    **Single-call by default, hence `reuse_system=False`** (#58). This function *is* the whole turn:
-    it assembles a fresh message list, makes one call and returns — so on its own there is no loop
-    for a cached system block to be read back by, and the breakpoint would be a flat ~25% surcharge
-    on the write (#9). The argument is about callers, not about this body, and most of them make one
-    call per operation: `requivo answer` per invocation, `POST /sessions/{slug}/answer` per request,
-    one Claude Code turn.
-
-    One caller genuinely loops it and passes True to say so: `DiscoveryService.draft_turn`, the
-    interactive `discover` loop, which reaches this on every turn after the first (#77). It used to
-    bypass this function entirely — `converse()` called `run()` itself with its own message list —
-    which is the sentence that used to be here, and the whole reason the parameter is threaded rather
-    than hard-coded at either end."""
+    **Single-call by default, hence `reuse_system=False`.** This function *is* the whole turn: it
+    assembles a fresh message list, makes one call and returns, so on its own there is no loop for a
+    cached system block to be read back by -- most callers make one call per operation (`requivo
+    answer`, `POST /sessions/{slug}/answer`, one Claude Code turn). One caller genuinely loops it and
+    passes True to say so: `DiscoveryService.draft_turn`, the interactive `discover` loop, on every
+    turn after the first (#9, #58, #77). Pinned by
+    `test_a_looping_caller_can_still_ask_for_the_breakpoint_back`."""
     messages = [
         {"role": "user", "content": request},
         {"role": "assistant", "content": out.model_dump_json()},
@@ -209,9 +198,9 @@ def estimate(client, out: EngineOutput, stories: Stories,
 
 # ── The registry ────────────────────────────────────────────────────────────────
 
-# Every operation reachable through `ReasoningProvider.generate`. Registration is what puts an
-# operation *inside* the seam: a surface asks the service, the service asks the protocol, and no
-# interface has to import a function from this module to get it (#77).
+# Every operation reachable through `ReasoningProvider.generate` -- the registry that keeps a surface
+# from reasoning its own pipeline outside the seam (#77). Pinned by
+# `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`.
 #
 # `estimate` is the one entry that does not fit the plain model → contract shape, and it is listed
 # rather than hidden: it takes the prior `stories` through `**kwargs`, and it returns

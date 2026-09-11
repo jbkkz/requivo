@@ -49,29 +49,13 @@ logger = logging.getLogger("requivo.web")
 
 # ── carrying a figure across the one hop that has no body of its own (#253) ────
 #
-# `create_session` and `run_discovery` both answer `303`, and a redirect has no body to put a figure
-# in. The log line above is always written, but it is the operator's channel, not the reader's — the
-# reader who just spent the money is looking at the browser, not the terminal.
-#
-# A query parameter was considered and rejected on the issue itself: it renders a *forgeable* number
-# as a cost claim, worse than showing nothing. What is here instead is a small in-memory,
-# read-once-and-clear store keyed by slug — a flash message for one figure. `stash_web_usage` writes
-# it from the `finally` below (so a call that spent tokens and then failed still stashes them,
-# matching the log's own "billed even on give-up" contract); `pop_web_usage` reads and clears it in
-# one step, from the GET the redirect sends the reader to.
-#
-# Three things worth knowing about this store precisely because it is this small:
-#
-# * **Per-process, in-memory.** A restart between the redirect and the following GET loses it —
-#   unobservable in practice (the hop is milliseconds on a local server) but worth stating rather than
-#   silently promising durability this does not have. The number was still logged either way.
-# * **Two tabs on the same slug race the same as any flash store**: whichever GET arrives first pops
-#   it, the other sees nothing. Harmless — the figure was never anything but a courtesy display of a
-#   number already on the record — but a second concurrent "Analyse" on the *same* pending session
-#   from two tabs is possible after a failed first analysis, and only one of the two landings shows it.
-# * **Read-once is deliberate, not a bug**: a plain reload of the page the redirect landed on will not
-#   repeat the line, on purpose — it is a receipt for the action that just happened, and repeating it
-#   on every later view would read as an ongoing charge for a request billed once.
+# `create_session`/`run_discovery` answer `303`, which has no body for a figure -- a query parameter
+# was rejected as a *forgeable* cost claim. Instead: a small in-memory, read-once-and-clear store
+# keyed by slug, written from the `finally` below (even on a call that failed after spending) and
+# popped by the GET the redirect lands on. Per-process, so a restart between the two loses it; the
+# log line above is what survives that and every other case. Pinned by
+# `test_a_first_analysis_lands_on_a_page_showing_what_it_spent` and
+# `test_reloading_the_landing_page_does_not_repeat_the_spend_line`.
 _lock = threading.Lock()
 _pending: dict[str, dict] = {}
 

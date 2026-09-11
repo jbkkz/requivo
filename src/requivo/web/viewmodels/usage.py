@@ -1,19 +1,16 @@
-"""What a paid web action cost, translated for the screen it appears on (#253).
+"""What a paid web action cost, translated for the screen it appears on.
 
 A projection over `requivo.usage.UsageLedger` and nothing more. It relabels and formats; it does not
-compute — the cost arithmetic lives on the ledger, where each record carries the rate it was billed
-at, and asking for a number a second way here is how two surfaces come to disagree about one call.
-That is the Two vocabularies rule applied to money: the CLI prints the same figures through
+compute — the cost arithmetic lives on the ledger, and asking for a number a second way here is how
+two surfaces come to disagree about one call (#253). The CLI prints the same figures through
 `render_usage`, and the split between what is exact and what is an estimate is identical on both.
 
-**Three states, because two of them are silences and they are not the same silence.**
-
-* a call was made and priced — tokens exact, cost labelled, rate date stated;
-* a call was made and could not be priced — tokens exact, and *no number at all*. `cost_usd()`
-  returns `None` rather than guessing (invariant 6), and this must not paper over it;
-* nothing to report — no call, or a call the provider gave no usage figures for. `None`, so the
-  template renders nothing. Printing "0 tokens, est. $0.000" for that would be this project's own
-  defect class exactly: a value nobody could read, rendered as a value read and found to be zero.
+**Three states, because two of them are silences and they are not the same silence.** A call made
+and priced states tokens and a labelled cost; a call made and unpriceable states tokens exact with
+*no number at all* rather than guessing (invariant 6); nothing to report renders as `None`, never as
+"0 tokens, est. $0.000" -- a value nobody could read must not print as a value read and found to be
+zero. Pinned by `test_an_unpriced_call_says_so_rather_than_guessing` and
+`test_a_call_the_provider_reported_no_usage_for_says_nothing_rather_than_zero`.
 """
 
 from __future__ import annotations

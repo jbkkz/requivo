@@ -46,24 +46,14 @@ PRIMARY_ARTIFACT = "brief"
 EXAMPLE_BADGE = "Example"
 
 # ── a session nobody could read (#240) ────────────────────────────────────────
-# The third state's own vocabulary. `UNREADABLE_BADGE` matches the CLI word for word (`session list`
-# prints "could not be read", `doctor` and `session verify` agree with it) — one thing described two
-# ways across two surfaces is how a reader stops trusting either.
+# The third state's own vocabulary, matching the CLI word for word. `UNREADABLE_HINT` replaces
+# jargon (a pydantic class name, an absolute path) under a row -- but only where the store's own
+# message is not already reader-facing (e.g. `read_meta`'s "upgrade requivo" refusal): replacing an
+# already-good sentence with the generic one is a strict loss, not a trade (#240). Pinned by
+# `test_a_failure_already_written_for_a_reader_survives_to_the_row`.
 #
-# `UNREADABLE_HINT` is what replaced `str(e)` under the row where `str(e)` was the wrong register
-# for the primary screen: a pydantic class name, an absolute path, `[Errno 21] Is a directory` —
-# jargon leading a page whose whole design rule is that engine vocabulary never does.
-#
-# **Where it was not, the store's own sentence stays**, and that clause exists because the first
-# draft of this change did not have it. `read_meta` refusing a newer `format_version` says *session
-# format v2 is newer than this Requivo understands (v1) — upgrade requivo*: one line, no path, no
-# class name, and it carries the one thing a generic sentence cannot — what to do. Replacing that
-# was not a trade, it was a strict loss, and it is the exact over-correction #240 had to avoid.
-# Found by the positive control in `_the_leak_is_reachable`, which asked whether the row's raw text
-# had anything to leak and answered *no* for that arm.
-#
-# **No apostrophe in either string, deliberately.** Autoescaping turns one into `&#39;`, so the
-# sentence a test asserts on and the sentence on the page would stop being the same string.
+# No apostrophe in either string, deliberately: autoescaping turns one into `&#39;`, so the sentence
+# a test asserts on and the sentence on the page would stop being the same string.
 UNREADABLE_BADGE = "Could not be read"
 UNREADABLE_HINT = ("Requivo could not read the files for this session. "
                    "Open it for the full detail.")

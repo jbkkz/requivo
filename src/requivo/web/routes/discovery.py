@@ -68,18 +68,11 @@ def submit_answers(
     is_htmx = request.headers.get("HX-Request") == "true"
     text = answers.strip()
     if len(text) > MAX_ANSWERS_CHARS:
-        # Refused rather than truncated — half an answer folded into the model is worse than none,
-        # because nothing downstream can tell it was cut. That is unchanged (invariant 3).
-        #
-        # What changed is the recovery (#30). Raising rendered `errors/_error.html`, and this form
-        # posts with `hx-swap="outerHTML"` onto `#session-body` — the region that *contains* the
-        # textarea. So the refusal did not merely fail to keep what was typed: the swap deleted the
-        # field it was typed into, and there was no Back to return to. The whole region is returned
-        # instead, with the submission still in it and the refusal stated on the form.
-        #
-        # A no-JS request never receives that fragment at all — it has no htmx to swap it in, so a
-        # bare `#session-body` region would render as the whole (shell-less) page (#428). It gets the
-        # full `sessions/detail.html` instead, carrying the same error context.
+        # Refused rather than truncated (invariant 3), and re-rendered with the submission still in
+        # it rather than swapped away by the very fragment that would have deleted it -- a no-JS
+        # request gets the full page instead, since it has no htmx to swap a fragment into (#30,
+        # #428). Pinned by `test_oversized_answers_come_back_in_the_textarea` and
+        # `test_a_no_js_oversized_answers_submit_keeps_the_typed_text_on_a_full_page`.
         if not is_htmx:
             detail = session_detail(sessions, slug)
             return templates.TemplateResponse(request, "sessions/detail.html", {
@@ -98,18 +91,10 @@ def submit_answers(
             "answers_error_code": InputTooLargeError.code,
             "submitted_answers": text,
         }, status_code=413)
-    # This answers with a fragment the reader stays on, so the footprint rides the response as well
-    # as the log (#253) — the same treatment artifact generation gets, and the opposite of the two
-    # redirecting paths, which have no body to put it in. The ledger is opened around the call and
-    # read after it: a view model over the ledger, never a second computation of the same numbers.
-    #
-    # A no-JS submit *is* one of the bodyless-redirect paths (#428) — `carry_to=slug` only when this
-    # request is about to become one, so `spend.py`'s stash is what the following GET reads. Passing
-    # it unconditionally would leave a figure stashed and unread behind the fragment path too, and
-    # the *next*, unrelated GET of the session (a reload, a later visit) would then show a spend
-    # receipt for an action that page had nothing to do with — read-once is deliberate exactly to
-    # avoid that (spend.py's own docstring), and it only works when a courtesy stash is left for the
-    # cases that actually need one.
+    # A fragment response carries its own spend footprint (#253); a no-JS submit has no body to put
+    # one in, so it stashes the figure (`carry_to=slug`) for the following GET to read once instead
+    # (#428). Pinned by `test_an_answers_turn_says_what_it_spent` and
+    # `test_a_no_js_redirect_does_not_leave_a_stash_the_next_unrelated_view_would_repeat`.
     with track_web_usage("web-answer", carry_to=None if is_htmx else slug) as spend:
         result = discovery.answer(slug, text, expected_revision=expected_revision,
                                   surface="web-answer")

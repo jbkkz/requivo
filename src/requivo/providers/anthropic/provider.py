@@ -17,40 +17,27 @@ class AnthropicProvider:
     name = "anthropic"
 
     def __init__(self, client=None, model: str | None = None):
-        """`model` is an optional fixed model id for this instance (#434). `None` (the default)
-        preserves the pre-existing behaviour byte-for-byte: every call resolves its model through
-        `current_model_name()`'s `REQUIVO_MODEL`/`MODEL` env chain, per call, as it always did.
-
-        Set explicitly, it is threaded into every completion call, `model_name()` and `provenance()`
-        instead — and it wins outright, with **no env read at all** on that path: two providers
-        constructed with two different ids in one process each call, price and record independently,
-        which an ambient env var can never give you (one process, one mutable variable). Stored
-        privately (`self._model`, not `self.model`) because `generate()`'s own `model` parameter
-        already names the *requirements* model (an `EngineOutput`) — the two are unrelated concepts
-        that happen to share a word, and a public `self.model` sitting next to that parameter would
-        invite exactly that confusion."""
+        """`model` is an optional fixed model id for this instance. `None` (the default) preserves
+        the pre-existing behaviour byte-for-byte via `current_model_name()`'s env chain; set
+        explicitly, it wins outright with **no env read at all**, so two providers built with two
+        different ids in one process price and record independently (#434). Stored privately
+        (`self._model`, not `self.model`) because `generate()`'s own `model` parameter already names
+        the *requirements* model, an unrelated concept that happens to share the word. Pinned by
+        `test_a_constructed_model_makes_no_env_read`,
+        `test_two_constructed_providers_record_and_price_independently` and
+        `test_default_construction_is_byte_identical_to_before_434`."""
         self.client = client or new_client()
         self._model = model
 
     def analyze(self, request: str, *, current_model: EngineOutput | None = None,
                 answers: str | None = None, only: list[str] | None = None,
                 reuse_system: bool = False) -> EngineOutput:
-        """One reasoning turn, on either branch — **one call per operation by default**, which is why
-        the default is `reuse_system=False` (#58).
-
-        This is where the caching question is actually decidable, and the answer is per *operation*,
-        not per function. `DiscoveryService.start`, `run_discovery` and `answer` each reach this
-        once, so the system block was being written to cache at 1.25x and never read back. The free
-        functions in `generators.py` cannot know that, which is why `run()` keeps its own `True`
-        default for the callers that genuinely loop it — the golden harness sends the identical
-        prompt K times.
-
-        The one looping caller *inside* the seam is `DiscoveryService.draft_turn`, the CLI's
-        interactive `discover` loop: up to 8 turns off one system prompt, so it passes
-        `reuse_system=True` and the breakpoint earns its write there. That loop used to call `run()`
-        directly from `cli.py` and keep the breakpoint by accident of the default; since #77 it says
-        so through the seam instead, which is why the parameter is on the protocol rather than
-        hard-coded here."""
+        """One reasoning turn, on either branch — **one call per operation by default**, hence
+        `reuse_system=False`. The caching question is decidable only per *operation*, not per
+        function: `DiscoveryService.start`/`run_discovery`/`answer` each reach this once, while the
+        one looping caller inside the seam, `DiscoveryService.draft_turn`, passes `reuse_system=True`
+        and earns the breakpoint there instead (#58, #77). Pinned by
+        `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
         if current_model is not None and answers is not None:
             return answer_turn(self.client, current_model, request, answers, only=only,
                                reuse_system=reuse_system, model=self._model)
@@ -63,10 +50,10 @@ class AnthropicProvider:
         `version` to stamp); an option a generator does not know is a TypeError, not a silent no-op.
 
         `model` here is the *requirements* model (this method's own parameter, inherited from the
-        protocol) — not to be confused with `self._model`, the constructed LLM id (#434) forwarded
-        below as the generator functions' own `model=` keyword. The two never collide in the call:
-        `model` is bound positionally (to the callee's `out`/`model` requirements-model parameter),
-        the keyword `model=self._model` is bound by name to the callee's own `model:str|None`."""
+        protocol) — not to be confused with `self._model`, the constructed LLM id forwarded below as
+        the generator functions' own `model=` keyword: `model` binds positionally to the callee's
+        requirements-model parameter, `model=self._model` binds by name to its `model: str | None`,
+        and the two never collide (#434). Pinned by `test_generate_threads_the_constructed_model_too`."""
         try:
             fn = _GENERATORS[artifact_type]
         except KeyError as e:
