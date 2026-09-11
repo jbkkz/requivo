@@ -9,7 +9,7 @@
 newest satisfying release, so a declared lower bound could be false and every leg would still be
 green. That was not a hypothetical gap. `pydantic>=2.0` was false by eleven minor versions when this
 script was written: the package does not import at all on 2.0.x, and up to 2.10 the two guards
-pinning invariant 8s permissive-mirror graph (`SerializeAsAny`) fail on it. The v0.11.0 audit had
+pinning invariant 8's permissive-mirror graph (`SerializeAsAny`) fail on it. The v0.11.0 audit had
 already cleared that exact bound -- by confirming `SerializeAsAny` is *exported* by pydantic 2.0.0 --
 and that was the wrong question: a symbol existing is not the symbol working, and only installing the
 thing tells the two apart.
@@ -19,7 +19,7 @@ thing tells the two apart.
 The floor is verified by asking a real resolver for the oldest release that satisfies each bound and
 then checking what actually landed (`dependency_floor.py --verify`, fed by `uv pip install
 --resolution lowest-direct`), never by simulating what a resolver would do. Nothing in this script
-installs anything; installing is uvs job, and `--verify` only compares `importlib.metadata`
+installs anything; installing is uv's job, and `--verify` only compares `importlib.metadata`
 against the declared floor after the resolver has already run.
 
 ## What breaking it cost
