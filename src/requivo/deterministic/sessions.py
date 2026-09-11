@@ -791,6 +791,7 @@ def _cmd_session_verify(a, client) -> None:
 # The same transient-`PermissionError` retry invariant 18's `_atomic_write` applies in
 # `core/persistence.py`, restated here rather than called into: this write's payload is already read
 # off disk, not composed by this module, and `core/persistence.py` is outside #210's own stated scope.
+# `_cmd_session_export`'s `tmp.replace(dest)` has the identical gap and no retry yet: #524.
 # `test_session_restore_survives_a_transient_permission_error` and
 # `test_session_restore_still_gives_up_on_a_permanent_permission_error`.
 _REPLACE_ATTEMPTS = 8
