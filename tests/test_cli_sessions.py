@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 from contextlib import redirect_stdout
+from pathlib import Path
 
 import pytest
 from _cli_harness import _full_model, _run, _run_json, _run_stdin, _slot
@@ -617,6 +618,52 @@ def test_session_restore_refuses_when_nothing_in_the_history_is_readable(workspa
     with pytest.raises(SystemExit) as e:
         app(["session", "restore", slug], client=None)
     assert e.value.code == 1
+
+
+def test_session_restore_survives_a_transient_permission_error(workspace, tmp_path, monkeypatch):
+    """Windows' `rename` can fail with a transient `PermissionError` when a scanner or the Search
+    Indexer briefly opens the destination microseconds after it is written -- the same cause
+    invariant 18's `_atomic_write` retries for in `core/persistence.py`. `_replace_with_retry` is
+    this module's own small statement of the identical shape, for the one write here that is not
+    routed through that helper."""
+    slug = _apply_two_revisions(workspace, tmp_path)
+    d = store.canonical_dir(slug)
+    (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
+
+    attempts = {"n": 0}
+    real_replace = Path.replace
+
+    def flaky(self, dst):
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise PermissionError(13, "Access is denied")
+        return real_replace(self, dst)
+
+    monkeypatch.setattr(Path, "replace", flaky)
+    out = _run(["session", "restore", slug])
+    assert "revision 2" in out
+    assert attempts["n"] == 3, "the restore did not actually go through the retry path"
+    expected = (d / "revisions" / "0002-model.json").read_text(encoding="utf-8")
+    assert (d / "model.json").read_text(encoding="utf-8") == expected
+
+
+def test_session_restore_still_gives_up_on_a_permanent_permission_error(workspace, tmp_path,
+                                                                          monkeypatch):
+    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail
+    loudly and quickly rather than hang forever on a retry that never gives up."""
+    slug = _apply_two_revisions(workspace, tmp_path)
+    d = store.canonical_dir(slug)
+    (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
+    torn = (d / "model.json").read_text(encoding="utf-8")
+
+    def always_denied(self, dst):
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(Path, "replace", always_denied)
+    with pytest.raises(PermissionError):
+        app(["session", "restore", slug], client=None)
+    assert (d / "model.json").read_text(encoding="utf-8") == torn  # unreplaced, not half-written
+    assert not list(d.glob(".*restore.tmp")), "scratch left behind after a failed restore"
 
 
 def test_session_restore_refuses_a_session_with_no_applied_revision_yet(workspace):

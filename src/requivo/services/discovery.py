@@ -185,30 +185,19 @@ def absorb_reasoning(out: EngineOutput, brief) -> None:
 def _discovery_guard_path(slug: str, store: Store) -> Path:
     """The in-flight first-discovery guard for `slug`: `<workspace>/.requivo/locks/<slug>.discovering`.
 
-    A sibling of `core.persistence.Store.lock_path`, deliberately a *different* file (#209). That
-    lock covers a compound write and is released **before** a provider call starts — a call runs
-    seconds to minutes and cannot hold a write lock open that long, by that lock's own docstring —
-    which is exactly the window two concurrent first-discovery requests can both walk into: both read
-    revision 0, both pass `_require_revision_zero`, and both are free to pay for a provider call
-    before either has written anything. This file exists to serialise *that* window, without touching
-    the write lock at all.
+    A sibling of `core.persistence.Store.lock_path`, deliberately a *different* file: that lock covers
+    a compound write and is released *before* a provider call starts, which is exactly the window two
+    concurrent first-discovery requests can both walk into (#209) --
+    `test_a_concurrent_first_discovery_is_refused_before_any_provider_call`.
 
-    **`store` names which workspace this guard addresses** (#272's scope amendment) — it used to read
-    `lock_root()`/`session_root()` ambiently, which is exactly the leak this issue closes; the caller
-    resolves it from its own repository (`DiscoveryService._store_for_repo`), so a discovery guard for
-    an explicitly-rooted session no longer silently reads a different root than the one it is guarding.
+    `store` is the caller's own repository, resolved by `DiscoveryService._store_for_repo`, never the
+    ambient default (#272) -- `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace`.
 
     Validated exactly as `lock_path` validates its own -- the shape unconditionally, the reserved
-    Windows device name only when nothing already occupies the slug (#372's creation/read split).
-    The slug reaches here from the service layer and, under invariant 14, an external consumer may
-    call this layer directly.
-
-    **This function was written one commit before that split and was missed by it** (#390). `e03aa47`
-    added it calling `validate_slug`; `3fa1423`, the very next commit, swept `_child_of` and
-    `lock_path` onto the conditional form -- and a sweep cannot see a sibling that did not exist when
-    it was written. The cost was a session already on disk under a reserved name that every read verb
-    could reach, and that `run_discovery` alone refused: the guard meant to serialise a paid call
-    turned into the one thing standing between that session and being worked on at all. Pinned by
+    Windows device name only when nothing already occupies the slug. This function was added one
+    commit before that conditional form existed and was missed when the sibling functions were swept
+    onto it (#390), leaving a session already on disk under a reserved name reachable by every read
+    verb except this guard, which alone kept refusing it --
     `test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery_guard`."""
     root = store.lock_root()
     slug = _slug_shape(slug)
@@ -339,16 +328,14 @@ class DiscoveryService:
 
     def _store_for_repo(self) -> Store:
         """The `core.persistence.Store` backing `self.sessions.repo`, for the two ambient reads that
-        live outside any repository method: the first-discovery guard (`_discovery_guard`,
-        `_discovery_guard_path`) and the reserved-slug probe inside it (#272's scope amendment).
+        live outside any repository method: the first-discovery guard and the reserved-slug probe
+        inside it.
 
-        `SessionRepository` is deliberately backing-neutral and carries no `store()` of its own in its
-        protocol — a Postgres backing has no filesystem root to hand back — so this reaches for one by
-        duck typing rather than by widening the protocol, and falls back to the ambient default when
-        there is none to reach for. That fallback is not a compromise unique to this method: it is the
-        exact behaviour every caller of these two functions had *unconditionally*, before #272, since
-        neither read a repository at all. A backing with a `store()` (today, only `FileSessionRepository`)
-        gets addressed correctly; anything else gets what it already had."""
+        Duck-typed against `self.sessions.repo.store()` rather than added to `SessionRepository`'s
+        protocol -- a Postgres backing has no filesystem root to hand back -- and falls back to the
+        ambient default only when there is none to reach for, which was every caller's behaviour
+        unconditionally before #272:
+        `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace`."""
         get_store = getattr(self.sessions.repo, "store", None)
         return cast(Store, get_store()) if callable(get_store) else Store(workspace_root())
 
@@ -462,37 +449,22 @@ class DiscoveryService:
         """Run one discovery turn on a fresh request and apply it, returning the session slug. With
         `finalize`, also produce and absorb the solution assessment's reasoning.
 
-        The session is claimed *before* the provider is called. Creation is idempotent, so re-running
-        a discovery whose session already carries a model is refused — and refusing it after the call
-        means having paid for reasoning (twice, when finalizing) that can only be thrown away. The
-        check is cheap and the call is not.
+        The session is claimed *before* the provider is called -- refusing a re-discovery after the
+        call means having paid for reasoning that can only be thrown away.
 
-        **And claiming is not the only race (#209).** Two callers of this same request — a second
-        browser tab, a refresh-and-resubmit — both idempotently reuse the session `claim_session`
-        returns and both pass its revision-zero check before either has paid for anything. The
-        `_discovery_guard` below is what actually decides which of them proceeds: the loser is
-        refused immediately, before it ever reaches the provider.
+        Claiming is not the sole guarantee (#209): two callers of the same request can both pass the
+        revision-zero check before either has paid for anything, so `_discovery_guard` below decides
+        which proceeds, and the revision is re-checked fresh immediately after winning the guard
+        rather than trusted from the check above --
+        `test_a_concurrent_first_discovery_is_refused_before_any_provider_call` and
+        `test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing`.
 
-        **And the guard alone is not quite the guarantee either (found in review) — the revision is
-        re-checked fresh, immediately after winning it, before the provider is called.** A caller
-        whose own `claim_session` genuinely read revision 0, but whose own guard-acquire attempt is
-        merely delayed past the point a winner has already finished *and released* the guard, would
-        otherwise walk in on a stale belief and pay for a call it was always going to lose at
-        `finalize_discovery`'s own `expected_revision=0`. Re-reading here, before spending anything,
-        closes that window the same way `_require_revision_zero` above closes the wide-open one.
-
-        **`finalize` used to reason both calls before writing either (#467).** `analyze()` and the
-        brief's own `generate()` both ran, and only then did the one `finalize_discovery` write land
-        -- so a refused or failed brief call (a transport error, or #427's spend ceiling reached by
-        the first call alone) discarded the already-billed `analyze()` result every time, with the
-        session left at revision 0 as though nothing had been paid for. This mirrors #202's own fix
-        for the CLI's interactive loop, in this same file: `finalize_discovery` runs immediately after
-        `analyze()`, landing revision 1 before the brief is even attempted, and the brief is folded in
-        through the ordinary `generate(slug, "brief")` path -- the same one every other caller of a
-        brief takes, with its own spend check, its own revision-conflict handling and its own artifact
-        save. A stop or a failure there leaves revision 1 standing, discovery applied, brief
-        retryable with `generate(slug, "brief")` -- never a total loss of the `analyze()` spend.
-        Pinned by `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467`."""
+        **`finalize` used to reason both calls before writing either (#467).** A refused or failed
+        brief call discarded the already-billed `analyze()` result every time, with the session left
+        at revision 0 as though nothing had been paid for. `finalize_discovery` now runs immediately
+        after `analyze()`, landing revision 1 before the brief is even attempted, and the brief is
+        folded in through the ordinary `generate(slug, "brief")` path -- never a total loss of the
+        `analyze()` spend. Pinned by `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467`."""
         provider = self._need_provider()
         meta = self.claim_session(request, cards=cards, slug=slug)
         with _discovery_guard(meta.slug, self._store_for_repo()):
@@ -635,14 +607,15 @@ class DiscoveryService:
     def reason(self, slug: str, artifact_type: str, **kwargs):
         """Produce an artifact's typed contract without saving anything — for the terminal-only views
         (`stories`, `estimate`) that are analyses rather than deliverables. Still goes through the
-        provider seam, so no interface reaches past it to a vendor's functions. Nothing is written, so
-        there is no provenance to get wrong — but the model and the cards it is read against still come
-        from one snapshot, so the analysis is of a session state that actually existed.
+        provider seam, so no interface reaches past it to a vendor's functions -- `cli.py` built its
+        own second client for this exact call until #77:
+        `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`. Nothing is
+        written, so there is no provenance to get wrong — but the model and the cards it is read
+        against still come from one snapshot, so the analysis is of a session state that actually
+        existed.
 
         `**kwargs` is what an analysis needs beyond the model: `estimate` is read against the
-        `stories` a previous call produced. Until #77 that one call was made by `cli.py` directly, on
-        a second client of its own, which is exactly the "no interface reaches past it" claim above
-        being false one line below where it was written."""
+        `stories` a previous call produced."""
         return self.reason_from(self.sessions.snapshot(slug), artifact_type, **kwargs)
 
     def reason_from(self, snap: SessionSnapshot, artifact_type: str, **kwargs):
@@ -735,15 +708,11 @@ class DiscoveryService:
                 try:
                     status = self._save_generated(slug, "brief", brief_markdown(out, brief), source_revision)
                 except ArtifactWriteFailedError as write_err:
-                    # Two failures at once (found in review): the apply lost the race AND the
-                    # fallback save that was meant to preserve the paid content also failed at the
-                    # filesystem. Letting `write_err` propagate bare would silently drop the revision
-                    # conflict it happened alongside -- a caller reading only `.message` would see an
-                    # ordinary write failure and have no way to tell it apart from one that also lost
-                    # a race, which is precisely the "state both facts, not just one" argument this
-                    # branch exists for, one exception class over. Chained from the write failure,
-                    # not re-raised as the conflict: the write failure is the more urgent, unresolved
-                    # one -- this time the content really is lost, not merely unabsorbed.
+                    # Two failures at once: the apply lost the race AND the fallback save that was
+                    # meant to preserve the paid content also failed at the filesystem. Both facts are
+                    # stated, not just one, and this is chained from the write failure rather than
+                    # re-raised as the conflict, since the write failure is the more urgent, unresolved
+                    # one -- `test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one`.
                     raise ArtifactWriteFailedError(
                         f"{write_err.message} This session also lost a revision race in the same "
                         f"call: {e.message}. The brief's reasoning was NOT absorbed into the model "

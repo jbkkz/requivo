@@ -160,6 +160,41 @@ def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
     assert sessions.repo.read_meta(slug).current_revision == 1  # unchanged
 
 
+def test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
+    """The same race `test_a_late_caller_with_a_stale_outer_check_still_pays_nothing` pins for
+    `run_discovery`, one entry point over. `start()`'s outer check reads the revision off the meta
+    `claim_session` returns rather than a fresh snapshot, so a late caller whose own `create_session`
+    call genuinely raced a winner's write has to be caught by the *inner* re-read inside the guard
+    (`self.sessions.repo.read_meta(...)`), taken immediately before the provider is ever built --
+    not by the outer check, which by construction cannot see the winner's write."""
+    from requivo.core.persistence import SessionMeta
+
+    sessions = SessionService()
+    request = "a leave approval system"
+    slug = sessions.slug_hint(request)
+
+    winner = _CountingProvider()
+    DiscoveryService(provider=winner, sessions=sessions).start(request, slug=slug, surface="test")
+    assert winner.calls == 1
+    assert sessions.repo.read_meta(slug).current_revision == 1
+
+    real_create_session = sessions.create_session
+
+    def stale_create_session(*a, **k) -> SessionMeta:
+        meta = real_create_session(*a, **k)
+        return meta.model_copy(update={"current_revision": 0})
+
+    monkeypatch.setattr(sessions, "create_session", stale_create_session)
+    late = _CountingProvider()
+    late_disco = DiscoveryService(provider=late, sessions=sessions)
+
+    with pytest.raises(RevisionConflictError):
+        late_disco.start(request, slug=slug, surface="test")
+
+    assert late.calls == 0  # the whole point: the late caller never reached the provider
+    assert sessions.repo.read_meta(slug).current_revision == 1  # unchanged
+
+
 @pytest.mark.skipif(fcntl is None, reason="POSIX-only branch: fcntl.flock has no Windows equivalent "
                     "here, and the msvcrt branch takes the same non-blocking path. "
                     "REASONED, NOT OBSERVED on Windows -- see #209.")
