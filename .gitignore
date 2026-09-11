@@ -52,6 +52,11 @@ supertool
 # tests/test_agent_layer.py holds it to that (#2). Only this state directory is
 # per-session and per-machine.
 .claude/jit-context/.discovery/
+# The Codex CLI's per-checkout config: which model reviews and at what reasoning effort. That is
+# a choice about one developer's account and budget, not about the repository -- the review rubric
+# Codex reads, AGENTS.md, IS tracked, because an untracked rubric is absent from every worktree the
+# maintenance loop cuts, which is the CLAUDE.local.md trap one tool over.
+.codex/
 # ...and this, which is per-machine by Claude Code's own convention and is where a personal hook
 # would be written. It was never excluded here; it only looked excluded, because this machine
 # carries a global ~/.config/git/ignore entry that no contributor has. A hook committed by accident
