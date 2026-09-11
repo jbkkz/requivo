@@ -1,13 +1,15 @@
-"""Session read routes -- list, one session, its model, its revisions, its status, its impact
-(#425, slice 1). Every route is a thin, one-call view over `SessionService`; none composes core
-calls or re-validates.
+"""Session routes -- create, list, one session, its model, its revisions, its status, its impact,
+the apply and its dry run, and the context-card rescope (#425, slices 1 and 2). Every route is a
+thin, one- or two-call view over `SessionService`; none composes core calls or re-validates.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 
 from requivo.api.dependencies import get_sessions, safe_slug
+from requivo.api.schemas import ApplyRevisionRequest, ContextCardsRequest, CreateSessionRequest, PreviewRevisionRequest
 from requivo.services.sessions import SessionService
 
 router = APIRouter()
@@ -96,3 +98,53 @@ def get_impact(slots: str = Query(...), slug: str = Depends(safe_slug),
     dependency map -- a different response shape this route does not attempt to produce in slice 1."""
     tokens = [] if not slots.strip() else slots.split(",")
     return sessions.impact(slug, tokens).to_dict()
+
+
+@router.post("/sessions")
+def create_session(body: CreateSessionRequest,
+                   sessions: SessionService = Depends(get_sessions)) -> JSONResponse:
+    """Create a session from a request -- no provider call
+    (`SessionService.create_session_report`, slice 2). Idempotent by identity (request + context
+    cards, invariant 11): a repeat call carrying the same identity returns the existing session, 200
+    rather than the first call's 201. 409 `session_exists` -- the service's own refusal -- when an
+    explicit slug is already occupied by a different identity.
+
+    `create_session_report` rather than `create_session`: the boolean it also returns is the one fact
+    this route needs and the plain method's return value cannot carry. `strict_slug=True` is this
+    route's own opt-in to refuse-on-conflict rather than the CLI's/Web's silently-suffixed default --
+    see that method's own docstring for why the default must not simply change under every caller."""
+    meta, created = sessions.create_session_report(
+        body.request, context_cards=body.context_cards, slug=body.slug, strict_slug=True)
+    return JSONResponse(meta.model_dump(), status_code=201 if created else 200)
+
+
+@router.put("/sessions/{slug}/context-cards")
+def rescope_session(body: ContextCardsRequest, slug: str = Depends(safe_slug),
+                    sessions: SessionService = Depends(get_sessions)) -> dict:
+    """Re-scope an existing session's context-card selection (`SessionService.rescope`) ->
+    `RescopeResult.to_dict()`. Semantics unchanged from #168: a new revision is minted only once a
+    model exists, nothing already saved is marked stale, and the next turn reasons under the new
+    selection."""
+    return sessions.rescope(slug, body.context_cards).to_dict()
+
+
+@router.post("/sessions/{slug}/revisions")
+def apply_revision(body: ApplyRevisionRequest, slug: str = Depends(safe_slug),
+                   sessions: SessionService = Depends(get_sessions)) -> dict:
+    """The apply -- validate a proposal and append it as a new revision
+    (`SessionService.update_model`). This is the wire path for an external reasoner: something else
+    reasons, this validated path applies -- the Claude Code shape (proposal file + `model apply
+    --json`), given over an HTTP body instead of the filesystem. 409 `revision_conflict` when
+    `expected_revision` is stale against the session's current revision."""
+    result = sessions.update_model(slug, body.proposal, expected_revision=body.expected_revision,
+                                   provenance={"surface": "api-apply"})
+    return result.to_dict()
+
+
+@router.post("/sessions/{slug}/revisions/preview")
+def preview_revision(body: PreviewRevisionRequest, slug: str = Depends(safe_slug),
+                     sessions: SessionService = Depends(get_sessions)) -> dict:
+    """The dry run of the apply -- `UpdateResult` with `status: "planned"`, nothing written
+    (`SessionService.diff`). Unlike `ApplyRevisionRequest`, this body carries no `expected_revision`:
+    nothing is written, so there is no precondition to hold."""
+    return sessions.diff(slug, body.proposal).to_dict()
