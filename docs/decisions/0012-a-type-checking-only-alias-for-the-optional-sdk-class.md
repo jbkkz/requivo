@@ -12,15 +12,17 @@ declared type across the whole module, `if TYPE_CHECKING:` branches included, so
 `Anthropic` under `TYPE_CHECKING` too does not narrow anything — the name still widens to
 `type[Anthropic] | None`, because the runtime branch's `None` binding is part of the same merge.
 
-This is a fact about pyright's inference, discovered while closing #271. That issue's own commit
-message names it directly as one of "two narrower gaps" fixed in `providers/anthropic/` alongside the
-issue's main body of work (widening `[tool.pyright]`'s include to the whole package) -- the other
-narrower gap is a `dict[str, object]` annotation on a literal in `completion.py`, too short a comment
-to need this treatment. Distinct from the three facts `0005-the-typed-generation-seam.md` records
-about the same issue: those concern `DiscoveryService.generate()`'s return typing, this concerns an
-SDK-optionality return annotation, and neither record's count of "facts from #271" should be read as
-covering the other's. Nothing in this repository's test suite can go red for how a type checker
-merges bindings — that is `tests/`' own limit, stated in `docs/decisions/README.md`'s first shape.
+This is a fact about pyright's inference, discovered while closing #271. That issue's closing commit,
+`de80961` ("Close the generator-vocabulary spread, widen pyright to the whole package, correct the
+golden-harness section"), names it directly in its own message as one of "two narrower gaps" fixed in
+`providers/anthropic/` alongside the issue's main body of work (widening `[tool.pyright]`'s include to
+the whole package) -- the other narrower gap is a `dict[str, object]` annotation on a literal in
+`completion.py`, too short a comment to need this treatment. Distinct from the three facts
+`0005-the-typed-generation-seam.md` records about the same issue: those concern
+`DiscoveryService.generate()`'s return typing, this concerns an SDK-optionality return annotation, and
+neither record's count of "facts from #271" should be read as covering the other's. Nothing in this
+repository's test suite can go red for how a type checker merges bindings — that is `tests/`' own
+limit, stated in `docs/decisions/README.md`'s first shape.
 
 ## Decision
 
