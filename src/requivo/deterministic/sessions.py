@@ -481,15 +481,10 @@ def _cmd_session_migrate(a, client) -> None:
     repo = SessionService().repo
     for slug in slugs:
         try:
-            # `repo.exists(slug)` itself belongs inside a per-slug guard, not only the reads past it
-            # (found in review of this same change, #371). It resolves through `canonical_dir`, and
-            # since #372 that can refuse a *legacy-only* slug that is a reserved Windows device name
-            # (`con`, `nul`, ...) with no canonical counterpart yet -- correctly, migrating one would
-            # be `create_session` materializing a brand-new reserved-name directory, which invariant
-            # 11 and #221 both say must stay refused. What must not happen is that refusal escaping
-            # this loop uncaught: with no canonical session to read `meta` from, the exception fired
-            # here, before the `try` a few lines down was ever reached, aborting the whole pass with
-            # no receipt -- the identical shape #371 closed for the two reads past this check.
+            # `repo.exists(slug)` belongs inside a per-slug guard too, not only the reads past it --
+            # it can refuse a reserved-name legacy slug (#372, invariant 11, #221) and that refusal
+            # must not escape this loop uncaught the way #371 closed for the reads further down --
+            # `test_session_migrate_survives_a_reserved_name_legacy_directory_beside_a_healthy_one`.
             occupied = repo.exists(slug)
         except RequivoError as e:
             errors.append({"slug": slug, "error": str(e)})
@@ -498,13 +493,11 @@ def _cmd_session_migrate(a, client) -> None:
             try:
                 meta = repo.read_meta(slug)
                 # Both reads that decide `interrupted` vs. `skipped` belong inside the same try as
-                # `read_meta` above -- #371. `repo.request_text` and `_legacy_request_text` each do
-                # their own `p.exists()` + `p.read_text(encoding="utf-8")`, and neither
-                # `UnicodeDecodeError` nor an `EACCES` `Path.exists()` re-raises is a `RequivoError`,
-                # so a legacy `request.md` that is not valid UTF-8 (or unreadable) used to escape this
-                # per-slug guard entirely: a raw traceback, no receipt printed at all, and every slug
-                # sorted after the bad one -- however many had already migrated -- silently unreported.
-                # This is invariant 15's own class, one read below where #262 already closed it once.
+                # `read_meta` above (#371): neither `UnicodeDecodeError` nor an `EACCES`
+                # `Path.exists()` re-raises is a `RequivoError`, so an undecodable legacy `request.md`
+                # used to escape this per-slug guard entirely, invariant 15's class one read below
+                # where #262 already closed it once --
+                # `test_session_migrate_survives_one_undecodable_legacy_request_beside_a_healthy_session`.
                 is_interrupted = (meta.current_revision == 0
                                    and repo.request_text(slug) == _legacy_request_text(root / slug))
             except (RequivoError, OSError, UnicodeDecodeError) as e:
@@ -565,24 +558,19 @@ def _cmd_session_migrate(a, client) -> None:
 def _cmd_session_export(a, client) -> None:
     """Archive a session as a .zip — under its lock, and complete or not at all.
 
-    A session is a handful of files that must agree with each other: session.json's revision count,
-    the revision files it names, the model that should equal the last of them. Reading them one by one
+    A session is a handful of files that must agree with each other, and reading them one by one
     while another surface applies a revision produces an archive that combines an old metadata with a
-    new model — internally inconsistent, and only discovered on import. So the read happens under the
+    new model -- internally inconsistent, and only discovered on import. So the read happens under the
     session lock, the same one every writer takes.
 
     `.lock` and the scratch files of an interrupted write are excluded: they are local artefacts of
     *this* machine's coordination, meaningless in an archive, and the lock file in particular would
     import as a session component. The archive itself is written beside its destination and renamed
     into place, so an interrupted export leaves no half-written .zip looking like a real one.
+    `test_export_excludes_the_lock_file_and_waits_for_the_writer`.
 
-    **The default `<slug>.requivo.zip` destination shares its reserved-stem shape with a slug
-    already refused for creation, and that is not a live gap** (raised in review, #372): a reserved
-    slug can only reach this verb by already occupying a session directory on disk, and Windows
-    itself refuses to *materialize* one under that name in the first place -- so on the one platform
-    where `con.requivo.zip` would also be a reserved-stem-shaped filename, there is no `con` session
-    to reach this line from. A caller who genuinely needs a portable archive name still has
-    `--output`."""
+    The default `<slug>.requivo.zip` destination's reserved-stem overlap with a refused-for-creation
+    slug is not a live gap -- `decision: reserved-stem-export-filenames-are-not-a-live-gap`."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     if not svc.exists(slug):
@@ -621,22 +609,15 @@ def _restore_remedy_line(slug: str, problems: list, svc: SessionService) -> Opti
     """The one line #210 was filed to add: which revision `session restore` would copy over
     model.json, if any of `problems` is a code that verb can fix (see `_RESTORABLE_MODEL_CODES`).
 
-    Text-only, like the card-health hints beside it -- `--json` already carries the `code`s a
-    consumer can act on programmatically, and every existing hint in this verb follows the same
-    split (see the module's own docstring on `display_token` for the parallel). `None` only when
-    nothing here is restorable -- a session whose own metadata cannot be read still gets a line
-    (below), because `session.checked` is set by an earlier, separately-locked read
-    (`inspect_session`, released before this function runs its own), and a session that vanishes or
-    locks up in the gap between the two is not a state this function may silently fold into "nothing
-    to suggest" (found in review).
+    Text-only, like the card-health hints beside it. `None` only when nothing here is restorable --
+    a session that vanishes or locks up in the gap between `inspect_session`'s own, earlier read and
+    this function's later one is not a state this may silently fold into "nothing to suggest" --
+    `test_session_verify_says_it_could_not_check_whether_restore_would_help`.
 
-    **Two shapes of remedy, not one** (found in review). The newest revision this build can trust
-    might not be the *last* one: `newest_readable_revision` skips a broken or tampered latest
-    revision and falls back to an older one, and restoring from that fallback does not clear
-    `model_is_not_the_last_revision` -- the last revision's own content is genuinely gone, and
-    `session verify` is right to keep saying so. Recommending the identical command as the ordinary
-    case, with no word of warning, is the wrong kind of reassuring; the fallback branch below says so.
-    """
+    Two shapes of remedy, not one: the newest revision this build can trust might not be the *last*
+    one, and restoring from a fallback does not clear `model_is_not_the_last_revision` -- recommending
+    the identical command as the ordinary case, with no word of warning, would be the wrong kind of
+    reassuring -- `test_session_restore_skips_a_broken_revision_when_searching_for_the_default`."""
     if not ({p.code for p in problems} & _RESTORABLE_MODEL_CODES):
         return None
     try:
@@ -807,16 +788,11 @@ def _cmd_session_verify(a, client) -> None:
         raise SystemExit(exit_code)
 
 
-# Windows' `rename` (`MoveFileEx`) can fail with `PermissionError(13)` when an antivirus scanner or
-# the Search Indexer briefly opens the destination microseconds after it is written -- the same
-# transient, external, non-serialisable cause `core/persistence.py`'s `_atomic_write` retries for
-# under invariant 18 (a genuinely unwritable destination still fails, and fast: the narrow
-# `except PermissionError` never masks anything else). This is a second, small statement of the
-# identical shape, deliberately not a call into `_atomic_write` itself: `core/persistence.py` is
-# outside #210's own stated scope (see `_cmd_session_restore`'s docstring), and this write's shape
-# -- a payload already read off disk, not one this module composes -- is closer to
-# `_cmd_session_export`'s `tmp.replace(dest)` a few functions up, which has the identical gap and is
-# unchanged by this issue (filed separately rather than folded into this diff's own blast radius).
+# The same transient-`PermissionError` retry invariant 18's `_atomic_write` applies in
+# `core/persistence.py`, restated here rather than called into: this write's payload is already read
+# off disk, not composed by this module, and `core/persistence.py` is outside #210's own stated scope.
+# `test_session_restore_survives_a_transient_permission_error` and
+# `test_session_restore_still_gives_up_on_a_permanent_permission_error`.
 _REPLACE_ATTEMPTS = 8
 _REPLACE_BACKOFF_S = 0.01
 
