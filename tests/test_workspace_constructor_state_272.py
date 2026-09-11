@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import os
 import threading
+from types import SimpleNamespace
 
 import pytest
 from _fakes import out, slot
 
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import Store
+from requivo.paths import workspace_root
 from requivo.services.discovery import DiscoveryService
 from requivo.services.repository import FileSessionRepository
 from requivo.services.sessions import SessionService
@@ -211,6 +213,27 @@ def test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_work
         "the discovery guard reached the ambient default instead of the repository's explicit root"
     )
     assert sessions.repo.read_meta(slug).current_revision == 1
+
+
+def test_a_repository_with_no_store_falls_back_to_the_ambient_workspace(tmp_path, monkeypatch):
+    """The other arm of `DiscoveryService._store_for_repo`, found unpinned in review of #483's first
+    pass: `SessionRepository` carries no `store()` in its protocol, so a backing without one -- the
+    Postgres shape -- must get the ambient default, which is exactly what every caller had
+    unconditionally before #272. The positive arm (an explicitly rooted `FileSessionRepository`) is
+    `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace` above; this
+    one proves the fallback resolves to the workspace and not, say, to a raise."""
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+
+    class _NoStoreRepo:  # duck-typed: the only attribute `_store_for_repo` reads is `.store`
+        pass
+
+    disco = DiscoveryService.__new__(DiscoveryService)
+    disco.sessions = SimpleNamespace(repo=_NoStoreRepo())
+
+    store = disco._store_for_repo()
+    assert isinstance(store, Store)
+    assert store.root == workspace_root()
+    assert store.lock_root() == tmp_path / ".requivo" / "locks"
 
 
 def test_no_session_names_the_root_of_an_explicitly_rooted_repository(tmp_path_factory, monkeypatch):
