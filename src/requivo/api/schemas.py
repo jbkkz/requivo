@@ -15,6 +15,11 @@ them, this module only shapes the JSON.
 
 from __future__ import annotations
 
+# `Optional[...]`, not `X | None`: pydantic evaluates these postponed annotations at runtime, and
+# the union operator does not exist on 3.9 (the py3.9 legs went red on `list[str] | None` -- the same
+# reason `core/contracts.py` spells its optional fields this way).
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -24,8 +29,8 @@ class CreateSessionRequest(BaseModel):
     make, not this model's."""
 
     request: str
-    context_cards: list[str] | None = None
-    slug: str | None = None
+    context_cards: Optional[list[str]] = None
+    slug: Optional[str] = None
 
 
 class AnswersRequest(BaseModel):
@@ -43,7 +48,7 @@ class ApplyRevisionRequest(BaseModel):
     `invalid_model` family of refusals, not a 422 minted here."""
 
     proposal: dict
-    expected_revision: int | None = None
+    expected_revision: Optional[int] = None
 
 
 class PreviewRevisionRequest(BaseModel):
@@ -61,11 +66,11 @@ class ArtifactSaveRequest(BaseModel):
     unchanged, and duplicating that requiredness at this layer would be a second, weaker copy of it."""
 
     content: str
-    source_revision: int | None = None
+    source_revision: Optional[int] = None
 
 
 class ContextCardsRequest(BaseModel):
     """`PUT /sessions/{slug}/context-cards` -- the rescope. `None`/absent means "every card", exactly
     as `SessionService.rescope`'s own parameter does."""
 
-    context_cards: list[str] | None = None
+    context_cards: Optional[list[str]] = None
