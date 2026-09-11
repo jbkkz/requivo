@@ -8,6 +8,20 @@ permitted to change an interface, and the entries below dated 0.x were taken und
 it is spent. The session format was outside it either way: it carries its own `format_version` and
 a migration, and neither is a function of the release number. This page is the specific list.
 
+Two things that rule leaves open are settled by `decision: a-release-is-justified-by-its-contents`,
+and both are worth knowing before reading the list. **A *break* is correct code stopping working.**
+An observable that moved on a path no correct code was on — an exit code that now refuses an
+invocation which used to operate on the wrong session, a call that used to be paid for and discarded
+— is graded `compatible` in its changelog fragment, with the moved observable named, and does not
+cost a major; three majors in thirteen days were cut on exactly that shape before the distinction
+was written down. And **a release is cut because of what is in it** — a user-visible capability, a
+fix somebody is waiting on, or a blocking-class security finding — never because a count of merged
+pull requests or an elapsed time was reached. Breaking changes batch and ship with the next release
+that has a reason to happen; they are never the reason one happens. For an integrator the
+consequence is the one the *Recommended consumption pattern* paragraph below already gives: pin
+exactly, `requivo==X.Y.Z`, and bump it as a routine chore gated by your own tests and the conformance
+suite.
+
 ## The session format is public
 
 `.requivo/sessions/<slug>/` is the interface between the CLI, the Claude Code plugin, the Web app, and
