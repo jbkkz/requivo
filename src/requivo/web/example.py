@@ -91,18 +91,12 @@ def example_proposal() -> dict:
 
 
 def example_brief() -> str:
-    """The bundled decision brief (#429), as the markdown `ArtifactService.save` records.
-
-    Unlike `assets/demo/solution-assessment.md` -- a ```text-fenced terminal capture `requivo demo`
-    narrates, box-drawing layout and all -- this is the real `brief_markdown()` rendering: the same
-    shape a live generation saves, and the shape `markdown_to_html` renders cleanly. It was produced
-    once, offline, from the same real run's decisions/challenges/opportunities (`model.json` already
-    carries them -- `DiscoveryService.absorb_reasoning` copies a `Brief`'s reasoning onto the model
-    verbatim, so they are the same objects) and the scalar fields transcribed from
-    `solution-assessment.md`'s own text, then rendered through `brief_markdown()` itself rather than
-    typed out by hand -- so the file on disk is what that function actually produces, not a
-    paraphrase of it. Read as a file rather than reconstructed at seed time, for the same reason
-    `example_request()`/`example_proposal()` are: nothing here is regenerated per click."""
+    """The bundled decision brief, as the markdown `ArtifactService.save` records -- the real
+    `brief_markdown()` rendering (not the ```text-fenced terminal capture `requivo demo` narrates),
+    produced once offline from the same run `model.json` carries, so the file on disk is what that
+    function actually produces rather than a paraphrase of it. Read as a file rather than
+    reconstructed at seed time, like `example_request()`/`example_proposal()` (#429). Pinned by
+    `test_the_bundled_brief_is_read_rather_than_restated`."""
     return _read("brief.md")
 
 

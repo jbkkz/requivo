@@ -29,15 +29,12 @@ def home_context(sessions: SessionService, **extra) -> dict:
     """Everything the home page renders — shared with the create route, which re-renders this page
     when a submission is refused rather than sending the reader elsewhere to be told.
 
-    `form` is what the reader last submitted, and it is a context key rather than something the
-    create route pokes into the template, because the promise in the sentence above is one this
-    function has to be able to keep. It used to be true of the empty-request refusal only: every
-    other refusal on this page raised, rendered `errors/error.html`, and offered *Back to sessions* —
-    which for a 26,000-character client email that arrived through the clipboard meant fetching it
-    again from wherever it came from (#30).
-
-    Refusing is still correct and is unchanged (invariant 3, *refuse, don't truncate*). What changed
-    is what the refusal costs.
+    `form` is what the reader last submitted, kept as a context key so every refusal on this page --
+    not only the empty-request one -- re-renders here with the submission intact rather than sending
+    the reader elsewhere to fetch it again from wherever it came from (#30). Refusing itself is
+    unchanged (invariant 3, *refuse, don't truncate*); what changed is what the refusal costs. Pinned
+    by `test_the_refusal_is_the_home_page_not_a_dead_end` and
+    `test_an_oversized_request_comes_back_in_the_textarea`.
     """
     cards = available_cards()
     # #257: the create form's default (every box unchecked) reasons over every card, which is the

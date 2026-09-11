@@ -14,17 +14,10 @@ from typing import TYPE_CHECKING, cast
 from requivo.providers.errors import EngineError
 
 if TYPE_CHECKING:
-    # A *separately named* alias of the real SDK class, for annotation purposes only (#271). The
-    # optional-import fallback below binds `Anthropic` itself to `None` at runtime when the extra is
-    # absent, and `new_client()`'s own `-> Anthropic` return annotation then names a *value* (`None`),
-    # not a type, in type-expression position (`reportInvalidTypeForm`) -- importing the same name
-    # `Anthropic` here too does not fix that: pyright merges every binding site of one name into its
-    # declared type, `if TYPE_CHECKING:` included, so `Anthropic` would still widen to
-    # `type[Anthropic] | None`. A distinct name has nothing to merge with. `TYPE_CHECKING` is `False`
-    # at runtime and always `True` for the checker, so this import is free when the extra is missing
-    # (the branch never executes) and gives the checker the one thing it needs: an unconditionally
-    # real class to annotate `new_client()`'s return with, regardless of what the runtime branch below
-    # binds `Anthropic` itself to.
+    # A separately-named, type-checking-only alias of the real SDK class -- pyright merges every
+    # binding of one name into one declared type, so importing the real `Anthropic` here too would
+    # still widen to `type[Anthropic] | None` from the runtime fallback below.
+    # `decision: type-checking-only-anthropic-alias`
     from anthropic import Anthropic as _AnthropicClient
 
 try:  # The SDK is an optional extra: the deterministic core + CLI work without it (Claude Code mode).
@@ -70,16 +63,10 @@ _AUTH_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 _CREDENTIAL_ATTRS = ("api_key", "auth_token", "credentials")
 
 
-# Said once, here, because three surfaces used to say a version of it and the paid CLI path said
-# nothing at all. Names both `_AUTH_ENV_VARS` (#332 review): the remedy has to name every name this
-# same guard accepts, or a bearer-token-only reader is told to set a credential they already have a
-# working equivalent of.
-#
-# It says "resolved none" rather than "none found", and the two are not the same sentence (#334).
-# The SDK also authenticates from a profile and from workload identity federation; this message is
-# now printed only when the SDK itself came back with nothing, so it must not read as a list of the
-# only ways in. Naming the two easy variables is a remedy for the common case, not a claim about the
-# set.
+# Names every `_AUTH_ENV_VARS` entry and says "resolved none" rather than "none found" -- a
+# narrower remedy or a stronger claim silently mis-refuses a working bearer-token or federation
+# install (#332, #334). Pinned by `test_credential_present_is_the_one_definition_new_client_reads`
+# and `test_a_federation_install_is_not_false_refused`.
 _NO_KEY_MESSAGE = (
     "No Anthropic credential found: the SDK resolved none from the environment, from a profile, or "
     "from workload identity federation. The usual fix is to set ANTHROPIC_API_KEY (or "
@@ -222,16 +209,10 @@ def current_model_name() -> str:
     """The model id this process will call — the env override or the default. Exposed so provenance
     (session.json) records the exact model a discovery ran against.
 
-    **`REQUIVO_MODEL` first, bare `MODEL` as a fallback, in that order** (#268). Every other
-    environment variable this package reads is `REQUIVO_`-prefixed; the model override was the one
-    exception, and `MODEL` is a generic name other tools set too — a CI job, a docker-compose file,
-    an unrelated ML script in the same shell — so it can collide silently and steer Requivo at a
-    differently-priced or nonexistent model with no hint the value came from outside. `REQUIVO_MODEL`
-    is read first so a workspace exporting both is unambiguous; bare `MODEL` is read only when
-    `REQUIVO_MODEL` is absent, so an existing setup that only ever set `MODEL` keeps working
-    unchanged. The fallback is recorded as deprecated in docs/compatibility.md, which is where every
-    other "two versions, one workspace" promise on this page lives — this file does not print
-    anything about it (see the comment above `os.getenv` below for why).
+    `REQUIVO_MODEL` is read first, bare `MODEL` as a deprecated fallback (docs/compatibility.md) --
+    a shell exporting a generic `MODEL` some other tool also sets must not silently steer Requivo to
+    the wrong model (#268). Pinned by `test_current_model_name_falls_back_to_bare_model` and
+    `test_current_model_name_prefers_requivo_model_when_both_are_set`.
     """
     # No stderr notice on the fallback path, decided rather than merely omitted. `core/` is barred
     # from the standard streams by invariant 7, and this module sits just outside `core/` — but the

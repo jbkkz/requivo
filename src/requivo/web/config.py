@@ -5,8 +5,9 @@ HTML). The UI only needs to know *whether* a provider action is possible, so it 
 generation or fall back to 'create session only' — that verdict, and a sentence saying why not, are
 all that crosses to the template. Never the key, and never a client.
 
-It is a *verdict* rather than a boolean because the probe has three answers (#339): installed,
-absent, and could-not-look. See `ProviderStatus`.
+It is a *verdict* rather than a boolean because the probe has three answers, not two: installed,
+absent, and could-not-look (#339). See `ProviderStatus`, and
+`test_an_import_that_failed_for_another_reason_is_not_reported_as_not_installed`.
 """
 
 from __future__ import annotations
@@ -20,12 +21,10 @@ from requivo.core.contracts import MAX_INPUT_CHARS
 # exactly like a whole one, so the user would never learn which half the engine saw. (The body itself
 # is capped earlier still, in `security.py`, before anything is parsed.)
 #
-# `MAX_REQUEST_CHARS`/`MAX_ANSWERS_CHARS` are aliases for the one cap Core defines (#255) --
-# `require_input_within_bounds` enforces it at the service layer, which is the integrity boundary
-# (invariant 14) and where it holds for the CLI and any other caller too, not only this route's own
-# early check. They stay as two names here because the routes import them for two different fields
-# and a route-level rename is a bigger diff than this alias is worth; the *value* is one number now,
-# not two hand-kept ones that could drift apart.
+# `MAX_REQUEST_CHARS`/`MAX_ANSWERS_CHARS` are aliases for the one cap Core defines and the service
+# layer enforces (invariant 14), not two hand-kept ones that could drift apart (#255). They stay as
+# two names because the routes import them for two different fields. Pinned by
+# `test_an_oversized_request_is_refused_not_truncated`.
 MAX_REQUEST_CHARS = MAX_INPUT_CHARS
 MAX_ANSWERS_CHARS = MAX_INPUT_CHARS
 MAX_SLUG_CHARS = 80
@@ -41,13 +40,10 @@ _NO_DETAIL = "no further detail"
 
 @dataclass(frozen=True)
 class ProviderStatus:
-    """What the probe established, in three states per fact rather than two (#339).
-
-    `True`/`False` are answers. `None` is *the probe could not look*, and it is load-bearing: an
-    `except Exception` that answered `False` turned every import failure that is not absence -- a
-    broken transitive dependency, a partially installed package, an incompatible SDK major -- into
-    the claim that the extra is not installed, and then prescribed the install the reader had
-    already done. An absence the tool produced must not render as an absence in the world.
+    """What the probe established, in three states per fact rather than two: `True`/`False` are
+    answers, `None` is *the probe could not look* and is load-bearing -- an absence the tool produced
+    must not render as an absence in the world (#339). Pinned by
+    `test_an_import_that_failed_for_another_reason_is_not_reported_as_not_installed`.
     """
 
     sdk_installed: bool | None   # True importable / False absent / None the probe could not look

@@ -16,7 +16,7 @@
       "caption": "The decision brief as a rendered document: request and objective, current understanding, what is confirmed, and the important assumptions.",
       "width": 2560,
       "height": 4244,
-      "surface_digest": "6f4dd88dc68d785e344f8cc260391747945764066e6a31fd0ef2de2729427f8b"
+      "surface_digest": "1b69ac91bb7da07f35960db82168a265ec06495d36d657a099a7e27616ea1443"
     },
     "web-home": {
       "route": "/",
@@ -27,7 +27,7 @@
       "caption": "The home page: the request box, the context-card cost note, and the recent sessions.",
       "width": 2560,
       "height": 2190,
-      "surface_digest": "6f4dd88dc68d785e344f8cc260391747945764066e6a31fd0ef2de2729427f8b"
+      "surface_digest": "1b69ac91bb7da07f35960db82168a265ec06495d36d657a099a7e27616ea1443"
     },
     "web-questions": {
       "route": "/sessions/{slug}",
@@ -38,7 +38,7 @@
       "caption": "The open questions with why each matters, the answer form, and the readiness verdict.",
       "width": 2560,
       "height": 3456,
-      "surface_digest": "6f4dd88dc68d785e344f8cc260391747945764066e6a31fd0ef2de2729427f8b"
+      "surface_digest": "1b69ac91bb7da07f35960db82168a265ec06495d36d657a099a7e27616ea1443"
     },
     "web-session": {
       "route": "/sessions/{slug}",
@@ -49,7 +49,7 @@
       "caption": "The session page: the objective, the request as read, and what is confirmed vs assumed.",
       "width": 2560,
       "height": 3666,
-      "surface_digest": "6f4dd88dc68d785e344f8cc260391747945764066e6a31fd0ef2de2729427f8b"
+      "surface_digest": "1b69ac91bb7da07f35960db82168a265ec06495d36d657a099a7e27616ea1443"
     }
   }
 }

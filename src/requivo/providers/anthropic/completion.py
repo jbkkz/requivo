@@ -86,17 +86,9 @@ def _save_failed_reply(raw: str, contract: str) -> Path | None:
     cycle. `test_a_prune_failure_does_not_discard_an_already_saved_reply` pins it.
     """
     try:
-        # Ambient, deliberately (#272's scope amendment weighed this against threading a `Store`
-        # through the provider and chose ambient): a provider is constructed once per process/client
-        # and reused across whatever session it is asked to reason about next, so it has no single
-        # workspace of its own to carry as constructor state -- threading one through would mean
-        # re-constructing (or re-pointing) the provider per call, which is a wider change than a
-        # debug-only side channel justifies. `.requivo/debug/` is a human-read diagnostic aid, not
-        # part of any session's data, so addressing the *process's* ambient workspace rather than
-        # whichever session's explicitly-rooted repository triggered this call is an accepted,
-        # documented limitation rather than a silent one: on a process serving more than one
-        # workspace at once (the exact shape #272 exists to unblock), a failed reply's debug dump
-        # lands under the *ambient* root, which may not be the root the triggering session used.
+        # Ambient on purpose, not threaded from a triggering session's repository: this path may
+        # land its debug dump under the wrong workspace on a process serving more than one (#272).
+        # `decision: debug-dump-ambient-root`
         root = debug_root()
         ensure_store_dir(root)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
@@ -191,22 +183,14 @@ def _system_blocks(system: str, reuse_system: bool) -> list[dict]:
     It genuinely pays *within* one operation: a JSON retry re-sends the identical system, `converse()`
     runs up to 8 discovery turns off one prompt, and a golden capture runs K of them.
 
-    **The retry case is the accepted cost of `reuse_system=False`, and is stated here rather than
-    glossed.** A one-shot generator that *does* retry now pays full price twice (2.0x the system block)
-    where caching would have paid 1.25x + 0.1x = 1.35x. That is a real regression on that path, taken
-    deliberately: with `p` the probability of a retry, not caching wins while `1 + p < 1.25 + 0.1p`,
-    i.e. `p < ~0.28`, and a contract violation from these generators is far rarer than that. Caching
-    only from the second attempt was considered and rejected — it costs 1.0 + 1.25 = 2.25x on two
-    attempts, worse than the 2.0x above, and comes out ahead only past the same ~0.28 threshold at
-    which simply caching everywhere would have been the right call anyway.
+    **The retry case is an accepted cost of `reuse_system=False`, not an oversight.**
+    `decision: retry-regression-under-reuse-system-false`
 
-    It cannot pay *across* operations, and no breakpoint placement can change
-    that: `build_prompt()` substitutes the shared schema + context cards into a **per-operation**
-    template, and every template puts `{{SCHEMA}}`/`{{CONTEXT}}` near its end with an "Output format"
-    section after them. The shared bulk is a *suffix*, caching is a *prefix* match, and a suffix has
-    no prefix boundary to cache at — so a second operation could never hit a warm entry however many
-    of the API's four breakpoints were spent on it. The comment that used to sit here claimed
-    byte-identity "across the calls of a session" and was true only of the first list (#9).
+    It cannot pay *across* operations: `build_prompt()` substitutes the shared schema + context cards
+    into a **per-operation** template with `{{SCHEMA}}`/`{{CONTEXT}}` near its end, so the shared bulk
+    is a cache *suffix* and no breakpoint placement turns it into the *prefix* match caching needs
+    (#9). Pinned by `test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call` and
+    `test_every_generator_drives_a_real_call_without_a_cache_write`.
 
     Making it pay across operations means moving the shared bulk to the **front** of all eight
     templates. That is a change to what the model reads, so it owes the golden harness a cycle
@@ -260,10 +244,10 @@ def _complete(client, system: str, messages: list[dict], out_model, retries: int
     The nudge lives in a local copy so the caller's clean history is never polluted.
 
     `operation` is the verb this call is for — `"analyze"`, `"brief"`, `"stories"`, ... the same
-    vocabulary `_OP_PROMPTS` already uses — stamped onto the `CallRecord` (#435) purely as
-    provenance: nothing here branches on it. `None` (the default) is what every caller that has not
-    been updated yet still passes, and it is a legitimate value, not a missing one — see
-    `CallRecord.operation`'s own docstring.
+    vocabulary `_OP_PROMPTS` already uses — stamped onto the `CallRecord` purely as provenance:
+    nothing here branches on it, and `None` (the default) is a legitimate value, not a missing one
+    (#435). Pinned by `test_run_stamps_the_analyze_operation_onto_the_call_record` and
+    `test_call_record_operation_defaults_to_none`.
 
     `validate` is an optional semantic post-check `(instance) -> None` that raises `ValueError` to
     reject an output Pydantic accepted but the caller still considers incomplete (e.g. a discovery
@@ -274,12 +258,12 @@ def _complete(client, system: str, messages: list[dict], out_model, retries: int
     unknown: mistakenly caching costs 25% once, mistakenly not caching costs the full price of every
     repeat. Only a caller that *knows* it makes one call should say False.
 
-    `model` is the id to call and to bill against (#434) — an explicit id, threaded down from
-    `AnthropicProvider(model=...)`, or `None` to fall back to `current_model_name()`'s env-chain
-    resolution exactly as before. Resolved **once, here**, and never through `current_model_name()`
-    again on this call: an explicit id must make zero env reads, not merely agree with what the
-    environment happens to hold, so a caller pinning a model can share a process with another one
-    without either racing the other's `REQUIVO_MODEL`.
+    `model` is the id to call and to bill against — threaded down from `AnthropicProvider(model=...)`,
+    or `None` to fall back to `current_model_name()`'s env-chain resolution exactly as before.
+    Resolved **once, here**: an explicit id must make zero env reads, so a caller pinning a model can
+    share a process with another one without racing the other's `REQUIVO_MODEL` (#434). Pinned by
+    `test_a_constructed_model_makes_no_env_read` and
+    `test_two_constructed_providers_record_and_price_independently`.
 
     Every exit records the spend first — see this module's docstring, and `_stop()` below."""
     attempt = messages

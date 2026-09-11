@@ -19,14 +19,9 @@ def health() -> JSONResponse:
 
 @router.get("/favicon.ico", include_in_schema=False)
 def favicon() -> FileResponse:
-    """A browser requests `/favicon.ico` itself, regardless of what `<link rel="icon">` names — this
-    is what stopped that request from 404ing into the operator's logs on every page load (#241).
-
-    The brand mark is an SVG (`base.html` already draws it inline; `static/favicon.svg` is the same
-    shape as a standalone file), served here under `.ico` with an honest `image/svg+xml` media type
-    rather than a synthesized binary ICO — modern browsers render whatever image format the response
-    actually carries. No sized PNG/ICO fallback is shipped: it would need real image-generation
-    tooling to produce correctly rather than a hand-authored guess at the format, for a browser
-    population that, on an evergreen product like this one, already renders SVG icons natively.
+    """A browser requests `/favicon.ico` itself regardless of what `<link rel="icon">` names, which
+    used to 404 into the operator's logs on every page load (#241). Served as the same SVG brand mark
+    `base.html` draws inline, under `.ico` with an honest `image/svg+xml` media type rather than a
+    synthesized binary ICO. Pinned by `test_favicon_is_served_and_linked`.
     """
     return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")

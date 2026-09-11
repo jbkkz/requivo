@@ -10,14 +10,14 @@ Four checks close that, in the order they run:
 
   * **Host allowlist** — the `Host` header must name a loopback address (or one the operator opted into
     via `REQUIVO_WEB_ALLOWED_HOSTS`), and a request that names no host *at all* is refused rather than
-    waved through — a check that cannot read its input has to say so, not treat it as nothing to check
-    (#45). This is the DNS-rebinding guard, and it is the only check that applies to reads as well: a
-    rebound `evil.com` that resolves to 127.0.0.1 is same-origin from the browser's point of view, so
-    it would sail through every other check *and* be able to read the token. **It lives in
-    `requivo.host_policy` now, not here** (#508): being the only read-applicable check is exactly
-    what made it the one a formless, cookieless JSON surface also needs, and `api/app.py` shipped
-    without it. The three checks below stay, because they are about an unsafe method arriving with
-    ambient form trust — which is this surface's shape, not every surface's.
+    waved through -- a check that cannot read its input has to say so, not treat it as nothing to check
+    (#45; pinned by `test_a_host_nobody_could_read_is_refused_by_every_surface`). This is the
+    DNS-rebinding guard, and it is the only check that applies to reads as well, which is why it lives
+    in `requivo.host_policy` now, shared by every FastAPI surface this project ships rather than only
+    this one (#508; pinned by `test_a_loopback_host_is_accepted_by_every_surface` and
+    `test_an_unrecognised_host_is_refused_by_every_surface`). The three checks below stay here, because
+    they are about an unsafe method arriving with ambient form trust — which is this surface's shape,
+    not every surface's.
   * **`Sec-Fetch-Site`** — the browser's own account of where the request came from. Free, unspoofable
     from script, and rejects `cross-site` / `same-site` outright.
   * **`Origin` / `Referer`** — when present, it must name the same trust domain as the host being
@@ -245,17 +245,12 @@ async def _enforce(request: Request) -> None:
                 f"the submitted form exceeds {MAX_BODY_BYTES:,} bytes",
                 details={"limit": MAX_BODY_BYTES, "declared": int(declared)})
     else:
-        # No declared length at all — what a chunked or otherwise streamed body looks like at this
-        # layer — cannot be measured before it is read, and reading it to find out is exactly the bug
-        # this refuses (#216): `await request.body()` used to run unconditionally below, so the cap
-        # only ever fired *after* the whole thing — 6.5MB in the field, unbounded in principle — was
-        # already sitting in memory. No supported caller produces this: every form this app renders,
-        # curl, httpx and requests all declare a length, the same argument the undetermined-`Host`
-        # refusal above already makes for HTTP/1.0. Refusing outright, rather than reading with a
-        # running byte count, was chosen over the streaming alternative because it needs nothing from
-        # Starlette's body cache — the alternative would have to poke `request._body` to keep
-        # downstream form parsing working, which is a private attribute of a library this module does
-        # not otherwise reach into.
+        # No declared length at all -- a chunked or otherwise streamed body -- is refused outright
+        # rather than read to find its size, which is what buffered the whole thing into memory before
+        # the cap could fire (#216). No supported caller produces this: every form this app renders,
+        # curl, httpx and requests all declare a length. Pinned by
+        # `test_a_chunked_body_is_refused_before_being_read` and
+        # `test_a_declared_length_post_is_unaffected`.
         raise InputTooLargeError(
             "this request has no valid declared Content-Length and cannot be safely size-checked — "
             "chunked or otherwise streamed request bodies are not supported",

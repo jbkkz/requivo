@@ -63,12 +63,10 @@ def price_per_mtok(model: str, on: date | None = None) -> tuple[float, float] | 
 def price_call(rec: CallRecord, on: date | None = None) -> CallRecord:
     """Stamp the rate this call was billed at onto the record, and return it.
 
-    The rate is resolved *when the call is filed*, not when the total is rendered, and that is the
-    whole reason this function exists rather than the ledger reaching back into the table above.
-    Two things follow. The ledger stops being Anthropic's — it holds arithmetic over rates it was
-    given, so a second provider needs no registry (#167). And an estimate spanning a price change is
-    right on both sides of it: the rate recorded is the one that was in force when the tokens were
-    spent, where a lookup at render time would re-price yesterday's calls at today's rate.
+    The rate is resolved *when the call is filed*, not when the total is rendered -- the ledger
+    holds arithmetic over rates it was given rather than reaching back into the table above, so a
+    second provider needs no registry, and an estimate spanning a price change is right on both sides
+    of it (#167). Pinned by `test_a_call_is_priced_at_the_rate_in_force_when_it_was_made`.
 
     Both fields are set together or neither is, which is invariant 6 applied to a price: a record
     carrying a rate with no table date would print an estimate that reads exactly like a dated one.
