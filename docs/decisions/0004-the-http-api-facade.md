@@ -102,10 +102,10 @@ format (UTC, second precision, `Z`); every session envelope carries both `slug` 
 | `/health` | GET | — (version constant) | liveness, mirrors the web's |
 | `/schema` | GET | the core slot-schema read (`slot_meta`/`schema_slot_ids` — what `requivo schema` prints) | what a proposal-writing client must know |
 | `/context-cards` | GET | the core card enumeration (what `requivo context` prints) | install-level vocabulary |
-| `/sessions` | POST | `DiscoveryService.create_only` → `SessionService.create_session` | body `{request, context_cards?, slug?}`; 201 fresh, 200 idempotent re-init of the same identity; 409 `session_exists` when an explicit slug is taken by a different identity |
+| `/sessions` | POST | `SessionService.create_session_report` (built by slice 2, #425 — this row first named `DiscoveryService.create_only`, which cannot say whether *this* call created the session; the additive `_report` sibling returns that fact, and its `strict_slug` opt-in is what the 409 rests on) | body `{request, context_cards?, slug?}`; 201 fresh, 200 idempotent re-init of the same identity; 409 `session_exists` when an explicit slug is taken by a different identity |
 | `/sessions` | GET | `SessionService.list_entries` | degraded rows come back as `{slug, error}` — *could not be read* and *not analysed yet* render differently, invariant 15's third state on the wire |
 | `/sessions/{slug}` | GET | `SessionService.meta` | the session envelope: slug, session_id, timestamps, current revision, cards, provider, artifact_status |
-| `/sessions/{slug}` | DELETE | `SessionService.delete_session` | *not built* — slice 1 ships reads only. The service verb this row was reserved against was #238's future work when this record was written and exists now; what is still missing is the route |
+| `/sessions/{slug}` | DELETE | `SessionService.delete_session` | *not built* — slice 2 shipped every other write and left this one to #238. The service verb this row was reserved against was #238's future work when this record was written and exists now; what is still missing is the route |
 | `/sessions/{slug}/model` | GET | `SessionService.load_model` | the durable product; named `model`, not `export`, because `session export` already means an archive in this vocabulary |
 | `/sessions/{slug}/revisions` | GET | `SessionService.meta` (`revisions`) | the provenance log — provider, model, surface, prompt hash, and since #292 what each apply spent; this is also where historical usage lives, so no separate usage resource is needed |
 | `/sessions/{slug}/revisions/{n}` | GET | `SessionService.load_revision` | the basis for "what moved since?" |
@@ -256,13 +256,17 @@ time**, which this paragraph originally did not say (#509):
   this surface serves today: before #508, `GET /api/v1/sessions` with `Host: evil.example.com`
   answered 200 where Requivo Web answered 403. `tests/test_host_allowlist.py` is parameterised over
   both surfaces.
-- **The `Sec-Fetch-Site`/`Origin` checks on unsafe methods — slice 4, with the writes they guard.**
-  There is no unsafe method on this surface yet, so there is nothing for them to run on.
-- **`Content-Type: application/json` required on unsafe methods — slice 4, same reason.** This is
-  the addition that does the token's job for a JSON API: a cross-origin page cannot send that
-  content type without a CORS preflight, and the API sends no CORS headers, so the preflight fails
-  — the browser attack the web guard exists for (a hostile page burning the server's key with
-  fire-and-forget form posts) has no JSON-shaped equivalent.
+- **The `Sec-Fetch-Site`/`Origin` checks on unsafe methods — slice 4.** When this was written
+  there was no unsafe method on this surface for them to run on; slice 2 (#425) has since shipped
+  the writes, and these two checks are still slice 4's, alongside the bind discipline.
+- **`Content-Type: application/json` required on unsafe methods — shipped with slice 2 (#425),
+  brought forward from slice 4** where this record first placed it: a write surface with none of
+  this posture in front of it is the state #508 was filed about, and this check is the one leg cheap
+  enough to ship with the writes themselves (`api/app.py`'s `require_json_content_type`, 415
+  `unsupported_content_type`). This is the addition that does the token's job for a JSON API: a
+  cross-origin page cannot send that content type without a CORS preflight, and the API sends no
+  CORS headers, so the preflight fails — the browser attack the web guard exists for (a hostile
+  page burning the server's key with fire-and-forget form posts) has no JSON-shaped equivalent.
 
 **The ordering constraint, because it is the one that can go wrong:** the host guard lands with, or
 before, `requivo api serve`. A serve verb shipping first would turn a hypothetical into a default,

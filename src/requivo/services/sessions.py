@@ -321,19 +321,65 @@ class SessionService:
         calls exactly this layer (invariant 14). An unknown card is not inert — an empty resolved
         selection means *every* card, so a bad name widens the context instead of narrowing it.
         `test_the_service_refuses_a_context_card_that_does_not_exist` and
-        `test_create_only_refuses_an_oversized_request_too`."""
+        `test_create_only_refuses_an_oversized_request_too`.
+
+        Thin wrapper over `create_session_report` for every caller that only needs the metadata —
+        which is every caller but one (#425). See that method for why the boolean it also returns
+        exists at all."""
+        meta, _created = self.create_session_report(
+            request, context_cards=context_cards, slug=slug, provider=provider, model_name=model_name)
+        return meta
+
+    def create_session_report(self, request: str, *, context_cards: list[str] | None = None,
+                              slug: str | None = None, provider: str | None = None,
+                              model_name: str | None = None, strict_slug: bool = False
+                              ) -> tuple[SessionMeta, bool]:
+        """`create_session`, plus two things its return value and its parameters cannot carry without
+        changing every other caller: whether *this call* actually created the session, and (opt-in)
+        whether an explicit slug taken by a different identity is refused rather than silently retried
+        under a different name.
+
+        **The boolean.** `POST /sessions` needs it to answer 201 fresh / 200 idempotent (#425,
+        `docs/decisions/0004-the-http-api-facade.md` §1) — a route may only *select and serialize*,
+        never re-derive, so the fact has to come from the service rather than from a second, racy
+        existence check in the route.
+
+        **`strict_slug`, default `False`, so `create_session` and every existing caller (the CLI, the
+        Web, `DiscoveryService`) are unchanged.** The default behaviour — an explicit slug that
+        collides with a different identity falls through to a hash-suffixed alternate, silently
+        landing the caller on a session under a name they never chose — is not a bug this method
+        introduces; it is a *known, deferred* one. `tests/web/test_web_routing.py`'s own
+        `test_a_taken_session_name_is_suffixed_rather_than_refused` pins it deliberately, in its own
+        words: "choosing between refusing, suffixing loudly, and re-rendering the form is a design
+        decision this change was not briefed to make." Reversing that default here would make exactly
+        that decision, for the Web surface, in a change that was never about the Web.
+
+        The API is not bound by that deferral — nothing has shipped for it to pin, and
+        `docs/decisions/0004-the-http-api-facade.md` §1 already states the wire behaviour: 409
+        `session_exists` when an explicit slug is taken by a different identity. `POST /sessions`
+        passes `strict_slug=True` for exactly that reason; every other caller passes nothing and keeps
+        today's behaviour, tests and all. Found writing this route's own test, which expected the 409
+        the design record's table promises and got a silent 201 under an unrequested slug instead."""
         require_input_within_bounds(request, field="request")
         context_cards = resolve_cards(context_cards) if context_cards else None
+        explicit = bool(slug)  # matches the `or` below: an empty string is "no slug", same as None
         base = slug or self.slug_hint(request)
-        for candidate in (base, f"{base}-{self._identity_hash(request, context_cards)}"):
+        refuse_immediately = explicit and strict_slug
+        candidates = (base,) if refuse_immediately else (
+            base, f"{base}-{self._identity_hash(request, context_cards)}")
+        for candidate in candidates:
             try:
                 meta = self.repo.create(candidate, request, provider=provider, model_name=model_name,
                                         context_cards=context_cards)
                 logger.info("session created: slug=%s", meta.slug)
-                return meta
+                return meta, True
             except SessionExistsError:
                 if self._same_identity(candidate, request, context_cards):
-                    return self.repo.read_meta(candidate)  # idempotent re-init of the same discovery
+                    return self.repo.read_meta(candidate), False  # idempotent re-init, same discovery
+                if refuse_immediately:
+                    raise SessionExistsError(
+                        f"session '{candidate}' already exists with a different request or context "
+                        "selection — choose a different slug", details={"slug": candidate}) from None
         raise SessionExistsError(
             f"sessions '{base}' and '{base}-{self._identity_hash(request, context_cards)}' both exist "
             "with a different request or context selection — pass an explicit slug",
