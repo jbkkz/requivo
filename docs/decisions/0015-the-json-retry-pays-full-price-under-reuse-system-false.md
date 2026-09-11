@@ -37,11 +37,10 @@ rate rather than the illustrative one.
 
 ## Alternatives rejected
 
-- **Cache only from the second attempt** (write on the first send, read on the retry, if any). Costs
-  1.0 + 1.25 = 2.25x across two attempts — worse than the 2.0x of not caching at all — and only comes
-  out ahead past the same ~0.28 threshold at which simply caching everywhere would already be the
-  right call. It adds a second code path for no range of `p` where it is the best of the three
-  options.
+- **Cache only from the second attempt** (a plain first send, a cache write on the retry, if any).
+  Expected cost `1 + 1.25p` against never-caching's `1 + p`: it is dominated at every `p > 0`, since
+  the write on the retry buys a read nothing ever makes — the retry is the last send. It adds a
+  second code path for no range of `p` where it is the best of the three options.
 - **Default `reuse_system=True` everywhere.** Rejected as the regression this whole design avoids:
   every one-shot generator would pay the 25% write surcharge on every call, for a read that never
   happens on the overwhelming majority of them.
