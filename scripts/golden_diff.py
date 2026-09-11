@@ -48,6 +48,7 @@ from golden_lib import (  # noqa: E402
     baseline_commits_since,
     brief_consensus,
     brief_movements,
+    captured_model,
     configure_output,
     load_answers,
     load_briefs,
@@ -115,6 +116,41 @@ def _show_freshness(rel_path: str) -> None:
         print(f"      … and {len(commits) - 5} more")
 
 
+def _show_model(old_text: str | None, new_text: str | None) -> None:
+    """Which model each side of this comparison was captured on — printed beside the freshness line,
+    because it is the other capture-time variable and the cheaper of the two to move (#515).
+
+    `baseline_commits_since` watches the assets a capture's prompt is built from; nothing watched the
+    model, and two of its three sources are the environment. Export `REQUIVO_MODEL=<something else>`,
+    re-capture one request, and every lens below reports the swap as prompt movement — the confident
+    readout #405 describes, about something the reader did not change.
+
+    **Three states, and the third is the whole of it.** A baseline written before this key existed
+    carries no model, and that renders as *unknown* — never as agreement with whatever is configured
+    now, and never as a missing line. It is `_show_freshness`'s own rule on a second axis: `unknown`
+    must never render as `current`. Pinned by
+    `test_a_baseline_with_no_model_key_does_not_read_as_agreement`."""
+    baseline = captured_model(old_text) if old_text is not None else None
+    candidate = captured_model(new_text) if new_text is not None else None
+    if baseline is None or candidate is None:
+        missing = " and ".join(
+            [name for name, value in (("baseline", baseline), ("candidate", candidate))
+             if value is None])
+        known = [f"{name} on {display_token(value)}"
+                 for name, value in (("baseline", baseline), ("candidate", candidate))
+                 if value is not None]
+        tail = f" ({'; '.join(known)})" if known else ""
+        print(f"  ? capture model: unknown for the {missing} — captured before the model was "
+              f"recorded, so nothing here says the two agree{tail}")
+        return
+    if baseline == candidate:
+        print(f"  · captured on {display_token(baseline)} (baseline and candidate agree)")
+        return
+    print(f"  ⚠ baseline captured on {display_token(baseline)}, candidate on "
+          f"{display_token(candidate)} — any movement below may be the model swap rather than a "
+          f"prompt or context edit")
+
+
 def diff_one(slug: str) -> str:
     """Print the signal for one request. Returns its status: ``moved``, ``flat``, or ``stale``
     (no capture on disk, or a capture that is byte-identical to HEAD and so never landed)."""
@@ -127,6 +163,7 @@ def diff_one(slug: str) -> str:
         # Freshness is a fact about the *committed* baseline — there is nothing to say about it when
         # there isn't one yet; the "⊕ NEW" branch below already names that state on its own.
         _show_freshness(rel_path)
+        _show_model(old_text, path.read_text(encoding="utf-8") if path.exists() else None)
 
     if not path.exists():
         print("  ! no working-tree capture (run golden_run.py first)")
@@ -380,6 +417,7 @@ def questions_one(slug: str) -> None:
     # `diff_one` fixture, it belongs to every reader of a per-request baseline (#405).
     _show_freshness(rel_path)
     new_text = path.read_text(encoding="utf-8")
+    _show_model(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
         turns = load_turns(text)

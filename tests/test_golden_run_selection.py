@@ -90,7 +90,8 @@ def test_main_prints_which_interactive_requests_it_skipped_and_how_to_capture_th
     monkeypatch.setattr(golden_run, "Anthropic", lambda *a, **k: object())
     monkeypatch.setattr(golden_run, "parse_requests", lambda _path: [_SINGLE, _INTERACTIVE])
     monkeypatch.setattr(golden_run, "capture",
-                        lambda _client, req, _with_brief: captured_slugs.append(req["slug"]))
+                        lambda _client, req, _with_brief, *, model: captured_slugs.append(
+                            req["slug"]))
 
     rc = golden_run.main([])
 
@@ -149,7 +150,7 @@ def test_main_announces_the_count_it_computed_for_the_set_it_actually_selected(
     (tmp_path / "requests.md").write_text("stub", encoding="utf-8")
     monkeypatch.setattr(golden_run, "Anthropic", lambda *a, **k: object())
     monkeypatch.setattr(golden_run, "parse_requests", lambda _path: [_SINGLE, _INTERACTIVE])
-    monkeypatch.setattr(golden_run, "capture", lambda _client, _req, _with_brief: None)
+    monkeypatch.setattr(golden_run, "capture", lambda _client, _req, _with_brief, **_kw: None)
 
     assert golden_run.main([]) == 0
 

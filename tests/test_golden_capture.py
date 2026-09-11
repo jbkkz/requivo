@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import golden_lib  # noqa: E402
 import golden_run  # noqa: E402
-from golden_lib import load_turns  # noqa: E402
+from golden_lib import captured_model, load_turns  # noqa: E402
 
 from requivo.core.contracts import EngineOutput, Question, Slot, Summary  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
@@ -89,11 +89,25 @@ def capture(tmp_path, monkeypatch):
         # the maintainer who reaches for `-s` to debug one of these is the person it breaks for.
         buf = io.StringIO()
         with redirect_stdout(buf):
-            golden_run.capture_interactive(client=None, req=req)
+            # A stand-in client object rather than `None`: `capture_interactive` now constructs
+            # `AnthropicProvider(client, model=...)` so the id it records is the id the calls were
+            # given (#515), and `AnthropicProvider(None)` would fall through to `new_client()` and
+            # want a credential. Nothing is called on it -- `draft_turn` is stubbed above.
+            golden_run.capture_interactive(client=object(), req=req, model="claude-sonnet-5")
         captured = load_turns((tmp_path / "scripted.runs.json").read_text(encoding="utf-8"))
         return calls, captured, buf.getvalue()
 
     return run
+
+
+def test_the_interactive_capture_records_the_model_it_reasoned_on(capture, tmp_path):
+    """#515: the envelope records a capture's *input* and, until this, nothing about the conditions
+    it ran under. The id is fixed on the provider the loop reasons through -- `AnthropicProvider`
+    with an explicit `model` does no environment read at all on that path (#434) -- so what lands in
+    the file is what reasoned, not a second read of `REQUIVO_MODEL` at write time."""
+    capture([_model()], {})
+    text = (tmp_path / "scripted.runs.json").read_text(encoding="utf-8")
+    assert captured_model(text) == "claude-sonnet-5"
 
 
 def test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list(capture):

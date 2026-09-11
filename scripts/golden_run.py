@@ -82,12 +82,30 @@ from golden_lib import (  # noqa: E402
 
 sys.path.insert(0, str(REPO / "src"))
 from requivo.providers.anthropic import advise, run  # noqa: E402
+from requivo.providers.anthropic.client import current_model_name  # noqa: E402
+from requivo.providers.anthropic.provider import AnthropicProvider  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
 
 load_dotenv()
 
 
-def capture_interactive(client: Anthropic, req: dict) -> None:
+def capture_model() -> str:
+    """The model id this invocation will capture on, resolved **once** and then handed to every call.
+
+    Read here and threaded down rather than left to each call's own `current_model_name()` fallback,
+    because the value written into the envelope has to be the value that reasoned, not a second read
+    of the same environment (#515). `AnthropicProvider(client, model=...)` and `run(..., model=...)`
+    both take a fixed id and do no env read at all on that path (#434), so one resolution covers the
+    single-pass and the interactive capture identically -- which is what makes the recorded key a
+    record rather than a guess.
+
+    `REQUIVO_MODEL`, else bare `MODEL`, else `MODEL_DEFAULT`: two of those three are the environment
+    and neither leaves a trace in the repository, which is the whole reason the key exists.
+    """
+    return current_model_name()
+
+
+def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
     """K interactive conversations, each driven off this request's answer sheet.
 
     Reasoning goes through `DiscoveryService.draft_turn` rather than through `run()` directly, and
@@ -99,7 +117,9 @@ def capture_interactive(client: Anthropic, req: dict) -> None:
     could be answered. What it does not mirror is a human, so the answers come from the sheet. There
     is no session, no revision and no write anywhere in this: `draft_turn` reasons and returns.
     """
-    disco = DiscoveryService(client=client)
+    # The provider is constructed with the resolved id rather than left to resolve per call, so
+    # `dump_turn_runs` below records what reasoned instead of re-reading the environment (#515, #434).
+    disco = DiscoveryService(provider=AnthropicProvider(client, model=model))
     runs: list[list[Turn]] = []
     for i in range(K):
         sheet = AnswerSheet(req["answers"])
@@ -119,7 +139,7 @@ def capture_interactive(client: Anthropic, req: dict) -> None:
                 break
             answers = block
         runs.append(turns)
-    dump_turn_runs(req["slug"], req["request"], req["answers"], runs)
+    dump_turn_runs(req["slug"], req["request"], req["answers"], runs, model=model)
 
     lens = turn_lens(runs, req["answers"])
     depth = "/".join(str(d) for d in lens["depths"])
@@ -141,7 +161,9 @@ def capture_interactive(client: Anthropic, req: dict) -> None:
         print(f"    {'sheet layers never reached':<38} {detail}")
 
 
-def capture(client: Anthropic, req: dict, with_brief: bool = False) -> None:
+def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
+            model: str | None = None) -> None:
+    model = model or capture_model()
     if is_interactive(req):
         if with_brief:
             # Said rather than silently dropped: --brief doubles the calls, and on a request that
@@ -150,21 +172,23 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False) -> None:
             print(f"  ! {req['slug']:<20} --brief is not captured for an interactive request "
                   f"(it would double a {K * TURNS}-call capture); the turn lens follows",
                   file=sys.stderr)
-        return capture_interactive(client, req)
+        return capture_interactive(client, req, model)
 
     models, briefs = [], ([] if with_brief else None)
     for i in range(K):
         # `reuse_system=True` explicitly: this loop sends engine.md's system prompt K times, so the
         # breakpoint is genuinely re-read here — the same declaration the `advise` call below makes,
         # now stated rather than left to `run()`'s default (#58).
-        out = run(client, [{"role": "user", "content": req["request"]}], reuse_system=True)
+        out = run(client, [{"role": "user", "content": req["request"]}], reuse_system=True,
+                  model=model)
         models.append(out)
         if with_brief:
             # `reuse_system=True`: unlike the CLI, this loop sends brief.md's system prompt K times, so
             # the cache breakpoint is genuinely re-read here and is worth its 1.25x write (#9).
-            briefs.append(advise(client, out, reuse_system=True))  # see --brief in the header
+            briefs.append(advise(client, out, reuse_system=True,
+                                 model=model))  # see --brief in the header
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
-    dump_runs(req["slug"], req["request"], models, briefs)
+    dump_runs(req["slug"], req["request"], models, briefs, model=model)
     st = stability(models)
     # Show the noise floor up front: how much of the model was stable across the K runs.
     print(f"  ✓ {req['slug']:<20} {st['unanimous']['impact']}/{st['total_slots']} slots "
@@ -244,13 +268,19 @@ def main(argv: list[str]) -> int:
 
     GOLDEN.mkdir(parents=True, exist_ok=True)
     client = Anthropic()
+    # Resolved once for the whole invocation, so every envelope this run writes records the same id
+    # and records the one the calls were given (#515). Printed with the call budget because it is the
+    # other thing a reader is committing to before the first paid call: re-capturing a baseline on a
+    # different model is a decision, and it should not be one made by an inherited environment.
+    model = capture_model()
     # Computed for the set actually selected, never quoted from prose — see `planned_calls`.
     calls = planned_calls(runs, with_brief)
     print(f"Capturing {len(runs)} request(s) × {K} runs → {GOLDEN.relative_to(REPO)}/  "
-          f"(up to {calls} API calls{', assessment included' if with_brief else ''})")
+          f"(up to {calls} API calls{', assessment included' if with_brief else ''}) "
+          f"on {model}")
     for req in runs:
         try:
-            capture(client, req, with_brief)
+            capture(client, req, with_brief, model=model)
         except Exception as exc:  # one bad request should not lose the others
             print(f"  ✗ {req['slug']:<20} FAILED: {exc}", file=sys.stderr)
     return 0

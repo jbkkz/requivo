@@ -5,6 +5,36 @@ dependencies are declared in `pyproject.toml` and installed from PyPI, so they c
 licenses and are not redistributed here. This file covers the one thing that *is* copied into this
 repository and shipped inside the wheel.
 
+## The digests, and why they exist
+
+Every file under `src/requivo/api/static/vendor/` and `src/requivo/web/static/vendor/` has its
+SHA-256 recorded in **`THIRD-PARTY-DIGESTS.txt`**, and
+`tests/test_vendored_bundles_are_not_normalized.py` recomputes them on every CI leg, Windows
+included. Until #510 there was no digest anywhere, so this file's own version lines were the only
+record of what had been vendored — and a hand-refresh that grabbed the wrong artifact, or a local
+edit, was undetectable from inside the repository. That is the failure `CLAUDE.md` names about
+itself (*a claim in prose that no test can falsify buys one release and then lies*), applied to a
+byte-identity claim rather than to a number.
+
+The file is plain `shasum -a 256` output with no comment lines, so it verifies with the standard
+tool and no arguments:
+
+```bash
+shasum -a 256 -c THIRD-PARTY-DIGESTS.txt     # or: sha256sum -c THIRD-PARTY-DIGESTS.txt
+```
+
+It also makes `.gitattributes`'s `-text` rule enforceable rather than aspirational: a checkout that
+rewrote a byte inside a minified string literal fails the digest instead of silently serving
+different code. Nothing fetches from npm to check this, deliberately — the point is to pin what was
+vendored, not to re-download it; a network call would make the check flaky and would verify the
+registry rather than the repository. The digests were verified against `registry.npmjs.org` once,
+out of band, when they were recorded: 8 of 8 matching, with `git rev-parse HEAD:<path>` against
+`git hash-object` on each to confirm the committed objects rather than a working tree.
+
+**Refreshing any vendored bundle is therefore four steps, not three:** replace the file verbatim,
+update its digest in `THIRD-PARTY-DIGESTS.txt`, bump the **Version** line in this file, and re-run
+the tests. Each procedure below states it in place.
+
 ## htmx
 
 - **Version:** 1.9.12
@@ -38,8 +68,10 @@ banner. The procedure:
 1. Download the release from <https://github.com/bigskysoftware/htmx/releases> (`htmx.min.js`).
 2. Replace `src/requivo/web/static/vendor/htmx.min.js` verbatim — no local edits, ever, or the
    version above stops describing what is shipped.
-3. Bump the **Version** line above.
-4. Re-run the web tests: `pytest tests/web -q`.
+3. Update its line in `THIRD-PARTY-DIGESTS.txt` (`shasum -a 256 src/requivo/web/static/vendor/htmx.min.js`).
+4. Bump the **Version** line above.
+5. Re-run the web tests: `pytest tests/web -q`, and
+   `pytest tests/test_vendored_bundles_are_not_normalized.py -q` for the digest.
 
 No Node toolchain is added for one file, and none should be. 1.9.12 is on the 1.x maintenance line,
 superseded by 2.x; moving is a deliberate decision rather than a routine bump, since 2.x changes
@@ -84,9 +116,12 @@ bundle in three files appears in no dependency manifest, so nothing scans it for
    edits, ever.
 3. Leave `swagger-initializer.js` alone unless the new version's own `index.html` changed which
    scripts it loads or in what order (it has not, across 5.x).
-4. Bump the **Version** line above.
-5. Re-run `pytest tests/api -q`, which includes `test_api_docs_assets.py`'s no-external-origin and
-   `validatorUrl: null` assertions.
+4. Update all five lines in `THIRD-PARTY-DIGESTS.txt`
+   (`shasum -a 256 src/requivo/api/static/vendor/swagger-ui/*`).
+5. Bump the **Version** line above.
+6. Re-run `pytest tests/api -q`, which includes `test_api_docs_assets.py`'s no-external-origin and
+   `validatorUrl: null` assertions, and
+   `pytest tests/test_vendored_bundles_are_not_normalized.py -q` for the digests.
 
 ## redoc
 
@@ -149,5 +184,8 @@ maintainer decision, not one this change makes unilaterally.
 1. Download `redoc` at the target version from npm and extract `bundles/redoc.standalone.js` and
    its companion `bundles/redoc.standalone.js.LICENSE.txt`.
 2. Replace both files under `src/requivo/api/static/vendor/redoc/` verbatim — no local edits, ever.
-3. Bump the **Version** line above.
-4. Re-run `pytest tests/api -q`.
+3. Update both lines in `THIRD-PARTY-DIGESTS.txt`
+   (`shasum -a 256 src/requivo/api/static/vendor/redoc/*`).
+4. Bump the **Version** line above.
+5. Re-run `pytest tests/api -q`, and
+   `pytest tests/test_vendored_bundles_are_not_normalized.py -q` for the digests.
