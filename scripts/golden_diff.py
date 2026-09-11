@@ -21,10 +21,10 @@ way that reads exactly like a clean one (#137).
 
 A capture taken with ``golden_run.py --brief`` gets a third: the **assessment** lens, over the
 complexity verdict and the challenge themes. All three run on every request, and the run's verdict is
-the **union** of the ones that ran — the strongest signal any of them found. They are independent
-measurements of one capture rather than votes on one question, so a lens finding nothing is never
-evidence against another lens finding something, and a lens that could not look says so on its own
-line instead of being folded into a silent pass (#162).
+the **union** of the ones that ran — the strongest signal any of them found, never the short-circuit
+that once made the assessment lens unreachable behind a flat slot consensus (#162). Guarded by
+`test_the_verdict_is_the_union_of_the_lenses_that_ran` and
+`test_the_assessment_lens_runs_when_the_slot_consensus_held_still`.
 
 Workflow: golden_run.py (re-capture) → golden_diff.py (read the signal) → commit if intended.
 
@@ -72,16 +72,17 @@ def _head_version(rel_path: str) -> str | None:
 
 
 def _show_freshness(rel_path: str) -> None:
-    """Is the committed baseline at `rel_path` current with respect to `WATCHED_PATHS`, or how many
-    commits since it was captured touched one of them? Printed first, before any lens output — the
-    worked example #405's own third acceptance criterion asks for: "baseline captured 2026-08-01; 3
-    asset commits since" turns a day of measurement into one glance, because without it the reader
-    *is* the control — nothing else says whether the movement a lens reports below is a working-tree
-    edit's own effect or the accumulation of commits nobody has re-captured against yet (#405, #410).
+    """Is the committed baseline at `rel_path` current with respect to `WATCHED_PATHS`? Printed first,
+    before any lens output, because without it the reader *is* the control -- nothing else says
+    whether the movement a lens reports below is a working-tree edit's own effect or the accumulation
+    of commits nobody has re-captured against yet (#405, #410).
 
     Three states, and `unknown` must never render as `current` — the same collapse `golden_diff`'s
     own module docstring already refuses for a byte-identical capture, one layer up: a git failure
-    and a clean baseline must not read the same way."""
+    and a clean baseline must not read the same way. Guarded by
+    `test_a_stale_baseline_is_named_before_any_lens_output`,
+    `test_a_current_baseline_says_so_without_alarm` and
+    `test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current`."""
     fr = baseline_commits_since(rel_path)
     watched = ", ".join(WATCHED_PATHS)
     if fr["state"] == "unknown":
@@ -98,18 +99,10 @@ def _show_freshness(rel_path: str) -> None:
     print(f"  ⚠ baseline captured {fr['captured_at']}; {len(commits)} commit(s) touching {watched} "
           f"since — any movement below may be their combined effect, not only a working-tree edit:")
     for c in commits[:5]:
-        # A commit subject is contributor-written text, exactly the class `questions_one` already
-        # treats as untrusted for this file's own stated reason (invariant 14, #40): raw `\r` in a
-        # subject would return the cursor to column 0 and let it overwrite the date/sha prefix it
-        # sits behind. `baseline_commits_since` no longer lets a subject like that manufacture a
-        # *second* row (#456 -- the record boundary parsed there is a real `\n`, decoded from bytes
-        # rather than rewritten by `subprocess.run(text=True)`'s universal-newlines translation, and
-        # `str.split("\n")` rather than `str.splitlines()`). This guard is what stops that same `\r`
-        # from corrupting *this* row once it can no longer manufacture a new one -- `date` and `sha`
-        # go through it too, even though neither is presently attacker-reachable (`%cI`/`%H` are
-        # fixed git formats, never derived from commit text): a future field added to the same
-        # `--format` string inherits the guard for free rather than needing its own print site fixed
-        # later.
+        # A commit subject is contributor-written text, untrusted the same way `questions_one`
+        # already treats provider prose (invariant 14, #40): raw `\r` would return the cursor to
+        # column 0 and overwrite the date/sha prefix. `date`/`sha` go through it too, for a future
+        # `--format` field. Guarded by `test_a_hostile_freshness_reason_cannot_forge_a_line`.
         print(f"      {display_token(c['date'])}  {display_token(c['sha'])}  "
               f"{display_token(c['subject'])}")
     if len(commits) > 5:
@@ -261,9 +254,10 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
       it went quiet.
 
     `layers` is this capture's answer sheet (#163). It only ever adds a line, and only when the
-    capture is SHALLOW: a healthy run's leftover layers are by design — the sheet is deliberately
-    authored deeper than `MEASURABLE_DEPTH` so it doesn't run dry before the loop's own cap — and
-    reporting them there would be noise on every clean capture.
+    capture is SHALLOW -- a healthy run's leftover layers are by design, and reporting them there
+    would be noise on every clean capture. Guarded by
+    `test_a_shallow_capture_reports_which_sheet_layers_went_unused` and
+    `test_a_deep_capture_with_layers_left_over_does_not_report_them`.
     """
     if new_turns is None and old_turns is None:
         return None
@@ -307,35 +301,26 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
 def _show_assessment(old_briefs: list | None, new_briefs: list) -> str | None:
     """Print what moved in the assessment. Returns its tier: `strong`, `weak` or None.
 
-    Four states, mirroring `_show_turns` and for the same reason (#162, #137). This lens used to sit
-    behind the slot section's short-circuit, so a capture whose slots held still printed "no change
-    above the noise floor" over an assessment nobody had looked at:
+    Four states, mirroring `_show_turns` for the same reason: a lens that could not look must say so
+    rather than reading as measured-and-clean, and it contributes nothing to the verdict (#162, #137).
+    Guarded by `test_the_assessment_lens_runs_when_the_slot_consensus_held_still` (the short-circuit
+    this lens used to sit behind) and `test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`.
 
     - **not captured** — neither side has `--brief` output. Named on a line of its own rather than
-      left silent, because `--brief` is an opt-in flag and not a property of the request: an absent
-      assessment is *not measured*, and with nothing said it reads exactly like measured-and-clean.
-      It contributes nothing to the verdict, since it did not look.
+      left silent, because `--brief` is an opt-in flag and not a property of the request.
     - **first capture** — nothing to compare against, so the consensus readout *is* the finding, the
       same shape the noise floor beside it already has.
     - **baseline only** — HEAD has an assessment and this capture does not. Marked `!` rather than
-      `·`, because committing this capture would drop a lens the baseline had — but it contributes
-      **nothing** to the verdict, for the same reason the not-captured state does: there is nothing
-      to compare, so nothing was measured.
+      `·`, because committing this capture would drop a lens the baseline had — but, unlike
+      `_show_turns`' matching state, it is graded as *nothing measured* rather than strong: `--brief`
+      is a manual per-invocation flag no capture remembers, and every single-pass baseline currently
+      carries one, so grading this strong would turn the documented no-`--brief` workflow into six
+      strong signals over a run where nothing moved.
     - **compared** — both sides have one, and `brief_movements` grades it.
 
     A lost challenge theme counts as strong on its own: the engine used to contest that premise in a
     majority of runs and stopped. On the deliverable, losing a challenge is the regression that
     matters most — sharper questions are worth little if the pushback quietly disappears.
-
-    **Why `baseline only` is not strong, unlike `_show_turns`' matching state.** It was, and that was
-    wrong. Interactivity is declared in `requests.md` and reproduced on every capture, so the turn
-    lens cannot vanish by accident and its disappearance really is a finding. `--brief` is a manual
-    per-invocation flag that no capture remembers, and **every** single-pass baseline in
-    `fixtures/golden/` currently carries one — so grading this strong turns the documented workflow
-    (`golden_run.py` with no `--brief`, to measure an `engine.md` or context-card change) into six
-    strong signals over a run where nothing moved. That is the noise this file exists to suppress,
-    manufactured by the lens meant to catch it, and it is the rule stated two bullets up: a lens that
-    could not look contributes nothing to the verdict.
 
     Deliberately *not* tallied in the summary line the way `stale` is: the per-request line is where
     a lens's own state belongs, and a counter that fires on nearly every run is one nobody reads.

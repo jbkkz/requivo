@@ -18,29 +18,29 @@ A bare invocation (step 3 above) captures only **single-pass** requests and skip
 **interactive** one, naming each skip and the command to capture it alone — an interactive request
 costs K × ``GOLDEN_TURNS`` calls on its own (15 at the defaults) and does not belong folded into a
 full-set run's cost (#276). Name the slug explicitly, or pass ``--all``, to capture it anyway; see
-``select_runs``.
+``select_runs``, guarded by `test_a_bare_invocation_skips_every_interactive_request`.
 
 ``--brief`` additionally captures the **assessment** for each run — the deliverable, not just the
 discovery state. It watches the complexity verdict and the challenge headlines (what the engine chose
 to contest), which is what a change to ``prompts/brief.md`` actually moves. It doubles the API calls
-for that request, so it is opt-in. It is *described* as being for a couple of representative
-requests; in practice every single-pass baseline in ``fixtures/golden/`` carries one, and that gap
-matters because a lens's grading was once designed around the sentence rather than the fixtures
-(#162). Check the baselines before reasoning from this paragraph.
+for that request, so it is opt-in -- but check the baselines before reasoning from that: every
+single-pass baseline in ``fixtures/golden/`` currently carries one, and a lens's grading was once
+designed around the description rather than the fixtures (#162). Guarded by
+`test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`
+in `tests/test_golden_readout.py`.
 
 A request carrying an **answer sheet** (``answer.<slot>:`` lines in ``requests.md``) is captured
 differently again: `capture_interactive` drives `DiscoveryService.draft_turn` for up to
-``GOLDEN_TURNS`` turns per run, answering off the sheet. That is the only shape that can see what #77
-changed — from turn 3 the interactive loop is grounded on the carried model alone, where the old one
-re-sent the whole transcript, and turns 1 and 2 are byte-identical between the two (#137).
+``GOLDEN_TURNS`` turns per run, answering off the sheet -- the only shape that can see what #77
+changed (#137). Guarded by
+`test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list`.
 
 Cost: K API calls per single-pass request, doubled where ``--brief`` is on, and up to
 K × ``GOLDEN_TURNS`` for an interactive one (15 at the defaults) — so capture an interactive request
-on its own rather than as part of a full-set run: the bare invocation now does this by default,
-rather than only recommending it in prose. No total for the request set is written down here or
-anywhere else, deliberately: ``planned_calls`` derives it from the requests this invocation actually
-parsed and selected, and ``main`` prints it before the first call, so the figure a reader budgets
-against cannot go stale the day a request is added to ``requests.md`` (#290).
+on its own rather than as part of a full-set run. No total for the request set is written down here
+or anywhere else: ``planned_calls`` derives it from the requests this invocation actually parsed and
+selected, and ``main`` prints it before the first call (#290). Guarded by
+`test_the_announced_call_count_moves_with_the_request_set`.
 Needs ANTHROPIC_API_KEY in ``.env``.
 
 Usage:
@@ -93,14 +93,9 @@ def capture_model() -> str:
     """The model id this invocation will capture on, resolved **once** and then handed to every call.
 
     Read here and threaded down rather than left to each call's own `current_model_name()` fallback,
-    because the value written into the envelope has to be the value that reasoned, not a second read
-    of the same environment (#515). `AnthropicProvider(client, model=...)` and `run(..., model=...)`
-    both take a fixed id and do no env read at all on that path (#434), so one resolution covers the
-    single-pass and the interactive capture identically -- which is what makes the recorded key a
-    record rather than a guess.
-
-    `REQUIVO_MODEL`, else bare `MODEL`, else `MODEL_DEFAULT`: two of those three are the environment
-    and neither leaves a trace in the repository, which is the whole reason the key exists.
+    so the value written into the envelope is the value that reasoned, not a second read of the same
+    environment (#515, #434). Guarded by
+    `test_main_resolves_the_model_once_and_threads_it_to_every_capture`.
     """
     return current_model_name()
 
@@ -110,15 +105,15 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
 
     Reasoning goes through `DiscoveryService.draft_turn` rather than through `run()` directly, and
     that is the whole validity of the measurement: `draft_turn` is the production interactive path,
-    and it is the shape #77 changed. A loop that assembled its own message list here would capture a
-    conversation no surface has held since #77 (#137).
+    and it is the shape #77 changed (#137). Guarded by
+    `test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list`.
 
     The rest mirrors `converse()` — the turn counter, the answer format, and stopping when nothing
     could be answered. What it does not mirror is a human, so the answers come from the sheet. There
     is no session, no revision and no write anywhere in this: `draft_turn` reasons and returns.
     """
-    # The provider is constructed with the resolved id rather than left to resolve per call, so
-    # `dump_turn_runs` below records what reasoned instead of re-reading the environment (#515, #434).
+    # Constructed with the resolved id rather than left to resolve per call (#515, #434). Guarded by
+    # test_the_interactive_capture_records_the_model_it_reasoned_on.
     disco = DiscoveryService(provider=AnthropicProvider(client, model=model))
     runs: list[list[Turn]] = []
     for i in range(K):
@@ -223,11 +218,10 @@ def select_runs(runs: list[dict], wanted: set[str], capture_all: bool) -> tuple[
     """Which of the parsed requests to actually capture, and which interactive ones were skipped.
 
     A bare invocation -- no slugs named, no ``--all`` -- captures every single-pass request and
-    skips every interactive one: CLAUDE.md's own cost guidance says an interactive request
-    (K x GOLDEN_TURNS calls, 15 at the defaults) belongs in a capture of its own, never folded into
-    a full-set run, and this is what makes a bare run actually honour that rather than contradict it
-    (#276). Naming a slug explicitly, or passing ``--all``, captures interactive requests exactly as
-    before -- the skip is the bare-invocation default, not a restriction on what can be captured.
+    skips every interactive one, so a bare run honours CLAUDE.md's own cost guidance (an interactive
+    request belongs in a capture of its own) rather than contradicting it (#276). Naming a slug
+    explicitly, or passing ``--all``, captures interactive requests exactly as before. Guarded by
+    `test_a_bare_invocation_skips_every_interactive_request`.
 
     Pure and offline: no client, no network, no write. Returns ``(selected, skipped)``.
     """

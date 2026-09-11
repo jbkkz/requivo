@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -26,6 +28,7 @@ from golden_lib import (  # noqa: E402
     brief_movements,
     captured_model,
     consensus,
+    dump_runs,
     is_interactive,
     load_answers,
     load_runs,
@@ -461,6 +464,21 @@ def test_both_envelope_writers_record_the_model_the_capture_ran_on():
     assert captured_model(interactive) == "claude-sonnet-5"
     single_pass = json.dumps({"request": "r", "model": "claude-opus-4-8", "runs": []})
     assert captured_model(single_pass) == "claude-opus-4-8"
+
+
+def test_dump_runs_requires_the_model_it_ran_on(tmp_path, monkeypatch):
+    """#515: `model` is keyword-only and has no default, on purpose. A capture that cannot say what
+    it ran on must not be writable at all -- silently defaulting to `"unknown"` would look like a
+    complete envelope. Confirmed red by removing the requirement (dropping `*` and giving `model` a
+    default) before this test was written: `dump_runs` then wrote an envelope with no error, and
+    `captured_model` on it came back `"unknown"` rather than `None` -- the exact silent-looking-complete
+    failure this signature exists to prevent."""
+    monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
+    with pytest.raises(TypeError):
+        dump_runs("r", "a request", [_model(problem=Impact.high)])  # type: ignore[call-arg]
+
+    path = dump_runs("r", "a request", [_model(problem=Impact.high)], model="claude-sonnet-5")
+    assert captured_model(path.read_text(encoding="utf-8")) == "claude-sonnet-5"
 
 
 def test_a_baseline_written_before_the_model_was_recorded_reads_as_unknown():

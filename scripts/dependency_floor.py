@@ -1,25 +1,10 @@
 """What the runtime dependency floor *is*, and whether the environment is actually at it.
 
-`pyproject.toml`'s lower bounds are a promise to whoever runs `pip install requivo`, and not one CI
-leg installed a single one of them (#91). Every job runs `pip install -e ".[dev]"`, which resolves to
-the newest satisfying release -- so the floors were measured nowhere, and the first import that
-postdates a declared minimum would ship a package that fails at import for anyone whose resolver
-lands early, with every leg on the board green.
-
-That was not hypothetical. `pydantic>=2.0` was false by eleven minor versions when this script was
-written: on 2.0.x the package does not import at all, and up to 2.10 the two guards pinning
-invariant 8's permissive-mirror graph fail. The v0.11.0 audit had cleared that same bound by
-confirming `SerializeAsAny` is exported by pydantic 2.0.0 -- correctly, and it is still the wrong
-question. A symbol existing is not the symbol working, and only installing the thing tells them
-apart.
-
-**Installing is the resolver's job, not this script's.** The CI leg uses `uv pip install
---resolution lowest-direct`, which is the one mechanism that means what the bounds mean. Generating
-a `name==floor` constraints file was tried first and is wrong twice over: `jinja2==3.1` names no
-release that exists (the oldest is 3.1.0), and a floor is the oldest release a user can actually
-get rather than the string in the manifest. What this script owns is the two halves a resolver
-cannot supply -- *which* requirements the promise covers, and whether the environment that came out
-is the one that was asked for.
+`pyproject.toml`'s lower bounds are a promise to whoever runs `pip install requivo`. This script is
+what makes that promise testable: it owns the two halves a resolver cannot supply on its own --
+*which* requirements the promise covers, and whether the environment that came out is the one that
+was asked for. Why verification means installing the floor rather than inspecting the bound, and why
+a generated constraints file was rejected: `decision: dependency-floor-verified-by-install`.
 
 Scope is the *runtime* promise: `[project] dependencies` plus the `anthropic`, `web` and `api`
 extras, each of which a user installs by name. The `dev` extra is deliberately excluded -- pytest and ruff are
@@ -33,14 +18,9 @@ import re
 import sys
 from pathlib import Path
 
-# The runtime promise, and only it. Named explicitly rather than "every extra except dev", so that a
-# new extra has to be classified by a person instead of silently joining the floor set or silently
-# escaping it. `api` (#425) escaped it for exactly one review round: it is user-installable by name,
-# so it is a runtime promise, and it was not listed here -- the outcome the sentence above exists to
-# prevent, on the first extra added after that sentence was written. Listing it also converts a
-# comment in `pyproject.toml` into a guard: `[api]` and `[web]` deliberately hold the same `fastapi`
-# floor, and `constraints()` refuses one name carrying two floors, so a bump to either alone now
-# fails the leg instead of quietly drifting.
+# Hand-classified rather than "every extra except dev", so a new extra needs a person's decision
+# instead of a silent default -- `api` (#425) escaped it for one review round.
+# Guarded by test_every_extra_in_the_manifest_is_either_floored_or_excluded_on_record.
 RUNTIME_EXTRAS = ("anthropic", "web", "api")
 
 # `name>=1.2.3` with optional trailing specifiers: `pydantic>=2.0,<3` -> ("pydantic", "2.0").

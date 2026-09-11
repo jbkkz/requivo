@@ -12,7 +12,7 @@ consensus and the per-request stability (the empirical noise floor); `golden_run
 
 A separate, unrelated concern also lives here: `baseline_commits_since` (below) answers whether a
 *committed* baseline itself predates a real change to what a capture measures -- see its own section
-for why (#405, #410).
+for why (#405, #410), guarded by `test_a_commit_touching_a_watched_path_since_the_baseline_marks_it_stale`.
 """
 
 from __future__ import annotations
@@ -79,9 +79,8 @@ def parse_requests(path: Path) -> list[dict]:
     ``answers`` maps a slot id to the *layers* the fixture client will volunteer about it, in order,
     one per ``answer.<slot>:`` line. A block with no such line is a single-pass request and captures
     exactly as it always did; a block with one is an interactive request and captures a multi-turn
-    conversation instead. Repeating a slot is deliberate rather than a mistake to reject — the engine
-    comes back to a slot at a deeper level, so a client that has one more thing to say about it is
-    what keeps a capture running past turn 2 (#137)."""
+    conversation instead. Repeating a slot is deliberate, not a mistake to reject — it is what keeps
+    a capture running past turn 2 (#137). Guarded by `test_parse_requests_collects_a_layered_answer_sheet`."""
     runs: list[dict] = []
     current: dict | None = None
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -116,14 +115,9 @@ def dump_runs(slug: str, request: str, models: list[EngineOutput],
     ``briefs`` is optional and captured only for the requests we watch the *assessment* on — it costs
     a second API call per run, so it is opt-in rather than the default (see ``golden_run --brief``).
 
-    ``model`` is **keyword-only and required**, and that is the point rather than an inconvenience
-    (#515). An envelope recorded the *input* of a capture and nothing at all about the conditions it
-    ran under; the model is the largest of those and the cheapest to change by accident — one
-    environment variable, no commit, nothing for `baseline_commits_since`'s commit scan to see. Pass
-    the id the call was actually given, never `current_model_name()` re-read here: a value derived a
-    second time is a claim about the environment at *this* line, not a record of what reasoned.
-    Making it required means a capture that cannot say what it ran on cannot be written, which is
-    strictly better than one that writes `unknown` and looks complete."""
+    ``model`` is **keyword-only and required**: pass the id the call was actually given, never
+    `current_model_name()` re-read here, so a capture that cannot say what it ran on cannot be
+    written (#515). Guarded by `test_dump_runs_requires_the_model_it_ran_on`."""
     import json
     payload = {"request": request, "model": model, "runs": [m.model_dump() for m in models]}
     if briefs is not None:
@@ -628,12 +622,13 @@ def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None
 
     With nothing to read it returns `{"measured": False, "reason": …}` and **no finding keys at
     all** — deliberately, so a caller cannot iterate an empty `reasked` and print a clean bill of
-    health for a capture that was never looked at.
+    health for a capture that was never looked at. Guarded by
+    `test_the_lens_says_it_could_not_look_rather_than_reporting_nothing`.
 
-    `layers` is the answer sheet this capture was taken with, and it is optional: pass it and the
-    result carries `unreached_layers` (#163); omit it and the lens reads exactly as it always has.
-    A caller with no sheet on hand (a synthetic fixture, or a caller that never needed this before)
-    changes nothing by not passing it."""
+    `layers` is the answer sheet this capture was taken with (#163), and it is optional: pass it and
+    the result carries `unreached_layers`; omit it and the lens reads exactly as it always has.
+    Guarded by `test_turn_lens_carries_unreached_layers_only_when_given_a_sheet` and
+    `test_unreached_layers_reports_what_no_run_in_the_capture_ever_got_to`."""
     if not runs:
         return {"measured": False,
                 "reason": "single-pass capture — no turns to read, so nothing here speaks to the "
@@ -728,17 +723,10 @@ def _git(args: list[str]) -> tuple[bool, str]:
     -- the same rule `turn_lens` already applies to its own "nothing to measure" case, one section up.
 
     Captured as **bytes** and decoded explicitly with `.decode("utf-8")` (invariant 16) --
-    deliberately not `subprocess.run(text=True)`, which is what this call used to be (#456).
-    `text=True` turns on Python's universal-newlines translation, which rewrites a lone `\r` --
-    and every `\r\n` -- in the child's stdout into `\n` *before* this function, or any caller, ever
-    sees the string. `baseline_commits_since` below splits multi-commit `git log` output into
-    records on a real `\n` -- the exact byte git itself inserts between formatted entries, and the
-    correct boundary to split on. The rewrite happened one layer beneath that split, inside the
-    subprocess pipe itself: a commit subject carrying a raw `\r` arrived as an *already-forged*
-    second `\n`-terminated record, so no change to the split call downstream could have caught it
-    on its own (#456). Decoding bytes here, once, removes the rewrite for every caller of `_git` --
-    present and future -- rather than relying on each new subject-bearing `git log` call to
-    remember it independently.
+    deliberately not `subprocess.run(text=True)`, whose universal-newlines translation used to rewrite
+    a raw `\r` in a commit subject into a second, forged `\n`-terminated record downstream (#456).
+    Decoding bytes here, once, removes the rewrite for every caller of `_git`, present and future.
+    Guarded by `test_a_hostile_commit_subject_cannot_forge_a_second_commit_row`.
 
     `UnicodeDecodeError` is caught alongside the process-launch failures so a non-UTF-8 byte
     in a commit subject is a reported `unknown`, never a crash mid-readout."""
@@ -825,14 +813,10 @@ def baseline_commits_since(rel_path: str, watched: tuple[str, ...] = WATCHED_PAT
                               f"{baseline[0]}..HEAD", "--", *watched])
         if ok:
             since_commits = []
-            # split("\n"), never splitlines() (#456): splitlines() treats nine characters as ending
-            # a line -- \r, \x0b, \x0c, \x1c, \x1d, \x1e, \x85, U+2028, U+2029 -- none of which ends a
-            # `git log --format` record. A commit subject carrying any of them was becoming a second,
-            # forged row, with the text past the boundary landing in that forged row's own `sha`
-            # field. The one true boundary between records is the literal `\n` git itself writes
-            # between formatted entries, which is exactly what `split("\n")` and nothing else splits
-            # on -- and only reliably so once `_git` hands back bytes decoded without the
-            # universal-newlines rewrite (see `_git`'s own docstring).
+            # split("\n"), never splitlines() (#456): splitlines() treats nine characters as ending a
+            # line -- none of which ends a `git log --format` record, only the literal `\n` git itself
+            # writes between entries does. Guarded by
+            # test_a_hostile_commit_subject_cannot_forge_a_second_commit_row.
             for line in since_out.split("\n"):
                 if not line:
                     continue
