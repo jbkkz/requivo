@@ -497,16 +497,17 @@ change between two versions (value/confidence/impact — completeness alone is n
 
 Each generator is the same shape — **prompt + contract + generator fn + writer** — and every interface
 reaches them through `DiscoveryService.generate()`, which owns the revision lock, the provenance and
-the artifact write. `stories` and `estimate` reach the terminal through `DiscoveryService.reason()`
-and neither is written to a file today — **but "deliberately terminal-only", which this line used to
-say, was true of neither** (#426). Measured across the seven registries a saveable type touches,
-`stories` is in `ARTIFACT_FILENAMES` and `ARTIFACT_LABELS` with no `_WRITERS` entry, and `estimate`
-is in the staleness graph (`_ARTIFACT_SLOTS_RAW`, `ARTIFACT_FILES`) and in neither of the first two:
-two types, three states, half-registered each. `decision: the-estimate-graduates` settles it — the
-estimate becomes a saveable type and `stories` is finished in the same change, because an estimate
-is the one artifact where being stale costs money and the graph built to catch that cannot reach a
-document that is never on disk. Until that lands, read this paragraph as describing the transition
-rather than the design.
+the artifact write. `stories` and `estimate` used to reach the terminal through
+`DiscoveryService.reason()` and neither was written to a file — **"deliberately terminal-only",
+which this line once said, was true of neither** (#426). Measured across the seven registries a
+saveable type touches, `stories` was in `ARTIFACT_FILENAMES` and `ARTIFACT_LABELS` with no
+`_WRITERS` entry, and `estimate` was in the staleness graph (`_ARTIFACT_SLOTS_RAW`, `ARTIFACT_FILES`)
+and in neither of the first two: two types, three states, half-registered each.
+`decision: the-estimate-graduates` settled it and #519 landed it: both are saved now, and the
+estimate is the one two-call branch of `generate()` — it reasons the stories from the same snapshot,
+saves them, and saves itself beside them against the same revision, because an estimate is reasoned
+*against* those stories and a `source_revision` naming only the model would be half its provenance
+(invariant 6). `reason()` stays for a caller that wants a contract and no write.
 
 **Adding a generator touches every registration point below, or a type lands in some tables and not
 others** — the exact drift #270 found: a type present in `ARTIFACT_FILENAMES`/`_GENERATORS`/`_WRITERS`

@@ -901,6 +901,7 @@ two that return data rather than a view, and they are stable.
 | `brief` | `solution-assessment.md` |
 | `prd` | `prd.md` |
 | `stories` | `stories.md` |
+| `estimate` | `estimate.md` |
 | `criteria` | `acceptance-criteria.md` |
 | `epic` | `epic.md` |
 | `release` | `release-notes.md` |
@@ -909,6 +910,15 @@ They are inside the published session directory and are recorded in `session.jso
 needs a `format_version` bump and a migration**, exactly as renaming a populated key does. That was
 unanswerable from this page before, and [session-format.md](session-format.md) described the directory
 as *"generated views (PRD, assessment, …)"* without naming the files.
+
+`estimate` joined this table in #519 (`decision: the-estimate-graduates`), and `stories` — listed
+here since the table was written, though nothing in the repository could produce the file — gained
+its writer in the same change. Both are **additive**, under the rule stated above for a new artifact
+type: an older Requivo reading a session that carries an `estimate` row reports it as a note, never
+as a defect (`stories` it already knew), and `format_version` stays at 1. What an older build cannot
+do is *regenerate* them — its `requivo estimate` prints and saves nothing — so a session that moves
+between two builds in one workspace can hold an `estimate.md` the older one will not refresh and will
+still, correctly, flag stale.
 
 Note that the type and the filename deliberately differ for `brief`, which is stored as
 `solution-assessment.md`. The type is the stable identifier; the filename is stable too, and they are

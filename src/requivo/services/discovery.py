@@ -36,7 +36,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, TypeVar, cast, overload
 
-from requivo.core.contracts import PRD, AcceptanceCriteria, Brief, EngineOutput, Epic, ReleaseNotes
+from requivo.core.contracts import (
+    PRD,
+    AcceptanceCriteria,
+    Brief,
+    EngineOutput,
+    Epic,
+    EstimateDraft,
+    ReleaseNotes,
+    Stories,
+)
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
     ArtifactWriteFailedError,
@@ -55,7 +64,15 @@ from requivo.core.persistence import (
 )
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
-from requivo.render.markdown import brief_markdown, criteria_markdown, epic_markdown, prd_markdown, release_markdown
+from requivo.render.markdown import (
+    brief_markdown,
+    criteria_markdown,
+    epic_markdown,
+    estimate_markdown,
+    prd_markdown,
+    release_markdown,
+    stories_markdown,
+)
 from requivo.services.artifacts import ArtifactService
 from requivo.services.sessions import SessionService, SessionSnapshot, UpdateResult
 from requivo.usage import SpendPolicy, current_ledger
@@ -71,15 +88,26 @@ try:  # Windows
 except ImportError:  # pragma: no cover - POSIX
     msvcrt = None  # type: ignore[assignment]
 
+def _estimate_document(estimate: tuple[EstimateDraft, list[str], str]) -> str:
+    """The estimate's writer, over the triple the provider hands out — `(draft, soft, confidence)`,
+    the last two computed in core from the same model — so the registry stays one-argument."""
+    draft, soft, confidence = estimate
+    return estimate_markdown(draft, soft, confidence)
+
+
 # artifact type → the writer that turns its contract into the Markdown that gets saved. This is the
-# vocabulary of "things a generation produces a document for"; `stories` and `estimate` are absent on
-# purpose — they are terminal analyses that feed the estimate pipeline, not deliverables with a file.
+# vocabulary of "things a generation produces a document for", in the order a user meets them.
+# `stories` and `estimate` were absent until #519 (`decision: the-estimate-graduates`): both are
+# saved now, and the estimate's generation is the one two-call branch of `generate()` below, because
+# it is reasoned against the stories it saves beside itself.
 #
-# The annotation is load-bearing: dropping it makes pyright infer a union of four narrow callables
-# that no argument satisfies. `decision: typed-generation-seam`
+# The annotation is load-bearing: dropping it makes pyright infer a union of narrow callables that
+# no argument satisfies. `decision: typed-generation-seam`
 _WRITERS: dict[str, Callable[[Any], str]] = {
     "prd": prd_markdown,
+    "stories": stories_markdown,
     "criteria": criteria_markdown,
+    "estimate": _estimate_document,
     "epic": epic_markdown,
     "release": release_markdown,
 }
@@ -90,6 +118,23 @@ _WRITERS: dict[str, Callable[[Any], str]] = {
 GENERATABLE: tuple[str, ...] = ("brief", *_WRITERS)
 
 _A = TypeVar("_A")
+
+
+@dataclass
+class SavedEstimate:
+    """What `generate(slug, "estimate")` hands back as its artifact: the estimate as `reason_from`
+    returns it — the provider's draft plus the soft slots and confidence computed in core — and the
+    stories it was reasoned against, with their own saved status.
+
+    The stories ride along because they are half of the estimate's basis (#135: one snapshot, two
+    calls) and were saved from the same snapshot against the same revision (#519, invariant 6). A
+    caller rendering the estimate has both halves and both provenance rows without a second read."""
+
+    draft: EstimateDraft
+    soft: list[str]
+    confidence: str
+    stories: Stories
+    stories_status: ArtifactStatus
 
 
 @dataclass
@@ -606,8 +651,10 @@ class DiscoveryService:
 
     # ── generation ───────────────────────────────────────────────────────────────
     def reason(self, slug: str, artifact_type: str, **kwargs):
-        """Produce an artifact's typed contract without saving anything — for the terminal-only views
-        (`stories`, `estimate`) that are analyses rather than deliverables. Still goes through the
+        """Produce an artifact's typed contract without saving anything — an analysis a caller wants
+        to read rather than file. `stories` and `estimate` were terminal-only and reached the CLI
+        through here until #519; both are saveable through `generate()` now, and this stays for the
+        caller that wants the contract and no write. Still goes through the
         provider seam, so no interface reaches past it to a vendor's functions -- `cli.py` built its
         own second client for this exact call until #77:
         `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`. Nothing is
@@ -635,10 +682,12 @@ class DiscoveryService:
             return self._need_provider().generate(artifact_type, model, only=snap.context_cards,
                                                   **kwargs)
 
-    # `generate()`'s public signature is these six overloads, not the implementation below. Five are
-    # `Literal`-keyed so a call site written with a literal string gets that type's contract back;
-    # the sixth takes a plain `str` for a caller holding the name in a variable (a route parameter,
+    # `generate()`'s public signature is these eight overloads, not the implementation below. Seven
+    # are `Literal`-keyed so a call site written with a literal string gets that type's contract back;
+    # the eighth takes a plain `str` for a caller holding the name in a variable (a route parameter,
     # e.g. `web/routes/artifacts.py`'s `generate_artifact`). `decision: typed-generation-seam`
+    # `estimate` is the one whose extra keyword is not forwarded to the provider: `on_stories` is
+    # the caller's hook for the first of its two calls (see `_generate_estimate`).
     @overload
     def generate(self, slug: str, artifact_type: Literal["brief"], *, surface: str = "generate",
                 **kwargs) -> Generated[Brief]: ...
@@ -646,8 +695,14 @@ class DiscoveryService:
     def generate(self, slug: str, artifact_type: Literal["prd"], *, surface: str = "generate",
                 **kwargs) -> Generated[PRD]: ...
     @overload
+    def generate(self, slug: str, artifact_type: Literal["stories"], *, surface: str = "generate",
+                **kwargs) -> Generated[Stories]: ...
+    @overload
     def generate(self, slug: str, artifact_type: Literal["criteria"], *, surface: str = "generate",
                 **kwargs) -> Generated[AcceptanceCriteria]: ...
+    @overload
+    def generate(self, slug: str, artifact_type: Literal["estimate"], *, surface: str = "generate",
+                on_stories: Callable[[Stories], None] | None = None) -> Generated[SavedEstimate]: ...
     @overload
     def generate(self, slug: str, artifact_type: Literal["epic"], *, surface: str = "generate",
                 **kwargs) -> Generated[Epic]: ...
@@ -665,7 +720,7 @@ class DiscoveryService:
 
         `brief` (the solution assessment) is the one with an extra step: its reasoning is absorbed back
         into the model as a revision, so downstream artifacts inherit the decisions and challenges, not
-        just the facts.
+        just the facts. `estimate` is the one with two calls — see `_generate_estimate`.
 
         **Generation is not atomic.** A provider call runs for seconds to minutes, and the session can
         move underneath it — a second browser tab folding in answers, a CLI apply, a Claude Code turn.
@@ -730,6 +785,9 @@ class DiscoveryService:
             status = self._save_generated(slug, "brief", brief_markdown(out, brief), applied.revision)
             return Generated(status=status, artifact=brief, model=out)
 
+        if artifact_type == "estimate":
+            return self._generate_estimate(slug, out, cards, source_revision, provider, **kwargs)
+
         try:
             writer = _WRITERS[artifact_type]
         except KeyError as e:
@@ -739,6 +797,52 @@ class DiscoveryService:
             artifact = provider.generate(artifact_type, out, only=cards, **kwargs)
         status = self._save_generated(slug, artifact_type, writer(artifact), source_revision)
         return Generated(status=status, artifact=artifact, model=out)
+
+    def _generate_estimate(self, slug: str, out: EngineOutput, cards: list[str] | None,
+                           source_revision: int, provider, *,
+                           on_stories: Callable[[Stories], None] | None = None,
+                           **kwargs) -> Generated[SavedEstimate]:
+        """The one generation that is two calls, and saves two files against one revision (#519).
+
+        The estimate is reasoned *against a stories draft* — `estimate.md`'s prompt takes the stories,
+        not the model — so its basis is the model at `source_revision` **and** those stories. Saving
+        the estimate alone would record half of that (invariant 6: provenance real or absent), which
+        is why the stories are reasoned here, from the same snapshot `generate()` already took (#135,
+        invariant 12), and saved beside it with the same `source_revision` before the second call is
+        made. Pinned by
+        `test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_one_snapshot`.
+
+        The stories are saved *before* they are handed to `on_stories`, and before the estimate is
+        paid for: a caller that renders them (the CLI, so they appear while the estimate runs) can
+        die on a console that cannot encode them, and the file has to be on disk by then rather than
+        after; and a provider failure on the second call leaves the first call's document filed,
+        stale-tracked, rather than a paid reply thrown away.
+
+        No other keyword is accepted — in particular not `stories`. A caller-supplied draft would file
+        an estimate whose recorded basis is not the file beside it, the exact half-truth this branch
+        exists to prevent. Pinned by
+        `test_the_estimate_generation_refuses_a_caller_supplied_stories_draft`."""
+        if kwargs:
+            raise TypeError(
+                f"generate('estimate') reasons its own stories and takes no provider keyword; got "
+                f"{sorted(kwargs)}. Use `reason_from(snap, 'estimate', stories=...)` for an unsaved "
+                "estimate over stories you already hold.")
+        self._check_spend()
+        with self._provider_call("stories"):
+            stories = cast(Stories, provider.generate("stories", out, only=cards))
+        stories_status = self._save_generated(slug, "stories", _WRITERS["stories"](stories),
+                                              source_revision)
+        if on_stories is not None:
+            on_stories(stories)
+        self._check_spend()
+        with self._provider_call("estimate"):
+            estimate = provider.generate("estimate", out, only=cards, stories=stories)
+        status = self._save_generated(slug, "estimate", _WRITERS["estimate"](estimate),
+                                      source_revision)
+        draft, soft, confidence = estimate
+        return Generated(status=status, model=out,
+                         artifact=SavedEstimate(draft=draft, soft=soft, confidence=confidence,
+                                                stories=stories, stories_status=stories_status))
 
     def _save_generated(self, slug: str, artifact_type: str, content: str, source_revision: int):
         """Save a generated artifact against the revision it was actually produced from.

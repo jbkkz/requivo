@@ -31,6 +31,7 @@ ARTIFACT_LABELS: dict[str, str] = {
     "brief": "Decision brief",
     "prd": "PRD",
     "stories": "User stories",
+    "estimate": "Estimate",
     "criteria": "Acceptance criteria",
     "epic": "Delivery epic",
     "release": "Release notes",
