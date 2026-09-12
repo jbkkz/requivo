@@ -532,12 +532,14 @@ so both are noted here and in the changelog rather than only in the latter.
   envelope) naming the root. Additive for the same reason — never a documented `0` — and `1` rather
   than `4` because nothing here was even examined: "no answer", not "the answer is incomplete".
 
-- **`requivo impact` gained a closing section, and no `--json`** (#493). The verb now ends with the
+- **The `impact` verb gained a closing section, and no `--json`** (#493). It now ends with the
   decisions derived from thinner evidence than the session holds today (a `derived_from` slot that
   was `empty` or `inferred` at the revision the decision was first recorded and is `explicit` now),
   or with the line that none was found, or with *not reviewed* for a bare `model.json`. Terminal
   output is not a promise (see below) and `impact` has never had a `--json`, so no payload on this
-  page moved. The structured form lives on the `[api]` extra's `/impact` body, which gained an
+  page moved -- which is also why this row spells the verb without its `requivo` prefix: the guard
+  `test_every_json_verb_is_inside_the_promise` reads every `` `requivo <verb>` `` in this section
+  as a `--json` promise. The structured form lives on the `[api]` extra's `/impact` body, which gained an
   additive `evidence` key — `{reviewed, flagged[], could_not_tell[]}` — and that surface is outside
   the promise until its named freeze, as the last section of this page states.
 
