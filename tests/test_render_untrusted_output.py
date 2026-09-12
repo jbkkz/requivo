@@ -46,12 +46,13 @@ from requivo.core.contracts import (
     Opportunity,
     Stories,
 )
-from requivo.core.dependencies import propagate
+from requivo.core.dependencies import propagate, thinner_evidence
 from requivo.core.persistence import RevisionRecord
 from requivo.render.terminal import (
     render_brief,
     render_dependency_map,
     render_estimate,
+    render_evidence,
     render_grounding,
     render_impact,
     render_session_cost,
@@ -248,6 +249,8 @@ def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout
 _SWEPT_RENDERERS = {
     "render_turn", "render_brief", "render_stories", "render_estimate",
     "render_dependency_map", "render_impact",
+    # Prints the decision text of every flagged and every unreviewable decision (#493).
+    "render_evidence",
     # render_session_cost is swept separately, below -- its untrusted field is a persisted
     # RevisionRecord.usage_priced_as_of, not model prose, so it does not fit the model/brief/
     # stories/estimate fixture shape the big sweep below is built from (#388).
@@ -322,6 +325,11 @@ def test_every_llm_authored_string_the_terminal_renders_is_neutralized():
         "render_estimate": _render(render_estimate, estimate, ["problem"], "low"),
         "render_dependency_map": _render(render_dependency_map, forged_model),
         "render_impact": _render(render_impact, propagate(forged_model, ["problem"])),
+        # Both arms print a decision: the forged one rests on `problem`, thin in `thinner` and
+        # explicit in `forged_model`, so it is flagged; the second decision records no slots, so
+        # it lands under "Could not check" -- and that arm prints the decision text too.
+        "render_evidence": _render(render_evidence, thinner_evidence(_thinner(forged_model),
+                                                                     _with_unreviewable(forged_model))),
     }
     for name, text in renders.items():
         assert not _forged_lines(text), f"{name} let LLM text start a line: {_forged_lines(text)}"
@@ -329,6 +337,21 @@ def test_every_llm_authored_string_the_terminal_renders_is_neutralized():
         # Must fire: every one of these renderers must actually have printed the payload, or the
         # two assertions above are green on a renderer that emitted nothing.
         assert "FORGED AT COLUMN ZERO" in text, f"{name} rendered none of the forged fields"
+
+
+def _thinner(model: EngineOutput) -> EngineOutput:
+    """`model` with every slot's confidence reduced to `empty` -- the derivation-time state."""
+    d = model.model_dump()
+    for s in d["model"].values():
+        s["confidence"] = "empty"
+    return EngineOutput.model_validate(d)
+
+
+def _with_unreviewable(model: EngineOutput) -> EngineOutput:
+    """`model` plus a second forged decision that names no slot it rests on."""
+    d = model.model_dump()
+    d["decisions"].append({"decision": FORGED + " (two)", "derived_from": []})
+    return EngineOutput.model_validate(d)
 
 
 def test_the_forged_sweep_covers_every_prose_renderer_in_the_module():

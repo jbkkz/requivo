@@ -161,7 +161,12 @@ nothing noticed (#329).
   saves both against the same revision (#519).
 - **Traceability details** — one disclosure holding everything the engine knows: the per-topic
   understanding, coverage, every open question, the decisions and contested premises, provenance, and
-  the raw model export. The primary flow works without opening it.
+  the raw model export. The primary flow works without opening it. A decision that was recorded
+  while a topic under it was still assumed or empty, and whose topic is confirmed now, carries a
+  *Worth re-reading* tag naming the topic and the revision (#493) — computed from the frozen
+  revisions by the same service `requivo impact` uses, never generated, and never worded as a
+  contradiction. A decision the review could not decide about says so on its row, so an untagged
+  row is a checked one.
 - **Danger zone** — one control, at the bottom of the session page, for the product's own erasure
   primitive (#238): *Delete this session…* leads to an explicit confirmation page naming the session,
   suggesting `session export` first as the undo story (there is no trash), before the POST that

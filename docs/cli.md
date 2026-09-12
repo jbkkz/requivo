@@ -53,7 +53,7 @@ The `--json` envelope is unchanged: `code` is still `session_not_found`, with th
 | `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status <slug>` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). No network |
-| `requivo impact <slug> [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map). No network |
+| `requivo impact <slug> [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map), then the decisions derived from thinner evidence than the session now holds. No network |
 
 The context-card selector is spelled **`--context`** everywhere — on `discover`, on `session init`,
 on `session rescope` and on `context`. `--cards` is a permanent alias of it on all four, kept because
@@ -67,6 +67,37 @@ the input was malformed. A slot name that matches nothing is listed as unmatched
 resolve; an unknown *card* is a hard error, since dropping it would silently load every card instead of
 the ones you asked for. Pass no selector at all to select everything deliberately. See
 [context-cards.md](context-cards.md#scoping-a-session-to-relevant-cards).
+
+### Decisions derived from thinner evidence (#493)
+
+`impact` answers *a slot changed — what rests on it?*. It could not represent the case where a slot
+moved *toward* being filled: an empty `current_process` became a measured one, and the measurement
+undermined a decision recorded against the earlier, thinner state of that same slot. Everyone is
+pleased the slot got filled, so nobody re-reads the decision.
+
+So `impact` closes, in both of its forms, with the decisions **derived from thinner evidence than
+exists now**: a decision is named when at least one slot it was derived from was `empty` or
+`inferred` in the model at the revision the decision was first recorded, and is `explicit` now. The
+wording is *worth re-reading*, deliberately never *contradicted* — whether the new evidence
+disagrees with the decision is a judgment over both, which belongs to the assessment and costs a
+call; this is a comparison of two confidence values and costs nothing. The list is not narrowed to
+the slots you named, because the slot that thickened is exactly the one nobody thinks to ask about.
+
+Three outcomes, each in its own words. A session is reviewed: the decisions worth re-reading are
+listed with the revision they were derived at and the topics that thickened since, or the line
+says how many decisions were checked and that none rests on thinner evidence than it did. A
+decision the review could not decide about — a frozen revision an older Requivo wrote without the
+confidence data the comparison needs, a decision recording no slots it rests on — is listed under
+*Could not check* with the reason, never folded into the clean line. A bare `model.json` path is
+*not reviewed*: there is no revision history to compare against, and the output says so rather than
+printing an empty section.
+
+Two limits, stated rather than left to be discovered. The derivation revision is the earliest frozen
+revision carrying the decision's content-derived id, so a **reworded decision counts as newly
+derived at its rewording** and is compared against that revision's evidence, not the earlier one a
+reader would call the same decision. And **challenges are not reviewed** — a challenge contests a
+premise rather than resting on evidence, and what a thickened premise does to it is a different
+question from the one this list answers.
 
 **`status` ends by naming one next command**, never a menu, and the order it picks in is deliberate:
 open questions win over a stale artifact (regenerating against a model that is about to move is a

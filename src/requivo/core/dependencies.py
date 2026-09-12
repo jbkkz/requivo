@@ -19,9 +19,10 @@ The artifact edges need no LLM, so propagation works even on a model whose decis
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 from requivo.core.analysis import slot_label, slot_meta
-from requivo.core.contracts import EngineOutput
+from requivo.core.contracts import Confidence, EngineOutput
 from requivo.core.selectors import normalize_tokens
 
 
@@ -163,6 +164,11 @@ class ImpactReport:
     decisions: list[DecisionImpact] = field(default_factory=list)
     challenges: list[ChallengeImpact] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)  # artifact names whose slot set is touched
+    # Decisions derived from thinner evidence than the model now holds (#493). `None` is *not
+    # reviewed* -- `propagate` alone has no revision history to compare against, and a bare
+    # model.json never will; the service fills it for a session. An empty report is a review that
+    # ran and found nothing, which is a different sentence, and `to_dict` keeps the two apart.
+    evidence: Optional[EvidenceReport] = None
 
     @property
     def reasoning_hit(self) -> bool:
@@ -181,7 +187,8 @@ class ImpactReport:
         return {"changed": self.changed,
                 "decisions": [d.to_dict() for d in self.decisions],
                 "challenges": [c.to_dict() for c in self.challenges],
-                "artifacts": self.artifacts}
+                "artifacts": self.artifacts,
+                "evidence": None if self.evidence is None else self.evidence.to_dict()}
 
 
 def propagate(out: EngineOutput, changed: list[str]) -> ImpactReport:
@@ -271,3 +278,111 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
         ):
             changed.append(sid)
     return changed
+
+
+# ── Evidence since derivation (#493) ──────────────────────────────────────────
+# `propagate` answers "a slot changed -- what rests on it?". It cannot represent the case where a
+# slot moved *toward* being filled and the new evidence undermines a decision recorded against the
+# earlier, thinner state of that same slot: everyone is pleased the slot got filled, so nobody
+# re-reads the decision. Whether the new evidence *contradicts* the decision is a judgment over
+# both and belongs to the assessment (a provider call). What is decidable here, for free, is the
+# approximation: the decision was derived while a slot it rests on was `empty` or `inferred`, and
+# that slot is `explicit` now. The wording that goes with it is *derived from thinner evidence than
+# exists now, worth re-reading* -- never "contradicted".
+
+_THIN = frozenset({Confidence.empty, Confidence.inferred})
+
+
+@dataclass
+class ThinnerEvidence:
+    """One decision recorded while a slot it rests on carried thinner evidence than it does now."""
+    decision: str
+    id: str
+    thickened: list[str]  # labels of the derived_from slots that were empty/inferred then, explicit now
+    # The revision the decision was first recorded at. The pure comparison knows no revision
+    # numbers, so it leaves this None; `SessionService.thinner_evidence` fills it.
+    derived_at: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        return {"decision": self.decision, "id": self.id, "thickened": self.thickened,
+                "derived_at": self.derived_at}
+
+
+@dataclass
+class EvidenceUnknown:
+    """A decision the review could not decide about, and why -- the third state, reported rather
+    than folded into "nothing found"."""
+    decision: str
+    id: str
+    reason: str
+
+    def to_dict(self) -> dict:
+        return {"decision": self.decision, "id": self.id, "reason": self.reason}
+
+
+@dataclass
+class EvidenceReport:
+    """What `thinner_evidence` found. `reviewed` counts every decision examined -- flagged, clean and
+    undecidable alike -- so an empty `flagged` on a model with decisions reads as *checked, none*,
+    and an empty report on a model with no decisions reads as exactly that."""
+    reviewed: int = 0
+    flagged: list[ThinnerEvidence] = field(default_factory=list)
+    could_not_tell: list[EvidenceUnknown] = field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return not self.flagged and not self.could_not_tell
+
+    def to_dict(self) -> dict:
+        return {"reviewed": self.reviewed,
+                "flagged": [f.to_dict() for f in self.flagged],
+                "could_not_tell": [u.to_dict() for u in self.could_not_tell]}
+
+
+def thinner_evidence(then: EngineOutput, now: EngineOutput) -> EvidenceReport:
+    """Decisions in `now` that were recorded, in `then`, against thinner evidence than `now` holds.
+
+    Pure: two models in, a report out. `then` is the model at the revision the decisions were
+    derived at -- finding that revision is the service's job (`SessionService.thinner_evidence`),
+    because it needs the frozen revision files and this module does no IO. A decision is matched
+    across the two models by its content-derived `id` (invariant 5), and the slots it rests on are
+    read from `now` -- what it is recorded as resting on today.
+
+    A decision is flagged when at least one slot in its `derived_from` was `empty` or `inferred` in
+    `then` and is `explicit` in `now`. The opposite direction (explicit -> inferred) is a slot that
+    moved, which `diff_models`/`propagate` already report, and is not a finding here.
+
+    Three states per decision, and the third is load-bearing: flagged; clean (counted in `reviewed`
+    and otherwise silent); or `could_not_tell`, when the decision is not in `then` at all, records
+    no `derived_from`, or rests on a slot that one of the two models does not carry (a frozen model
+    from an older schema, read permissively per invariant 8). A firm flag outranks a partial look:
+    a decision with one thickened slot and one unresolvable one is flagged.
+    """
+    then_ids = {d.id for d in then.decisions}
+    report = EvidenceReport()
+    for d in now.decisions:
+        report.reviewed += 1
+        if d.id not in then_ids:
+            report.could_not_tell.append(EvidenceUnknown(
+                d.decision, d.id, "not recorded in the model it is being compared against"))
+            continue
+        if not d.derived_from:
+            report.could_not_tell.append(EvidenceUnknown(
+                d.decision, d.id, "records no slots it was derived from"))
+            continue
+        thickened: list[str] = []
+        unresolved: list[str] = []
+        for sid in d.derived_from:
+            before, after = then.model.get(sid), now.model.get(sid)
+            if before is None or after is None:
+                unresolved.append(sid)
+            elif before.confidence in _THIN and after.confidence == Confidence.explicit:
+                thickened.append(sid)
+        if thickened:
+            report.flagged.append(ThinnerEvidence(
+                d.decision, d.id, [slot_label(sid) for sid in thickened]))
+        elif unresolved:
+            report.could_not_tell.append(EvidenceUnknown(
+                d.decision, d.id,
+                "not in both models: " + ", ".join(slot_label(sid) for sid in unresolved)))
+    return report

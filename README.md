@@ -123,7 +123,9 @@ messy multi-feature one lives in
    rest as assumptions to confirm.
 3. **Build and validate the understanding** — a versioned, typed model that is the durable product.
 4. **Write the decision brief, and see what a changed answer costs** — a computed answer to "what does
-   this invalidate?", read off the dependency graph rather than re-reasoned from scratch.
+   this invalidate?", read off the dependency graph rather than re-reasoned from scratch — and, once
+   an assumption has been confirmed, which decisions on record were made before that evidence arrived
+   and are worth re-reading.
 
 The decision rule is **information value = uncertainty × impact**. Impact is estimated from the product
 context you give it, so better context means sharper questions.

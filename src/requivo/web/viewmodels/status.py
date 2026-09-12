@@ -145,6 +145,34 @@ def impact_view(result: Any) -> dict:
     }
 
 
+def evidence_view(report: Any) -> dict:
+    """Decisions worth re-reading because the evidence under them thickened (#493), keyed by
+    decision id so the traceability panel can tag each decision row in place.
+
+    A relabelling of `SessionService.thinner_evidence`'s `EvidenceReport` and nothing more: the
+    Core decided which decisions were derived while a topic they rest on was still assumed or
+    empty and is confirmed now; this turns that into one caption per decision. The caption says
+    *worth re-reading* and never *contradicted* -- whether the confirmed value disagrees with the
+    decision is a judgment, and a judgment is the assessment's to make, not a view model's.
+
+    `reviewed=False` is the third state: no report at all (the page could not review), distinct
+    from a report that reviewed every decision and flagged none. `unchecked` carries the decisions
+    the review could not decide about, with the Core's reason, so a missing tag never reads as a
+    clean one."""
+    if report is None:
+        return {"reviewed": False, "reread": {}, "unchecked": {}}
+    reread = {}
+    for f in report.flagged:
+        when = f"at revision {f.derived_at}" if f.derived_at is not None else "when it was recorded"
+        reread[f.id] = (f"Worth re-reading — {', '.join(f.thickened)}: assumed or empty {when}, "
+                        "confirmed since.")
+    return {
+        "reviewed": True,
+        "reread": reread,
+        "unchecked": {u.id: u.reason for u in report.could_not_tell},
+    }
+
+
 def _impact_headline(changed: list[str]) -> str:
     if not changed:
         return "Your answers were folded in — no part of the solution moved."
