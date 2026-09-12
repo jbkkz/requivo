@@ -98,7 +98,10 @@ def test_harness_can_see_both_vocabularies():
 
 def test_empty_slot_token_is_refused_rather_than_matching_every_label():
     """`"" in label` is true for every label, so a stray empty token reported the entire model as
-    changed with **zero** unmatched tokens — a total widening that reads as a precise answer."""
+    changed with **zero** unmatched tokens — a total widening that reads as a precise answer.
+    `--slots "workflow,"` was the reachable spelling; its card-side twin, `--context ","`, loaded
+    every card while looking like a narrowing, and is
+    `test_resolve_cards_refuses_an_empty_token_instead_of_returning_all_cards`."""
     # must fire: a real selection still works, and an unmatched token is still reported as unmatched
     assert resolve_slots(["workflow"]) == (["workflow"], [])
     assert resolve_slots(["permission"]) == (["permissions"], [])   # label substring still resolves
@@ -543,6 +546,13 @@ def test_a_control_character_in_a_selector_token_is_refused_not_echoed():
     """#40. A selector token is caller text, and `.strip()` — all that ever touched one — removes
     surrounding whitespace and *not* interior newlines. Echoed into a diagnostic line, such a token
     writes its own lines into the receipt.
+
+    A card name additionally *persists*: `session.json` stores the selection, `session import`
+    passes it through intact, and `doctor` and `session verify` render it into a receipt. A newline
+    inside such a name does not look odd, it ends the line — a session could write `doctor`'s own
+    `sessions` row and answer *all clear* underneath the row reporting it, while `session verify`,
+    the anti-tampering verb, still exited 1. Escaping at the print sites would have closed the two
+    that existed and said nothing about the third.
 
     The guard is here, in the one function all three selectors go through, rather than at the print
     sites: a render-site fix is per-site and per-site is how the second one gets forgotten. This is

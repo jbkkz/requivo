@@ -5,9 +5,10 @@ Providers record into it, `render/terminal.py` prints it, `cli.py` scopes it aro
 `services/discovery.py` reads it back (`current_ledger()`, #292) to stamp what a provider-backed
 apply spent onto that revision's own provenance. It lives here rather than in `providers/` because
 nothing about it is a vendor's — calls, tokens, cache tiers and latency are concepts any provider
-has, and its own docstring already said it was presentation-free. It sat in `providers/anthropic.py`,
-which meant the purest view layer in the tree had to name a vendor module to print a cost line
-(#167). It is not in `core/` either: core validates and versions the model, and what an API call cost
+has, and its own docstring already said it was presentation-free. It sat in `providers/anthropic.py`
+until #167, when `render/terminal.py` had to name a vendor module to print a cost line; `render/`
+is in `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`'s scan set
+now. It is not in `core/` either: core validates and versions the model, and what an API call cost
 is not a fact about the model.
 
 **Cost is arithmetic here and nowhere else.** A `CallRecord` carries the rate it was billed at,
@@ -56,14 +57,12 @@ class CallRecord:
     attempts: int = 1
     rate_per_mtok: tuple[float, float] | None = None
     priced_as_of: str | None = None
-    # Which verb spent this call: "analyze", "brief", "stories", "prd", ... — the same vocabulary
-    # providers/anthropic/generators.py's _GENERATORS/_OP_PROMPTS and cli.py's subcommands already
-    # use, so a ledger read back per-operation needs no second vocabulary (#435). Optional and
-    # additive: `None` is the default, stamped by every existing call site until it says otherwise,
-    # so a `CallRecord(...)` construction that predates this field is unaffected. Nothing in this
-    # package reads it yet — no renderer, no `--json` envelope — an embedding operator aggregating
-    # the ledger themselves is the intended reader (invariant 6: a fact worth recording is recorded
-    # even before this package has its own consumer for it).
+    # Which verb spent this call, in `_OP_PROMPTS`'s own vocabulary ("analyze", "brief", "prd", ...),
+    # so a ledger read back per-operation needs no second one (#435). `None` by default so a
+    # `CallRecord(...)` that predates the field means what it did
+    # (`test_call_record_operation_defaults_to_none`); nothing in this package reads it yet
+    # (`test_render_usage_is_unaffected_by_the_operation_field`) — an embedding operator is the
+    # intended reader, per invariant 6: a fact worth recording is recorded before it has a consumer.
     operation: str | None = None
 
 
@@ -229,5 +228,6 @@ def current_ledger() -> UsageLedger | None:
     write to it. `None` is a real, common answer (most of the offline test suite never opens a
     ledger at all) and callers must treat it as "nothing to report", never as "spent nothing": the
     two look identical from in here and only the caller can tell them apart from context, which is
-    exactly invariant 6's rule about provenance applied to this ledger."""
+    exactly invariant 6's rule about provenance applied to this ledger
+    (`test_a_provider_call_made_with_no_active_ledger_still_leaves_usage_absent`)."""
     return _LEDGER.get()

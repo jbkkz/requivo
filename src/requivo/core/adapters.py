@@ -18,12 +18,11 @@ def epic_export(epic: Epic, slug: str, source_revision: int) -> dict:
     the shared milestone, and `depends_on` as issue refs so relationships can be wired after create.
 
     `slug` and `source_revision` (#274) stamp *provenance*, not freshness: this envelope is written
-    outside `ArtifactService`, deliberately (three rows in `artifact list` that no generator can
-    refresh), so nothing tracks it in the staleness graph the way `epic.md` is tracked. Without a
-    revision, the one reader that cannot exercise judgment about that — an n8n flow consuming this
-    file directly — had no signal at all that the session had moved on since this was written.
-    `source_revision` identifies the basis a caller can compare against `requivo status --json`'s
-    `artifacts.epic.stale`; comparing revision numbers directly is invariant 1's own anti-pattern.
+    outside `ArtifactService`, deliberately, so the staleness graph never tracks it the way `epic.md`
+    is tracked, and without a revision an automation consuming it had no signal that the session had
+    moved on. The basis it names is compared against `requivo status --json`'s `artifacts.epic.stale`,
+    never against a revision number directly (invariant 1). Pinned by
+    `test_epic_export_carries_the_session_slug_and_the_revision_it_was_rendered_from`.
     """
     description = "\n\n".join(
         part

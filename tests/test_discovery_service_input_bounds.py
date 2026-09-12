@@ -3,7 +3,11 @@
 Driven directly against `DiscoveryService`/`SessionService` -- no CLI, no web -- because the whole
 point of the issue is that a caller reaching past both surfaces still gets the refusal. Before this
 fix `read_user_text`/`web/config.py` were the only places a size was ever checked, so any of these
-would have sailed straight through to the (billed) provider call.
+would have sailed straight through to the (billed) provider call. The cost was not a failure: with
+a 1M-token context window a multi-megabyte paste does not even fail at the API, it just bills, and
+the interactive loop resends the request on every turn, multiplying that by however many turns it
+takes to converge. `MAX_INPUT_CHARS` (`core/contracts.py`) is the one ceiling, and `web/config.py`
+re-exports it under its own names so the routes keep their friendly re-render on top.
 """
 
 from __future__ import annotations

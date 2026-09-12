@@ -26,11 +26,11 @@ This was one 1541-line module until #73 split it along the axes that already cha
 and states its own membership rule so that it does not become a second `deterministic.py`.
 
 **`register()` composes four `register_*` functions by name, and that is the deliberate choice.** The
-alternative was a registry the modules populate as a side effect of being imported. That is prettier
-and it fails silently: drop a module from the package and its verbs simply stop existing, with no
-error, and a `--help` that is quietly one group shorter. Here a missing module is an `ImportError` at
-startup. A verb group that cannot register must not be indistinguishable from one that never existed,
-which is the same rule the rest of this surface applies to its own three-state checks.
+alternative, a registry the modules populate as a side effect of being imported, fails silently:
+drop a module and its verbs stop existing with no error and a `--help` quietly one group shorter.
+Here a missing module is an `ImportError` at startup — a verb group that cannot register must not be
+indistinguishable from one that never existed, the same rule this surface applies to its own
+three-state checks. `test_the_deterministic_package_still_registers_every_verb` is the guard.
 
 The call order below is the order the parsers are added, and that is the order `--help` prints them
 in. The help text is a public surface, so the order is not free to change.

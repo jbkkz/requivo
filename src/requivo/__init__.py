@@ -9,17 +9,12 @@ the invariants a change must not break.
 
 import logging
 
-# The stdlib-documented way a *library* stays silent (#435): a `NullHandler` on the top-level
-# logger does nothing itself, but it is what stops a WARNING+ record from any `requivo.*` logger
-# (`requivo.services.discovery`, `.sessions`, `.artifacts`, `requivo.providers...`) reaching
-# `logging.lastResort` -- Python's own fallback, which prints straight to stderr the moment no
-# handler exists anywhere in a logger's propagation chain. `web/logging_setup.py` documents the
-# same trap from the other side, where `requivo.web` genuinely wants that visibility and an entry
-# point configures a real handler; everywhere else, invariant 7's "no handlers, no formatters, no
-# phone-home, ever" means the *absence* of a handler has to survive contact with stdlib defaults,
-# not just with this package's own code. An embedding application's own handler, attached to any
-# of these loggers or to "requivo" itself, still sees every record -- a `NullHandler` only ever
-# adds a silent sink, it never removes or shadows one somebody else attaches.
+# A library stays silent by installing a `NullHandler` (#435): without it a WARNING+ record from any
+# `requivo.*` logger reaches `logging.lastResort` and prints to stderr, which is invariant 7's "no
+# handlers, no phone-home, ever" broken by stdlib defaults rather than by this package's own code.
+# An embedding application's handler still sees every record; `web/logging_setup.py` is the one
+# entry point that wants that visibility and configures a real one. Pinned by
+# `test_default_run_leaves_the_conflict_refused_warning_off_every_stream`, beside its must-fire control.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __version__ = "3.2.0"

@@ -47,17 +47,10 @@ def _cmd_artifact_list(a, client) -> None:
     slug = svc.resolve_slug(a.session)
     items = ArtifactService().list(slug)
     if a.json:
-        # `items` is keyed by artifact type, so printing it bare gave the payload a top level made
-        # of data — #87's defect on `session list`, one shape along (#107). Its argument was that
-        # an array has no top level, so no field could ever be added to it; a map keyed by data has
-        # that property in practice, because the consumer read is `for t, info in payload.items()`
-        # and a metadata key added later is both ambiguous with a future artifact type and breaks
-        # that loop.
-        #
-        # Wrap, do not restructure: the rows are untouched, so the migration is one level of
-        # indirection. `slug` is the only key the new top level carries — every sibling verb
-        # answers it and this one had nowhere to put it — and deliberately the only one, because a
-        # top level nobody needs yet is still worth having, and filling it speculatively is not.
+        # `items` is keyed by artifact type, so printed bare the payload's top level was data and no
+        # metadata key could ever join it — #87's defect on `session list`, one shape along (#107).
+        # Wrap, do not restructure: the rows are untouched and `slug` is deliberately the only new
+        # key. `test_artifact_list_json_has_a_top_level_that_is_not_data` carries the argument.
         print_json({"slug": slug, "artifacts": items})
         return
     if not items:
@@ -78,18 +71,12 @@ def _cmd_artifact_list(a, client) -> None:
 
 def _cmd_artifact_show(a, client) -> None:
     svc = SessionService()
-    # Neutralize at print time only (#430): the string returned by `.show()` is exactly what is on
-    # disk and exactly what the web download route serves, and both stay byte-identical on purpose --
-    # `core/integrity.py`'s hashing and the download promise rest on it. `display_document` is the
-    # guard, not `display_text`: the content is a full markdown document whose own newlines and tabs
-    # are its layout, and `display_text` would escape those too and destroy it.
-    #
-    # This was *not* the class's last unguarded member, despite what this comment used to say: `prd`,
-    # `criteria`, `epic` and `release` in `cli.py`'s `_cmd_prd`/`_cmd_criteria`/`_cmd_epic`/
-    # `_cmd_release` printed their generator's markdown the same unguarded way, on every ordinary
-    # generation rather than only a later read-back -- worse, in that it needs no saved artifact to
-    # reach at all. #449 is that fix, at the same four call sites, with the identical
-    # `display_document`-at-print-time-only shape this function established.
+    # Neutralize at print time only (#430): what `.show()` returns is what is on disk and what the web
+    # download route serves, and `core/integrity.py`'s hashing rests on both staying byte-identical.
+    # `display_document`, not `display_text`, because the document's own newlines and tabs are its
+    # layout (`test_artifact_show_cannot_be_made_to_print_a_line_a_session_wrote` and its control,
+    # `test_artifact_show_leaves_an_ordinary_document_byte_for_byte`). `cli.py`'s four generation
+    # verbs took the identical shape in #449; this was never the class's last unguarded member.
     print(display_document(ArtifactService().show(svc.resolve_slug(a.session), a.type)))
 
 

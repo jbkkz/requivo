@@ -530,10 +530,11 @@ class SessionService:
         case-insensitive, substring-friendly way the CLI matches them. A token matching nothing is
         refused rather than silently dropped: `UnknownSlotError` names every one, so a caller gets a
         single structured 400 instead of the CLI's own print-a-warning-and-keep-going, which a
-        terminal reader can see happen and a JSON response cannot represent partially. An empty list
-        is not a refusal -- `resolve_slots([])` reads it as "no slots named" and returns an empty,
-        `report.empty`-true report, which is the correct answer to "what does changing nothing
-        reach?" rather than an error about a request that asked exactly that.
+        terminal reader can see happen and a JSON response cannot represent partially
+        (`test_impact_refuses_an_unknown_slot_naming_it_in_details`). An empty list is not a refusal
+        -- `resolve_slots([])` reads it as "no slots named" and returns a `report.empty`-true report,
+        the correct answer to "what does changing nothing reach?"
+        (`test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal`).
 
         Deliberately narrower than `requivo impact` with no arguments at all, which renders a full
         per-slot dependency map (`render_dependency_map`) -- a different shape (many small reports,

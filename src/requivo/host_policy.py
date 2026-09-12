@@ -51,29 +51,19 @@ ALLOWED_HOSTS_ENV = "REQUIVO_WEB_ALLOWED_HOSTS"
 class CrossSiteRequestError(RequivoError):
     """A request did not prove it came from this app's own pages — the family, not a code to raise.
 
-    Every arm below carries its own code, and that is #52. This one error was raised for six distinct
-    facts whose `details` payloads had five different shapes between them, against the rule
-    `docs/compatibility.md` states in this repository for exactly this reason (#35): **a code carries
-    one fact and one `details` shape**. A consumer matching `cross_site_request` and reading
-    `details["origin"]` gets a `KeyError` from the host arm, and the shape it was written against was
-    never the contract.
-
-    The counter-argument, which is real and which this rejects: nothing serializes `details` on the
-    Web surface — a refusal renders as HTML — so no consumer can observe the inconsistency today, and
-    an argued exception in the policy was the other defensible answer. What decides it is that the
-    cost is already being paid. Both #43 and #45 had to distinguish their new arm **by message**,
-    because the code could not tell them apart, and the same policy says never to match on the
-    message. So the only handle a caller has for the distinction is the one it is told not to use.
-    That is a present cost, not a future one, and `empty_selector_token` was split for the identical
-    shape one release ago.
+    Every arm carries its own code and its own `details` shape (#52) — `docs/compatibility.md`'s
+    rule that a code carries one fact — because before the split the six facts shared this one
+    code and a caller could tell them apart only by message, which the same policy says never to
+    match on. `test_every_arm_has_its_own_code` and
+    `test_each_arm_carries_exactly_the_details_shape_its_code_promises` are the guards, and the
+    argument that was made against the split is in the first one's docstring.
 
     The family is kept because `install_cross_site_guard` catches it and answers 403 for every arm,
     and because a caller that wants *any* cross-site refusal should not have to enumerate six names.
-    Nothing raises it directly.
+    Nothing raises it directly (`test_the_family_base_is_not_raised_by_any_arm`).
 
-    It lives here rather than in `web/security.py` because two of its arms do (#508). The four that
-    are about an unsafe method and a form stay in that module; the base has to sit with whichever
-    half is reachable from a surface that has no forms, and that is this one.
+    It lives here rather than in `web/security.py` because two of its arms do (#508): the base has
+    to sit with whichever half is reachable from a surface that has no forms, and that is this one.
     """
 
     code = "cross_site_request"
