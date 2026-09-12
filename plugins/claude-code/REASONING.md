@@ -5,7 +5,7 @@ you here — but a second `/requivo:*` in the same conversation does not need a 
 discovery that runs discover → answer → answer → brief reads this file four times otherwise, and it
 is the longest thing any skill opens: that is the single largest block of context a multi-turn
 session spends on bytes it already holds. It exists so the rules live in one place, not copied into
-six skills.
+every skill.
 
 **When you are not sure you still hold it, read it again.** The condition is only safe to get wrong
 in one direction: a redundant read costs tokens, a skipped one costs the trust boundary and the

@@ -319,11 +319,11 @@ def invocation_sources(plugin_root) -> Sources:
     """The plugin files whose `requivo` calls are *executed*, which is not the same set as the files
     that mention one -- and the paths this walk could not decide about.
 
-    The six `SKILL.md` bodies, plus `REASONING.md`. That second one is not a reader's document: it
+    Every `SKILL.md` body, plus `REASONING.md`. That second one is not a reader's document: it
     holds the shared preflight every skill is required to run before its first `requivo` call (#93),
-    so a command named there runs on all six paths and is the most-executed invocation in the
+    so a command named there runs on every skill path and is the most-executed invocation in the
     plugin. It happens to introduce no verb the skills do not already name, which is exactly why it
-    needs to be in the walked set rather than left to keep happening to be redundant.
+    needs to be in the walked set rather than left to keep happening to be redundant. (#542)
 
     Three outcomes and not two, because the predicate reaches a filesystem that can refuse. A walk
     that silently grades the subset it managed to read tells the caller `resolved` about a plugin it

@@ -30,7 +30,10 @@ when you save.
 
 ## 2. Reason → write the checklist
 - Write scenarios in **Given / When / Then** form: `given` is the starting state, `when` is the single
-  triggering action, `then` is the observable outcomes to check.
+  triggering action, `then` is the observable outcomes to check — either can hold more than one line
+  when the scenario genuinely needs it (a precondition with two parts, an outcome with two effects);
+  write the first as **Given**/**Then** and every one after it as **And**, the same convention
+  `criteria_markdown` renders with.
 - Group scenarios under **features** — one per coherent area of behaviour (a workflow step, a business
   rule set, a permission boundary), named in business terms.
 - Each scenario has an id (`AC-1`, `AC-2`, … — unique across the whole document, not per feature), a
@@ -66,11 +69,13 @@ Write it as Markdown:
 
 ## <Feature name>
 
-### [ ] AC-1 — <title>  _<happy path | edge case | error | permission>_
+### [ ] AC-1 — <title>  _<Happy path | Edge case | Error | Permission>_
 
 - **Given** <precondition>
+- **And** <a second precondition, only if there is one — repeat for a third, and so on>
 - **When** <action>
 - **Then** <outcome>
+- **And** <a second outcome, only if there is one — repeat for a third, and so on>
 
 ## Open questions
 
