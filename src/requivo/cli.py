@@ -28,7 +28,7 @@ from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
 from requivo.core.errors import RequivoError, SessionNotFoundError
 from requivo.core.persistence import load_model
-from requivo.core.selectors import display_document, display_text
+from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
 from requivo.paths import DEMO
@@ -48,8 +48,11 @@ from requivo.providers.anthropic import new_client
 from requivo.providers.errors import EngineError
 from requivo.render.markdown import criteria_markdown, epic_markdown, prd_markdown, release_markdown
 from requivo.render.terminal import (
+    DOC_TYPES,
+    docs_menu_rows,
     render_brief,
     render_dependency_map,
+    render_docs_menu,
     render_estimate,
     render_evidence,
     render_grounding,
@@ -942,6 +945,115 @@ def _cmd_release(a, client) -> None:
     _wrote(slug, result, "release notes")
 
 
+# `docs` (#544): one verb over the seven generators above, never a second generation path -- every
+# type it can produce loops through the same `_cmd_*` body `requivo <type> <slug>` already calls.
+_DOC_GENERATORS = {
+    "brief": _cmd_brief, "prd": _cmd_prd, "stories": _cmd_stories, "estimate": _cmd_estimate,
+    "criteria": _cmd_criteria, "epic": _cmd_epic, "release": _cmd_release,
+}
+
+_DOC_SELECTION_RE = re.compile(r"[,\s]+")
+
+
+def _doc_generation_order(selected: list[str]) -> list[str]:
+    """Canonical order; `estimate` absorbs `stories` (`generate(..., "estimate", ...)` already
+    reasons and saves both, invariant 6), so picking both must not write stories twice. Pinned by
+    `test_docs_stories_and_estimate_together_write_stories_once` (#544)."""
+    chosen = set(selected)
+    if "estimate" in chosen and "stories" in chosen:
+        chosen.discard("stories")
+    return [t for t in DOC_TYPES if t in chosen]
+
+
+def _resolve_doc_types(tokens: list[str]) -> list[str]:
+    """`docs <slug> <type...>`: names only, refused before any call rather than filtered
+    (invariant 3). Pinned by `test_resolve_doc_types_refuses_an_unknown_type_before_any_call`."""
+    unknown = [t for t in tokens if t not in DOC_TYPES]
+    if unknown:
+        raise RequivoError(
+            f"neither a document type nor a session in this workspace: "
+            f"{', '.join(display_token(t) for t in unknown)} -- choose a type from "
+            f"{', '.join(DOC_TYPES)}, or a slug from `requivo session list`.")
+    return tokens
+
+
+def _prompt_doc_selection() -> list[str] | None:
+    """The menu's own prompt: numbers, names, `all`, or nothing to cancel. An unknown token is
+    refused before any generator runs, never silently dropped (invariant 3). Pinned by
+    `test_prompt_doc_selection_refuses_an_unknown_token_before_any_call`."""
+    print("\nPick one or more (numbers or names, 'all', or Enter to cancel):")
+    try:
+        raw = input("> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.")
+        return None
+    if not raw:
+        print("Cancelled.")
+        return None
+    if raw.lower() == "all":
+        return list(DOC_TYPES)
+    selected: list[str] = []
+    unknown: list[str] = []
+    for tok in (t for t in _DOC_SELECTION_RE.split(raw) if t):
+        if tok.isdigit() and 1 <= int(tok) <= len(DOC_TYPES):
+            selected.append(DOC_TYPES[int(tok) - 1])
+        elif tok.lower() in DOC_TYPES:
+            selected.append(tok.lower())
+        else:
+            unknown.append(tok)
+    if unknown:
+        raise RequivoError(
+            f"unknown selection: {', '.join(display_token(t) for t in unknown)} -- use a number "
+            f"1-{len(DOC_TYPES)}, a document name, or 'all'.")
+    return selected
+
+
+def _cmd_docs(a, client) -> None:
+    """`docs [slug] [type...] [--all]` (#544): no type given prints the menu and prompts a pick;
+    a type (or `--all`) generates it, no prompt. The first positional is a slug only when it already
+    names a session -- the same disambiguation `run` uses -- so `docs prd` with no session of that
+    name resolves the workspace's default session and treats `prd` as a type."""
+    svc = SessionService()
+    tokens = list(a.args)
+    if tokens and _is_existing_session(svc, tokens[0]):
+        slug = svc.resolve_slug(tokens[0], accept_path=False)
+        type_tokens = tokens[1:]
+    else:
+        slug = _resolve_optional_session(svc, None)
+        type_tokens = tokens
+    if not svc.exists(slug):
+        raise svc.no_session(slug)
+    meta = svc.meta(slug)
+    if meta.current_revision < 1:
+        print(f"Session '{display_token(slug)}' has no model yet -- run `requivo run {slug}` to "
+              "start the conversation before generating a document.")
+        return
+    # Validated before the `--all` branch, not only on the explicit-types path: a token that
+    # matched no session above (invalid slug or typo) falls through to here as a stray type token,
+    # and `--all` used to discard it unchecked -- generating every document against the *default*
+    # session instead of refusing (invariant 3). Pinned by
+    # `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session` (#544).
+    if type_tokens:
+        type_tokens = _resolve_doc_types(type_tokens)
+    if a.all:
+        if type_tokens:
+            # `--all` and explicit types together are ambiguous rather than additive -- refused
+            # outright rather than guessing which one wins. Pinned by
+            # `test_docs_all_combined_with_an_explicit_type_is_refused` (#544).
+            raise RequivoError(
+                f"--all takes no types ({', '.join(display_token(t) for t in type_tokens)} given) "
+                "-- drop the type names, or drop --all and name only the ones you want.")
+        selected = list(DOC_TYPES)
+    elif type_tokens:
+        selected = type_tokens
+    else:
+        render_docs_menu(docs_menu_rows(meta.artifact_status))
+        selected = _prompt_doc_selection()
+        if selected is None:
+            return
+    ns = argparse.Namespace(session=slug, export_json=False, github=False, gitlab=False, version="")
+    for doc_type in _doc_generation_order(selected):
+        _DOC_GENERATORS[doc_type](ns, client)
 
 
 def _cmd_web(a, client) -> None:
@@ -1189,6 +1301,19 @@ def _build_parser() -> argparse.ArgumentParser:
               epic_flags)
     model_cmd("release", "generate client-facing release notes (API)", _cmd_release,
               lambda sp: sp.add_argument("version", nargs="?", default="", help="optional version label to stamp"))
+
+    docs = sub.add_parser(
+        "docs", help="menu of the seven documents the model can produce, or generate the ones "
+                     "you name (API)")
+    # One `nargs="*"` positional rather than a `session`/`types` pair (#544): the two are the same
+    # shape as `run`'s single positional, and `_cmd_docs` disambiguates the same way `run` does --
+    # `session model_cmd()` above cannot express "optional slug, then a variable tail" at all.
+    docs.add_argument("args", nargs="*", metavar="[slug] [type ...]",
+                      help="an optional session slug, then document types to generate; omit the "
+                           "types to see the menu (omit the slug too for the workspace's default "
+                           "session)")
+    docs.add_argument("--all", action="store_true", help="generate every document, skipping the menu")
+    docs.set_defaults(func=_cmd_docs)
 
     # The deterministic surface (doctor / schema / context / session / model / artifact) — no LLM,
     # no API key. Registered here rather than first (#244) so the plumbing renders below the product.

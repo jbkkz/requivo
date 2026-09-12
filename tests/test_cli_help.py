@@ -25,8 +25,9 @@ from requivo.providers.anthropic.generators import _OP_PROMPTS
 
 # The verbs that make a paid call. `analyze` is the provider operation behind `discover`, `answer`
 # and `run` (#540: a fresh request or an existing session's slug both reach it), so it expands to
-# three; every other operation is one verb of the same name.
-API_VERBS = (set(_OP_PROMPTS) - {"analyze"}) | {"discover", "answer", "run"}
+# three; every other operation is one verb of the same name. `docs` (#544) is a fourth hand-added
+# entry for the same reason: it is a loop over the seven generators, not an operation of its own.
+API_VERBS = (set(_OP_PROMPTS) - {"analyze"}) | {"discover", "answer", "run", "docs"}
 
 MARKER = "(API)"
 

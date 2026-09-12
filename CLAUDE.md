@@ -26,6 +26,7 @@ uv run requivo demo                     # replays a saved run — no key, no net
 uv run requivo run "We'd like a leave approval system."        # the whole conversation, one verb
 uv run requivo discover "We'd like a leave approval system."   # → .requivo/sessions/<slug>/
 uv run requivo status <slug>            # understanding checklist + readiness (offline)
+uv run requivo docs <slug>              # menu of the seven documents, or `docs <slug> prd` to skip it
 uv run requivo prd <slug>               # regenerate any artifact from the saved model
 ```
 
@@ -40,7 +41,8 @@ pip install -e ".[dev]"                 # deps + the `requivo` command + pytest
 ```
 
 `requivo` is the command. Verbs: `discover`,
-`answer`, `demo`, `status`, `impact`, `brief`, `prd`, `stories`, `estimate`, `criteria`,
+`answer`, `demo`, `status`, `impact`, `docs` (a menu over the seven generators below, or
+`docs <slug> <type>...` to skip it), `brief`, `prd`, `stories`, `estimate`, `criteria`,
 `epic` (`--export-json/--github/--gitlab` — three flags of one kind, each writing an export file;
 `epic` deliberately has no stdout `--json`, see #83), `release`, `web`, plus the offline ones in `deterministic/`
 (`doctor`, `schema`, `context`, `session` incl. `verify`, `model`, `artifact`). `impact` is a pure query over the
