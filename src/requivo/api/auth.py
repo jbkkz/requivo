@@ -138,11 +138,15 @@ def check_bearer(authorization: Optional[bytes], token: str) -> None:
             "this API requires `Authorization: Bearer <token>`",
             details={"scheme": "Bearer", "reason": "missing"})
     scheme, _, credential = authorization.strip().partition(b" ")
-    if scheme.lower() != _SCHEME:
+    credential = credential.strip()
+    # A bare `Bearer` with nothing after it presented no credential either -- `missing`, so the
+    # challenge says what to send rather than claiming an empty token was wrong (found in review;
+    # `test_a_bearer_scheme_with_no_credential_is_missing_not_invalid`).
+    if scheme.lower() != _SCHEME or not credential:
         raise UnauthorizedError(
             "this API requires `Authorization: Bearer <token>`",
             details={"scheme": "Bearer", "reason": "missing"})
-    if not hmac.compare_digest(credential.strip(), token.encode("utf-8")):
+    if not hmac.compare_digest(credential, token.encode("utf-8")):
         raise UnauthorizedError(
             "the bearer token this request carried is not the one this API was started with",
             details={"scheme": "Bearer", "reason": "invalid"})

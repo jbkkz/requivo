@@ -252,6 +252,18 @@ def test_the_token_comparison_is_constant_time_by_construction(monkeypatch):
     assert exc.value.details["reason"] == "invalid"
 
 
+@pytest.mark.parametrize("raw", [b"Bearer", b"Bearer ", b"  bearer   "])
+def test_a_bearer_scheme_with_no_credential_is_missing_not_invalid(raw):
+    """The docstring's contract, pinned: `missing` is "no bearer credential was presented at all",
+    and a bare `Bearer` with nothing after it presented none -- so the challenge tells the caller
+    what to send rather than that what it sent was wrong. A first draft compared the empty
+    credential and answered `invalid` (found in review)."""
+    with pytest.raises(UnauthorizedError) as exc:
+        check_bearer(raw, TOKEN)
+    assert exc.value.details["reason"] == "missing"
+    assert "invalid_token" not in exc.value.challenge
+
+
 def test_the_comparison_never_sees_a_str():
     """The #212 guarantee stated as a property: whatever the header bytes, `check_bearer` reaches a
     verdict. Every byte value, and the two header shapes that tripped the web surface."""

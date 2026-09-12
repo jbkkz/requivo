@@ -1011,7 +1011,7 @@ def _cmd_api_serve(a, client) -> None:
 
 
 # The closing paragraph of `requivo --help` (#244). It carries the two things a flat list of
-# nineteen verbs cannot: the first command to run, and what the (API) marker on nine of them means.
+# verbs cannot: the first command to run, and what the (API) marker on nine of them means.
 # A marker nobody defines is a decoration, and the old help defined nothing at all -- a reader could
 # not tell from it that `brief` would bill them and `status` would not.
 EPILOG = (
@@ -1047,8 +1047,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
     # Registration order IS render order in argparse, so this list is the first screen (#244). It
-    # runs demo → discover → the refinement verbs → the generators → the plumbing → web, which is
-    # the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
+    # runs demo → discover → the refinement verbs → the generators → the plumbing → web → api, which
+    # is the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
     # diagnostic entries led and the two verbs a visitor needs sat seventh and eighth.
     #
     # `model_cmd` is defined here rather than further down for the same reason: the twelve journey
