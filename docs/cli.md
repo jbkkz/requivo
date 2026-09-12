@@ -6,9 +6,13 @@ Run as `requivo <command>` after an install, `uv run requivo <command>` with uv,
 `python scripts/requivo_cli.py <command>` from a bare clone. Commands that call the Anthropic API need
 the `anthropic` extra and `ANTHROPIC_API_KEY`; everything else is offline.
 
-Verbs take a session **slug**. `status` and `impact` also accept a path to a saved `model.json`, so
-they can read a model that is not in a session store; every other verb resolves a session, because it
-writes a revision or an artifact back into one.
+Verbs take a session **slug**. `run`, `status` and `impact` accept it as an *optional* positional
+(#541): omit it and the CLI resolves the workspace's default session — the only one, or the most
+recently written when there are several, with every candidate listed and the default marked before
+anything paid happens. `session`, `model` and `artifact` keep the slug required, because a script must
+never act on "whichever session is newest". `status` and `impact` also accept a path to a saved
+`model.json`, so they can read a model that is not in a session store; every other verb resolves a
+session, because it writes a revision or an artifact back into one.
 
 **This page is a reference, top to bottom.** Design history — why a check exists, what bug it closed,
 how a behaviour used to differ — lives in [Design notes](#design-notes) at the foot of the page, out
@@ -23,11 +27,11 @@ flag the parser binds cannot ship silently undocumented.
 | `requivo --version` | Print `requivo <version>` and exit 0. Read from the package, so it is the version you actually have |
 | `requivo --workspace DIR <command>` | Where sessions are read and written (default: cwd). Accepted *before or after* the command |
 
-`requivo --help` lists the verbs in journey order — `demo` and `discover` first, then refinement,
-then the generators, then the offline plumbing — and marks the nine that spend money **`(API)`**.
-Everything without the marker is offline and free, including `status` and `impact`, which take a
-slug exactly like `brief` does and cost nothing. What the marked verbs cost is in
-[providers.md](providers.md#what-a-run-costs).
+`requivo --help` lists the verbs in journey order — `demo`, `run` and `discover` first, then
+refinement, then the generators, then the offline plumbing — and marks the ones that spend money
+**`(API)`**. Everything without the marker is offline and free, including `status` and `impact`,
+which take a slug exactly like `brief` does (or resolve the default session, #541) and cost nothing.
+What the marked verbs cost is in [providers.md](providers.md#what-a-run-costs).
 
 ## When a session cannot be found
 
@@ -48,17 +52,21 @@ The `--json` envelope is unchanged: `code` is still `session_not_found`, with th
 
 ## Discovery and refinement
 
+`run` is the one verb a person types for the whole conversation; `discover`/`answer`/`impact` stay
+as the automation contract underneath it (`decision: three-journey-verbs`).
+
 | Command | Does |
 |---|---|
+| `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery — both **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
 | `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
-| `requivo status <slug>` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). No network |
-| `requivo impact <slug> [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map), then the decisions derived from thinner evidence than the session now holds. No network |
+| `requivo status [slug]` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
+| `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map), then the decisions derived from thinner evidence than the session now holds. Omit the slug to resolve the workspace's default session (#541). No network |
 
-The context-card selector is spelled **`--context`** everywhere — on `discover`, on `session init`,
-on `session rescope` and on `context`. `--cards` is a permanent alias of it on all four, kept because
-`context` spelled it that way first (#85); the two are one option, so they can never mean different
-things.
+The context-card selector is spelled **`--context`** everywhere — on `run`, on `discover`, on
+`session init`, on `session rescope` and on `context`. `--cards` is a permanent alias of it on all
+five, kept because `context` spelled it that way first (#85); the two are one option, so they can
+never mean different things.
 
 A selector — `--context a,b`, or the slot names given to `impact` — is checked rather than best-guessed.
 An **empty** name is refused: `requivo impact <slug> ""`, which is what an unset shell variable expands

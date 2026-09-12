@@ -810,3 +810,31 @@ def test_an_ordinary_commit_subject_is_rendered_byte_for_byte(golden_readout):
              "commits": [{"sha": "abc123def", "date": "2026-08-15", "subject": subject}]}
     lines = golden_readout("q?", freshness=stale)
     assert any(subject in ln for ln in lines), lines
+
+
+# ── #541's several-sessions listing (`run`/`status`/`impact`, `_print_session_candidates`) ─────────
+
+
+def test_run_candidate_listing_cannot_be_made_to_print_a_line_a_session_wrote(workspace, tmp_path):
+    """Found in review: `updated_at` and a degraded row's error reach this listing straight off
+    `session.json`, unescaped -- the same untrusted-text shape #40/#70 already guard on
+    `session list`. `display_token` is the fix; the assertion is that the forged text still shows,
+    escaped onto one line, rather than writing the line it impersonates."""
+    from _fakes import FakeClient
+
+    _run(["session", "init", "Something.", "--slug", "honest"])
+    _run(["session", "init", "Other.", "--slug", "forged"])
+    proposal = tmp_path / "p.json"
+    proposal.write_text(json.dumps(_full_model()), encoding="utf-8")
+    _run(["model", "apply", "honest", str(proposal)])
+    _run(["model", "apply", "forged", str(proposal)])
+    forged_value = "2026-01-01T00:00:00Z\n  ✅ sessions        0 in this workspace"
+    _forge_meta("forged", {"updated_at": forged_value})
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        app(["run"], client=FakeClient())   # neither session has an open question -- no paid call
+    printed = buf.getvalue()
+
+    assert forged_value not in printed, "the raw newline wrote its own line, unescaped"
+    assert repr(forged_value) in printed, "the forged value was dropped rather than shown, escaped"

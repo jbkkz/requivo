@@ -15,9 +15,10 @@ import os
 import sys
 
 from requivo.core import persistence as store
+from requivo.core.selectors import display_token
 from requivo.render.terminal import render_usage
 from requivo.services.discovery import DiscoveryService
-from requivo.services.sessions import SessionService
+from requivo.services.sessions import SessionResolution, SessionService
 from requivo.streams import safe_write
 
 _USAGE_UNPRINTABLE = (
@@ -58,6 +59,44 @@ def _generator_service(a, client) -> tuple[str, DiscoveryService]:
     if not svc.exists(slug):
         raise svc.no_session(slug)
     return slug, DiscoveryService(client=client, sessions=svc)
+
+
+def _print_session_candidates(resolution: SessionResolution) -> None:
+    """The listing #541 requires before a resolved default is acted on -- every candidate, the
+    default marked, so a wrong guess is visible before anything paid happens.
+
+    Every field printed below came off a persisted `session.json` this process did not write, so it
+    goes through `display_token` -- the same guard `session list` applies (#40/#70) -- or an
+    `updated_at`/error carrying a newline plus a fabricated row forges a line of this listing. Found
+    in review; pinned by
+    `test_run_candidate_listing_cannot_be_made_to_print_a_line_a_session_wrote`."""
+    print("Several sessions in this workspace:")
+    for entry in resolution.candidates:
+        marker = "→" if entry.slug == resolution.default else " "
+        slug = display_token(entry.slug)
+        # `entry.meta is not None`, not `entry.readable`: pyright narrows on the former and not on
+        # the latter, which is a plain bool with no relationship the checker can see to `meta`.
+        if entry.meta is not None:
+            print(f"  {marker} {slug}  (revision {entry.meta.current_revision}, "
+                  f"updated {display_token(entry.meta.updated_at)})")
+        else:
+            print(f"  {marker} {slug}  (unreadable: {display_token(entry.error or 'unknown')})")
+    print(f"Using {display_token(resolution.default)} — pass a slug explicitly to choose another "
+          "(see `requivo session list`).")
+
+
+def _resolve_optional_session(svc: SessionService, ref: str | None, *, quiet: bool = False) -> str:
+    """The CLI's half of #541's resolver: an explicit `ref` wins outright and is returned
+    unexamined (it may be a path, for the two verbs that still accept one); otherwise resolve the
+    workspace's default session, listing the candidates before anything paid happens -- unless
+    `quiet`, which a `--json` caller sets because the payload already states the slug it answered
+    for and a line beside it would break every pipe into `jq` (#246, see `_cmd_status`)."""
+    if ref is not None:
+        return ref
+    resolution = svc.resolve_default_session()
+    if resolution.candidates and not quiet:
+        _print_session_candidates(resolution)
+    return resolution.default
 
 
 def _wrote(slug: str, result, label: str) -> None:

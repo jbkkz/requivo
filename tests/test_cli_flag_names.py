@@ -233,7 +233,7 @@ def test_the_card_selector_is_one_action_not_two():
     for verb, actions in seen.items():
         assert actions == [["--cards", "--context"]], (
             f"{verb}: --context/--cards must be two option strings on one action, got {actions}")
-    assert set(seen) == {"discover", "session init", "context", "session rescope"}, seen
+    assert set(seen) == {"discover", "run", "session init", "context", "session rescope"}, seen
 
 
 def test_the_context_verb_prints_the_same_cards_under_either_spelling():
@@ -401,8 +401,12 @@ def test_every_session_reference_positional_is_spelled_session():
 
 def test_the_missing_argument_error_names_a_session_not_a_model():
     """The user-visible half, and the sentence the issue was filed on. The parser test above would
-    stay green if `dest` moved and `metavar` did not, and the metavar is what a person reads."""
-    code, out, err = _run_capturing(["status"], client=None)
+    stay green if `dest` moved and `metavar` did not, and the metavar is what a person reads.
+
+    `brief`, not `status`: #541 made `status`'s own positional optional, so a missing argument
+    there no longer hits argparse's usage error at all -- it resolves a default session instead.
+    """
+    code, out, err = _run_capturing(["brief"], client=None)
 
     assert code == 2, f"expected argparse's usage error, got {code}: {err!r}"
     assert "required: session" in err, err

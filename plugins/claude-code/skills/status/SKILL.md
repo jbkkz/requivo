@@ -16,8 +16,15 @@ install** from the plugin. So start with the shared **preflight** in
 *at all* — not what it reported. If it could not run, the CLI is not installed; say the four things
 REASONING.md lists and stop. This skill reads and writes nothing, so there is nothing to undo.
 
+## Resolve the session
+`$ARGUMENTS` may already be a session slug. If it is empty, or you are not sure, resolve one the
+same way `/requivo:run` does: run `requivo session list --json` once and pick a slug from its
+`sessions` rows — exactly one `readable: true` row → that one; more than one → the one with the
+latest `updated_at` (name the others you did not pick); none at all → say there is no session yet
+and point at `/requivo:run` instead of running `status`. **Never ask the user to type a slug.**
+
 ## Run
-`$ARGUMENTS` is the session slug. Run:
+With a slug in hand, run:
 ```
 requivo status <slug> --json
 ```
@@ -42,7 +49,9 @@ command did not return.
 
 ## Then point at the next step, once
 This skill answers *where are we*; the user's next move follows from the answer, so name one and stop
-there. Not ready, with open questions: `/requivo:run <slug>` folds their answers in. Ready, with no
-decision brief yet: `/requivo:brief <slug>`. Something marked as needing an update: the *needs
-updating* lines above already say what it reaches; `/requivo:run <slug>` is where the change goes
-in, and it announces the blast radius before applying. One pointer, not a menu.
+there — never with the slug attached, since neither pointer below needs the user to carry one. Not
+ready, with open questions: `/requivo:run` folds their answers in. Ready, with no decision brief yet:
+`/requivo:brief <slug>` (`brief` still takes a slug positionally; state the one this skill already
+resolved, not a placeholder). Something marked as needing an update: the *needs updating* lines above
+already say what it reaches; `/requivo:run` is where the change goes in, and it announces the blast
+radius before applying. One pointer, not a menu.

@@ -71,6 +71,65 @@ def test_status_json_payload_is_rich_enough_for_a_client():
         shutil.rmtree(store.canonical_dir(slug), ignore_errors=True)
 
 
+# ── #541: `run`/`status`/`impact` default to the workspace's session when the slug is omitted ─────
+
+
+def test_status_with_no_argument_matches_the_explicit_slug_when_there_is_one_session():
+    """#541: one session -> that one, with the identical `--json` payload either way."""
+    store.create_session("only-session", "a request")
+    store.save_revision("only-session", _built_model({"problem": slot(80, "explicit", "high")}))
+    explicit = _run_app(["status", "only-session", "--json"])
+    implicit = _run_app(["status", "--json"])
+    assert json.loads(implicit) == json.loads(explicit)
+
+
+def test_status_with_no_argument_and_several_sessions_lists_them_with_the_default_marked():
+    """#541: several -> every candidate listed (human mode), the default marked, and the `--json`
+    payload's own `slug` names the same pick without a line beside it (#246: nothing may print
+    beside a `--json` payload)."""
+    store.create_session("older", "a request")
+    store.save_revision("older", _built_model({"problem": slot(80, "explicit", "high")}))
+    store.create_session("newer", "a second request")
+    store.save_revision("newer", _built_model({"problem": slot(80, "explicit", "high")}))
+    p = store.canonical_dir("newer") / "session.json"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["updated_at"] = "2999-01-01T00:00:00Z"
+    p.write_text(json.dumps(data), encoding="utf-8")
+
+    printed = _run_app(["status"])
+    assert "older" in printed and "newer" in printed
+    default_line = next(ln for ln in printed.splitlines() if "newer" in ln)
+    assert "→" in default_line
+
+    payload = json.loads(_run_app(["status", "--json"]))
+    assert payload["slug"] == "newer"
+
+
+def test_status_with_no_argument_and_no_session_exits_1_naming_run(capsys):
+    """#541: none -> exit 1, naming `run` rather than argparse's own missing-argument usage error."""
+    with pytest.raises(SystemExit) as exit_:
+        app(["status"], client=None)
+    assert exit_.value.code == 1
+    assert "run" in capsys.readouterr().err
+
+
+def test_impact_with_no_argument_matches_the_explicit_slug():
+    """#541: `impact` resolves the same default session `status` does."""
+    store.create_session("only-session", "a request")
+    store.save_revision("only-session", _built_model({"problem": slot(80, "explicit", "high")}))
+    explicit = _run_app(["impact", "only-session"])
+    implicit = _run_app(["impact"])
+    assert implicit == explicit
+
+
+def test_session_show_with_no_slug_still_refuses():
+    """#541: plumbing verbs keep their slug required -- a script must never act on 'whichever
+    session is newest'."""
+    with pytest.raises(SystemExit) as exit_:
+        app(["session", "show"], client=None)
+    assert exit_.value.code == 2
+
+
 def test_pc_demo_runs_offline_from_saved_example():
     # The activation path: a visitor runs `requivo demo` with no key, no args, no network, and sees a
     # real run end to end. No client is passed and none is built.
