@@ -27,6 +27,11 @@ def _isolate_workspace(tmp_path, monkeypatch):
 
 
 def test_an_oversized_request_is_refused_before_any_provider_call():
+    """Invariant 3, first half: refuse, don't truncate. Over-long input is rejected, not cut —
+    half a request reads exactly like a whole one, and a model reasoning over the first half
+    produces a confident answer to a question nobody asked. The second half, refuse rather than
+    filter an unknown context card, is `test_the_service_refuses_a_context_card_that_does_not_exist`
+    (moved here from CLAUDE.md by #286)."""
     fake = FakeClient(_ENGINE_REPLY)
     disco = DiscoveryService(client=fake)
     with pytest.raises(InputTooLargeError):

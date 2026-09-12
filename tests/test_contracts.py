@@ -106,6 +106,12 @@ def test_output_rejects_a_challenge_contesting_an_unknown_slot():
 
 
 def test_contracts_reject_a_field_the_schema_does_not_define():
+    """Invariant 4: boundary contracts are strict. Everything an LLM fills inherits `StrictModel`
+    (`extra="forbid"`); a field the model invented must fail loudly and ride the retry loop, not
+    be silently discarded. *Completeness* rules (the full required slot set, a non-empty objective)
+    live at the discovery boundary instead, because a partial `EngineOutput` is a legitimate
+    internal object — `test_output_allows_a_partial_but_known_model` is that half (moved here from
+    CLAUDE.md by #286)."""
     # Pydantic's default is to drop unknown keys. For an LLM boundary that is the wrong default: the
     # output reads as conformant while carrying less than the model produced, and a prompt that has
     # drifted from its contract looks like a clean success. Rejecting also lets the retry loop tell the
@@ -142,6 +148,10 @@ def test_contracts_reject_a_challenge_missing_a_load_bearing_part():
 
 
 def test_reasoning_items_carry_a_stable_content_derived_id():
+    """Invariant 5: `DesignDecision`, `Challenge` and `Opportunity` carry an `id` recomputed from
+    their own text on every validation. A supplied one is never trusted — an LLM that echoes a
+    stale id back would otherwise let two different decisions share a handle (moved here from
+    CLAUDE.md by #286)."""
     # A consumer will want to refer back to a decision — comment on it, mark it accepted, follow it across
     # revisions — and text is a poor handle. The id is derived from the content, so it is identical
     # across revisions, surfaces and machines for as long as the statement is unchanged.
