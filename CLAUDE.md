@@ -149,9 +149,8 @@ nothing but `requivo session migrate`.
 
 These are the rules a change must not quietly break. Each one exists because breaking it produced a
 bug that looked like correct behaviour. Each entry is the rule, the cost of breaking it, and the
-test that goes red when the guard is removed; the narrative behind each lives in that test's
-docstring, which is where *Where a bug narrative lives* (below) says it belongs — #286 applied the
-rule to this list on 2026-09-12.
+test that goes red when the guard is removed; the story behind each is on the tracker, under the
+issue the test cites — *Where a bug narrative lives* (below) is the rule.
 
 1. **Staleness is the dependency graph, never the revision number.** An artifact is stale when
    something it rests on changed — the source revision is *provenance*. Two edge sets feed it:
@@ -286,82 +285,35 @@ rule to this list on 2026-09-12.
 
 ## Where a bug narrative lives
 
-Every invariant above exists because a plausible assumption produced a bug that looked like correct
-behaviour, and the surrounding code says so at length. That density is deliberate: the person about
-to simplify a subtlety away is *in the editor*, not in a docs folder, so a pointer they will not
-follow is strictly worse than the paragraph it replaced. An external review proposed moving all of
-it to decision records; that remedy is rejected and its diagnosis is not (#75). The rule instead:
+**The tree records the rule; the tracker records the story** — `decision: the-tree-records-the-rule`
+(#554). Every invariant above exists because a plausible assumption produced a bug that looked like
+correct behaviour, and the tracker already holds each of those stories in full: the issue carries the
+reproduction and the pull request carries the review. The tree does not restate them.
 
-> **A comment paragraph that recounts a past bug must be backed by a test that goes red when the
-> guard is removed.**
->
-> - **If it is** — the paragraph belongs in that test, and the call site keeps one line: the
->   invariant, the cost of breaking it, and **the name of the test that enforces it**.
-> - **If it is not** — it is either a missing test, which gets written, or genuine archaeology,
->   which goes to `docs/decisions/`.
+- **At a call site: one line** — the rule, the cost of breaking it, and the name of the test that goes
+  red. A second line only when the rule is not obvious from the code beside it. Never a paragraph.
+- **In a test: five lines at most.** The docstring says what the test pins and cites the issue; the
+  reproduction and the alternatives are in the issue and the PR, which the docstring points at.
+- **A decision record is for a *decision*** — a choice between alternatives a reader could reopen —
+  never for an incident. `docs/decisions/README.md` names the three shapes that qualify.
+- **This file states rules and the map.** One paragraph per invariant; a count in prose that no test
+  can falsify comes out (#134) — a count that earns its place gets a test (`tests/test_version_sites.py`).
+- **The issue number is never lost.** It is the one pointer that survives every rename, and the
+  reference to a test is its *name*, never a path, on one line so it stays greppable —
+  `tests/test_narrative_references.py` guards that every reference resolves and none is wrapped.
 
-It is a rule and not a preference because it is mechanically decidable: *is there a test that goes
-red?* has one answer per paragraph. It converts density into coverage — nothing is deleted, and what
-survives sits on a support that cannot be read in diagonal. A comment can be skimmed; a red test
-cannot.
+Not a licence to remove a reason attached to a guard or a MUST-FIRE note: those *are* the rule and
+stay on the line. Not applicable to `docs/`, which is narrative's right home.
 
-**The reference is a name, never a path** — a test function, a test module, or a decision record's
-slug. Paths in this repository move (the package was renamed, `deterministic.py` became a package, a
-2147-line test module became seven files, all inside a fortnight); a name survives every one of
-those. **And it must be greppable**, so an identifier is never split across a line wrap.
-`tests/test_narrative_references.py` guards only what is mechanical: every reference resolves, none
-is wrapped. Whether a paragraph *should* carry one is a judgement stated here for a person to apply.
+**Size budget.** The ceilings — prose share per module, test-to-product ratio, the meta-guard estate —
+live in `tests/lean_budget.toml` and only go down (#553); none is written in prose, here or anywhere.
 
-**The same test applies to a count** (#134): a number in prose that no test can falsify buys one
-release and then lies. A count that earns its place gets a test (`tests/test_version_sites.py`);
-one nobody acts on comes out.
-
-**What this is not.** Not a licence to remove a reason attached to a guard, or a MUST-FIRE note:
-those *are* the invariant rather than the story around it, and they stay at the line. Not applicable
-to `docs/`, which is narrative's right home. It *was* held not to apply to this file or to the
-invariant list; #286 applied it to both on 2026-09-12, and the invariants above are the result.
-
-**A new source-scanning guard *tier* is not free, and #288 is where that got measured rather than
-assumed.** Three of the existing tiers (`test_boundaries.py`, `test_encoding.py`,
-`test_narrative_references.py`) had each grown their own `scan`/`_parse`/empty-root-refusal from
-nothing, which is how the same ten-line function came to exist almost identically three times before
-anyone shared it (`tests/_scan.py` is that fix). The bar for the *next* one is the same the codebase
-already applies to itself elsewhere: a plausible first instance does not justify a new guard tier on
-its own, any more than one context card colliding with its neighbour justified automatic relevance
-routing — see the golden harness's "Known limit" note. **Two real instances of the drift a new tier
-would have caught**, named by issue number, is what funds a third scanning implementation; short of
-that, extend an existing tier's scan set (as #355 did for `providers/`) rather than starting a
-fourth.
-
-**#287 widens that bar from "a scanning tier" to every prose/CI/script guard that does not exercise
-shipped runtime code, because the same trajectory shows up one level up.** The issue's own filing
-quoted a 2026-08-29 count that had already drifted the day it was written — `test_agent_layer.py`
-tripled that same day, in the commit that stopped the tracked `.claude/settings.json` configuring
-every contributor — so the figures below are re-measured directly against this repository rather than
-carried forward from the issue: `test_narrative_references.py` (441), `test_version_sites.py` (506),
-`test_workflow_untrusted_output.py` (673), `test_workflow_permissions.py` (207),
-`test_agent_layer.py` (552), `test_vocabulary_boundary.py` (113), `test_dependency_floor.py` (153),
-`test_plugin.py` (353), `test_plugin_cli_drift.py` (1,153) and `test_golden_{lib,readout,capture}.py`
-(967) — 5,118 lines, ~20% of the 26,186-line suite — guard the repo's own self-description: comment
-references, version strings, CI YAML, `.claude/` inertness, asset wording, plugin-doc drift, a harness
-script. `test_boundaries.py` (1,167) and `test_encoding.py` (1,080) — another 2,247 lines, ~9% — guard
-source *form* (an import, an encoding declaration) rather than behaviour. Each one is incident-backed
-and individually defensible, same as every scanning tier above. The risk is the trajectory, not the
-estate: this culture adds a guard per incident, and an incident in prose is cheap to have, while
-nothing automated fails when the engine's questions or artifacts get materially worse —
-`docs/product-validation.md`'s own verdict, "well tested and under-validated," which #169 exists to
-fix and this file does not. Re-measure before citing this line again — a suite this actively guarded
-moves fast enough that even a same-day count can already be wrong.
-
-**The meta-guard estate is at budget.** A new prose/CI/script guard needs the same two-named-instance
-bar #288 already applies to a scanning tier, one level up: name two real instances of the drift it
-would have caught, by issue number, or it is a taste rather than a budget line. Folding into an
-existing meta-guard file is preferred over opening a new one — most of the files above already hold
-more than one concern, and a new file is a new standing cost every future run pays, kept or not.
-
-**The next testing investment is #169, not another guard.** Running the product-validation protocol
-and recording its findings as the baseline is a judgment about the product that no meta-guard can
-stand in for, and it is the gap this repository has actually been missing.
+**A new guard that does not exercise shipped runtime code is not free.** A source-scanning tier
+(`test_boundaries.py`, `test_encoding.py`, `test_narrative_references.py` share `tests/_scan.py`
+since #288) or a prose/CI/script guard (#287) needs **two real instances of the drift it would have
+caught, named by issue number** — one plausible instance is a taste. Extend an existing tier's scan set
+before opening a new file: a new file is a standing cost every future run pays. Nothing automated fails
+when the engine's questions get materially worse; the next testing investment is #169, not another guard.
 
 ## The persistence diagnostics tier is frozen
 

@@ -2,14 +2,15 @@
 
 The narrow set of things that belong here, and why the set is narrow.
 
-This project's normal home for a bug narrative is the code, and after that the test that goes red
-when the guard is removed. `CLAUDE.md` states the rule under *Where a bug narrative lives*: a
-paragraph recounting a past bug must be backed by a red test, and if it is, it belongs **in that
-test** with one line and the test's name left at the call site. An external review proposed moving
-all of it here instead; that was rejected, because the person about to simplify a subtlety away is in
-the editor and a pointer they will not follow is worse than the paragraph it replaced.
+This project's home for a bug's *story* is the tracker — the issue and the pull request that closed
+it. The tree keeps the *rule*: one line at the call site naming the test that goes red, five lines at
+most in that test's docstring citing the issue. `CLAUDE.md` states it under *Where a bug narrative
+lives*, and `decision: the-tree-records-the-rule` is the argument. An external review once proposed
+moving every narrative here instead; that was rejected, because the person about to simplify a
+subtlety away is in the editor and a pointer they will not follow is worse than the line it replaced.
 
-So a record here is for **what no test can reach**. In practice that is three shapes:
+So a record here is for a **decision** — a choice between alternatives a reader could reopen — and
+never for an incident. In practice that is three shapes:
 
 - **A fact about something outside the repository** — an API's behaviour, a platform's, a service's.
   Nothing here can exercise it, so nothing here can go red for it.
