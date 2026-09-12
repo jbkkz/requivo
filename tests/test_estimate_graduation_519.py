@@ -90,6 +90,20 @@ def test_estimate_markdown_renders_ranges_totals_and_spread_in_human_words():
     assert md.endswith("\n") and not md.endswith("\n\n")
 
 
+def test_a_newline_inside_a_provider_field_cannot_open_a_new_heading():
+    """Found in review of #519: a heading is a line construct, and the Web re-parses every physical
+    line of a saved document, so a provider-filled title carrying a newline and a `#` would render
+    as a heading of its own. Both writers flatten free text onto the line it was placed on. The
+    control is the last assertion: the text itself survives, only the line break does not."""
+    stories = Stories(stories=[Story(id="S1", title="Request leave\n# INJECTED", i_want="a\nb")])
+    draft = EstimateDraft(items=[EstimateItem(story_id="S1", title="T\n# INJECTED", complexity="S",
+                                              days_low=1, days_high=1, note="n\n# INJECTED")],
+                          risks=["r\n# INJECTED"])
+    for md in (stories_markdown(stories), estimate_markdown(draft, [], "high")):
+        assert "\n# INJECTED" not in md
+        assert "INJECTED" in md
+
+
 def test_estimate_markdown_says_when_nothing_widens_the_range():
     """The must-fire pair for the spread section: a solid model renders the section as a sentence
     rather than as an absent heading a reader cannot tell from a rendering bug."""
