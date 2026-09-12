@@ -53,7 +53,7 @@ payload bundled with the install. Refining it or generating any other document i
 the key.
 
 **What it costs.** You pay Anthropic directly, on your own key: roughly **$0.03 to $0.06 per call**,
-and **$0.46 to $1.01** for a complete session — a full discovery plus every artifact — at current
+and **$0.47 to $1.01** for a complete session — a full discovery plus every artifact — at current
 rates. Every command that spends prints its own exact tokens and estimated cost when it finishes.
 The per-step table, its method and its limits are in [`docs/providers.md`][providers]; the figures
 there are recomputed from the rate table on every build, so they cannot quietly go stale.

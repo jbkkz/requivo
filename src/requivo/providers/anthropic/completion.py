@@ -34,6 +34,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from requivo.core.context import SystemPrompt
 from requivo.core.errors import ProviderOutputError
 from requivo.core.persistence import _atomic_write, ensure_store_dir
 from requivo.paths import debug_root
@@ -171,41 +172,59 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-def _system_blocks(system: str, reuse_system: bool) -> list[dict]:
-    """The `system` argument for one request — carrying a cache breakpoint only when something will
-    read it.
+_EPHEMERAL = {"type": "ephemeral"}
+
+
+def _system_blocks(system: str | SystemPrompt, reuse_system: bool) -> list[dict]:
+    """The `system` argument for one request: the shared leading block behind a cache breakpoint on
+    every call, and the operation's own remainder behind one only when something will re-read it.
 
     A `cache_control` breakpoint bills the block at **1.25x** input to write and **0.1x** to read, so
     it saves money from the second send of a byte-identical prefix and loses ~25% if there is never a
-    second send. Which of those it is depends entirely on the caller's loop, and this is a fixed cost
-    the caller alone can predict — hence the parameter rather than a rule here.
+    second send. The two blocks answer that question differently, which is why they are two blocks.
 
-    It genuinely pays *within* one operation: a JSON retry re-sends the identical system, `converse()`
-    runs up to 8 discovery turns off one prompt, and a golden capture runs K of them.
+    **The shared block always carries one (#258).** Every template opens with the same schema +
+    product-context block (`SHARED_PROMPT_HEAD`, ~9k tokens with the bundled cards), so it is the
+    prefix of every operation of a session and the second operation in a sitting reads it at 0.1x
+    instead of re-sending it at full price -- a five-op pipeline sends ~25k system tokens instead of
+    ~56k. The accepted cost, stated: a lone one-call verb with no second op inside the 5-minute TTL
+    pays the write premium once, 0.25 x ~9k ~= 2.3k token-equivalents. Pinned by
+    `test_a_one_call_verb_caches_the_shared_block_and_only_that` and
+    `test_the_shared_block_is_byte_identical_across_two_operations_in_one_sitting`.
 
-    **The retry case is an accepted cost of `reuse_system=False`, not an oversight.**
-    `decision: retry-regression-under-reuse-system-false`
-
-    It cannot pay *across* operations: `build_prompt()` substitutes the shared schema + context cards
-    into a **per-operation** template with `{{SCHEMA}}`/`{{CONTEXT}}` near its end, so the shared bulk
-    is a cache *suffix* and no breakpoint placement turns it into the *prefix* match caching needs
-    (#9). Pinned by `test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call` and
+    **The remainder carries one only under `reuse_system=True`**, the unchanged contract: it pays
+    *within* one operation -- a JSON retry re-sends the identical system, `converse()` runs up to 8
+    discovery turns off one prompt, a golden capture runs K of them -- and the caller's loop is the
+    only thing that can predict it, hence the parameter rather than a rule here. Pinned by
+    `test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call` and
     `test_every_generator_drives_a_real_call_without_a_cache_write`.
 
-    Making it pay across operations means moving the shared bulk to the **front** of all eight
-    templates. That is a change to what the model reads, so it owes the golden harness a cycle
-    (`docs/evaluations.md`) and is deliberately not bundled here.
+    **The retry case is an accepted cost of `reuse_system=False`, not an oversight.**
+    `decision: retry-regression-under-reuse-system-false` -- since #258 the regression is on the
+    remainder only (~1-3k tokens); the shared block is a cache read on the retry either way.
+
+    A plain `str` has no shared block to split off, so it is sent as one block with the breakpoint
+    per `reuse_system`, exactly as before #258 -- the arm the offline fakes drive, and a real caller
+    with a custom system prompt would take. Pinned by
+    `test_a_bare_string_system_has_no_shared_block_to_cache`.
     """
     # `dict[str, object]`, not the inferred `dict[str, str]` an untyped literal would give this
     # (#271): the value at `"text"` is a `str`, the value at `"cache_control"` is a nested `dict`, and
     # a dict's value type is invariant across every key once inferred -- assigning the nested dict
     # into a `dict[str, str]`-inferred `block` is what pyright refused. `list[dict]` is a wide return
     # annotation on this function already; this is the same looseness stated one level down, at the
-    # one dict literal that actually mixes value shapes.
-    block: dict[str, object] = {"type": "text", "text": system}
+    # dict literals that actually mix value shapes.
+    if isinstance(system, str):
+        block: dict[str, object] = {"type": "text", "text": system}
+        if reuse_system:
+            block["cache_control"] = dict(_EPHEMERAL)
+        return [block]
+    shared: dict[str, object] = {"type": "text", "text": system.shared,
+                                 "cache_control": dict(_EPHEMERAL)}
+    specific: dict[str, object] = {"type": "text", "text": system.specific}
     if reuse_system:
-        block["cache_control"] = {"type": "ephemeral"}
-    return [block]
+        specific["cache_control"] = dict(_EPHEMERAL)
+    return [shared, specific]
 
 
 def _transport_message(e: Exception) -> str:
@@ -237,11 +256,15 @@ def _transport_message(e: Exception) -> str:
     )
 
 
-def _complete(client, system: str, messages: list[dict], out_model, retries: int = 2,
+def _complete(client, system: str | SystemPrompt, messages: list[dict], out_model, retries: int = 2,
               validate=None, *, reuse_system: bool = True, model: str | None = None,
               operation: str | None = None):
     """One call → validated `out_model`. Retries with a nudge on malformed/non-conformant JSON.
     The nudge lives in a local copy so the caller's clean history is never polluted.
+
+    `system` is what `build_system_prompt` assembled -- the shared leading block and the operation's
+    remainder, sent as two text blocks so the first can sit behind a cache breakpoint on every call
+    (#258, see `_system_blocks`). A plain string is accepted and sent as one block.
 
     `operation` is the verb this call is for — `"analyze"`, `"brief"`, `"stories"`, ... the same
     vocabulary `_OP_PROMPTS` already uses — stamped onto the `CallRecord` purely as provenance:
@@ -254,9 +277,10 @@ def _complete(client, system: str, messages: list[dict], out_model, retries: int
     model missing required slots). It rides the same retry loop, so the model self-corrects.
 
     `reuse_system` is the caller's answer to "will this exact system prompt be sent again inside the
-    cache TTL?" — see `_system_blocks`. It defaults to True because that is the safe answer to an
-    unknown: mistakenly caching costs 25% once, mistakenly not caching costs the full price of every
-    repeat. Only a caller that *knows* it makes one call should say False.
+    cache TTL?" — see `_system_blocks`; since #258 it decides the breakpoint on the op-specific
+    remainder only, the shared block being cached regardless. It defaults to True because that is
+    the safe answer to an unknown: mistakenly caching costs 25% once, mistakenly not caching costs
+    the full price of every repeat. Only a caller that *knows* it makes one call should say False.
 
     `model` is the id to call and to bill against — threaded down from `AnthropicProvider(model=...)`,
     or `None` to fall back to `current_model_name()`'s env-chain resolution exactly as before.
