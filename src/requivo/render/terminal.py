@@ -281,7 +281,7 @@ def render_session_cost(revisions: list) -> None:
     written to disk -- this one is a `RevisionRecord` field read back off `session.json`, and
     `session import` is the documented channel through which someone else's archive arrives
     (invariant 14, one field along from `context_cards`). `display_token` is the same chokepoint
-    `deterministic/sessions.py` already routes every persisted string it prints through; it is a
+    `deterministic/sessions/` already routes every persisted string it prints through; it is a
     no-op on an ordinary date and only escapes one that tries to write a line of its own."""
     priced_revisions = [r for r in revisions if r.usage_input_tokens is not None]
     if not priced_revisions:

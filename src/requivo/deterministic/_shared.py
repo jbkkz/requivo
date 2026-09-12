@@ -136,9 +136,10 @@ def read_source(arg: str) -> str:
     return read_user_text(Path(arg)) if is_file_argument(arg) else arg
 
 
-# The old private spelling, kept alive for `deterministic/sessions.py`'s import while that file is
-# held by another change in flight (#360). It is one binding to one function object, so both names
-# behave identically; drop it, and switch that import to `read_source`, once that change lands.
+# The old private spelling, kept alive for `deterministic/sessions/lifecycle.py`'s import while that
+# module is held by another change in flight (#360). It is one binding to one function object, so
+# both names behave identically; drop it, and switch that import to `read_source`, once that change
+# lands.
 _read_source = read_source
 
 

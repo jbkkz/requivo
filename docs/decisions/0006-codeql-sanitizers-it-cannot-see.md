@@ -61,11 +61,12 @@ in the tree now: #499 (issue #425) added `tests/api/test_api_traversal.py`, whos
 `test_the_refusal_is_the_slug_guard_and_not_merely_a_missing_session` is the must-fire half -- named
 here so a reader can go run it, not taken on trust.
 
-**Do not turn the query off, add a path filter, or exclude `core/persistence.py` (or any file) from
-scanning.** The alerts are wrong today because the sanitizers hold today; the value of the query is
-that it is aimed at exactly the thing that breaks if they stop holding. Silencing the query removes
-that future signal along with today's noise, and `core/persistence.py` is the one file in the
-repository where that trade is worst — it is the store, and every session on disk goes through it.
+**Do not turn the query off, add a path filter, or exclude `core/persistence.py` (now the
+`core/persistence/` package, #550) from scanning.** The alerts are wrong today because the
+sanitizers hold today; the value of the query is that it is aimed at exactly the thing that breaks
+if they stop holding. Silencing the query removes that future signal along with today's noise, and
+the store is the one place in the repository where that trade is worst — every session on disk goes
+through it.
 
 The guards that stand behind today's dismissal, so a reviewer can check this record against the tree
 rather than trust it:
@@ -98,9 +99,10 @@ it would remove the one signal that would catch a real regression (`_SLUG_RE` wi
 weakened, `ARTIFACT_FILENAMES` made open-ended) along with the 31 false positives, and this is the
 file where that signal is worth the most.
 
-**Add a CodeQL path filter excluding `core/persistence.py` or `web/routes/`.** Same objection, scoped
-to fewer files: a filter is blind to the exact class of change most likely to introduce a real
-instance of what the query looks for, in exactly the files most likely to carry one.
+**Add a CodeQL path filter excluding `core/persistence.py` (now `core/persistence/`, #550) or
+`web/routes/`.** Same objection, scoped to fewer files: a filter is blind to the exact class of
+change most likely to introduce a real instance of what the query looks for, in exactly the files
+most likely to carry one.
 
 **Dismiss without a guard, on the strength of the reasoning above alone.** Rejected because this
 repository has a standing rule against exactly that (`CLAUDE.md`): a comment or a dismissal reason

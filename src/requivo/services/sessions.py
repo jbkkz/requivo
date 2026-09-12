@@ -282,7 +282,7 @@ class SessionService:
         and `test_no_session_still_names_the_ambient_root_for_the_default_repository`). It is an
         instance method for that reason alone.
 
-        It is a seam because six sites in `cli.py` and `deterministic/sessions.py` raise this, and
+        It is a seam because six sites in `cli.py` and `deterministic/sessions/` raise this, and
         reaching into `core.persistence` for it would put a *copy* concern in an allowlist of
         justified **filesystem** concerns (#76) — a message is not a path, even when it contains one.
 

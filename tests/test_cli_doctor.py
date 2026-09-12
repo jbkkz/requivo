@@ -501,7 +501,7 @@ def test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken(workspace):
 
 @pytest.mark.skipif(store.fcntl is None, reason="the fixture needs a directory literally named "
                      "'con' already on disk, which Windows itself refuses to create at the OS level "
-                     "regardless of anything Requivo's own code does (see core/persistence.py's "
+                     "regardless of anything Requivo's own code does (see core/persistence/identifiers.py's "
                      "comment above _RESERVED_DEVICE_NAMES). REASONED, NOT OBSERVED on an actual "
                      "Windows machine; it follows from the documented behaviour #221 already relies "
                      "on for the reserved-name refusal itself. UNTESTED ON WINDOWS: the whole of "
@@ -1104,7 +1104,7 @@ def test_a_symlink_at_a_discovery_guard_name_is_reported_and_not_followed(worksp
 
 @pytest.mark.skipif(store.fcntl is None, reason="the fixture needs a directory literally named "
                      "'con' already on disk, which Windows itself refuses to create at the OS level "
-                     "regardless of anything Requivo's own code does (see core/persistence.py's "
+                     "regardless of anything Requivo's own code does (see core/persistence/identifiers.py's "
                      "comment above _RESERVED_DEVICE_NAMES). REASONED, NOT OBSERVED on an actual "
                      "Windows machine; it follows from the documented behaviour #221 already relies "
                      "on for the reserved-name refusal itself. UNTESTED ON WINDOWS: the whole of "

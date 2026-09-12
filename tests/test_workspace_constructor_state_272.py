@@ -360,15 +360,20 @@ def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(
     re-entrantly, three times over."""
     from requivo.core import persistence as store
 
+    # `Store.__init__` (in `core/persistence/store.py`) imports `_resolve` from `lock.py` and calls
+    # the bare name, which resolves in `store.py`'s own globals -- not the package-level re-export
+    # (#550): patching `store._resolve` is a second binding the constructor never reads.
+    from requivo.core.persistence import store as store_module
+
     root = tmp_path_factory.mktemp("workspace")
     calls = []
-    real_resolve = store._resolve
+    real_resolve = store_module._resolve
 
     def _counting_resolve(path):
         calls.append(path)
         return real_resolve(path)
 
-    monkeypatch.setattr(store, "_resolve", _counting_resolve)
+    monkeypatch.setattr(store_module, "_resolve", _counting_resolve)
 
     s = store.Store(root)
     assert len(calls) == 1, "constructing a Store must resolve its root exactly once"

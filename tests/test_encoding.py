@@ -71,7 +71,7 @@ from pathlib import Path
 import pytest
 from _scan import list_python_files, parse_utf8, write_tree
 
-from requivo import cli, streams
+from requivo import cli, cli_support, streams
 from requivo.core.errors import InvalidModelError
 from requivo.deterministic import read_user_text
 
@@ -90,7 +90,7 @@ SCAN_ROOTS = {
 # `Path.rglob` on a directory that does not exist returns `[]`, and `assert not []` is an all-clear
 # nobody earned -- the failure #10 exists in order not to repeat.
 SCAN_ANCHORS = {
-    "src/requivo": ("core/persistence.py", "deterministic/__init__.py"),
+    "src/requivo": ("core/persistence/store.py", "deterministic/__init__.py"),
     "scripts": ("golden_lib.py",),
 }
 
@@ -1051,7 +1051,10 @@ def _run_app_on_an_unconfigurable_stdout(monkeypatch, argv, ledger_calls=()):
         calls = list(ledger_calls)
 
     monkeypatch.setattr(cli, "track_usage", lambda: contextlib.nullcontext(_Ledger()))
-    monkeypatch.setattr(cli, "render_usage", lambda ledger: None)
+    # `render_usage` moved to `cli_support.py` by #550, along with `_render_usage_safely` -- the
+    # function that reads it. `cli.py` no longer imports the name at all, so patching it there would
+    # be a second binding reaching nothing.
+    monkeypatch.setattr(cli_support, "render_usage", lambda ledger: None)
     with pytest.raises(SystemExit) as ei:
         cli.app(argv)
     return ei.value.code, err.getvalue()
@@ -1117,9 +1120,10 @@ def test_the_usage_line_cannot_kill_a_run_that_already_paid_for_its_call(monkeyp
     err = io.StringIO()
     monkeypatch.setattr(sys, "stderr", err)
 
-    # The control: unwrapped, this really does raise on this ledger and this stream.
+    # The control: unwrapped, this really does raise on this ledger and this stream. Through
+    # `cli_support`, not `cli` (#550) -- `cli.py` no longer imports the name at all.
     with pytest.raises(UnicodeEncodeError):
-        cli.render_usage(ledger)
+        cli_support.render_usage(ledger)
 
     cli._render_usage_safely(ledger)      # the wrapper must not
     assert "could not be encoded" in err.getvalue(), (

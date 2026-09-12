@@ -103,8 +103,9 @@ def _unreadable_model_json(tmp_path, request):
     stat on the `model.json` inside it raises `PermissionError`, not `False`.
 
     Found in review of #402: the new `Path.is_file()` gate that stops a nonexistent path from being
-    mined re-raises everything that is not ENOENT/ENOTDIR (`core/persistence.py`'s `_probe` exists
-    for exactly this shape) -- so an unreadable directory used to escape as a bare traceback instead
+    mined re-raises everything that is not ENOENT/ENOTDIR (`core/persistence/identifiers.py`'s
+    `_probe` exists for exactly this shape) -- so an unreadable directory used to escape as a bare
+    traceback instead
     of the clean refusal every other verb failure produces."""
     d = tmp_path / "noaccess"
     d.mkdir()

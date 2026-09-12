@@ -348,7 +348,7 @@ def _lock_health() -> dict:
         # `SessionService().repo.list_slugs()`, not `store.list_session_slugs()`: this is *which
         # slugs currently exist*, and `SessionRepository.list_slugs()` is the backing-neutral
         # primitive for exactly that question (invariant 14's own reasoning for `svc.repo.lock` in
-        # `deterministic/sessions.py`). `scan_lock_root()` above has no such equivalent to route
+        # `deterministic/sessions/`). `scan_lock_root()` above has no such equivalent to route
         # through -- a lock-root scan is a fact about the file backing, the same way `canonical_dir`
         # is, and it is allowlisted in `tests/test_boundaries.py` on those terms.
         repo = SessionService().repo

@@ -12,7 +12,7 @@ verb's own tests. Each site was individually defensible; what was wrong was the 
 verb would have gone green on all five wordings, and the sixth site added later would have arrived
 with a sixth.
 
-`no_session_message` in `core/persistence.py` is the one builder. These tests assert against the
+`no_session_message` in `core/persistence/store.py` is the one builder. These tests assert against the
 *rendered* output of real verbs rather than against that function, because a shared builder nobody
 calls is the failure this replaced -- `_no_session` already named the root and was reachable from
 none of the verbs a user runs.

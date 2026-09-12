@@ -85,7 +85,12 @@ requivo/
     contracts.py     Pydantic contracts (StrictModel base) + stable ids + slot vocabulary, and the
                      permissive PersistedEngineOutput mirror everything reads off disk through
     analysis.py      readiness / soft slots / blockers    context.py   card + prompt assembly (no LLM)
-    persistence.py   session store: .requivo layout, revisions, migrate_legacy, atomic writes
+    persistence/     session store package (#550): store.py Store + revisions + migrate_legacy,
+                     atomic.py _atomic_write + the transient-rename retry, identifiers.py slug/
+                     filename shape + reserved-name refusal + derive_slug, lock.py session_lock +
+                     is_contained (invariant 17), scan.py the frozen report-only diagnostics tier,
+                     models.py the session metadata schema + model I/O — every public name still
+                     imports from `requivo.core.persistence`
     validation.py    validate_proposal → structured errors  errors.py  RequivoError (+ .to_dict())
     dependencies.py  the dependency DAG: propagate / diff_models / diff_reasoning / thinner_evidence
     integrity.py     does a session directory tell the truth about itself? evidence is the
@@ -128,7 +133,9 @@ requivo/
                      and the membership rule that keeps it from becoming a second deterministic.py
     doctor.py        doctor / schema / context: the verbs that answer for the install, not a session;
                      owns card health + the two remedy hints, which `session verify` imports
-    sessions.py      session init / list / show / migrate / export / verify / import
+    sessions/        session verbs package (#550): __init__.py register_sessions (the seam
+                     `deterministic/__init__.py` binds), lifecycle.py init/list/show/migrate/
+                     rescope/delete, archives.py export/import/restore, verify.py verify
     model.py         model show / validate / apply / diff       artifacts.py  artifact save / list / show
   web/             Requivo Web — FastAPI + Jinja2 + HTMX over the services (the `[web]` extra)
     app.py           create_app()   security.py  cross-site guard   routes/  viewmodels/  templates/
@@ -323,7 +330,8 @@ when the engine's questions get materially worse; the next testing investment is
 ## The persistence diagnostics tier is frozen
 
 A parallel drift, in the store rather than in the test suite: the report-only diagnostics in
-`core/persistence.py` and `deterministic/doctor.py` —
+`core/persistence/scan.py` (moved out of the former `core/persistence.py` by #550, unchanged) and
+`deterministic/doctor.py` —
 `NonSessionEntry`/`UnexaminableEntry`/`_describe_non_session`/`scan_session_root`/`list_*` (~260
 lines) and the lock-residue scan (`scan_lock_root`, `_lock_health`, ~110 lines together) — have grown
 faster than the states they report actually occur. Each addition is well built and each mints public

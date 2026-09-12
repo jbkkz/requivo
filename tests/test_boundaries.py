@@ -59,7 +59,7 @@ implementation, which invariant 16 exists to prevent); the allowlist entries bel
 Where the line sits
 -------------------
 Invariant 7 used to read "provider-free and IO-free". The second half was never true and was never
-meant to be: `persistence.py` writes sessions, `context.py` reads context cards, `contracts.py` and
+meant to be: `persistence/` writes sessions, `context.py` reads context cards, `contracts.py` and
 `analysis.py` read the framework schema. A guard written against that wording would have to fail on
 correct code, so this file encodes what the invariant *means*:
 
@@ -845,7 +845,7 @@ def test_the_provider_guard_names_what_it_scanned():
     labels = sorted(label for _, _, label in provider_subjects())
     assert "cli.py" in labels
     assert "http.py" in labels, "the provider guard did not scan http.py; it scanned " + str(labels)
-    for expected in ("render/terminal.py", "web/config.py", "deterministic/sessions.py", "api/app.py"):
+    for expected in ("render/terminal.py", "web/config.py", "deterministic/sessions/lifecycle.py", "api/app.py"):
         assert expected in labels, f"the provider guard did not scan {expected}; it scanned {labels}"
 
 
@@ -940,6 +940,11 @@ def test_the_surface_guard_refuses_a_subject_it_could_not_read():
 # recorded so that the next one has to be argued for rather than merely typed.
 
 SURFACE_MODULE = REPO_ROOT / "src" / "requivo" / "cli.py"
+# `cli_support.py` joined the same way #550 split it out -- named individually rather than folded
+# into a tree, since it is a lone sibling module rather than a package: `_wrote_file`'s
+# `store.artifact_path` reach moved out of `cli.py` with it, and a guard that only watched `cli.py`
+# would have gone quietly blind to that call rather than reporting it moved.
+SURFACE_SUPPORT_MODULE = REPO_ROOT / "src" / "requivo" / "cli_support.py"
 SURFACE_TREES = (
     (REPO_ROOT / "src" / "requivo" / "deterministic", "requivo.deterministic"),
     (REPO_ROOT / "src" / "requivo" / "web", "requivo.web"),
@@ -961,10 +966,11 @@ _SURFACE_STORAGE_ALLOWLIST = {
         "no path on purpose -- a Postgres backing has none -- so there is no seam to route this "
         "through, and 'where is it?' is the answer the caller asked for."
     ),
-    ("cli.py", "artifact_path"): (
-        "prints the path a generated artifact was written to. Through the chokepoint rather than "
-        "joined at the call site (#36): it validates a filename that came off disk, and a printed "
-        "path is a disclosure like any other."
+    ("cli_support.py", "artifact_path"): (
+        "`_wrote_file` prints the path a generated artifact was written to -- moved out of `cli.py` "
+        "itself by #550, along with `_wrote`/`_generator_service`/`_announce_bind` and the rest of "
+        "the shared plumbing. Through the chokepoint rather than joined at the call site (#36): it "
+        "validates a filename that came off disk, and a printed path is a disclosure like any other."
     ),
     ("cli.py", "write_artifact_file"): (
         "writes the three neutral epic exports, which are extra *views* of one already-saved "
@@ -979,11 +985,22 @@ _SURFACE_STORAGE_ALLOWLIST = {
         "and has no slug, so no repository method can reach it: the reference resolver falls back "
         "to it precisely when the store has nothing."
     ),
-    ("deterministic/sessions.py", "canonical_dir"): (
-        "four sites, all about a directory: `session init` and `session import` report where the "
-        "session landed, and `session export` zips the tree. See the cli.py entry."
+    # #550 split `deterministic/sessions.py` into a package; each key below now names the specific
+    # submodule the call site lives in rather than the flat file, so a future call arriving under a
+    # name already argued for elsewhere still has to be argued for in *its own* module.
+    ("deterministic/sessions/lifecycle.py", "canonical_dir"): (
+        "`session init` reports where the session landed. See the cli.py entry."
     ),
-    ("deterministic/sessions.py", "ensure_store_dir"): (
+    ("deterministic/sessions/archives.py", "canonical_dir"): (
+        "`session export`, `session restore` and `session import` each report or need the directory "
+        "they are about to zip, copy a revision into, or move an extracted archive over. See the "
+        "cli.py entry."
+    ),
+    ("deterministic/sessions/verify.py", "canonical_dir"): (
+        "the restore remedy line searches this session's own `revisions/` for the newest one this "
+        "build can read, before it ever tells the reader `session restore` would do anything."
+    ),
+    ("deterministic/sessions/archives.py", "ensure_store_dir"): (
         "creates `.requivo/sessions/` before the import moves a session into it. On a fresh "
         "workspace `session import` is one of the calls that can bring the store root into "
         "existence, and whichever one does writes the privacy `.gitignore` (#211) -- a statement "
@@ -991,14 +1008,22 @@ _SURFACE_STORAGE_ALLOWLIST = {
         "above and has no backing-neutral form: a repository with no filesystem has no root to "
         "create."
     ),
-    ("deterministic/sessions.py", "migrate_legacy"): (
+    ("deterministic/sessions/lifecycle.py", "migrate_legacy"): (
         "converts a session in the retired `out/` layout into one in `.requivo/sessions/`. A "
         "statement about two filesystem layouts, which is what the verb *is*; a backing with "
         "neither has nothing to migrate."
     ),
-    ("deterministic/sessions.py", "validate_slug"): (
+    ("deterministic/sessions/archives.py", "validate_slug"): (
         "checks that a directory name inside an uploaded archive is slug-shaped, before anything is "
         "extracted. Asked about a name, before any session exists to ask a repository about."
+    ),
+    ("deterministic/sessions/archives.py", "_replace_with_retry"): (
+        "the transient-`PermissionError` retry `session export`'s and `session restore`'s own "
+        "`tmp.replace(...)` share with the store's `_atomic_write` (invariant 18) -- moved to "
+        "`core/persistence/atomic.py` by #550 so the two writers share one implementation instead of "
+        "two copies of the identical loop. A raw rename retry, not a session concern: there is no "
+        "repository method to route a filesystem rename through, the same argument the "
+        "`_atomic_write` entry above makes."
     ),
     ("deterministic/doctor.py", "scan_session_root"): (
         "the one caller that needs all three parts of *one* partition. `list_slugs` and "
@@ -1049,18 +1074,18 @@ _SURFACE_STORAGE_ALLOWLIST = {
         "writes the final malformed reply the JSON retry loop gave up on into `.requivo/debug/`, so "
         "a bug report is one paste (#283). Not a session and not routable through the repository -- "
         "`.requivo/debug/` is a human-read debugging aid with no repository method and none should "
-        "exist for it, the same argument the `deterministic/sessions.py` entries above make for "
+        "exist for it, the same argument the `deterministic/sessions/` entries above make for "
         "`.requivo/sessions/`. Reached by its private, underscore-prefixed name rather than a "
         "promoted public one (#355): the alternative was a second atomic-write implementation, which "
-        "invariant 16 exists to prevent, and this is the one caller outside `core/persistence.py` "
+        "invariant 16 exists to prevent, and this is the one caller outside `core/persistence/` "
         "that needs it."
     ),
     ("providers/anthropic/completion.py", "ensure_store_dir"): (
         "creates `.requivo/debug/` before the first failed reply is written into it, the same "
-        "reasoning as the `deterministic/sessions.py` entry above -- a repository with no filesystem "
-        "has no debug root to create."
+        "reasoning as the `deterministic/sessions/archives.py` entry above -- a repository with no "
+        "filesystem has no debug root to create."
     ),
-    ("deterministic/sessions.py", "UnexaminableEntry"): (
+    ("deterministic/sessions/lifecycle.py", "UnexaminableEntry"): (
         "a plain dataclass (name, error), not a call -- the identical shape as the `EngineError` "
         "entry above: importing a type orchestrates nothing. It is the vocabulary this store already "
         "speaks for 'could not examine' (`SessionRepository.list_unexaminable` already returns it "
@@ -1075,13 +1100,17 @@ _SURFACE_STORAGE_ALLOWLIST = {
 def surface_subjects() -> list[tuple[Path, str, str]]:
     """Every surface file, as (path, package, label). The label is the allowlist key.
 
-    `cli.py` is named individually and the other three are walked, for the reason `scan` walks core
-    recursively: `deterministic/` became a package five days ago (#73) and `web/` gains route
-    modules, so a guard listing files by hand would go quietly narrower with each one. Both
-    helpers refuse an absent or empty subject, so a renamed package is 'could not look' here too.
+    `cli.py` and `cli_support.py` are named individually and the other three are walked, for the
+    reason `scan` walks core recursively: `deterministic/` became a package five days ago (#73) and
+    `web/` gains route modules, so a guard listing files by hand would go quietly narrower with each
+    one. Both helpers refuse an absent or empty subject, so a renamed package is 'could not look'
+    here too.
     """
     src = REPO_ROOT / "src" / "requivo"
-    subjects = [(subject_module(SURFACE_MODULE), "requivo", "cli.py")]
+    subjects = [
+        (subject_module(SURFACE_MODULE), "requivo", "cli.py"),
+        (subject_module(SURFACE_SUPPORT_MODULE), "requivo", "cli_support.py"),
+    ]
     for root, package in SURFACE_TREES:
         subjects.extend((p, pkg, p.relative_to(src).as_posix()) for p, pkg in scan(root, package))
     return subjects
@@ -1247,7 +1276,7 @@ def test_the_storage_guard_names_what_it_scanned():
     labels = sorted(label for _, _, label in surface_subjects())
     assert "cli.py" in labels
     for expected in (
-        "deterministic/sessions.py", "deterministic/doctor.py", "web/dependencies.py",
+        "deterministic/sessions/lifecycle.py", "deterministic/doctor.py", "web/dependencies.py",
         "providers/anthropic/completion.py", "api/dependencies.py",
     ):
         assert expected in labels, f"the storage guard did not scan {expected}; it scanned {labels}"

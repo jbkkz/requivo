@@ -14,7 +14,7 @@ from requivo.services.sessions import SessionService
 
 router = APIRouter()
 
-# The five-key shape `deterministic/sessions.py`'s private `_session_list_row` already publishes as
+# The five-key shape `deterministic/sessions/lifecycle.py`'s private `_session_list_row` already publishes as
 # `session list --json`'s own row (present-and-null rather than absent-when-unknown, so a consumer
 # never has to branch on a differently-shaped row). Restated here rather than imported: that
 # function is module-private to a file this lane does not own, and reaching into another surface's
