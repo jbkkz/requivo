@@ -50,10 +50,10 @@ anything. `requivo demo` is free and needs no key at all.
 
 | Step | Calls | Input tokens | Output tokens | Estimated cost |
 |---|---|---|---|---|
-| One provider call | 1 | 8,000–12,600 | 1,300–3,800 | **$0.03–$0.06** |
+| One provider call | 1 | 8,100–12,700 | 1,300–3,800 | **$0.03–$0.06** |
 | A full interactive discovery (8 turns + the assessment) | 9 | — | — | **$0.26–$0.57** |
 | Every remaining artifact (prd, stories, estimate, criteria, epic, release) | 7 | — | — | **$0.20–$0.44** |
-| A complete session, end to end | 16 | — | — | **$0.46–$1.01** |
+| A complete session, end to end | 16 | — | — | **$0.47–$1.01** |
 
 Priced at **$2.00 / $10.00 per million tokens** (input / output) for `claude-sonnet-5`, rates as of
 **2026-08-29**. An estimate, never a bill — and a *derived* one: `tests/test_cost_claims.py`
