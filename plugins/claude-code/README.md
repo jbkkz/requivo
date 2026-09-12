@@ -160,8 +160,9 @@ Two things that would be reasonable to assume and are not true:
   session can opt into a subset when it is created, and that selection is then held constant for its
   lifetime. But nothing picks the relevant ones for you, and adding a card can sharpen one discovery
   while diluting another.
-- **`requivo stories` and `requivo estimate` are terminal-only analyses.** They print; they save no
-  artifact and are not tracked for staleness. They are also not among the six skills.
+- **`requivo stories` and `requivo estimate` are not among the six skills.** They are CLI generators
+  like the criteria and the epic: each prints and saves its document (`stories.md`, `estimate.md`)
+  and is tracked for staleness like every other artifact. Until #519 they were terminal-only.
 
 ## What the skills send to Claude
 
@@ -176,8 +177,8 @@ honestly empty.
 ## Beyond the six skills
 
 The `requivo` CLI reaches the same sessions and carries generators the plugin does not wrap: acceptance
-criteria, an epic with tracker exports for GitHub and GitLab, release notes, and the terminal-only
-`stories` and `estimate` analyses. Those run in Requivo's own **optional API mode**, so unlike the six
+criteria, an epic with tracker exports for GitHub and GitLab, release notes, user stories and the
+uncertainty-aware estimate. Those run in Requivo's own **optional API mode**, so unlike the six
 skills they need the `requivo[anthropic]` extra and an `ANTHROPIC_API_KEY`. That is the opposite of
 what the install section above says you need for the plugin, and both are true: the skills reason in
 your Claude Code session, these verbs call the Anthropic API directly. `requivo doctor` reports

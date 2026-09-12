@@ -289,12 +289,27 @@ def test_the_web_offers_every_artifact_the_service_can_generate(client, with_pro
     assert saved.status_code == 200 and "acceptance criteria" in saved.text
 
 
-def test_terminal_only_analyses_are_not_generatable_artifacts(client, with_provider):
-    # `stories` reasons but produces no document (it feeds the estimate), so there is nothing to save
-    # or track. Rejected before any provider call — the fake would raise if reached.
-    with_provider()
+def test_the_two_former_analyses_are_generatable_and_an_unknown_type_still_is_not(client, with_provider):
+    # Until #519 this test pinned the opposite for `stories`: it reasoned but produced no document, so
+    # the route refused it. Both analyses save a document now (`decision: the-estimate-graduates`),
+    # and `estimate` saves the stories it was reasoned against beside itself, from one snapshot. The
+    # unknown-type refusal is the must-fire half: the fake would raise if reached, since it holds no
+    # reply for that call.
+    with_provider(
+        json.dumps({"stories": [{"id": "S1", "title": "Request leave"}]}),
+        json.dumps({"stories": [{"id": "S1", "title": "Request leave"}]}),
+        json.dumps({"items": [{"story_id": "S1", "title": "Request leave", "complexity": "S",
+                               "days_low": 1, "days_high": 2}]}),
+    )
     _make_session("leave-approval", problem=HIGH_EXPLICIT)
-    assert client.post("/sessions/leave-approval/artifacts/stories").status_code == 400
+    assert client.post("/sessions/leave-approval/artifacts/risk-register").status_code == 400
+
+    assert client.post("/sessions/leave-approval/artifacts/stories").status_code == 200
+    assert client.post("/sessions/leave-approval/artifacts/estimate").status_code == 200
+    saved = client.get("/sessions/leave-approval/artifacts/estimate")
+    assert saved.status_code == 200 and "Request leave" in saved.text
+    page = client.get("/sessions/leave-approval").text
+    assert "Estimate" in page and "User stories" in page
 
 
 # ── the MVP flow ──────────────────────────────────────────────────────────────

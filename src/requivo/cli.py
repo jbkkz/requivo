@@ -740,17 +740,23 @@ def _generator_service(a, client) -> tuple[str, DiscoveryService]:
 
 
 def _wrote(slug: str, result, label: str) -> None:
-    """Say where a generated document went — the one line five generator verbs share.
+    """Say where a generated document went — the one line every generator verb shares.
 
     The path goes through `artifact_path` rather than being re-joined here (#36). Printing a path is
     still disclosing one, and `result.status.filename` is a plain `str` off an `ArtifactStatus` that
     nothing re-validates on the way out; that function carries the argument for why a display-only
     join is not exempt from the chokepoint, and which door is actually open."""
+    _wrote_file(slug, result.status, label)
+
+
+def _wrote_file(slug: str, status, label: str) -> None:
+    """The same line over a bare `ArtifactStatus` — for the verb that writes two documents from one
+    result (`estimate`, #519) and so has a second status that is not `result.status`."""
     # Through the chokepoint rather than joined here (#36), and direct rather than through the
     # repository (#76): `artifact_path` validates both halves of a name that came *off disk*, and a
     # printed path is a disclosure like any other. The repository's `load_artifact` is the read
     # seam; there is no seam that hands back a path, on purpose.
-    print(f"\nWrote {label} → {store.artifact_path(slug, result.status.filename)}")
+    print(f"\nWrote {label} → {store.artifact_path(slug, status.filename)}")
 
 
 def _cmd_brief(a, client) -> None:
@@ -779,25 +785,27 @@ def _cmd_prd(a, client) -> None:
 
 
 def _cmd_stories(a, client) -> None:
-    # Terminal-only: stories are an analysis feeding the estimate, not a deliverable with a file.
     slug, disco = _generator_service(a, client)
-    render_stories(disco.reason(slug, "stories"))
+    # Saved like every other generator since #519 (`decision: the-estimate-graduates`); it was a
+    # terminal-only analysis with a filename nothing in the repository could write to.
+    result = disco.generate(slug, "stories", surface="cli-stories")
+    render_stories(result.artifact)
+    _wrote(slug, result, "user stories")
 
 
 def _cmd_estimate(a, client) -> None:
     slug, disco = _generator_service(a, client)
-    # One snapshot for both calls, decided rather than left as a residual: the estimate is read
-    # against these stories, so a snapshot each let them be read against two revisions (#135). Pinned
-    # by `test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot`.
-    snap = disco.sessions.snapshot(slug)
-    stories = disco.reason_from(snap, "stories")
-    render_stories(stories)   # rendered here, not after both calls, so the stories arrive while the estimate runs
-    # The estimate is the one call that needs a prior artifact as input, so it does not fit the plain
-    # model→artifact shape — but "does not fit" was being spent on a direct provider call, on a second
-    # client this verb built for itself (#77). It fits `reason()` perfectly well: `stories` rides the
-    # same `**kwargs` a release note's `version` does. Terminal-only, so nothing is written.
-    draft, soft, confidence = disco.reason_from(snap, "estimate", stories=stories)
-    render_estimate(draft, soft, confidence)
+    # Two calls, one snapshot, two files against one revision — all inside `generate()` since #519,
+    # because the estimate is read against the stories and the file it is saved beside has to be
+    # those stories (#135, invariant 6). The stories still arrive on the terminal while the estimate
+    # runs: `on_stories` is called the moment they are saved, before the second call is paid for.
+    # Pinned by `test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot` (the snapshot
+    # count) and `test_the_estimate_verb_writes_both_files_and_still_prints_both_views`.
+    result = disco.generate(slug, "estimate", surface="cli-estimate", on_stories=render_stories)
+    est = result.artifact
+    render_estimate(est.draft, est.soft, est.confidence)
+    _wrote_file(slug, est.stories_status, "user stories")
+    _wrote(slug, result, "estimate")
 
 
 def _cmd_criteria(a, client) -> None:

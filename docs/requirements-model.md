@@ -150,13 +150,16 @@ Python.
 
 **One call is deliberately outside the policy, and it is named here rather than left to be
 discovered.** `estimate` is prompted with no language sentence, so its `note` and `risks` — free text
-a reader sees — come back in whatever language the model settles on. That is not an oversight in the
-sweep: `estimate` is the one generator that produces **no file**. Every artifact on the English side
-is written to disk and read downstream by a dev team or a tracker; `estimate` is a terminal analysis
-read by the person who ran it, which is the same reader, and the same room, as the mirroring half.
-Assigning it would extend the policy rather than record it, so it is left open and stated as open.
-Until it is decided, "every artifact anchors English" means the six with filenames, and a mixed-
-language `requivo estimate` is a known consequence rather than a contradiction.
+a reader sees — come back in whatever language the model settles on. When the sweep was made that
+was not an oversight: `estimate` was the one generator that produced **no file** — a terminal
+analysis read by the person who ran it, the same reader and the same room as the mirroring half —
+where every artifact on the English side is written to disk and read downstream by a dev team or a
+tracker. Since #519 the estimate *is* written to disk (`estimate.md`, beside the `stories.md` it was
+reasoned from), so the reason for leaving it open has weakened; the edge stays open all the same,
+because closing it is a prompt change, and a prompt change owes a golden re-capture that #519
+deliberately did not make. Until it is decided, "every artifact anchors English" means the six
+that carried a filename before #519, and a mixed-language `estimate.md` is a known consequence
+rather than a contradiction.
 
 Requivo Web reflects the same split. The page declares `lang="en"` for its own chrome, and the
 regions the policy says mirror the request — the request itself, the understanding, the questions —

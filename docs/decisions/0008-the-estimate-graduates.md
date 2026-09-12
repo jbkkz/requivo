@@ -94,3 +94,20 @@ but to make the staleness louder — which is the mechanism this decision exists
 - **Save the estimate as a rendering of the stories rather than as its own type.** Rejected: they
   consume different slots and go stale for different reasons, which is a fact `_ARTIFACT_SLOTS_RAW`
   already records separately for each.
+
+## Addendum (2026-09-12, #519): the `/analyses/{stories,estimate}` routes are retired
+
+`decision: the-http-api-facade` §1 planned `POST /sessions/{slug}/analyses/stories` and
+`.../analyses/estimate` over `DiscoveryService.reason` — "terminal-only analysis, nothing persisted;
+POST because it pays" — as slice 3 of #425, and #426 named their fate as part of this question. With
+#519 landed, both types are in `GENERATABLE`, so both are reached through the artifacts generate
+route (`POST /sessions/{slug}/artifacts/{type}`) like every other artifact, with the same save, the
+same `source_revision` and the same staleness row. A separate `analyses` resource would then be a
+second route to the same generation whose only difference is *not* persisting — which is the state
+this decision exists to end, and the wrong side of the "one apply, one generation, one staleness
+rule" line for a frozen API to promise. **Retired, not aliased**: an alias is a route the freeze
+would have to keep. The remaining slices of #425 read this here rather than in 0004, which is left
+as written; the two `analyses` rows in its §1 table are superseded by this paragraph.
+
+`DiscoveryService.reason()` / `reason_from()` stay as the unsaved seam for a caller that holds its
+own snapshot; nothing in the CLI or the Web calls them any more.

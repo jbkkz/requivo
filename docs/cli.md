@@ -106,11 +106,17 @@ Each is a view of the saved model: `requivo <verb> <slug>`.
 |---|---|
 | `requivo brief <slug>` | The decision brief — what to review before estimating |
 | `requivo prd <slug>` | Product Requirements Document |
-| `requivo stories <slug>` | User stories |
+| `requivo stories <slug>` | User stories (`stories.md`) |
 | `requivo criteria <slug>` | Given/When/Then acceptance criteria |
-| `requivo estimate <slug>` | Uncertainty-aware estimate (derives stories first) |
+| `requivo estimate <slug>` | Uncertainty-aware estimate (`estimate.md`). Derives the stories first and saves them too, as `stories.md`, against the same revision — the estimate is reasoned against those stories, so they are half of its provenance |
 | `requivo epic <slug> [--export-json] [--github] [--gitlab]` | Delivery epic + optional tracker issue plans and a tool-neutral `epic.json` |
 | `requivo release <slug> [version]` | Client-facing release notes |
+
+Every row saves its document under `<session>/artifacts/` and records it in `session.json` with the
+revision it was generated from, so `requivo status` can flag it stale when the model moves past what
+it rests on. `stories` and `estimate` were the two exceptions until #519 — printed and never saved —
+and `estimate` is the one document where being stale costs money, which is why it graduated
+(`decision: the-estimate-graduates`).
 
 `--export-json`/`--github`/`--gitlab` write versioned envelopes outside `ArtifactService` (no
 staleness row of their own) that stamp `source_revision` and `slug` — the basis they were rendered

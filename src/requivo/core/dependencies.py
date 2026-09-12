@@ -54,23 +54,29 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "release": {"problem", "success_metrics", "workflow", "risks"},
 }
 
-# The persisted file for each artifact, or None when the artifact is only rendered to the terminal
-# (stories, estimate). Used by change-detection to flag *existing* stale files on disk.
+# The persisted file for each artifact. Used by change-detection to flag *existing* stale files on
+# disk. `None` meant "rendered to the terminal only", which `stories` and `estimate` were until #519
+# (`decision: the-estimate-graduates`); every type names a file now. The `str | None` type and the
+# two arms that read a `None` (`render_impact`, `migrate_legacy`) are left as they are: folding this
+# table into ARTIFACT_FILENAMES below is the merge #270 deferred, and it is a separate change.
 ARTIFACT_FILES: dict[str, str | None] = {
-    "brief": "solution-assessment.md", "prd": "prd.md", "stories": None, "estimate": None,
-    "criteria": "acceptance-criteria.md", "epic": "epic.md", "release": "release-notes.md",
+    "brief": "solution-assessment.md", "prd": "prd.md", "stories": "stories.md",
+    "estimate": "estimate.md", "criteria": "acceptance-criteria.md", "epic": "epic.md",
+    "release": "release-notes.md",
 }
 
-# type → filename under <session>/artifacts/, for everything that can be *persisted*. It differs from
-# ARTIFACT_FILES above in `stories`, which is saveable (Claude Code writes one) but has no file in the
-# dependency map because the provider path renders it to the terminal, and in `estimate`, which is
-# terminal-only on both counts. Core holds it because three layers ask the same question — the service
-# that saves, the CLI that offers `--type`, and the integrity checker that verifies what a session
-# claims to hold — and a vocabulary that exists in two places drifts.
+# type → filename under <session>/artifacts/, for everything that can be *persisted*. Core holds it
+# because three layers ask the same question — the service that saves, the CLI that offers `--type`,
+# and the integrity checker that verifies what a session claims to hold — and a vocabulary that
+# exists in two places drifts. It used to differ from ARTIFACT_FILES above in `stories` (saveable by
+# Claude Code, unwritten by the provider path) and `estimate` (terminal-only on both counts); since
+# #519 the two agree on every type, and `test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file`
+# holds them there.
 ARTIFACT_FILENAMES: dict[str, str] = {
     "brief": "solution-assessment.md",
     "prd": "prd.md",
     "stories": "stories.md",
+    "estimate": "estimate.md",
     "criteria": "acceptance-criteria.md",
     "epic": "epic.md",
     "release": "release-notes.md",

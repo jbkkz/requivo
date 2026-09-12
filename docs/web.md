@@ -154,9 +154,11 @@ nothing noticed (#329).
   the page leads with **What changed**: which parts of the solution moved, which decisions and
   assumptions need review, and which documents need updating. All of it computed from the dependency
   graph, never generated.
-- **Generate** — the decision brief is the one primary action. PRD, acceptance criteria, epic and
-  release notes live under *More documents*. Each is saved with its source revision and marked *Draft*
-  when high-impact topics are still unresolved. Nothing is ever regenerated on your behalf.
+- **Generate** — the decision brief is the one primary action. PRD, user stories, acceptance
+  criteria, estimate, epic and release notes live under *More documents*. Each is saved with its
+  source revision and marked *Draft* when high-impact topics are still unresolved. Nothing is ever
+  regenerated on your behalf. The estimate is two provider calls: it derives the stories first and
+  saves both against the same revision (#519).
 - **Traceability details** — one disclosure holding everything the engine knows: the per-topic
   understanding, coverage, every open question, the decisions and contested premises, provenance, and
   the raw model export. The primary flow works without opening it.
@@ -329,11 +331,11 @@ Even though it is a local app:
 
 ## Limits of this first version
 
-- Generation covers every document the shared service produces — decision brief, PRD, acceptance
-  criteria, delivery epic, release notes. The buttons come from the service's own vocabulary, so a new
-  generator appears here without touching the Web. The epic's tracker exports (`epic.json`,
-  `epic.github.json`, `epic.gitlab.json`) remain CLI-only; `stories` and `estimate` are terminal
-  analyses that produce no document at all.
+- Generation covers every document the shared service produces — decision brief, PRD, user stories,
+  acceptance criteria, estimate, delivery epic, release notes. The buttons come from the service's
+  own vocabulary, so a new generator appears here without touching the Web — which is exactly how
+  `stories` and `estimate` arrived when #519 gave them a file. The epic's tracker exports
+  (`epic.json`, `epic.github.json`, `epic.gitlab.json`) remain CLI-only.
 - Provider calls are synchronous (run in a worker thread so the event loop is not blocked); a request
   waits for the result, with an HTMX loading state. No job queue, no WebSockets. The copy beside a
   provider-backed button says *usually under a minute*, which is what invariants 2 and 12 describe,

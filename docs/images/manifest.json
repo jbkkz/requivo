@@ -1,6 +1,6 @@
 {
   "_comment": "Written by scripts/shoot_doc_images.py. Each image carries the `surface_digest` of the tree it was shot against; tests/test_doc_images.py compares each one against the tree, so a shot left out of a partial re-run stays flagged - re-run the script.",
-  "shot_at": "2026-09-11",
+  "shot_at": "2026-09-12",
   "viewport": {
     "width": 1280,
     "height": 900
@@ -16,7 +16,7 @@
       "caption": "The decision brief as a rendered document: request and objective, current understanding, what is confirmed, and the important assumptions.",
       "width": 2560,
       "height": 4244,
-      "surface_digest": "a826676ee138e1f1e75f740ab8e321b79847c80eec1604ed1d3b82ae0d34cad9"
+      "surface_digest": "306a9170d660d8fecd7d330e8f12607f83485ad79067788cdd97c13bda5b4981"
     },
     "web-home": {
       "route": "/",
@@ -27,7 +27,7 @@
       "caption": "The home page: the request box, the context-card cost note, and the recent sessions.",
       "width": 2560,
       "height": 2190,
-      "surface_digest": "a826676ee138e1f1e75f740ab8e321b79847c80eec1604ed1d3b82ae0d34cad9"
+      "surface_digest": "306a9170d660d8fecd7d330e8f12607f83485ad79067788cdd97c13bda5b4981"
     },
     "web-questions": {
       "route": "/sessions/{slug}",
@@ -38,7 +38,7 @@
       "caption": "The open questions with why each matters, the answer form, and the readiness verdict.",
       "width": 2560,
       "height": 3456,
-      "surface_digest": "a826676ee138e1f1e75f740ab8e321b79847c80eec1604ed1d3b82ae0d34cad9"
+      "surface_digest": "306a9170d660d8fecd7d330e8f12607f83485ad79067788cdd97c13bda5b4981"
     },
     "web-session": {
       "route": "/sessions/{slug}",
@@ -49,7 +49,7 @@
       "caption": "The session page: the objective, the request as read, and what is confirmed vs assumed.",
       "width": 2560,
       "height": 3666,
-      "surface_digest": "a826676ee138e1f1e75f740ab8e321b79847c80eec1604ed1d3b82ae0d34cad9"
+      "surface_digest": "306a9170d660d8fecd7d330e8f12607f83485ad79067788cdd97c13bda5b4981"
     }
   }
 }

@@ -21,7 +21,7 @@ plugin and the Web app all read and write the same layout.
 │       ├── model.json          the current model — the durable product
 │       ├── revisions/
 │       │   └── 0001-model.json  one frozen file per applied revision
-│       └── artifacts/           generated views (PRD, assessment, …)
+│       └── artifacts/           generated views — one file per type, named in compatibility.md
 └── locks/
     └── <slug>.lock             the write lock (empty; safe to delete when nothing is running)
 ```
@@ -158,7 +158,15 @@ describe, so re-scoping a session with no model does not mint a revision at all 
 ## Artifacts and freshness
 
 `session.json` tracks each generated artifact: its file, when it was written, the **source revision**
-it was generated from, and a `stale` flag.
+it was generated from, and a `stale` flag. The type → filename map is in
+[compatibility.md](compatibility.md#artifact-filenames--stable-and-part-of-the-session-format); every
+generator has a file since #519, when `stories` and `estimate` stopped being terminal-only.
+
+One artifact rests on another as well as on the model: the estimate is reasoned against the user
+stories, so `requivo estimate` saves both, from one snapshot, against one source revision — the
+`stories.md` beside an `estimate.md` is the draft that estimate was read from, and the two
+`artifact_status` rows carry the same `revision`. Saving the estimate alone would have recorded half
+its basis.
 
 The source revision is *provenance*, not a verdict. An artifact is stale when something it rests on
 actually changed — computed from the dependency graph — not because the session has moved past its

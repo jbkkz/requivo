@@ -531,23 +531,22 @@ def test_a_type_missing_from_ARTIFACT_FILES_is_caught():
 
 
 def test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file():
-    """Two near-identical tables (#270's own open question). Not merged: ARTIFACT_FILES also
-    answers for `stories`/`estimate` with `None` ("the provider-path generator does not persist
-    this itself"), where ARTIFACT_FILENAMES omits `estimate` entirely and gives `stories` a real
-    filename -- Claude Code can save one even though the provider path never does (the comment on
-    ARTIFACT_FILES in core/dependencies.py). A merge needs a three-state marker per type and would
-    touch core/persistence.py, render/terminal.py and services/sessions.py, none of which this
-    issue's own Scope section names. Pinned instead, per the acceptance criteria's own stated
-    alternative: wherever both tables name a type, the filename must agree.
+    """Two near-identical tables (#270's own open question). Not merged: when this was written
+    ARTIFACT_FILES answered for `stories`/`estimate` with `None` ("the provider-path generator does
+    not persist this itself"), where ARTIFACT_FILENAMES omitted `estimate` entirely and gave
+    `stories` a real filename -- Claude Code could save one even though the provider path never did.
+    A merge needs a three-state marker per type and would touch core/persistence.py,
+    render/terminal.py and services/sessions.py, none of which that issue's own Scope section
+    named. Pinned instead, per the acceptance criteria's own stated alternative: wherever both
+    tables name a type, the filename must agree.
     `test_a_filename_disagreement_between_the_two_tables_is_caught` is the must-fire control.
 
-    **`stories` is deliberately excluded from the comparison, and the first run of this test found
-    out why the hard way**: `ARTIFACT_FILES["stories"]` is `None` ("the provider-path generator does
-    not persist this itself") where `ARTIFACT_FILENAMES["stories"]` is `"stories.md"` (a real
-    filename, because Claude Code can save one even though the provider path never does) -- both
-    correct, answering two different questions about the same type. Comparing `None` against a real
-    string is not the disagreement this test exists to catch, so only entries where `ARTIFACT_FILES`
-    itself names a file are compared."""
+    Since #519 (`decision: the-estimate-graduates`) both types name a file in both tables, so the
+    two agree on every key and the `is not None` filter below excludes nothing. It stays because
+    the value type still admits `None`, and comparing a `None` against a real string was never the
+    disagreement this test exists to catch -- the first run of this test found that out the hard
+    way, on `stories`, when the two tables were legitimately answering two different questions
+    about the same type."""
     shared = {t for t in set(ARTIFACT_FILES) & set(ARTIFACT_FILENAMES) if ARTIFACT_FILES[t] is not None}
     assert shared, "the two tables share no comparable keys -- this test asserts nothing until they do"
     disagreements = {t: (ARTIFACT_FILES[t], ARTIFACT_FILENAMES[t]) for t in shared
@@ -556,8 +555,8 @@ def test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file()
 
 
 def test_a_filename_disagreement_between_the_two_tables_is_caught():
-    """Must-fire control for the test above, over the same comparison (excluding `stories`, whose
-    `None` in ARTIFACT_FILES is a legitimate different answer, not a disagreement -- see above)."""
+    """Must-fire control for the test above, over the same comparison (a `None` in ARTIFACT_FILES
+    would be a legitimate different answer, not a disagreement -- see above)."""
     broken = dict(ARTIFACT_FILENAMES, brief="wrong.md")
     shared = {t for t in set(ARTIFACT_FILES) & set(broken) if ARTIFACT_FILES[t] is not None}
     disagreements = {t: (ARTIFACT_FILES[t], broken[t]) for t in shared if ARTIFACT_FILES[t] != broken[t]}

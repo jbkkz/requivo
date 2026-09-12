@@ -96,8 +96,8 @@ def test_the_refusal_is_a_requivo_error_and_not_an_attribute_error():
 
     with pytest.raises(RevisionConflictError):
         disco.generate(slug, "brief")
-    # The same guard, on the other entry point: `reason()` is the terminal-only analyses, which had
-    # the identical unchecked unpack.
+    # The same guard, on the other entry point: `reason()`, the unsaved seam (the terminal-only
+    # analyses until #519), which had the identical unchecked unpack.
     with pytest.raises(RevisionConflictError):
         disco.reason(slug, "stories")
 
