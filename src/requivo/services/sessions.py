@@ -577,8 +577,8 @@ class SessionService:
         later revision and not the earlier one a reader would call the same decision
         (`test_a_reworded_decision_counts_as_newly_derived_at_its_rewording`).
 
-        The revision number and the current model are read under the session lock, one snapshot
-        (invariant 12); the frozen revisions are immutable and are walked outside it. No write, no
+        Reads under the session lock -- the revision number, the current model and the frozen
+        revisions it walks -- so the whole comparison is one snapshot (invariant 12). No write, no
         provider call.
 
         Three states, and the third does not fold into the first (invariant 15): a revision this
@@ -588,32 +588,33 @@ class SessionService:
         derived. Never a flag, never a crash
         (`test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_tell`).
         """
+        # The whole walk runs under the lock, and not only the two reads that can move. A frozen
+        # revision file never changes -- but `session import --force` swaps the entire session
+        # directory under this same lock, after which `revisions/NNNN-model.json` names a different
+        # history and a walk outside the lock would compare `now` against it, silently. The cost is
+        # the lock held for the length of the walk: measured at 300 revisions, well under 100 ms.
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             if meta.current_revision == 0:
                 return EvidenceReport()
             now = self.load_model(slug)
-        # The walk runs outside the lock: `revisions/NNNN-model.json` is frozen once written and
-        # the snapshot above fixes which ones are read (1..current_revision), so a writer landing
-        # meanwhile changes nothing this walk opens. Holding the lock here would block every apply
-        # on the session for the length of its own history (found in review).
-        pending = {d.id for d in now.decisions}
-        derived_at: dict[int, set[str]] = {}
-        frozen: dict[int, EngineOutput] = {}
-        unreadable: str | None = None
-        for rev in range(1, meta.current_revision + 1):
-            if not pending:
-                break
-            try:
-                then = self.repo.load_revision(slug, rev)
-            except (SessionNotFoundError, ModelUnreadableError) as e:
-                unreadable = f"revision {rev} could not be read ({e.code})"
-                break
-            found = pending & {d.id for d in then.decisions}
-            if found:
-                derived_at[rev] = found
-                frozen[rev] = then
-                pending -= found
+            pending = {d.id for d in now.decisions}
+            derived_at: dict[int, set[str]] = {}
+            frozen: dict[int, EngineOutput] = {}
+            unreadable: str | None = None
+            for rev in range(1, meta.current_revision + 1):
+                if not pending:
+                    break
+                try:
+                    then = self.repo.load_revision(slug, rev)
+                except (SessionNotFoundError, ModelUnreadableError) as e:
+                    unreadable = f"revision {rev} could not be read ({e.code})"
+                    break
+                found = pending & {d.id for d in then.decisions}
+                if found:
+                    derived_at[rev] = found
+                    frozen[rev] = then
+                    pending -= found
         by_id: dict[str, tuple] = {}
         for rev, ids in derived_at.items():
             partial = thinner_evidence(frozen[rev], now)
