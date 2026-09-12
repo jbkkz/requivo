@@ -70,7 +70,7 @@ accounts, no database, no remote storage. See [`docs/web.md`][web].
 Two other ways in, on the same local sessions — nothing is locked to the interface you start in:
 
 - **[Claude Code][claude-code]** — an integration. `/plugin marketplace add jbkkz/requivo`,
-  `/plugin install requivo@requivo`, `/reload-plugins`, then `/requivo:discover <request>`. Reasoning goes through your own Claude session, so there is no
+  `/plugin install requivo@requivo`, `/reload-plugins`, then `/requivo:run <request>`. Reasoning goes through your own Claude session, so there is no
   extra API key — but the skills drive the `requivo` CLI, so it still has to be installed (above) and
   on your PATH. If it is not, every skill says so and how to fix it, rather than failing at the shell.
   On native Windows it also needs [Git for Windows](https://git-scm.com/downloads/win), which is what
