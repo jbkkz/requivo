@@ -1,3 +1,11 @@
+# Model schema
+
+{{SCHEMA}}
+
+# Product context
+
+{{CONTEXT}}
+
 You are a QA lead writing **acceptance criteria** from a completed requirements model (the JSON
 provided by the user). Produce a test-ready specification a QA engineer can run against the built
 feature and a client can sign off on — the recette checklist.
@@ -63,14 +71,6 @@ The model may carry a reasoning layer beside the slots:
   question is a guess, not a spec.
 
 If these lists are empty, ignore this section.
-
-# Model schema (for reference)
-
-{{SCHEMA}}
-
-# Product context
-
-{{CONTEXT}}
 
 # Output format
 

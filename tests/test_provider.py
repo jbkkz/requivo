@@ -690,23 +690,31 @@ def test_complete_accepts_a_max_tokens_reply_whose_json_is_complete():
     assert result.model["problem"].completeness == 80
 
 
-# ── Prompt-cache breakpoints: paid for only where the prefix is re-read (#9) ──
+# ── Prompt-cache breakpoints: paid for only where the prefix is re-read (#9, #258) ──
 #
 # `cache_control` costs 1.25x input to write and pays back at 0.1x on a read, so it is a saving only
-# when the *same* system prompt is sent again inside the cache TTL. It is, across the calls of one
-# operation — a JSON retry, converse()'s turns, a golden capture's K runs. It is not, across
-# operations: `build_prompt()` substitutes the shared schema + context cards into a *per-operation*
-# template, and every template places {{SCHEMA}}/{{CONTEXT}} near its end with an "Output format"
-# section after them. The shared bulk is therefore a suffix, and a cache is a prefix match — no
-# breakpoint placement can let a second operation hit a warm one. A one-shot generator was writing a
-# cache it could never read, a flat ~25% premium on the largest part of its input.
+# when the *same* prefix is sent again inside the cache TTL. The system prompt is two blocks since
+# #258, and they answer that question differently. The first is the schema + context block every
+# template opens with (`SHARED_PROMPT_HEAD`) — byte-identical across operations, so it *is* re-read
+# by the next verb in a sitting and carries the breakpoint on every call; that half is pinned in
+# `tests/test_prompt_cache_prefix_258.py`. The second is the operation's own remainder, which is
+# re-sent only across the calls of one operation — a JSON retry, converse()'s turns, a golden
+# capture's K runs — and never across operations. A one-shot generator writing a breakpoint on it was
+# writing a cache nothing could read, a flat ~25% premium on that part of its input; `reuse_system`
+# is the caller's declaration, and these tests read the remainder block to check it is honoured.
 #
 # Every "must not fire" assertion below is paired with a "must fire" control in the same fixture: a
 # fix that strips the directive everywhere breaks the operations where caching genuinely pays, and
 # these tests fail on that too.
 
 
-def _system_block(fake, i: int) -> dict:
+def _specific_block(fake, i: int) -> dict:
+    """The op-specific remainder — the block `reuse_system` governs. It is the *last* system block,
+    so a system sent as one plain string (no shared block) reads the same way."""
+    return fake.calls[i]["system"][-1]
+
+
+def _shared_block(fake, i: int) -> dict:
     return fake.calls[i]["system"][0]
 
 
@@ -719,8 +727,12 @@ def test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call():
     fake = FakeClient(_ENGINE_REPLY, _BRIEF_REPLY)
     run(fake, [{"role": "user", "content": "leave approval"}])
     advise(fake, out({"problem": slot(80, "explicit", "high")}))
-    assert _system_block(fake, 0)["cache_control"] == {"type": "ephemeral"}  # must fire
-    assert "cache_control" not in _system_block(fake, 1)                     # must not fire
+    assert _specific_block(fake, 0)["cache_control"] == {"type": "ephemeral"}  # must fire
+    assert "cache_control" not in _specific_block(fake, 1)                     # must not fire
+    # The shared block is the other half of the same fixture: cached on both, and the same bytes, so
+    # the brief's call is a cache *read* of the discovery's write (#258).
+    assert _shared_block(fake, 0)["cache_control"] == _shared_block(fake, 1)["cache_control"] == {"type": "ephemeral"}
+    assert _shared_block(fake, 0)["text"] == _shared_block(fake, 1)["text"]
 
 
 def test_the_provider_seam_is_single_call_on_both_analyze_branches():
@@ -754,12 +766,12 @@ def test_the_provider_seam_is_single_call_on_both_analyze_branches():
     provider.analyze("leave approval", current_model=model, answers="A")   # a refinement turn
     run(fake, [{"role": "user", "content": "leave approval"}])             # the multi-call caller
 
-    assert "cache_control" not in _system_block(fake, 0), "a first discovery pays for a cache nothing reads"
-    assert "cache_control" not in _system_block(fake, 1), "a refinement turn pays for a cache nothing reads"
-    assert _system_block(fake, 2)["cache_control"] == {"type": "ephemeral"}, "converse() lost its breakpoint"
+    assert "cache_control" not in _specific_block(fake, 0), "a first discovery pays for a cache nothing reads"
+    assert "cache_control" not in _specific_block(fake, 1), "a refinement turn pays for a cache nothing reads"
+    assert _specific_block(fake, 2)["cache_control"] == {"type": "ephemeral"}, "converse() lost its breakpoint"
     # MUST FIRE: all three sent the same engine prompt, so the assertions above are about the
     # directive and not about three different system blocks.
-    assert _system_block(fake, 0)["text"] == _system_block(fake, 1)["text"] == _system_block(fake, 2)["text"]
+    assert _specific_block(fake, 0)["text"] == _specific_block(fake, 1)["text"] == _specific_block(fake, 2)["text"]
 
 
 def test_a_looping_caller_can_still_ask_for_the_breakpoint_back():
@@ -770,8 +782,8 @@ def test_a_looping_caller_can_still_ask_for_the_breakpoint_back():
     fake = FakeClient(_ENGINE_REPLY, _ENGINE_REPLY)
     answer_turn(fake, model, "leave approval", "A")
     answer_turn(fake, model, "leave approval", "A", reuse_system=True)
-    assert "cache_control" not in _system_block(fake, 0)                     # must not fire
-    assert _system_block(fake, 1)["cache_control"] == {"type": "ephemeral"}  # must fire
+    assert "cache_control" not in _specific_block(fake, 0)                     # must not fire
+    assert _specific_block(fake, 1)["cache_control"] == {"type": "ephemeral"}  # must fire
 
 
 # A minimal contract-valid reply per generator, so the assertions below can drive the *real* call
@@ -823,8 +835,14 @@ def test_every_generator_drives_a_real_call_without_a_cache_write(artifact_type)
     fake = FakeClient(reply, reply)
     _GENERATORS[artifact_type](fake, model, **extra)
     _GENERATORS[artifact_type](fake, model, **extra, reuse_system=True)
-    assert "cache_control" not in _system_block(fake, 0), f"{artifact_type} pays for a cache nothing reads"
-    assert _system_block(fake, 1)["cache_control"] == {"type": "ephemeral"}, f"{artifact_type} lost its opt-in"
+    assert "cache_control" not in _specific_block(fake, 0), f"{artifact_type} pays for a cache nothing reads"
+    assert _specific_block(fake, 1)["cache_control"] == {"type": "ephemeral"}, f"{artifact_type} lost its opt-in"
+    # And the shared block rides in front of both, cached, so this generator can read what the
+    # discovery before it wrote (#258) — a generator that stops threading `build_system_prompt` and
+    # sends one plain block fails here.
+    for i in (0, 1):
+        assert len(fake.calls[i]["system"]) == 2, f"{artifact_type} sent no shared block"
+        assert _shared_block(fake, i)["cache_control"] == {"type": "ephemeral"}
 
 
 def test_the_cache_fixture_covers_every_registered_generator():
@@ -852,7 +870,7 @@ def test_complete_still_defaults_to_caching_for_an_undeclared_caller():
     assert inspect.signature(_complete).parameters["reuse_system"].default is True
     fake = FakeClient(_BRIEF_REPLY)
     _complete(fake, "SYSTEM", [{"role": "user", "content": "u"}], Brief)
-    assert _system_block(fake, 0)["cache_control"] == {"type": "ephemeral"}
+    assert _specific_block(fake, 0)["cache_control"] == {"type": "ephemeral"}
 
 
 def test_a_generator_can_opt_back_in_when_its_caller_loops_it():
@@ -862,20 +880,21 @@ def test_a_generator_can_opt_back_in_when_its_caller_loops_it():
     model = out({"problem": slot(80, "explicit", "high")})
     advise(fake, model)                       # production: one call
     advise(fake, model, reuse_system=True)    # harness: K calls, same prompt
-    assert "cache_control" not in _system_block(fake, 0)                     # must not fire
-    assert _system_block(fake, 1)["cache_control"] == {"type": "ephemeral"}  # must fire
+    assert "cache_control" not in _specific_block(fake, 0)                     # must not fire
+    assert _specific_block(fake, 1)["cache_control"] == {"type": "ephemeral"}  # must fire
 
 
-def test_skipping_the_breakpoint_does_not_change_the_system_prompt_bytes():
-    # The cheap fix must stay a cheap fix. Moving the shared bulk to the front of every template is
-    # the other way to make this pay, and it changes what the model reads — a behaviour change that
-    # owes the golden harness a cycle. This pins that no such reordering rode along: the text sent is
-    # still exactly what build_prompt() assembles.
+def test_splitting_the_system_prompt_does_not_change_the_system_prompt_bytes():
+    # Two blocks on the wire, one string in the hash. The split (#258) moves where a breakpoint may
+    # sit and nothing else: what the model reads, block by block, is still exactly what
+    # build_prompt() assembles and prompt_version() hashes. A split that dropped, doubled or
+    # re-joined a byte would move the prompt hash on every revision without moving the prompt.
     from requivo.core.context import build_prompt
 
     fake = FakeClient(_BRIEF_REPLY)
     advise(fake, out({"problem": slot(80, "explicit", "high")}))
-    assert _system_block(fake, 0)["text"] == build_prompt("brief.md", None)
+    sent = "".join(b["text"] for b in fake.calls[0]["system"])
+    assert sent == build_prompt("brief.md", None)
 
 
 def test_retry_resends_a_byte_identical_system_whether_or_not_it_is_cached():
@@ -887,9 +906,9 @@ def test_retry_resends_a_byte_identical_system_whether_or_not_it_is_cached():
         _complete(fake, "SYSTEM PROMPT", [{"role": "user", "content": "u"}], Brief,
                   reuse_system=reuse)
         assert len(fake.calls) == 2, "expected one retry"
-        assert _system_block(fake, 0)["text"] == _system_block(fake, 1)["text"] == "SYSTEM PROMPT"
+        assert _specific_block(fake, 0)["text"] == _specific_block(fake, 1)["text"] == "SYSTEM PROMPT"
         for i in (0, 1):
-            assert ("cache_control" in _system_block(fake, i)) is expect_directive
+            assert ("cache_control" in _specific_block(fake, i)) is expect_directive
 
 
 def test_cost_estimate_bills_a_write_premium_and_plain_input_differently():

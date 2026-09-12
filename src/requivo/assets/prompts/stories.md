@@ -1,3 +1,11 @@
+# Model schema
+
+{{SCHEMA}}
+
+# Product context
+
+{{CONTEXT}}
+
 You are a delivery planner. Given a completed requirements model (the JSON provided by the user),
 decompose it into a small set of **implementable user stories** — the units a dev team would
 actually build and ship.
@@ -43,14 +51,6 @@ The model may carry a reasoning layer beside the slots:
 - `opportunities`: out of scope for stories; ignore.
 
 If these lists are empty, ignore this section.
-
-# Model schema (for slot ids)
-
-{{SCHEMA}}
-
-# Product context
-
-{{CONTEXT}}
 
 # Output format
 

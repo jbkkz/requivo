@@ -1,3 +1,11 @@
+# Model schema
+
+{{SCHEMA}}
+
+# Product context
+
+{{CONTEXT}}
+
 You are a tech lead turning a completed requirements model (the JSON provided by the user) into a
 **delivery epic** — one feature, broken into the implementable issues a dev team would track and ship.
 This is the work breakdown, not user stories: issues are dev-facing units of work.
@@ -66,14 +74,6 @@ The model may carry a reasoning layer beside the slots — treat it as first-cla
 - `opportunities`: reuse worth noting — `out_of_scope`, or a clearly-labelled follow-up issue.
 
 If these lists are empty, ignore this section.
-
-# Model schema (for reference)
-
-{{SCHEMA}}
-
-# Product context
-
-{{CONTEXT}}
 
 # Output format
 

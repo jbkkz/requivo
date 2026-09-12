@@ -77,23 +77,39 @@ Two honest limits, because a number with an unstated method is worth less than n
   makes no calls. Both are bracketed by the same test, so a prompt or a generator's payload that grows
   past the published range is a red build.
 - **The table charges every call at full price.** Prompt caching (below) makes a long interactive
-  discovery cheaper than nine independent calls, and the retry path makes a rare one dearer. The
+  discovery cheaper than nine independent calls and, since #258, every operation after the first in
+  a sitting cheaper than the table says; the retry path makes a rare one dearer. The
   range is wide enough to hold both, and the exact number for *your* request is printed by the verb
   that spent it.
 
 ## The usage footprint
 
 A discovery is a few calls (one per turn, up to 8) plus one per generated artifact. The system prompt
-(prompt + schema + context cards) is **prompt-cached where the same prompt is sent again** — a
-discovery's turns and a golden capture's K runs — so those repeats cost ~0.1x input instead of full
-price.
+is two blocks on the wire, and they are cached on different terms.
 
-It is deliberately *not* cached across operations, and that is a saving rather than an omission. Each
-operation builds its system prompt from its own template, so a cache breakpoint costs 1.25x input to
-write and only pays back on a second send of the identical prefix; a one-call verb (`prd`, `criteria`,
-`epic`, `release`, `stories`, `estimate`) normally has no second send, so writing one was a flat ~25%
-surcharge on the largest part of its input. Callers declare which they are (`reuse_system`), because
-the same generator is one call in the CLI and K calls in the golden harness (#9).
+**The shared block is cached across operations.** Every prompt template opens with the same block —
+the model schema and the product context cards, ~9k tokens with the four bundled cards — and it is
+sent first, behind a `cache_control` breakpoint, on every call. A prompt cache is a prefix match, so
+the second operation in a sitting (`discover` then `brief`, then `prd`, …) reads that block at ~0.1x
+input instead of re-sending it at full price: a five-operation pipeline sends about 25k system tokens
+where it sent about 56k (#258). The entry lives five minutes from the start of the last request that
+wrote or read it, so a pipeline run verb by verb keeps it warm; a single verb run on its own, with
+nothing following inside that window, pays the write premium once — 1.25x on the block, about 2.3k
+token-equivalents — and that is the accepted cost of caching by default rather than by declaration.
+The `--context` selection is part of the block, so a session whose cards differ starts its own
+entry; within one session the block is byte-identical for every operation. The block must clear the
+model's minimum cacheable prefix to be written at all (1,024 tokens on `claude-sonnet-5`, higher on
+some older models); with a single small card it can fall under that on such a model, in which case
+the API silently reports `cache_creation_input_tokens: 0` and the call is simply priced as plain input.
+
+**The op-specific remainder is cached where the same prompt is sent again** — a discovery's turns
+and a golden capture's K runs — so those repeats cost ~0.1x input instead of full price. It is
+deliberately *not* cached on a one-call verb, and that is a saving rather than an omission: a
+breakpoint costs 1.25x input to write and only pays back on a second send of the identical prefix,
+and the remainder of `prd`, `criteria`, `epic`, `release`, `stories` or `estimate` normally has no
+second send, so writing one was a flat ~25% surcharge on it. Callers declare which they are
+(`reuse_system`), because the same generator is one call in the CLI and K calls in the golden
+harness (#9).
 
 `reuse_system` is on `analyze` too, and it is the caller's answer to *will this exact system prompt be
 sent again* — not an instruction about caching. The one looping caller is
@@ -102,10 +118,10 @@ eight turns; every other operation is one call and passes the default. An implem
 prompt caching may ignore the flag entirely.
 
 One honest caveat: a one-call verb *can* send twice, when the model returns malformed JSON and the
-retry loop re-sends the identical prompt. Those retries are no longer cached, so a generator that
-retries now pays 2.0x the system block where it used to pay 1.35x. That trade is deliberate — it is
-the better bet while a retry is rarer than about one call in four — but it is a real cost on a rare
-path rather than a free win.
+retry loop re-sends the identical prompt. The shared block is a cache read on that retry; the
+remainder is not cached, so a generator that retries pays 2.0x on its remainder where it used to pay
+1.35x. That trade is deliberate — it is the better bet while a retry is rarer than about one call in
+four — but it is a real cost on a rare path rather than a free win.
 
 Every command that hits the API prints its footprint when it finishes — calls, tokens (with the cached
 share), latency, and an estimated cost — so you see the real number for *your* request. Tokens are

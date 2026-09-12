@@ -422,16 +422,22 @@ is never possible to mistake a short list for the whole list.
    never a traceback. The output ceiling is `MAX_OUTPUT_TOKENS` (16k; the call is non-streaming, and
    the SDK risks HTTP timeouts above that). Truncation is checked **parse-first**: a reply flagged
    `max_tokens` whose JSON is nonetheless complete still succeeds.
-3. The `system` prompt carries a `cache_control: ephemeral` breakpoint **only when its caller will
-   send it again** (`_complete(..., reuse_system=)`). It pays across the calls of *one* operation — a
-   golden capture's K runs, `converse()`'s turns — and cannot pay across operations, since
-   `build_prompt` substitutes the shared schema+context into a per-op template that places them near
-   its *end*: the shared bulk is a suffix, caching is a prefix match, so no breakpoint placement lets a
-   second operation hit a warm entry. A write costs 1.25x input and a read 0.1x, so a one-call verb
-   that cached was paying a flat ~25% surcharge (#9). The accepted cost: a one-call verb that hits the
-   JSON **retry** loop re-sends the identical prompt and is no longer cached, paying 2.0x where it used
-   to pay 1.35x — the better bet only while a retry is rarer than ~1 call in 4, which it is. Keep the
-   prompt byte-identical per call or the cache is lost where it does pay. `_complete()` records per-call usage into a session-scoped
+3. The `system` prompt is sent as **two text blocks** (`_system_blocks`). The first is the shared
+   leading block every template opens with — `SHARED_PROMPT_HEAD`, the schema + context cards, ~9k
+   tokens with the bundled cards, byte-identical across the eight operations — and it carries a
+   `cache_control: ephemeral` breakpoint on **every** call, so the second operation of a sitting reads
+   it at 0.1x instead of re-sending it at full price (#258; a five-op pipeline sends ~25k system tokens
+   instead of ~56k). The second is the op-specific remainder, and it carries a breakpoint **only when
+   its caller will send it again** (`_complete(..., reuse_system=)`): that pays across the calls of
+   *one* operation — a golden capture's K runs, `converse()`'s turns — and never across operations. A
+   write costs 1.25x input and a read 0.1x, so a one-call verb that cached its remainder was paying a
+   flat ~25% surcharge on it (#9), and a lone one-call verb with no second op inside the 5-minute TTL
+   now pays that premium once on the shared block (~2.3k token-equivalents, accepted). The other
+   accepted cost: a one-call verb that hits the JSON **retry** loop re-sends the identical remainder
+   uncached, paying 2.0x on it where it used to pay 1.35x — the better bet only while a retry is rarer
+   than ~1 call in 4, which it is. Keep the prompt byte-identical per call or the cache is lost where
+   it does pay, and keep the leading block byte-identical across templates or it is lost everywhere
+   (`build_system_prompt` refuses a template that does not open with it). `_complete()` records per-call usage into a session-scoped
    `UsageLedger` (`requivo.usage`, provider-neutral); `render_usage()` prints it (tokens are exact,
    cost is a labelled estimate). The rate table with its expiry-aware launch pricing stays in
    `providers/anthropic/pricing.py`, and `price_call` stamps the rate **onto the record as the call

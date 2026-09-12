@@ -3,7 +3,9 @@
 This is the string-assembly half of what used to live in `core/llm.py`: it reads the bundled prompt
 files, the framework schema, and the context cards, and injects them into a prompt template. It makes
 **no LLM call and imports no provider** — it only turns assets into a system-prompt string — so it is
-safe to keep in `core`. The provider imports `build_prompt()` to feed a model, which assembles the
+safe to keep in `core`. The provider imports `build_system_prompt()` to feed a model -- the same
+string `build_prompt()` returns, split at the end of the leading block every template shares, so the
+provider can put a cache breakpoint exactly there (#258) -- which assembles the
 cards through `load_context()`; every surface imports `resolve_cards()` to validate a `--context`
 selection on the way in; `doctor` and `session verify` import `check_selection()` to ask whether a
 *saved* selection still resolves without paying for a turn to find out, and `available_cards()` to
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import NamedTuple
 
 from requivo.core.errors import (
     ContextUnreadableError,
@@ -283,10 +286,62 @@ def check_selection(only: list[str] | None) -> RequivoError | None:
     return None
 
 
-def build_prompt(name: str, only: list[str] | None = None) -> str:
-    """Load a prompt file and inject the schema + product context (optionally a subset of cards)."""
+# The block every prompt template opens with, byte for byte: the schema and the product context are
+# the ~9k tokens every operation shares, and a prompt cache is a *prefix* match, so they are cacheable
+# across operations only when they come first and are identical everywhere (#258). Kept as one
+# constant rather than re-derived per template so that "identical" is a fact of the assets, checked
+# by `build_system_prompt` on every load, rather than a coincidence eight files happen to maintain.
+# `test_every_template_opens_with_the_shared_head_and_places_the_placeholders_only_there` and
+# `test_a_template_whose_leading_block_is_perturbed_is_refused_not_sent` are the guards.
+SHARED_PROMPT_HEAD = "# Model schema\n\n{{SCHEMA}}\n\n# Product context\n\n{{CONTEXT}}\n\n"
+
+
+class SystemPrompt(NamedTuple):
+    """One assembled system prompt, split where the shared block ends.
+
+    `shared` is `SHARED_PROMPT_HEAD` with the schema and the selected cards substituted -- the same
+    bytes for every operation of a session -- and `specific` is the operation's own remainder.
+    `text` is their concatenation and is exactly what `build_prompt()` returns: the split changes
+    where a cache breakpoint may sit, never what the model reads or what `prompt_version()` hashes.
+    """
+
+    shared: str
+    specific: str
+
+    @property
+    def text(self) -> str:
+        return self.shared + self.specific
+
+
+def build_system_prompt(name: str, only: list[str] | None = None) -> SystemPrompt:
+    """Load a prompt file, inject the schema + product context (optionally a subset of cards), and
+    split the result at the end of the shared leading block.
+
+    A template that does not open with `SHARED_PROMPT_HEAD` is refused, not sent. The alternative
+    outcomes are both silent: a shorter `shared` writes a cache entry no other operation's prefix
+    matches, and an empty one is a call that pays full price on exactly the bulk the split exists to
+    cache. Either would look, from the ledger, like caching that merely did not pay -- so the third
+    state is a `ValueError` naming the file, caught offline by
+    `test_a_template_whose_leading_block_is_perturbed_is_refused_not_sent` before any call is made.
+    """
     # Explicit encoding for the same reason as the cards above: these assets are UTF-8 on disk and
     # `read_text()` would decode them with whatever the locale happens to be.
     schema = (FRAMEWORK / "model_schema.json").read_text(encoding="utf-8")
-    text = (PROMPTS / name).read_text(encoding="utf-8")
-    return text.replace("{{SCHEMA}}", schema).replace("{{CONTEXT}}", load_context(only))
+    template = (PROMPTS / name).read_text(encoding="utf-8")
+    if not template.startswith(SHARED_PROMPT_HEAD):
+        raise ValueError(
+            f"prompt template {name} does not open with the shared leading block "
+            f"(SHARED_PROMPT_HEAD); the schema and product context must be its first bytes so "
+            f"they are cached across operations"
+        )
+    cards = load_context(only)
+    shared = SHARED_PROMPT_HEAD.replace("{{SCHEMA}}", schema).replace("{{CONTEXT}}", cards)
+    specific = template[len(SHARED_PROMPT_HEAD):].replace("{{SCHEMA}}", schema).replace(
+        "{{CONTEXT}}", cards)
+    return SystemPrompt(shared, specific)
+
+
+def build_prompt(name: str, only: list[str] | None = None) -> str:
+    """The assembled system prompt as one string -- `build_system_prompt(...).text`. This is what
+    `prompt_version()` hashes; the provider sends the split form."""
+    return build_system_prompt(name, only).text
