@@ -160,9 +160,10 @@ Two things that would be reasonable to assume and are not true:
   session can opt into a subset when it is created, and that selection is then held constant for its
   lifetime. But nothing picks the relevant ones for you, and adding a card can sharpen one discovery
   while diluting another.
-- **`requivo stories` and `requivo estimate` are not among the six skills.** They are CLI generators
-  like the criteria and the epic: each prints and saves its document (`stories.md`, `estimate.md`)
-  and is tracked for staleness like every other artifact. Until #519 they were terminal-only.
+- **A generator producing something on disk does not mean an API call happened.** `stories`,
+  `estimate`, `criteria`, `epic` and `release` each print and save a document and are tracked for
+  staleness like every other artifact — since #542 they also reason in this Claude session, the same
+  as `brief` and `prd` (see *The generators*, below).
 
 ## What the skills send to Claude
 
@@ -174,15 +175,31 @@ The skills also never require `ANTHROPIC_API_KEY`, never hand-edit `model.json` 
 CLI validates and writes), and never invent an answer the client did not give; an unknown is left
 honestly empty.
 
-## Beyond the six skills
+## The generators
 
-The `requivo` CLI reaches the same sessions and carries generators the plugin does not wrap: acceptance
-criteria, an epic with tracker exports for GitHub and GitLab, release notes, user stories and the
-uncertainty-aware estimate. Those run in Requivo's own **optional API mode**, so unlike the six
-skills they need the `requivo[anthropic]` extra and an `ANTHROPIC_API_KEY`. That is the opposite of
-what the install section above says you need for the plugin, and both are true: the skills reason in
-your Claude Code session, these verbs call the Anthropic API directly. `requivo doctor` reports
-whether you have the extra and the key.
+Seven artifact types can be produced from a session's model, and — since #542 — every one of them
+reasons in *this* Claude session, with no `ANTHROPIC_API_KEY` anywhere in the loop:
+
+| Skill | Produces | Where the thinking happens |
+|---|---|---|
+| `/requivo:brief` | The decision brief | this Claude session |
+| `/requivo:prd` | A PRD | this Claude session |
+| `/requivo:stories` | Implementable user stories | this Claude session |
+| `/requivo:estimate` | A day-based, uncertainty-aware estimate (saves stories, then the estimate, against one revision) | this Claude session |
+| `/requivo:criteria` | Given/When/Then acceptance criteria (a recette checklist) | this Claude session |
+| `/requivo:epic` | A delivery epic — the work breakdown a dev team tracks | this Claude session |
+| `/requivo:release` | Client-facing release notes | this Claude session |
+
+Each is saved as a tracked artifact tied to the model revision it was reasoned from, and flagged stale
+the moment something it rests on changes — `/requivo:status` names which ones need regenerating.
+
+The `requivo` CLI can also produce all seven itself, in its own **optional API mode**: useful for
+automation outside a Claude Code session, and it needs the `requivo[anthropic]` extra plus an
+`ANTHROPIC_API_KEY` to do it. That mode is unrelated to the skills above, which never call it.
+The one piece that stays CLI-only is the epic's tracker export (`--export-json`, `--github`,
+`--gitlab`): each reasons the epic afresh through that API mode before writing the export, so there is
+no way to export the epic a skill just saved without a new, key-requiring call. `requivo doctor`
+reports whether you have the extra and the key.
 
 Requivo Web is a local browser workspace over those same sessions: paste a request, answer the
 questions, watch what each answer moved. It needs a key to analyse and generate; reading sessions the
