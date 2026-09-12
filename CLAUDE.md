@@ -139,6 +139,11 @@ requivo/
 plugins/claude-code/   the Claude Code plugin (skills + manifest) — NOT shipped in the wheel
 ```
 
+The plugin's seven generator skills restate the rules their mirrored `assets/prompts/*.md` file and
+contract carry, rather than importing them: a Claude Code session cannot import a Python-packaged
+asset, and the CLI installed there may be a different release than the plugin commit a marketplace
+pinned (`decision: plugin-skills-mirror-a-pinned-cli-commit`).
+
 Assets (`prompts/`, `framework/`, `context/`, the demo payload) live **inside the package** at
 `src/requivo/assets/`, so they ship in the wheel and a `pip install` works outside a clone. Sessions
 are written to `.requivo/sessions/<slug>/` under the caller's **workspace** (cwd, or

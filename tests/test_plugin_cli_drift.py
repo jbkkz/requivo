@@ -51,7 +51,7 @@ README = PLUGIN_ROOT / "README.md"
 
 
 def plugin_invocations():
-    """Everything the real plugin executes: the six skills plus the shared preflight."""
+    """Everything the real plugin executes: every skill plus the shared preflight (#542)."""
     return referenced_invocations(invocation_sources(PLUGIN_ROOT).paths)
 
 # A stand-in for a released CLI. `status` deliberately takes no subcommands and `model` does, because
@@ -98,13 +98,13 @@ def test_referenced_invocations_reads_the_real_skills_and_finds_the_two_level_ca
 
 def test_the_shared_preflight_is_walked_and_not_only_the_skills():
     """`REASONING.md` holds the preflight every skill runs before its first `requivo` call, so a
-    command named there executes on all six paths. It introduces no verb the skills do not already
+    command named there executes on every skill path. It introduces no verb the skills do not already
     name, which is exactly the shape that rots quietly: leave it out and the day it stops being
     redundant is the day nothing notices."""
     sources = invocation_sources(PLUGIN_ROOT)
     names = [p.name for p in sources.paths]
     assert "REASONING.md" in names, f"the preflight is not walked; walked {names}"
-    assert names.count("SKILL.md") == 6, f"expected six skills, walked {names}"
+    assert names.count("SKILL.md") == 11, f"expected eleven skills, walked {names}"  # #542
     # And the real plugin is fully readable, so this walk is a whole answer rather than a subset.
     assert sources.unreadable == [], sources.unreadable
     # And it must actually contribute -- a file that is walked but unreadable would look identical.

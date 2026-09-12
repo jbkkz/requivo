@@ -15,7 +15,8 @@ SKILLS = PLUGIN / "skills"
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`, so the directory name must NOT repeat
 # the plugin name — `skills/requivo-discover/` in a plugin called `requivo` is invoked as
 # `/requivo:requivo-discover`, which is not what any of the docs said.
-EXPECTED_SKILLS = {"discover", "answer", "status", "brief", "prd", "impact"}
+EXPECTED_SKILLS = {"discover", "answer", "status", "brief", "prd", "impact",
+                   "stories", "estimate", "criteria", "epic", "release"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills. The
 # plugin's own README may name it too — that file is a reader's document, not an instruction Claude
 # follows, and it is not walked here. Its verbs are not unchecked, though (#138): they are checked
@@ -426,3 +427,38 @@ def test_every_skill_reaches_the_cli_through_the_bash_tool():
             f"{name}: declares {other.group(0)!r} alongside Bash — a second route to the CLI, so "
             "the README's blanket Git-for-Windows prerequisite is no longer the whole answer for "
             "this skill.")
+
+
+# ── generator skills (#542: keyless parity for stories/estimate/criteria/epic/release) ────────────
+
+GENERATOR_SKILLS = {"stories", "estimate", "criteria", "epic", "release"}
+# What each mirrors, per the issue's own table (#542).
+GENERATOR_PROMPTS = {
+    "stories": ["stories.md"], "estimate": ["stories.md", "estimate.md"],
+    "criteria": ["criteria.md"], "epic": ["epic.md"], "release": ["release.md"],
+}
+
+
+def test_generator_skills_use_the_cli_and_state_the_revision():
+    """Same contract as brief/prd (#519, #6): save via the CLI, and every `artifact save` line
+    states `--revision`, never left implicit. Its own function so a rebase alongside #539 stays
+    a one-line addition rather than a merge on a shared assertion (#542)."""
+    for name in GENERATOR_SKILLS:
+        text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+        assert "artifact save" in text, f"{name}: must save via `requivo artifact save`"
+        lines = [ln for ln in text.splitlines() if "artifact save" in ln]
+        for ln in lines:
+            assert "--revision" in ln, f"{name}: must state the revision on the same line: {ln!r}"
+
+
+def test_generator_skills_name_the_prompt_they_mirror_and_at_which_commit():
+    """The Watch-for in #542 asks each skill to state which prompt it mirrors and at which commit,
+    since a skill and a prompt asset are two copies of one set of rules that will drift (`decision:
+    plugin-skills-mirror-a-pinned-cli-commit`). Checked mechanically: the filename and a commit-like
+    hash must both appear, never that the two agree in substance — that half stays a human review."""
+    for name, prompts in GENERATOR_PROMPTS.items():
+        text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+        for prompt in prompts:
+            assert prompt in text, f"{name}: does not name the prompt file it mirrors ({prompt})"
+        assert re.search(r"\bcommit\b", text, re.IGNORECASE), f"{name}: does not say 'commit'"
+        assert re.search(r"`[0-9a-f]{7,40}`", text), f"{name}: names no commit-like hash"
