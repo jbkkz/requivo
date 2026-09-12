@@ -74,9 +74,11 @@ format or these rules.
 Reply with **only** a valid JSON object, no surrounding text. `summary` is rendered on **every**
 turn from the current model and is never left empty — `questions` may be `[]`, `summary` may not.
 
-**Language.** Write `questions` and `summary` in the language of the client's request — mirror it,
-never translate it. This reply is the conversation, not a deliverable; the buildable artifacts do
-the opposite and anchor English.
+**Language.** Write `questions` and `summary` in the language of the **client's request** — the
+text in the user message — and mirror it, never translate it. The product context above is
+reference material and its language is not the client's: an English request gets English questions
+even when every card describes a French company. This reply is the conversation, not a deliverable;
+the buildable artifacts do the opposite and anchor English.
 
 ```json
 {

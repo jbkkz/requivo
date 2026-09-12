@@ -1,5 +1,6 @@
 {
   "request": "When a contract is signed, we want an invoice to be created automatically.",
+  "model": "claude-sonnet-5",
   "runs": [
     {
       "model": {
@@ -7,145 +8,145 @@
           "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Eliminate manual delay/errors in billing kickoff by auto-generating the invoice the moment a contract is signed.",
-          "evidence": "Client states the trigger (signature) and the desired automatic outcome (invoice creation), but not the underlying pain (delay, missed invoices, manual re-entry)."
+          "value": "Likely goal: eliminate manual, error-prone invoice creation after signature, ensure no signed contract goes unbilled.",
+          "evidence": "Request implies automation of a currently manual step ('we want an invoice to be created automatically')."
         },
         "current_process": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "Not stated whether invoices are currently created manually from the contract, in another tool, or not at all until now."
+          "evidence": "Not stated whether invoices are currently created manually, in another module, or not at all."
         },
         "success_metrics": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No measure given (e.g. zero missed invoices, invoice issued within X hours of signature)."
+          "evidence": "No measure of success given (time saved, zero missed invoices, etc.)."
         },
         "actors": {
-          "completeness": 10,
+          "completeness": 20,
           "confidence": "inferred",
-          "impact": "high",
-          "value": "Likely: whoever signs/finalizes the contract triggers the event; finance/admin likely owns invoice review before sending.",
-          "evidence": "No actor named explicitly; inferred from typical contract/invoice split of duties in the platform."
+          "impact": "medium",
+          "value": "Contract signatory triggers the event; likely finance/admin reviews the resulting invoice.",
+          "evidence": "Not explicit who signs, who reviews or validates the generated invoice."
         },
         "business_objects": {
-          "completeness": 20,
-          "confidence": "explicit",
+          "completeness": 30,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Contract and Invoice are the two named objects. Amount source, numbering sequence, VAT, currency and payment terms for the generated invoice are not defined.",
-          "evidence": "Explicit: 'contract signed' \u2192 'invoice created'. Everything the invoice needs (amount, VAT, numbering) is unstated."
+          "value": "Contract and Invoice are named; amount source, numbering, VAT, currency, and the contract\u2192invoice cardinality are unknown.",
+          "evidence": "Context: a contract is one-to-many with invoices (milestones, recurring, partial billing) \u2014 'invoice the contract' is rarely a single document."
         },
         "business_rules": {
-          "completeness": 5,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unclear whether one signed contract always produces exactly one invoice, or whether contracts can generate several invoices over time (milestones, recurring, partial billing).",
-          "evidence": "Context: 'a contract is one-to-many with its invoices' \u2014 request implies a single trigger\u2192single invoice, which may not hold."
+          "value": "Unclear if this applies to all contracts, all clients/countries, or only specific types; no stated exceptions.",
+          "evidence": "Context notes business rules often vary by client/contract/country and this is a recurring trap."
         },
         "workflow": {
-          "completeness": 25,
-          "confidence": "explicit",
-          "impact": "high",
-          "value": "Trigger event is clear (contract signature). Unclear: is this synchronous/blocking or async/eventual, does re-signing (amendment) re-trigger it, and how is double-creation prevented.",
-          "evidence": "Explicit trigger named; idempotency, amendment interaction and sync/async nature all unstated \u2014 flagged as recurring traps in context."
-        },
-        "integrations": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "",
-          "evidence": "No mention of who is notified when the invoice is created, or whether it must sync to an accounting/export system."
-        },
-        "permissions": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "Not stated whether the auto-created invoice is a draft requiring finance review/validation, or issued directly without human check."
-        },
-        "config_vs_custom": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "Platform is multi-client/configurable; unclear if this auto-invoice rule applies uniformly or varies by client/contract type."
-        },
-        "constraints": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Invoicing must follow French VAT and legal numbering rules regardless of automation.",
-          "evidence": "Product context: invoicing follows French VAT and legal numbering rules \u2014 not restated by client but a hard constraint on any generated invoice."
+          "value": "Contract signature (event) \u2192 invoice creation; initial invoice status (draft vs issued) and idempotency undefined.",
+          "evidence": "Context: signature is an event other modules subscribe to; invoice has its own draft\u2192issued\u2192paid lifecycle."
         },
-        "edge_cases": {
-          "completeness": 5,
+        "integrations": {
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unhandled: contract re-signed after amendment, contract voided/cancelled post-signature, incomplete contract data at signature time, concurrent signature events.",
-          "evidence": "Context flags amendment/re-signature and incomplete source data as classic traps for 'create X automatically' rules."
+          "value": "Sync/blocking vs async/queued trigger not specified; notification recipients on creation/failure unknown.",
+          "evidence": "Context: a trigger is sync or async \u2014 different builds, different error handling \u2014 and this is rarely specified upfront."
+        },
+        "permissions": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Who can see/edit/cancel an auto-generated invoice, and whether that differs from a manually created one, is unknown.",
+          "evidence": "Context: permissions are forgotten until acceptance testing; invoicing is a sensitive shared module."
+        },
+        "config_vs_custom": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unclear if this automation is global or a client-specific rule/exception.",
+          "evidence": "Context: business rules and billing logic are typically client-specific on this platform."
+        },
+        "constraints": {
+          "completeness": 30,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "French VAT and legal invoice numbering rules apply; amendments to signed contracts likely re-trigger invoicing logic.",
+          "evidence": "Context: invoicing follows French VAT and legal numbering rules \u2014 a regulatory constraint on any auto-created invoice."
+        },
+        "edge_cases": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Duplicate creation on retry, incomplete contract data at signature time, amendments after signature, cancelled/voided contracts.",
+          "evidence": "Context flags idempotency and incomplete source data as classic traps for 'create X automatically'."
         },
         "reporting": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "",
-          "evidence": "No explicit compliance/audit ask yet, but legal invoice numbering implies some traceability will be needed."
+          "value": "No explicit audit requirement stated, but legal invoice numbering implies some traceability of auto-created invoices.",
+          "evidence": "Context: invoicing follows legal numbering rules; no compliance/audit language yet in the request itself."
         },
         "acceptance": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No acceptance scenarios defined yet."
+          "evidence": "No acceptance scenarios given yet."
         },
         "risks": {
-          "completeness": 15,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Main risk: duplicate invoice creation on retry/re-signature, or invoice created from incomplete contract data.",
-          "evidence": "Context explicitly names idempotency and incomplete source data as the top traps for 'create X automatically'."
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Risk of duplicate or incorrect invoices going to clients if trigger conditions or data completeness aren't well defined.",
+          "evidence": "Inferred from context's warning about automatic creation traps."
         }
       },
       "questions": [
         {
-          "q": "Does each signed contract generate exactly one invoice, or can a contract produce several invoices over time (milestones, recurring billing, partial payments)?",
-          "slot": "business_rules",
-          "why": "uncertainty \u00d7 impact: completely open, and it decides whether this is a single-record trigger or a full billing-schedule engine \u2014 the single biggest scope driver."
-        },
-        {
-          "q": "Where should the invoice amount, VAT rate, currency and numbering come from \u2014 always a direct, fixed derivation from the contract, or can it vary (discounts, multiple line items, partial amounts)?",
+          "q": "When a contract is signed, does it always produce exactly one invoice for the full amount, or can it require several invoices over time (milestones, recurring billing, partial payments)?",
           "slot": "business_objects",
-          "why": "uncertainty \u00d7 impact: an invoice is never 'just created' \u2014 without a defined amount/VAT/numbering source, the auto-created invoice can be legally invalid or wrong."
+          "why": "uncertainty \u00d7 impact: high \u2014 a contract is one-to-many with invoices in this domain; this decides whether we're building one document or a billing schedule engine."
         },
         {
-          "q": "If a contract is later amended and re-signed, should that re-trigger invoice creation, and is it acceptable/expected that a duplicate invoice must never be created for the same signature event?",
+          "q": "Should the invoice be created as a draft awaiting review/validation, or issued immediately and considered final?",
           "slot": "workflow",
-          "why": "uncertainty \u00d7 impact: signature can recur via amendments; without a stated rule on re-triggering and duplication, the automation risks double-billing or missed re-invoicing."
+          "why": "uncertainty \u00d7 impact: high \u2014 invoice status at creation changes who must act next and what 'automatic' actually means in practice."
         },
         {
-          "q": "Once auto-created, must the invoice sit as a draft for someone (finance/admin) to review and validate before it's sent, or is it expected to be issued immediately without human check?",
+          "q": "If the signature event is processed twice, or arrives late/out of order, should the system guarantee it never creates a duplicate invoice \u2014 and is a brief delay before the invoice appears acceptable?",
+          "slot": "integrations",
+          "why": "uncertainty \u00d7 impact: high \u2014 sync-blocking vs async-queued triggers are different builds with different failure handling; duplicate invoices are a direct financial/compliance risk."
+        },
+        {
+          "q": "Does this automatic invoicing apply to every contract, or only certain types/clients/countries \u2014 and are there cases where a signed contract should NOT auto-generate an invoice?",
+          "slot": "business_rules",
+          "why": "uncertainty \u00d7 impact: high \u2014 business rules on this platform routinely vary by client/contract/country; missing an exception here means wrong invoices going out."
+        },
+        {
+          "q": "Once the invoice is auto-created, who should be able to view, edit, or cancel it \u2014 the same people who can handle manually created invoices, or a more restricted set (e.g. finance only)?",
           "slot": "permissions",
-          "why": "uncertainty \u00d7 impact: determines who owns the last check before a legally-numbered document goes out \u2014 a compliance and trust question, not a UI detail."
-        },
-        {
-          "q": "Does this auto-invoice rule apply identically to every client/contract, or does it vary (e.g. some clients still invoiced manually, different payment terms or billing cadence by contract type)?",
-          "slot": "config_vs_custom",
-          "why": "uncertainty \u00d7 impact: platform is multi-client and configurable \u2014 a rule that varies by client changes this from a fixed trigger to a rules engine."
+          "why": "uncertainty \u00d7 impact: high \u2014 permissions are a recurring gap discovered late, and an automatically created financial document often needs tighter control than a manual one."
         }
       ],
       "summary": {
-        "objective": "Automatically create an invoice as soon as a contract reaches signed status, removing the manual step of drafting the invoice after signature.",
-        "scope": "Likely involves: subscribing to the contract-signed event, defining where the invoice's amount/VAT/currency/numbering come from, deciding whether the result is a draft awaiting validation or an issued invoice, guarding against duplicate creation (especially on amendment re-signature), and deciding if the rule is uniform or client/contract-specific.",
+        "objective": "Automatically generate an invoice when a contract is signed, removing a manual step from the current process.",
+        "scope": "Likely involves: subscribing to the contract-signed event, determining the invoice amount/billing structure from the contract, creating one or more invoices in an appropriate initial status, applying French VAT/numbering rules, and making the result visible to the right roles \u2014 with safeguards against duplicate creation.",
         "assumptions": [
-          "The underlying goal is to speed up and de-risk billing kickoff after signature (problem: inferred).",
-          "Signature triggers exactly one invoice per contract unless told otherwise (business_rules: unconfirmed).",
-          "The generated invoice will still need to comply with French VAT and legal numbering rules (constraints: inferred from platform context).",
-          "Someone in finance/admin is the intended owner of reviewing the auto-created invoice before it is considered final (actors/permissions: inferred)."
+          "The goal is to save manual effort and avoid missed/delayed invoicing (inferred, not stated).",
+          "Each signed contract may need more than one invoice (milestones/recurring/partial) rather than a single flat invoice (inferred from domain pattern).",
+          "The trigger is the contract's signature event specifically, not another contract state change (inferred).",
+          "Standard French VAT and legal numbering rules apply to these invoices (inferred from context, not yet confirmed by client)."
         ],
-        "blind_spot": "The request treats 'contract signed \u2192 invoice created' as a single, simple rule, but a contract is one-to-many with its invoices and signature can recur (amendments). Without pinning down the invoice's amount source, its draft-vs-issued status, and duplicate-prevention on re-signature, the build risks either under-delivering (one flat invoice that doesn't fit real billing schedules) or over-delivering an unreviewed, legally-numbered document with no safety net."
+        "blind_spot": "The request assumes 'create an invoice' is a single, simple action, but a signed contract is rarely billed as one document \u2014 the amount source, billing schedule, idempotency on retries, and who may then see/edit the result are all undefined and will decide whether this is a small automation or a billing subsystem."
       },
       "decisions": [],
       "challenges": [],
@@ -157,146 +158,145 @@
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Likely aim: eliminate the manual delay/error between 'contract signed' and 'invoice raised' (finance currently keys invoices by hand after being told a contract closed).",
-          "evidence": "Request only states the desired automation, not the pain it fixes."
+          "value": "Remove manual delay/errors in invoicing by triggering invoice creation the moment a contract is signed",
+          "evidence": "Request states the trigger\u2192action pair but not the underlying pain (delay? missed invoices? manual errors?)"
         },
         "current_process": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
-          "impact": "medium",
+          "impact": "high",
           "value": "",
-          "evidence": "Not stated \u2014 unknown whether invoices are today created manually, from a template, or in another tool."
+          "evidence": "Not stated whether invoices are currently created manually, by whom, and from what source data"
         },
         "success_metrics": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "Not stated."
+          "evidence": "No measure of success given"
         },
         "actors": {
-          "completeness": 15,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Signatory triggers the event; finance/admin presumably owns the resulting invoice; billing contact on the client side may need visibility.",
-          "evidence": "Not named explicitly; inferred from domain roles."
+          "value": "System creates the invoice; finance/admin likely reviews or sends it",
+          "evidence": "No actor named besides the implicit 'system' triggered by signature"
         },
         "business_objects": {
           "completeness": 40,
           "confidence": "explicit",
           "impact": "medium",
-          "value": "Contract (signed) \u2192 Invoice (created). Invoice fields (amount, numbering, VAT, terms, currency) not specified.",
-          "evidence": "'When a contract is signed... an invoice to be created' \u2014 both objects named explicitly."
+          "value": "Contract (signed state) and Invoice are the two objects in play",
+          "evidence": "Named directly in the request"
         },
         "business_rules": {
-          "completeness": 5,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown: is it one invoice per contract, or milestone/recurring/partial billing? Where does the amount, VAT rate and payment terms come from?",
-          "evidence": "Context: 'a contract is one-to-many with its invoices... invoice the contract is rarely a single document.'"
+          "value": "",
+          "evidence": "No info on amount source, whether billing is single/milestone/recurring, or if the rule varies by client/contract type"
         },
         "workflow": {
-          "completeness": 15,
+          "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Trigger = contract signature event \u2192 invoice creation. Sync-vs-async, resulting invoice status (draft vs issued), and re-trigger on amendment are all unspecified.",
-          "evidence": "'When a contract is signed' implies event-driven trigger, but mechanics unstated."
+          "value": "Trigger = contract reaching 'signed'; resulting invoice status (draft vs issued) unspecified",
+          "evidence": "Trigger event is explicit but downstream lifecycle state and sync/async nature are not"
         },
         "integrations": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No mention of notification or downstream system to update."
+          "evidence": "Unclear if accounting system or finance team must be notified/updated"
         },
         "permissions": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown who may view/edit/send the auto-created invoice before it reaches the client.",
-          "evidence": "Context: 'permissions are forgotten until acceptance testing.'"
+          "value": "",
+          "evidence": "No info on who can view, edit or validate the auto-created invoice"
         },
         "config_vs_custom": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether the invoicing rule (amount/frequency logic) is uniform or varies by client/contract type.",
-          "evidence": "Context: 'a business rule can vary by client, contract or country.'"
+          "value": "",
+          "evidence": "Platform is configurable multi-client; unknown if this rule is global or client/contract-type specific"
         },
         "constraints": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "French VAT and legal invoice numbering rules presumably apply to any auto-generated invoice.",
-          "evidence": "Product context: invoicing follows French VAT and legal numbering rules."
+          "value": "French VAT and legal invoice numbering rules likely constrain the generated invoice",
+          "evidence": "Context notes invoicing follows French VAT/legal numbering; not confirmed for this specific flow"
         },
         "edge_cases": {
-          "completeness": 5,
+          "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unhandled: contract amended after signing (re-trigger?), signature event firing twice, incomplete billing data at signature time, contract voided post-invoice.",
-          "evidence": "Context recurring traps: idempotency, incomplete source data, amendment re-triggering automation."
+          "value": "",
+          "evidence": "No info on contract amendments, cancellations after signature, multi-milestone contracts, or retry/duplicate scenarios"
         },
         "reporting": {
           "completeness": 0,
           "confidence": "empty",
-          "impact": "medium",
-          "value": "Not requested yet, but legal invoice numbering implies some traceability of auto-generation may be expected.",
-          "evidence": "Context: invoicing follows French legal numbering rules."
+          "impact": "low",
+          "value": "",
+          "evidence": "No explicit audit/compliance requirement named beyond standard invoicing rules"
         },
         "acceptance": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "Not stated."
+          "evidence": "No acceptance scenarios given"
         },
         "risks": {
           "completeness": 10,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Risk of duplicate invoice on signature retry or contract amendment; risk of invoice generated with wrong/incomplete amount if contract data isn't finalized at signature.",
-          "evidence": "Context: '\"create X automatically\" hides idempotency and incomplete source data' traps."
+          "value": "Risk of duplicate invoice creation on retry/re-signature; risk of invoicing off incomplete contract data",
+          "evidence": "Context flags idempotency and incomplete source data as recurring traps for 'create X automatically'"
         }
       },
       "questions": [
         {
-          "q": "When a contract is signed, does it always produce exactly one invoice for the full amount, or can it generate several over time (milestones, recurring/subscription billing, partial invoicing)?",
+          "q": "Does 'create an invoice' mean exactly one document per signed contract, or can a contract require several invoices (milestones, recurring/subscription billing, partial payments)? And where should the invoiced amount, VAT and payment terms come from?",
           "slot": "business_rules",
-          "why": "high impact \u00d7 empty: this single answer decides whether we build one document per signature or a whole recurring-billing engine \u2014 the contract-to-invoice relationship is one-to-many by default in this domain."
+          "why": "uncertainty (empty) \u00d7 high impact: a contract is one-to-many with its invoices in this domain \u2014 this is the single biggest scope driver and isn't addressed at all."
         },
         {
-          "q": "Should the auto-created invoice land as a draft for finance to review before sending, or be issued/sent to the client immediately with no human check?",
+          "q": "When the contract is signed, must the invoice appear instantly and block/fail visibly if something goes wrong, or can it be created shortly after in the background with a pending state until confirmed?",
           "slot": "workflow",
-          "why": "high impact \u00d7 empty: determines error-handling, who can be blamed if a wrong invoice reaches the client, and whether this is a blocking or a fire-and-forget automation."
+          "why": "uncertainty (inferred only) \u00d7 high impact: sync vs async is a different build (error handling, UX, rollback) and the request doesn't say which."
         },
         {
-          "q": "If a contract is later amended (a new signed version) or the signature event somehow fires twice, should that ever create a second invoice, or must it always resolve to at most one invoice for that contract event?",
+          "q": "If the signature event fires twice (system retry, re-signature, correction) or the contract is later amended/cancelled, should the system guarantee it never creates a duplicate or now-invalid invoice?",
           "slot": "edge_cases",
-          "why": "high impact \u00d7 empty: contract amendments re-open signature and re-trigger downstream automation in this system \u2014 without a stated rule, duplicate billing is the most likely production incident."
+          "why": "uncertainty (empty) \u00d7 high impact: idempotency and contract amendment are named traps for this exact pattern in this domain."
         },
         {
-          "q": "Where do the invoice's amount, VAT rate, and payment terms come from \u2014 are they already fully set on the contract, or does something (a milestone schedule, a rate card) still need to be resolved at invoicing time?",
-          "slot": "business_rules",
-          "why": "high impact \u00d7 empty: an invoice is 'rarely just created' \u2014 if the amount isn't fully determined on the contract, the automation has an incomplete-data failure mode that needs a defined behaviour."
-        },
-        {
-          "q": "Once generated, who is allowed to see, edit or send this invoice \u2014 finance only, or does it become visible to the client's billing contact right away?",
+          "q": "Once auto-created, should the invoice start as an editable draft awaiting finance validation, or be issued/sent without human review?",
           "slot": "permissions",
-          "why": "high impact \u00d7 empty: permission rules are typically discovered only at acceptance testing in this platform, and here they gate whether a wrong auto-invoice can reach a client unreviewed."
+          "why": "uncertainty (empty) \u00d7 high impact: determines who can see/touch the invoice before it goes out, forgotten until acceptance testing per context."
+        },
+        {
+          "q": "Should this automatic invoicing behave identically for every client and contract type, or does it need to vary (some contract types billed differently, some clients excluded)?",
+          "slot": "config_vs_custom",
+          "why": "uncertainty (empty) \u00d7 high impact: this is a configurable multi-client platform where business rules commonly vary by client/contract."
         }
       ],
       "summary": {
-        "objective": "Automatically generate an invoice when a contract is signed, removing the manual step (and its delay/errors) between contract signature and billing.",
-        "scope": "Subscribe to the contract-signed event; derive the invoice's amount, VAT, numbering and payment terms from the contract; create the invoice in an appropriate status; make it visible to the right roles; guard against duplicate creation on retries or amendments.",
+        "objective": "Automatically generate an invoice the moment a contract transitions to 'signed', eliminating manual invoice creation after signature.",
+        "scope": "Likely involves: a listener on the contract-signed event, logic to determine invoice content (amount, VAT, numbering, payment terms) from the contract, an initial invoice status (draft vs issued), duplicate-protection on retries, and possibly per-client/contract-type configuration of the rule.",
         "assumptions": [
-          "The underlying goal is reducing billing delay/errors from manual invoice creation (inferred, not stated).",
-          "Finance/admin owns and likely reviews the generated invoice; the client's billing contact may see it later (inferred).",
-          "The trigger is the contract's signature event firing once per contract (inferred) \u2014 behaviour on amendments not yet defined.",
-          "French VAT and legal invoice-numbering rules apply to the generated invoice, as per platform standard (inferred).",
-          "One invoice per signed contract by default, pending confirmation of milestone/recurring billing needs."
+          "The pain point is manual delay/error in invoicing after signature (inferred, not stated).",
+          "One invoice per contract by default, unless milestone/recurring billing is confirmed otherwise.",
+          "Standard French VAT and legal invoice numbering rules apply.",
+          "The invoice is created as an editable draft pending finance validation rather than issued outright."
         ],
-        "blind_spot": "The request treats 'create an invoice' as a single deterministic action, but in this platform a contract is one-to-many with its invoices, amendments re-open signature and can re-trigger this same automation, and an invoice's amount/VAT/terms rarely come from nowhere. Without settling how many invoices a signature can produce and what happens on re-signature/amendment, the build risks either under-invoicing (missed milestones) or duplicate invoicing (retries, amendments) \u2014 the two most common production incidents for this kind of automation."
+        "blind_spot": "The request assumes 'invoice the contract' is a single, simple creation \u2014 but in this domain a contract is one-to-many with its invoices (milestones, recurring billing, partial payment), and the automatic trigger raises an unaddressed idempotency risk (duplicate invoices on retry or re-signature). Both can silently expand this from a one-field automation into a multi-invoice billing subsystem."
       },
       "decisions": [],
       "challenges": [],
@@ -308,146 +308,145 @@
           "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Reduce delay/errors in billing by removing manual invoice creation once a contract is signed",
-          "evidence": "Request implies automation to replace a manual step, but the underlying pain (late billing? forgotten invoices? reconciliation errors?) is not stated"
+          "value": "Avoid manual, delayed or forgotten invoice creation once a contract is signed",
+          "evidence": "Request implies automation to replace a manual step"
         },
         "current_process": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No mention of how invoices are created today (manual entry, another tool, spreadsheet)"
+          "evidence": "Not stated how invoices are created today"
         },
         "success_metrics": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "Not stated \u2014 no target like 'zero missed invoices' or 'same-day billing'"
+          "evidence": "Not stated"
         },
         "actors": {
           "completeness": 10,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Likely: contract owner triggers signature; finance/billing team currently issues invoices; unclear who validates the auto-created invoice",
-          "evidence": "No actor named besides implicit 'we' wanting automation"
+          "value": "Likely HR/admin signs contract; finance manages invoices",
+          "evidence": "Not stated explicitly, inferred from domain"
         },
         "business_objects": {
-          "completeness": 25,
-          "confidence": "explicit",
+          "completeness": 20,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Contract and Invoice named explicitly; invoice fields (amount, VAT, currency, payment terms, numbering) and their source are not specified",
-          "evidence": "'contract' and 'invoice' are the only two objects named"
+          "value": "Contract, Invoice \u2014 amount, numbering, VAT, payment terms source unspecified",
+          "evidence": "Card: invoice carries amount source, numbering, VAT, payment terms; rarely 'just created'"
         },
         "business_rules": {
-          "completeness": 5,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether one signed contract = one invoice, or contract generates a billing schedule (milestones/recurring/partial billing)",
-          "evidence": "Context: a Contract is one-to-many with Invoices in this domain; request assumes a 1:1 that may not hold"
+          "value": "Unclear whether one invoice per contract or milestone/recurring billing",
+          "evidence": "Card: a contract is one-to-many with its invoices"
         },
         "workflow": {
           "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Trigger = contract signature event; unclear if sync (blocking) or async (queued), whether amendments re-trigger invoicing, and whether retries can double-create an invoice",
-          "evidence": "'When signed, create invoice' names the trigger but not its mechanics or idempotency guarantee"
+          "value": "Trigger = contract signature event; sync vs async and idempotency undefined",
+          "evidence": "Card: signature is an event other modules subscribe to; sync/async is a defining trap"
         },
         "integrations": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Possible need to notify finance/client or push to an accounting/export system once invoice is created",
-          "evidence": "Not mentioned"
+          "value": "",
+          "evidence": "Not stated who/what is notified once invoice is created"
         },
         "permissions": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unclear who can see/edit the auto-generated invoice before it's sent, and whether it needs approval",
-          "evidence": "Not mentioned; invoicing + approval circuits are sensitive shared modules per context"
+          "value": "Who can see/edit/validate the auto-created invoice unspecified",
+          "evidence": "Card: permissions are forgotten until acceptance testing"
         },
         "config_vs_custom": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown if billing rule (amount source, timing) is uniform or varies by client/contract type",
-          "evidence": "Platform is multi-client/configurable; billing rules commonly vary by client per context notes"
+          "value": "Unclear if this rule is standard or varies by client/contract type",
+          "evidence": "Card: business rules can vary by client, contract or country"
         },
         "constraints": {
           "completeness": 20,
           "confidence": "inferred",
-          "impact": "high",
-          "value": "French VAT and legal invoice numbering rules apply automatically to any created invoice",
-          "evidence": "Context: invoicing follows French VAT and legal numbering rules \u2014 not stated by client but a hard regulatory constraint"
+          "impact": "medium",
+          "value": "French VAT and legal invoice numbering rules likely apply",
+          "evidence": "Card: invoicing follows French VAT and legal numbering rules"
         },
         "edge_cases": {
-          "completeness": 5,
+          "completeness": 0,
           "confidence": "empty",
-          "impact": "high",
-          "value": "What if contract is later amended/voided after invoice creation, or signed twice (retry), or has incomplete billing data at signature time?",
-          "evidence": "Context flags amendments re-opening signature and re-triggering automation as a recurring trap"
+          "impact": "medium",
+          "value": "Incomplete contract data, amendments, cancelled contracts not addressed",
+          "evidence": "Card: 'create X automatically' hides incomplete source data cases"
         },
         "reporting": {
           "completeness": 0,
           "confidence": "empty",
-          "impact": "high",
-          "value": "Likely need to trace which contract generated which invoice, and an audit trail given legal numbering/VAT obligations",
-          "evidence": "Regulatory VAT/numbering context elevates reporting from 'nice to have' to compliance need"
+          "impact": "medium",
+          "value": "",
+          "evidence": "No explicit compliance ask, but invoice numbering/VAT implies some traceability need"
         },
         "acceptance": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Not defined",
-          "evidence": "No acceptance scenario given yet"
+          "value": "",
+          "evidence": "Not stated"
         },
         "risks": {
-          "completeness": 5,
+          "completeness": 0,
           "confidence": "empty",
-          "impact": "high",
-          "value": "Main risk: duplicate invoice creation on retry, or invoice created with missing/incorrect data if contract fields incomplete at signature",
-          "evidence": "Context explicitly lists idempotency and incomplete source data as recurring traps for 'create X automatically'"
+          "impact": "medium",
+          "value": "",
+          "evidence": "Not stated"
         }
       },
       "questions": [
         {
-          "q": "Does a signed contract always produce exactly one invoice for its full amount, or can it generate several invoices over time (milestones, recurring billing, partial payments)?",
+          "q": "When a contract is signed, should this always produce exactly one invoice for the full amount, or can a contract require several invoices over time (milestones, recurring billing, partial payments)?",
           "slot": "business_rules",
-          "why": "high impact, empty: this decides between building a single invoice-creation trigger versus a full billing-schedule engine \u2014 the two are very different builds"
+          "why": "uncertainty \u00d7 impact: a contract is one-to-many with invoices in this domain \u2014 the answer changes the data model entirely, not just a rule"
         },
         {
-          "q": "If a contract's signature event fires more than once (e.g. a retry, or a later amendment is signed), should that ever create a second invoice, or must the system guarantee exactly one invoice per contract regardless of retries/amendments?",
+          "q": "Should the invoice be created instantly and block the signature step if something goes wrong, or created in the background afterward (with a visible 'pending' state until it's ready)?",
           "slot": "workflow",
-          "why": "high impact, empty: idempotency and amendment handling are the classic failure mode of 'create X automatically' and change error-handling design"
+          "why": "uncertainty \u00d7 impact: sync vs async is a different build with different error handling \u2014 and re-signing/retries must not create duplicate invoices"
         },
         {
-          "q": "Where should the invoice's amount, VAT rate, currency and payment terms come from \u2014 are they fully defined on the contract itself, or does someone need to fill in/confirm missing billing details before the invoice is finalized?",
+          "q": "Where should the invoice amount, VAT rate, payment terms and numbering sequence come from \u2014 are they already on the contract, or do they depend on the client's billing rules?",
           "slot": "business_objects",
-          "why": "high impact, low completeness: an invoice is never 'just created' \u2014 if contract data is incomplete at signature, we need a defined fallback"
+          "why": "uncertainty \u00d7 impact: an invoice is rarely 'just created' \u2014 missing source data here blocks the automation entirely"
         },
         {
-          "q": "Once auto-created, should the invoice go out immediately as issued, or does someone (finance/manager) need to review and approve it before it becomes final/sent to the client?",
+          "q": "Once auto-created, who should be able to see, edit or must validate/approve the invoice before it's sent \u2014 is it created as a draft or already issued?",
           "slot": "permissions",
-          "why": "high impact, empty: this determines the invoice's initial lifecycle state and who has edit/approval rights \u2014 forgotten permissions are a known late-discovery risk"
+          "why": "uncertainty \u00d7 impact: permissions are a classic blind spot that surfaces only at acceptance testing; also determines the invoice's starting lifecycle state"
         },
         {
-          "q": "Does the billing rule (what triggers invoicing, how the amount is computed) differ by client, contract type or country, or is one single rule enough for all contracts today?",
+          "q": "Does this auto-creation rule apply the same way to every client and contract type, or should some clients/contracts be excluded or follow different billing rules?",
           "slot": "config_vs_custom",
-          "why": "high impact, empty: on this multi-client platform, business rules commonly vary by client \u2014 missing this multiplies the rule engine's complexity"
+          "why": "uncertainty \u00d7 impact: business rules commonly vary by client/contract on this platform \u2014 missing this reshapes the configuration model"
         }
       ],
       "summary": {
-        "objective": "Automatically generate an invoice when a contract is signed, removing a manual billing step.",
-        "scope": "Likely scope: subscribe to the contract's 'signed' event, derive invoice fields (amount, VAT, currency, payment terms, numbering) from the contract, create the invoice in an initial lifecycle state, and ensure no duplicate invoice is created on retries or amendments. May extend into a billing-schedule engine if contracts can produce multiple invoices.",
+        "objective": "Automatically generate an invoice when a contract is signed, removing a manual step from the current process.",
+        "scope": "Likely involves subscribing to the contract 'signed' event, determining the correct invoice amount/terms/VAT/numbering source, deciding synchronous vs asynchronous creation with idempotency protection, and setting initial permissions/state (draft vs issued) for the resulting invoice.",
         "assumptions": [
-          "The trigger is the contract's signature event (assumed synchronous unless told otherwise)",
-          "One signed contract is assumed to map to one invoice unless confirmed otherwise",
-          "French VAT and legal invoice numbering rules apply automatically to any created invoice",
-          "Some review/approval step exists before an auto-created invoice is finalized, pending confirmation",
-          "Billing rules may vary by client/contract type on this configurable platform"
+          "The trigger is the contract's signature event specifically (not 'active' or another state)",
+          "French VAT and legal numbering rules apply to generated invoices",
+          "Actors are likely HR/admin for contract signature and finance for invoice handling",
+          "Some incomplete contract data or edge cases (amendments, cancellations) will need explicit handling"
         ],
-        "blind_spot": "The request assumes a simple 1:1 'signed contract \u2192 one invoice' mapping and a single clean trigger, but contracts here are commonly one-to-many with invoices (milestones, recurring, partial billing), and the signature event can recur via amendments or retries \u2014 without a clear idempotency and billing-structure rule, the automation risks creating duplicate or incomplete invoices in production, silently costing far more than the original 'automate this' ask."
+        "blind_spot": "The request assumes 'invoice the contract' means one simple document, but this platform models a one-to-many relationship between a contract and its invoices (milestones, recurring, partial billing). Building for a single invoice when the real need is recurring/milestone billing would require rework of the whole feature, not a patch."
       },
       "decisions": [],
       "challenges": [],
@@ -456,72 +455,71 @@
   ],
   "briefs": [
     {
-      "problem": "Invoices are drafted manually after a contract is signed, creating delay and inconsistent billing kickoff.",
-      "solution": "Auto-generate an invoice from the contract-signed event, removing the manual drafting step.",
+      "problem": "Invoices for signed contracts depend on someone remembering to create them manually, risking delays and missed billing.",
+      "solution": "An automation that generates an invoice when a contract is signed, subject to French VAT and legal numbering rules.",
       "introduces": [
-        "a contract-signature event subscriber inside the invoicing module",
-        "idempotency/dedup logic to prevent double-invoicing on retries or re-signature",
-        "an amount/VAT/numbering derivation rule for invoices created without a human author",
-        "a possible draft-vs-issued review gate for legally-numbered documents",
-        "per-client/contract-type configurability of the trigger rule"
+        "a contract-signature event subscription mechanism",
+        "idempotency/duplicate-prevention logic for financial documents",
+        "a billing-amount or billing-schedule derivation engine",
+        "a distinct permission model for system-generated vs manually created invoices",
+        "an audit trail tied to legal invoice numbering"
       ],
       "challenges": [
         {
-          "id": "chl_c9e16659cf",
-          "headline": "One signature, one invoice",
-          "premise": "The request treats contract signature as producing 'the invoice' \u2014 a single document per signed contract.",
-          "alternative": "Model this as a contract-level billing rule (single invoice, milestone schedule, recurring, or partial billing) rather than hard-wiring signature to one invoice record \u2014 the contract is already one-to-many with its invoices in this platform.",
-          "consequence": "Building a single-invoice trigger first locks the data model to one shape; adding milestone or recurring billing later means reworking the trigger, not extending it.",
-          "recommendation": "Confirm with the client whether every contract type bills as a single invoice, or whether milestone/recurring/partial billing already exists or is expected soon.",
+          "id": "chl_993570b9e7",
+          "headline": "One invoice per contract assumed",
+          "premise": "A signed contract produces a single invoice for the full amount.",
+          "alternative": "A contract can require several invoices over time \u2014 milestone billing, recurring/subscription cycles, or partial payments \u2014 meaning the trigger should feed a billing schedule rather than a single document.",
+          "consequence": "Building for a single invoice now means a costly rebuild the first time a milestone or recurring contract needs to be billed, since the data model and trigger logic would need to change, not just a rule.",
+          "recommendation": "Confirm with the client whether any contract types require multiple or scheduled invoices before scoping the build.",
           "contests": [
-            "business_rules",
+            "business_objects",
             "workflow"
           ]
         },
         {
-          "id": "chl_7004e22578",
-          "headline": "Immediate, unreviewed issuance",
-          "premise": "'Auto-generate the invoice the moment a contract is signed' implies the invoice appears ready-to-send, with no human check before it becomes a legally numbered document.",
-          "alternative": "Auto-create the invoice as a draft awaiting finance validation, keeping automation for creation but a human gate before legal numbering and issuance.",
-          "consequence": "A wrong amount, VAT rate or currency on a legally numbered invoice can't just be edited under French rules \u2014 it requires a credit note, turning a small data error into an accounting incident.",
-          "recommendation": "Validate with Finance whether the auto-created invoice must land as draft-for-review rather than issued outright.",
+          "id": "chl_70e08a0a7f",
+          "headline": "Immediate issuance on signature",
+          "premise": "The invoice is created and effectively final the moment the contract is signed.",
+          "alternative": "Creating the invoice as a draft pending finance review absorbs the risk of incomplete contract data at signature time and avoids consuming a legal invoice number on a document that might need correction.",
+          "consequence": "Auto-issuing final invoices under French numbering rules is not easily reversible \u2014 an error discovered after the fact requires a credit note, not a simple fix, and burns a legal sequence number in the process.",
+          "recommendation": "Validate with Finance whether auto-created invoices should land as draft-for-review or be issued outright.",
           "contests": [
-            "permissions",
-            "workflow"
+            "workflow",
+            "constraints"
           ]
         },
         {
-          "id": "chl_16d2e28207",
-          "headline": "One fixed rule for every client",
-          "premise": "The automation is described as a single global rule, with no mention that it might differ by client or contract type.",
-          "alternative": "Treat the trigger and its billing derivation as configurable per client/contract type, consistent with how approval circuits and billing rules already vary elsewhere on this platform.",
-          "consequence": "A hardcoded global rule will need exception carve-outs the first time a client's contract type doesn't fit \u2014 at which point it's a rebuild, not a config change.",
-          "recommendation": "Decide, before build, whether this is uniform or configurable, and scope config surface accordingly.",
+          "id": "chl_82c8b0f5ca",
+          "headline": "Signature as a clean, single trigger",
+          "premise": "The contract-signed event fires once and reliably, so 'automatic' can mean synchronous, one-shot creation.",
+          "alternative": "Treating the trigger as asynchronous and idempotent \u2014 with a visible pending state and safe handling of replays or late/out-of-order events \u2014 protects against duplicate invoices when the same signature event is redelivered, or when an amendment re-opens signature on the same contract.",
+          "consequence": "A naive synchronous, non-idempotent trigger risks duplicate invoices reaching clients, which is a financial and compliance problem, not just a bug.",
+          "recommendation": "Have engineering define the trigger's delivery guarantees and duplicate-detection rule before estimating the work.",
           "contests": [
-            "config_vs_custom",
-            "business_rules"
+            "integrations",
+            "edge_cases"
           ]
         }
       ],
       "complexity": "high",
       "complexity_reasons": [
-        "event-driven trigger requiring idempotency across retries and re-signature",
-        "invoice amount/VAT/numbering derivation must be legally correct with no human author by default",
-        "potential need for a billing-schedule engine rather than a single-record trigger",
-        "draft-review workflow and per-client configurability likely required but currently undefined"
+        "billing structure may be one-to-many rather than one-to-one",
+        "idempotent, possibly asynchronous event handling",
+        "French VAT and legal numbering compliance on every generated document",
+        "a permission model distinct from manually created invoices"
       ],
-      "cost_driver": "the invoice-generation and billing-rule logic deciding amount, VAT, numbering and whether one contract yields one or many invoices",
+      "cost_driver": "determining and building the correct billing amount/schedule logic behind 'invoice the contract'",
       "risks": [
-        "Duplicate invoice creation when a contract is amended and re-signed, since signature can recur",
-        "A legally numbered invoice generated from incomplete or wrong contract data, requiring a credit note to fix",
-        "Existing permission/approval framework may need extending to add a finance-validation step that doesn't yet exist for this flow",
-        "Sync-vs-async handling of the signature trigger is unspecified \u2014 affects whether contract signing can be blocked by invoice-creation failures",
-        "A single-invoice assumption may not survive contact with real milestone/recurring contracts, forcing a rebuild of the trigger logic"
+        "Duplicate invoice creation if the signature event is replayed or arrives out of order without a defined idempotency rule.",
+        "Legal invoice numbers consumed on invoices later found to be wrong, forcing credit notes rather than simple edits.",
+        "Contract amendments re-triggering the signature event and firing unintended re-invoicing.",
+        "Permission or visibility changes to the shared invoicing module rippling into manually created invoices as well."
       ],
       "opportunities": [
         {
-          "id": "opp_89727fcf7e",
-          "text": "Build the signature-to-billing trigger as a reusable contract-event rule engine rather than a one-off hook, so other downstream automations (notifications, mission kickoff) can subscribe the same way.",
+          "id": "opp_947061b667",
+          "text": "Generalize the contract-signature event subscription into a reusable trigger mechanism for other downstream automations off contract lifecycle events.",
           "leverage": "high",
           "modules": [
             "Contracts",
@@ -529,45 +527,45 @@
           ]
         },
         {
-          "id": "opp_c85810cffb",
-          "text": "Define the invoice amount/VAT/numbering derivation as a standalone billing-rule module the Contract calls, instead of embedding logic in the trigger \u2014 this is what will need to support milestone/recurring billing later.",
-          "leverage": "high",
+          "id": "opp_10b4b8d5b2",
+          "text": "Build the idempotency/duplicate-guard logic as a shared pattern for any 'event triggers automatic creation' flow on the platform, not just this one.",
+          "leverage": "future",
           "modules": [
+            "Contracts",
             "Invoicing",
-            "Contracts"
+            "Mission"
           ]
         },
         {
-          "id": "opp_dbbc26df7d",
-          "text": "Generalize the draft-then-validate pattern (auto-create as draft, human confirms) so it can later serve end-of-mission auto-invoicing too.",
-          "leverage": "future",
+          "id": "opp_86fde7a7b2",
+          "text": "If milestone/recurring billing is confirmed, build a billing-schedule engine rather than a one-off trigger, reusable across contract types.",
+          "leverage": "medium",
           "modules": [
-            "Invoicing",
-            "Missions"
+            "Contracts",
+            "Invoicing"
           ]
         }
       ],
       "next_steps": [
-        "Confirm whether a signed contract always produces exactly one invoice or must support milestone/recurring/partial billing before estimating scope.",
-        "Validate with Finance whether the auto-created invoice should be a draft pending review or issued directly.",
-        "Define the amendment/re-signature behavior explicitly and the duplicate-prevention rule that follows from it.",
-        "Decide whether the automation is a fixed global rule or configurable per client/contract type."
+        "Confirm whether contracts need a single invoice or a billing schedule (milestone/recurring/partial) \u2014 this determines the shape of the build.",
+        "Decide with Finance whether auto-created invoices start as draft-for-review or are issued immediately.",
+        "Define the trigger's reliability model (sync vs async) and the duplicate-prevention rule with engineering.",
+        "Clarify which contract types/clients/countries this automation applies to, and confirm the permission model for the resulting invoices."
       ],
       "decisions": [
         {
-          "id": "dec_5ab193b8ec",
-          "decision": "Contract signature is the trigger event for invoice creation",
-          "why": "The client explicitly named signature as the moment invoicing should start.",
-          "alternative": "Trigger on contract start date or on a billing schedule independent of signature timing.",
-          "tradeoff": "Signature-triggered automation can fire before a contract is truly active, risking invoicing on deals that stall or fall through between signature and start.",
+          "id": "dec_3aa86e677b",
+          "decision": "The contract's signature event is the trigger point for invoice creation, not another contract state change.",
+          "why": "",
+          "alternative": "",
+          "tradeoff": "",
           "derived_from": [
-            "workflow",
-            "business_objects"
+            "workflow"
           ]
         },
         {
-          "id": "dec_fdde9c7125",
-          "decision": "Any invoice generated by this automation must still comply with French VAT and legal numbering rules",
+          "id": "dec_89f717ae9d",
+          "decision": "Generated invoices must comply with French VAT and legal numbering rules.",
           "why": "",
           "alternative": "",
           "tradeoff": "",
@@ -577,255 +575,119 @@
         }
       ],
       "open_decisions": [
-        "Whether one signed contract yields one invoice or a full billing schedule (milestones, recurring, partial)",
-        "Whether the auto-created invoice is draft-for-review or issued immediately, and who owns that review",
-        "How amendment-driven re-signature interacts with invoice creation and duplicate prevention",
-        "Whether the rule is uniform across all clients or configurable by client/contract type",
-        "What success looks like for this automation (time-to-invoice, error rate, etc.)",
-        "Whether the trigger is synchronous/blocking on contract signing or asynchronous/queued"
+        "Whether a signed contract maps to one invoice or a billing schedule (milestones/recurring/partial).",
+        "Initial invoice status: draft awaiting review vs issued immediately.",
+        "Trigger reliability model: synchronous/blocking vs asynchronous/queued, and the duplicate-prevention guarantee.",
+        "Scope of the rule: does it apply to all contracts/clients/countries, or are there exceptions.",
+        "Who may view, edit, or cancel an auto-created invoice, and whether that differs from manual invoices.",
+        "What defines success for this automation (time saved, zero missed invoices, etc.)."
       ]
     },
     {
-      "problem": "Finance currently creates invoices by hand after being told a contract closed, causing delay and manual error.",
-      "solution": "An automation that listens for a contract's signature event and generates the corresponding invoice.",
+      "problem": "Invoices are apparently created manually after a contract is signed, causing delay and inconsistency, though the actual pain point (delay, missed invoices, errors) isn't confirmed.",
+      "solution": "An automated listener that generates an invoice the moment a contract reaches signed status, pulling amount, VAT and terms from the contract.",
       "introduces": [
-        "an event-subscription trigger on contract signature",
-        "an idempotency/dedup layer to prevent duplicate invoices on retries or re-signature",
-        "a billing-rule resolution step (amount, VAT, numbering, terms) that must source data from the contract or elsewhere",
-        "a new visibility/permission surface for an invoice nobody manually reviewed",
-        "a failure/retry path for signature events that fire with incomplete contract data"
+        "an event-driven trigger on the contract-signed transition",
+        "invoice-content derivation logic (amount, VAT, numbering, payment terms) sourced from contract data",
+        "idempotency/duplicate-protection handling for retries and re-signatures",
+        "a draft-vs-issued review step requiring new permission decisions",
+        "potential per-client / per-contract-type configuration of the billing rule",
+        "a dependency on the accounting/finance system for downstream numbering and export"
       ],
       "challenges": [
         {
-          "id": "chl_3d012141e2",
-          "headline": "One invoice per signature assumed",
-          "premise": "The request and current business rules treat signature as producing exactly one invoice for the full contract amount.",
-          "alternative": "Treat invoice generation as schedule- or milestone-driven from the start, with the signature event only kicking off a billing plan rather than a single document \u2014 this matches how the platform already models the contract-to-invoice relationship as one-to-many.",
-          "consequence": "Building a single-document trigger now, then discovering milestone or recurring billing is required, means re-architecting the trigger into a scheduling engine after the fact \u2014 a much costlier rebuild than designing for it up front.",
-          "recommendation": "Confirm with Finance whether any contracts bill in installments, subscriptions or milestones before deciding the trigger shape.",
+          "id": "chl_b7b08b8598",
+          "headline": "One invoice per signed contract",
+          "premise": "The request treats 'invoice the contract' as producing exactly one document at signature.",
+          "alternative": "Model invoicing as a billing schedule driven by the contract (single, milestone, recurring or partial) rather than a single creation event, since a contract is one-to-many with its invoices in this domain.",
+          "consequence": "Building for a single invoice now means retrofitting a one-to-many billing model later the moment a milestone or recurring contract shows up \u2014 a much larger rework than getting the shape right first.",
+          "recommendation": "Confirm with Finance whether billing is always single-shot or must support milestones/recurring terms before estimating.",
           "contests": [
             "business_rules",
-            "workflow"
+            "business_objects"
           ]
         },
         {
-          "id": "chl_76eb004e2a",
-          "headline": "Immediate issuance, no review gate",
-          "premise": "The workflow implies the invoice is created (and implicitly ready to send) the moment the contract is signed, with no stated review step.",
-          "alternative": "Generate the invoice in a draft status that finance must confirm before it is issued or sent, especially while amount/VAT/terms sourcing is still unresolved.",
-          "consequence": "Because invoice numbering is legally sequential and can't simply be deleted or edited once issued, a wrong auto-generated invoice reaching the client turns into a numbering/credit-note problem, not a quick fix.",
-          "recommendation": "Decide the invoice's initial status (draft-for-review vs auto-issued) with Finance before build, given the French numbering constraint.",
+          "id": "chl_dfb0295455",
+          "headline": "Auto-issue without review",
+          "premise": "The request implies the invoice appears ready to send the instant the contract is signed.",
+          "alternative": "Create the invoice as an editable draft awaiting finance validation, since amount, VAT and payment terms depend on contract data that may be incomplete exactly at the signature moment.",
+          "consequence": "Issuing directly off a signature event risks generating a legally-numbered invoice with wrong or incomplete data, which under French numbering rules can't simply be edited afterward.",
+          "recommendation": "Default the auto-created invoice to draft status pending finance sign-off, and confirm this with Finance before build.",
           "contests": [
             "workflow",
             "permissions"
           ]
         },
         {
-          "id": "chl_7bf1051985",
-          "headline": "Signature treated as a single, final event",
-          "premise": "The trigger assumes 'contract signed' fires once and cleanly, with no handling for amendments or repeated events.",
-          "alternative": "Tie invoice generation to a specific contract version, and explicitly decide whether an amendment's re-signature re-triggers billing or is excluded by rule.",
-          "consequence": "Amendments reopen signature in this system by design \u2014 without a stated dedup rule, the most likely production incident is a duplicate invoice, not a missing one.",
-          "recommendation": "Define the amendment/duplicate-signature behaviour explicitly and add an idempotency key before writing the trigger.",
+          "id": "chl_fa77a879e8",
+          "headline": "Signature fires exactly once",
+          "premise": "The trigger is assumed to fire cleanly, once, per contract.",
+          "alternative": "Treat the signed event as potentially repeatable (system retry, re-signature after correction, amendment re-triggering signature) and design invoice creation to be idempotent against a stable contract+state key.",
+          "consequence": "Without idempotency, retries or re-signing after an amendment silently produce duplicate, legally-numbered invoices that are costly to void or correct.",
+          "recommendation": "Define the idempotency key and retry-handling behavior before implementing the listener.",
           "contests": [
-            "edge_cases",
-            "workflow"
+            "workflow",
+            "edge_cases"
           ]
         }
       ],
       "complexity": "high",
       "complexity_reasons": [
-        "event-trigger plus idempotency handling for retries and amendments",
-        "amount/VAT/terms sourcing logic is undefined and may not be resolvable at signature time",
-        "possible one-to-many billing (milestone/recurring) hiding behind a 'simple' trigger",
-        "French legal invoice numbering limits how mistakes can be corrected after the fact"
+        "unresolved one-to-many contract/invoice billing shape",
+        "idempotency and event-reliability handling on a legally-numbered document",
+        "French VAT / legal numbering constraints on generated invoices",
+        "possible per-client or per-contract-type rule variation"
       ],
-      "cost_driver": "resolving what, how many, and how much to invoice per signed contract",
+      "cost_driver": "the logic that derives invoice content and billing structure from contract data",
       "risks": [
-        "Duplicate invoices from signature retries or contract amendments re-triggering the automation",
-        "Invoices generated with incomplete or wrong data if the contract isn't fully priced at signature time",
-        "Legal invoice numbering makes correcting a wrong auto-generated invoice a credit-note process, not a quiet fix",
-        "Permission gaps letting an unreviewed invoice become visible to the client's billing contact",
-        "Scope creep if milestone/recurring billing turns out to be required after a single-document build is already underway"
+        "Duplicate invoice creation on signature retries or re-signed contracts",
+        "Invoicing off incomplete or not-yet-finalized contract data (amount, VAT, terms)",
+        "The shared approval/permission framework may need extension for an invoice review step",
+        "Legal numbering integrity if a wrongly generated invoice must be voided or corrected",
+        "Building the rule as global when it actually needs to vary by client or contract type"
       ],
       "opportunities": [
         {
-          "id": "opp_18242d8bfc",
-          "text": "A generic 'contract event \u2192 downstream document' trigger, built with idempotency and status awareness, would also serve amendment-triggered re-invoicing without a separate mechanism.",
-          "leverage": "medium",
-          "modules": [
-            "Contracts",
-            "Invoicing"
-          ]
-        },
-        {
-          "id": "opp_1351412aab",
-          "text": "The same idempotent event-trigger pattern applies to end-of-mission triggering final invoicing, so building it generically now avoids duplicating the dedup logic later.",
-          "leverage": "future",
-          "modules": [
-            "Missions",
-            "Invoicing"
-          ]
-        },
-        {
-          "id": "opp_11e7fe0359",
-          "text": "A draft-then-review status for auto-generated invoices is a pattern other automated document creation in this platform will likely need too.",
-          "leverage": "medium",
-          "modules": [
-            "Invoicing"
-          ]
-        }
-      ],
-      "next_steps": [
-        "Confirm with Finance whether a signed contract always produces exactly one invoice or needs milestone/recurring billing support.",
-        "Decide the invoice's initial status \u2014 draft for finance review, or issued immediately \u2014 before building the trigger.",
-        "Define the exact behaviour on contract amendment or duplicate signature events (dedup key, versioning) to prevent duplicate billing.",
-        "Confirm who may see, edit or send the auto-created invoice before it's visible to the client's billing contact."
-      ],
-      "decisions": [
-        {
-          "id": "dec_1da53726f4",
-          "decision": "Invoice creation is triggered by the contract's signature event",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "business_objects",
-            "workflow"
-          ]
-        },
-        {
-          "id": "dec_f7012892ff",
-          "decision": "Generated invoices follow French VAT and legal numbering rules",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "constraints"
-          ]
-        }
-      ],
-      "open_decisions": [
-        "Whether a contract produces one invoice or a milestone/recurring series",
-        "Whether the auto-created invoice starts as draft (reviewed) or issued immediately",
-        "How amendments and repeated signature events are deduplicated against existing invoices",
-        "Where amount, VAT rate and payment terms are authoritatively sourced when not fully set at signature",
-        "Who has visibility and edit rights on the invoice before it reaches the client",
-        "What success looks like (time saved, error rate) \u2014 no metric has been defined yet"
-      ]
-    },
-    {
-      "problem": "Invoices tied to signed contracts are created manually today, risking delay, omission or inconsistency in billing.",
-      "solution": "Automatically generate an invoice (or invoices) from a contract when it is signed, sourcing billing fields from the contract itself.",
-      "introduces": [
-        "a cross-module event trigger coupling Contracts to Invoicing",
-        "idempotency handling for retries and amendment-triggered re-signature",
-        "a compliance-grade numbering/VAT engine attached to an automated creation path",
-        "a review/approval gate on machine-generated invoices before issuance",
-        "potentially a billing-schedule engine if one contract must emit several invoices over time"
-      ],
-      "challenges": [
-        {
-          "id": "chl_30ea206d87",
-          "headline": "One contract, one invoice assumed",
-          "premise": "A signed contract produces exactly one invoice for its full amount.",
-          "alternative": "Modeling the contract as one-to-many with its invoices from the start \u2014 even if only one invoice fires today \u2014 avoids rebuilding the trigger into a schedule engine the moment milestone or recurring billing shows up.",
-          "consequence": "If the real billing pattern turns out to be milestone-based or recurring, the single-invoice trigger has to be re-architected rather than extended, and any invoices already issued under the wrong model need reconciling.",
-          "recommendation": "Confirm with the client whether any contract type bills in installments or on a recurring basis before locking the data model.",
-          "contests": [
-            "business_rules",
-            "workflow"
-          ]
-        },
-        {
-          "id": "chl_20ef1db5b9",
-          "headline": "Trigger mechanics left unspecified",
-          "premise": "\"When the contract is signed, create the invoice\" is treated as a simple, single-fire event.",
-          "alternative": "Treating signature-to-invoice as an asynchronous, queued action with a visible pending state lets the signature flow succeed even if invoice creation fails or is retried, and gives a natural place to enforce exactly-once creation.",
-          "consequence": "A synchronous, blocking design means a billing-data problem (missing VAT rate, incomplete client fields) fails the signature action itself, and a naive retry can silently double-invoice \u2014 which is expensive to undo once a legal invoice number has been issued.",
-          "recommendation": "Decide sync-vs-async explicitly and define the idempotency guarantee (one invoice per contract regardless of retries or amendments) before writing the trigger.",
-          "contests": [
-            "workflow",
-            "risks"
-          ]
-        },
-        {
-          "id": "chl_4cafb60424",
-          "headline": "No review step before issuance",
-          "premise": "The auto-created invoice can go straight out, with no one checking it first.",
-          "alternative": "Landing the auto-generated invoice in a draft state for finance to confirm amount, VAT and terms before it's issued keeps a human in the loop without removing the automation's benefit.",
-          "consequence": "French invoice numbering is sequential and effectively irreversible \u2014 an invoice issued with wrong or incomplete data (because the contract was signed before all billing fields were finalized) forces a credit note, not a quiet fix.",
-          "recommendation": "Define the invoice's initial lifecycle state and who has approval rights before it's considered final/sent.",
-          "contests": [
-            "permissions",
-            "workflow",
-            "business_rules"
-          ]
-        }
-      ],
-      "complexity": "high",
-      "complexity_reasons": [
-        "unresolved contract-to-invoice cardinality (single trigger vs billing-schedule engine)",
-        "legal numbering and VAT rules make errors costly to reverse",
-        "idempotency across retries and contract amendments",
-        "approval gate and permissions not yet defined"
-      ],
-      "cost_driver": "the billing-rule logic: where each invoice field comes from, and whether a contract can emit one invoice or many",
-      "risks": [
-        "Retry or amendment re-signature could create a duplicate invoice under a legal numbering sequence that can't simply be deleted.",
-        "Contract data incomplete at signature time (missing VAT rate, currency, terms) would generate a legally invalid invoice unless a fallback is defined.",
-        "If contracts turn out to be one-to-many with invoices, the initial single-trigger build will need rework rather than extension.",
-        "Approval circuits are a shared, sensitive component across this platform \u2014 bolting an invoice-review step on ad hoc risks diverging from the existing circuit engine.",
-        "Amendments re-open contract signature per the platform's own lifecycle rules, so 'signed' is not a one-time event \u2014 the trigger must handle re-fires correctly."
-      ],
-      "opportunities": [
-        {
-          "id": "opp_ca3a762543",
-          "text": "Build the contract-signature listener as a general event subscription point rather than a one-off hook, so other downstream automations (notifications, reporting) can subscribe later without touching the Contract module again.",
+          "id": "opp_6e03368423",
+          "text": "Generalize the contract-signed trigger into a reusable 'contract lifecycle event' hook other downstream automations can subscribe to.",
           "leverage": "high",
           "modules": [
-            "Contracts",
-            "Invoicing"
+            "Contract",
+            "Invoice",
+            "Mission"
           ]
         },
         {
-          "id": "opp_e0f3707fdb",
-          "text": "Reuse the platform's existing approval-circuit engine for the invoice-review gate instead of building a bespoke one-step check.",
-          "leverage": "high",
-          "modules": [
-            "Invoicing"
-          ]
-        },
-        {
-          "id": "opp_acddceef15",
-          "text": "If milestone/recurring billing is confirmed, design the invoice-creation trigger as a billing-schedule engine from the outset rather than retrofitting it after a 1:1 build ships.",
+          "id": "opp_a376cc970d",
+          "text": "Build a proper billing-rule engine that maps contract type/client to invoice schedule (single, milestone, recurring) instead of a one-off script.",
           "leverage": "future",
           "modules": [
             "Invoicing",
-            "Contracts"
+            "Contract"
+          ]
+        },
+        {
+          "id": "opp_250c3cef93",
+          "text": "Introduce a reusable idempotent event-processing layer for trigger-based automations across the platform.",
+          "leverage": "future",
+          "modules": [
+            "Contract",
+            "Mission",
+            "Invoicing"
           ]
         }
       ],
       "next_steps": [
-        "Confirm whether any contract type requires multiple invoices (milestones, recurring, partial billing) before finalizing the data model.",
-        "Decide synchronous vs. asynchronous invoice creation and specify the idempotency guarantee against retries and amendments.",
-        "Define the invoice's initial lifecycle state and approval rights (who reviews before issuance) with Finance.",
-        "Clarify how missing or incomplete contract billing data at signature time should be handled \u2014 block signature, or create a draft invoice pending completion."
+        "Confirm with Finance whether one invoice per contract is sufficient or milestone/recurring billing must be supported before estimating.",
+        "Define the invoice's initial state (draft vs issued) and who validates it before it goes out.",
+        "Specify idempotency behavior for retries, re-signatures and contract amendments.",
+        "Confirm whether the auto-invoicing rule must vary by client or contract type, or can be global."
       ],
       "decisions": [
         {
-          "id": "dec_49937b698f",
-          "decision": "Contract signature is the triggering event for invoice creation",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "workflow"
-          ]
-        },
-        {
-          "id": "dec_b3aae4d9c8",
-          "decision": "Invoice fields (amount, VAT, currency, terms) are sourced from the Contract",
+          "id": "dec_2293ec55f6",
+          "decision": "Invoice content is sourced from the signed Contract",
           "why": "",
           "alternative": "",
           "tradeoff": "",
@@ -835,13 +697,133 @@
         }
       ],
       "open_decisions": [
-        "Whether one contract maps to exactly one invoice or a billing schedule of several",
-        "Synchronous vs. asynchronous trigger design and idempotency guarantee",
-        "Whether the auto-created invoice needs approval before issuance, and by whom",
-        "Whether billing rules vary by client, contract type or country on this configurable platform",
-        "What happens to already-created invoices when the underlying contract is amended",
-        "Audit/reporting requirements to trace which contract produced which invoice",
-        "Success metrics for the automation (e.g. same-day billing, zero missed invoices)"
+        "Single invoice vs. milestone/recurring billing structure",
+        "Synchronous (blocking) vs. asynchronous (queued) invoice creation",
+        "Draft-then-validate vs. issue-immediately invoice state",
+        "Idempotency and duplicate-handling rule for retries/re-signatures",
+        "Whether the rule is global or configurable per client/contract type",
+        "Notification/integration requirements toward Finance or the accounting system",
+        "Success metrics for the automation (time saved, error reduction, etc.)"
+      ]
+    },
+    {
+      "problem": "Invoices tied to signed contracts are created manually, inconsistently, and with no defined source of truth for amount, VAT, or terms.",
+      "solution": "Auto-generate an invoice when a contract is signed, sourcing its data from the contract and the client's billing rules.",
+      "introduces": [
+        "a subscription to the contract signature event",
+        "idempotency/deduplication logic to prevent duplicate invoices on retry or re-signature",
+        "a draft-vs-issued lifecycle decision for the auto-created invoice",
+        "a client/contract-level billing-rule configuration surface",
+        "a pending/async creation state if generation is decoupled from the signature action"
+      ],
+      "challenges": [
+        {
+          "id": "chl_277c313380",
+          "headline": "One invoice per contract assumption",
+          "premise": "The request treats 'invoice the contract' as producing exactly one invoice at signature.",
+          "alternative": "Model invoicing as one-to-many from the start \u2014 a billing schedule sourced from the contract (milestones, recurring, partial) that can spawn zero, one, or several invoices \u2014 rather than a single document tied to a single event.",
+          "consequence": "Building for a single invoice now means the whole feature gets rebuilt, not patched, the moment a milestone or recurring contract shows up.",
+          "recommendation": "Confirm with Finance whether any current or near-term contracts require multiple invoices before locking the data model.",
+          "contests": [
+            "business_rules",
+            "business_objects"
+          ]
+        },
+        {
+          "id": "chl_fe0713238d",
+          "headline": "Signature as the invoicing trigger",
+          "premise": "Invoice creation is assumed to fire at the moment of contract signature.",
+          "alternative": "Trigger on the contract start date or a defined billing schedule instead \u2014 decoupling the legal act of signing from the commercial act of billing.",
+          "consequence": "Signature-triggered invoicing generates documents for deals that can still fall through, get amended, or shift terms before they actually start, forcing cancellations and credit notes.",
+          "recommendation": "Validate the exact invoicing trigger point with Finance before wiring the event.",
+          "contests": [
+            "workflow",
+            "business_rules"
+          ]
+        },
+        {
+          "id": "chl_0ff412b714",
+          "headline": "Sync creation undecided",
+          "premise": "The flow implicitly assumes invoice generation happens inline as part of signing.",
+          "alternative": "Create the invoice asynchronously with a visible pending state, so missing billing data or a generation failure doesn't block or roll back the signature itself.",
+          "consequence": "A synchronous design ties invoice-generation errors directly to the signature UX and risks failing the signature step for unrelated billing-data problems.",
+          "recommendation": "Decide sync vs async explicitly, and design idempotent retries before implementation.",
+          "contests": [
+            "workflow"
+          ]
+        }
+      ],
+      "complexity": "high",
+      "complexity_reasons": [
+        "one-to-many billing model (milestone/recurring/partial) not yet settled",
+        "sync vs async trigger requiring idempotency and retry handling",
+        "billing rules likely vary by client or contract type",
+        "French VAT and legal numbering compliance on generated invoices"
+      ],
+      "cost_driver": "sourcing and configuring the billing rules that determine amount, VAT, terms and invoice count per contract",
+      "risks": [
+        "The contract object may not currently carry enough data (VAT rate, billing terms, numbering sequence) to generate a valid invoice, forcing upstream model changes.",
+        "Without idempotency, a re-signature or event replay could create duplicate invoices.",
+        "The shared permission framework may need extension to define who can see/edit/validate an auto-created draft invoice.",
+        "If billing rules vary by client or contract type, the configuration surface can grow well beyond a simple on/off automation.",
+        "Legal invoice numbering integrity is harder to guarantee if creation happens asynchronously or concurrently with other invoicing paths."
+      ],
+      "opportunities": [
+        {
+          "id": "opp_6f1408c76d",
+          "text": "Generalize the 'lifecycle event triggers a downstream document' pattern (contract signed \u2192 invoice) into a reusable event-to-document engine.",
+          "leverage": "high",
+          "modules": [
+            "Contracts",
+            "Invoicing",
+            "Missions"
+          ]
+        },
+        {
+          "id": "opp_215cf4fdbc",
+          "text": "Build the billing-rule sourcing (amount, VAT, terms, numbering) as a configurable engine rather than logic embedded in this one automation, so milestone/recurring billing can reuse it later.",
+          "leverage": "high",
+          "modules": [
+            "Contracts",
+            "Invoicing"
+          ]
+        },
+        {
+          "id": "opp_7d71442752",
+          "text": "Establish an idempotent event-subscription framework for lifecycle triggers, reusable for other event-driven automations like end-of-mission invoicing.",
+          "leverage": "future",
+          "modules": [
+            "Contracts",
+            "Missions",
+            "Invoicing"
+          ]
+        }
+      ],
+      "next_steps": [
+        "Confirm with Finance whether billing per contract is single-invoice, milestone-based, or recurring before designing the data model.",
+        "Decide the exact trigger point (signature vs. contract start/schedule) and whether creation is synchronous or asynchronous.",
+        "Define the invoice's starting state (draft vs. issued) and who can view, edit or approve it.",
+        "Clarify whether the automation rule is uniform or varies by client/contract type, and scope the configuration surface accordingly."
+      ],
+      "decisions": [
+        {
+          "id": "dec_e992153401",
+          "decision": "Invoice amount, VAT and payment terms are sourced from the contract",
+          "why": "",
+          "alternative": "",
+          "tradeoff": "",
+          "derived_from": [
+            "business_objects"
+          ]
+        }
+      ],
+      "open_decisions": [
+        "Whether contract invoicing is single-document, milestone-based, or recurring",
+        "Sync vs async invoice creation and the idempotency approach",
+        "Where amount, VAT rate, payment terms and numbering sequence come from when not already on the contract",
+        "Initial invoice state (draft vs issued) and who can view/edit/validate it",
+        "Whether the automation rule varies by client or contract type",
+        "How incomplete contract data, amendments and cancellations are handled at invoice-generation time"
       ]
     }
   ]
