@@ -305,6 +305,12 @@ def test_both_discover_entry_points_refuse_a_refined_session_before_paying(monke
     so a test asserting only `revision_conflict` was green on the defect. The `--once` leg is the
     control: it passed before this change and must keep passing, or the two paths have merely swapped
     which one is wrong.
+
+    Two claims, two tests: this one pins the gate's *position*, and
+    `test_stopping_early_keeps_the_turns_it_paid_for` pins what a stop keeps. Citing the second for
+    the first was #320 — it passes against the un-fixed code, so CLAUDE.md's sentence had a
+    reference that resolved and guarded nothing, which `test_narrative_references.py` cannot see
+    because it checks that a name exists and not that it fires.
     """
     _at_a_terminal(monkeypatch)
     _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ENGINE_REPLY))  # → revision 1

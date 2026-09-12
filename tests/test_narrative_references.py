@@ -44,10 +44,11 @@ TESTS = REPO_ROOT / "tests"
 # wheel, which is why it was missed, and that is irrelevant to the convention: a reference is read by
 # a maintainer with a grep, and the harness scripts are read by exactly that person.
 SCRIPTS = REPO_ROOT / "scripts"
-# `docs/` is the third place CLAUDE.md's own "Where a bug narrative lives" section names as
-# narrative's right home, alongside this file and the invariant list -- and until #156 it was the
-# one of the three the guard never opened. Measured before adding it: 8 references, all resolving,
-# none wrapped, so there is no false-positive cost to weigh against the gap.
+# `docs/` is the place CLAUDE.md's own "Where a bug narrative lives" section names as narrative's
+# right home (it named this file and the invariant list too, until #286 applied the rule to both)
+# -- and until #156 it was the one of the three the guard never opened. Measured before adding it:
+# 8 references, all resolving, none wrapped, so there is no false-positive cost to weigh against the
+# gap.
 DOCS = REPO_ROOT / "docs"
 
 # Files that may carry a reference. `.md` is in here for CLAUDE.md, which names two tests in its

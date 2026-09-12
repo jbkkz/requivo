@@ -356,6 +356,17 @@ def test_doctor_names_what_is_under_the_session_root_and_is_not_a_session(worksp
 
     Both halves are on the same workspace with only the directory appearing, so the finding cannot
     become a line that everybody sees.
+
+    Invariant 11's second half (#67). `scan_session_root`'s second part is the other half of one
+    predicate, beside `list_session_slugs`; it answers both from **one** listing, for the caller
+    that asks both, because two scans are two instants and a `session.json` landing between them
+    puts a name in neither answer. `doctor` reports it — a **report, not a repair**, describing what
+    is there and never concluding what it is, because a half-extracted archive and a leftover lock
+    are the same shape, and invariant 14's rule is that the evidence is the directory and only the
+    directory. A symlink is named as one and not followed
+    (`test_a_symlink_is_reported_as_one_and_its_target_is_not_read`); `slug_shaped` goes through
+    `validate_slug`, since validity is the pattern *and* the length (moved here from CLAUDE.md by
+    #286).
     """
     clean = _run_json(["doctor", "--json"])["sessions"]
     assert clean["non_sessions"] == [], "the control: an untouched workspace must produce no finding"

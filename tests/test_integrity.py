@@ -55,7 +55,18 @@ def test_racing_applies_conflict_cleanly_instead_of_crashing(workspace):
     from `Path.replace` — the two had also collided on one shared temp filename, and the second
     renamed a scratch file the first had already moved away. A lost update is bad; a lost update
     reported as a missing file is worse, because it reads as a bug in Requivo rather than a conflict
-    the caller must resolve."""
+    the caller must resolve.
+
+    Invariant 9: a precondition is held across the writes it authorises. `save_revision` checks
+    `expected_revision` and then writes more than once; without `session_lock` around both, two
+    writers pass the same check and the second overwrites the first — the check reads as protection
+    while providing none. Every compound mutation runs under `repo.lock(slug)`, taken by the service
+    so the whole sequence is one unit; the lock is re-entrant per thread
+    (`test_reentrant_acquisition_within_a_thread_still_never_touches_the_lock_twice`) and OS-held, so
+    a crash releases it. Any new multi-step write goes inside it, and any scratch file gets a unique
+    name (`test_concurrent_atomic_writes_do_not_collide_on_a_temp_file`). The sequel — a lock living
+    *inside* the directory a rename moves — is `test_a_forced_import_serialises_against_a_concurrent_writer`
+    (moved here from CLAUDE.md by #286)."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())  # revision 1 — the shared base
@@ -237,7 +248,20 @@ def test_a_session_path_is_not_resolved_before_it_exists(tmp_path, monkeypatch):
     What is counted is `store._resolve`, the store's own resolution, and not `Path.resolve` — which is
     what this counted until the store stopped calling it. A counter on a function the code under test
     never reaches records zero for a module that resolves on every call, so the assertion would have
-    stayed green while saying nothing at all."""
+    stayed green while saying nothing at all.
+
+    Two siblings had the identical shape and were found by sweeping the class rather than the
+    instance: `artifact_path` (`test_an_artifact_path_is_not_resolved_before_it_exists`) and
+    `integrity.py`'s artifact containment check, where a spurious disagreement reported
+    `unsafe_artifact_filename` about a perfectly bare name — the verb that answers *is this session
+    intact* accusing the user. All three are now **one** function, `core/persistence.py`'s
+    `is_contained`, because each had to be corrected separately for this and then again for its
+    sequel (`test_a_dangling_symlink_is_refused_where_the_platform_cannot_resolve_it`). It resolves
+    only a path that is actually there: `validate_slug`/`validate_filename` already make a separator
+    or a dot segment unrepresentable, so the sole escape is a symlink at the target, and an absent
+    path is not one — `exists() or is_symlink()`, never `exists()` alone, because `exists()` follows
+    the link and a dangling symlink out of the root is precisely the case to catch
+    (`test_a_symlink_out_of_the_session_root_is_still_refused`). Moved here from CLAUDE.md by #286."""
     root = tmp_path / "sessions"
     root.mkdir()
     resolved: list = []
@@ -289,7 +313,21 @@ def test_a_dangling_symlink_is_refused_where_the_platform_cannot_resolve_it(tmp_
 
     A containment decision must not rest on the platform being able to follow the link. This is the
     test that says so on Linux and macOS too, so the next regression is caught by the leg that runs on
-    every push rather than by the one that runs on one platform and one Python."""
+    every push rather than by the one that runs on one platform and one Python.
+
+    The mechanism, so the next fix aims at the right function: `Path.resolve()` on Windows under
+    CPython 3.9 asks `nt._getfinalpathname`, which has to open the path and therefore fails on a
+    link whose target is missing, after which the non-strict branch re-joins the unresolvable tail
+    to the parent it could resolve — so a dangling symlink resolves to its own location and reads as
+    contained. Two things hold it now: `_resolve` is `os.path.realpath`, never `Path.resolve()`
+    (realpath reads the reparse point itself, and its `strict=` keyword is 3.10+ and must not be
+    reached for), and `is_contained` refuses a symlink whose resolution comes back equal to its own
+    location, because a symlink never legitimately resolves to where it sits — that equality is the
+    resolver saying *I could not look*, and refusing there is the third state that takes the
+    guarantee off the platform entirely. `_blind_to_dangling_links` patches `store._resolve` and
+    **not** `Path.resolve`, which is where it was first installed: a simulation aimed at a function
+    the code no longer calls passes for a reason unrelated to its name (moved here from CLAUDE.md by
+    #286)."""
     root = tmp_path / "sessions"
     root.mkdir()
     _symlink_or_skip(root / "dangling", tmp_path / "not-yet", target_is_directory=True)

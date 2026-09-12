@@ -314,6 +314,17 @@ def test_the_three_outcomes_have_three_exit_codes(workspace):
     Collapsing the middle one into either neighbour is invariant 15's own defect in the one channel a
     script that does not parse stdout can read: `0` says nothing is wrong, `1` says nothing was
     listed, and both are false about a listing that degraded a row.
+
+    The code names a shape of answer, not a verb (#86). It was `EXIT_DEGRADED_LISTING` and read as
+    belonging to one command; `session verify` then reached the same state from the other side — it
+    could not read a session's product context, which is *not an answer* — and exited 1 beside a
+    session that really is inconsistent. Both are 4 now
+    (`test_verify_says_it_could_not_look_and_exits_4_not_1`); a new code per verb rebuilds the
+    collapse 4 exists to undo. Where a verb can produce both at once, the firm negative wins: a
+    session that is inconsistent **and** whose cards were unreadable exits 1, because a complete
+    answer outranks a partial one
+    (`test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken`). Moved here from
+    CLAUDE.md by #286.
     """
     _seed(HEALTHY)
     assert _run(["session", "list"])[1] == 0

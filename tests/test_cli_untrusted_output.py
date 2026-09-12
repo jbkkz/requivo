@@ -93,6 +93,17 @@ def test_doctor_cannot_be_made_to_print_a_row_a_session_wrote(forged_workspace):
     `sessions` row it is contradicting. The count of `sessions` rows is the assertion, because that
     is the thing forged — a reader scanning glyphs sees two verdicts and no way to tell which is the
     program's.
+
+    Why the resolver is not the guard (invariant 14): creation is not the only door. `session
+    import` writes a `session.json` this project never resolved — deliberately, because refusing a
+    colleague's archive for want of one of their cards would be wrong, and `integrity.py` is right
+    not to turn a card living outside the session directory into a verdict. So the resolution
+    `create_session` performs is a guarantee about *creation*, never about the value on disk: a
+    persisted `context_cards` is untrusted input every time it is read back, and what holds the
+    second door is `normalize_tokens`, where the value is *interpreted* and which every card selector
+    passes through. Read as covering both doors, the invariant promised something it did not, and a
+    stored card name spent a release able to forge a line at column 0 of this output (moved here
+    from CLAUDE.md by #286).
     """
     out = _run(["doctor"])
     lines = out.splitlines()

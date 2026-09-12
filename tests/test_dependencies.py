@@ -114,6 +114,11 @@ def test_diff_models_flags_material_change_but_ignores_completeness_noise():
 
 
 def test_diff_models_flags_a_removed_slot():
+    """Invariant 1's symmetry. Reasoning a turn merely *omits* is not a removal — but that is
+    resolved *before* the diff, by `ModelProposal.resolve` (invariant 10), never inside it. By the
+    time two models reach `diff_models`/`diff_reasoning` both are complete, so the diff is
+    symmetric: an empty collection facing a populated one is a real deletion, and a slot present
+    before and gone after is a real change (moved here from CLAUDE.md by #286)."""
     # A slot present before and gone after must register as a change — otherwise a decision or artifact
     # resting on it could go stale silently. (In practice the completeness invariant prevents a real
     # discovery from dropping a slot, but the diff must not depend on that upstream guarantee.)
@@ -249,6 +254,15 @@ def test_completeness_only_change_keeps_artifact_fresh():
 
 
 def test_related_slot_change_marks_artifact_stale():
+    """Invariant 1: an artifact is stale when something it rests on changed — never because the
+    session moved past its source revision, which is *provenance*. Two edge sets feed the verdict:
+    the slots an artifact consumes (`ARTIFACT_SLOTS`) and the reasoning layer
+    (`REASONING_CONSUMERS` — every generator, since each is prompted with the full model, so
+    `diff_reasoning` invalidates on its own; see
+    `test_reasoning_that_changes_without_a_slot_moving_still_invalidates`). Report
+    `ArtifactStatus.stale`; never infer staleness by comparing revisions — the control for that half
+    is `test_an_older_revision_that_missed_the_artifact_leaves_it_fresh` (moved here from
+    CLAUDE.md by #286)."""
     # The other side: a material change to a slot the artifact DOES consume flags it stale.
     from requivo.services.sessions import SessionService
     svc = SessionService()

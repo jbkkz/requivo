@@ -834,6 +834,14 @@ def test_a_first_discovery_that_races_a_concurrent_write_conflicts(workspace):
 
 
 def test_an_artifact_generated_from_a_superseded_revision_is_born_stale(workspace):
+    """Invariant 2: a generation carries the revision it read. Provider calls take seconds to
+    minutes and the session can move underneath them, so `current_revision` is captured before the
+    call and passed as `expected_revision` on any apply and as `source_revision` on the artifact
+    write. Saving against an older revision stays legal — `ArtifactService.save` then computes
+    freshness against the current model rather than assuming it, which is what this test pins. The
+    other half, never recording `stale=False` because the caller said nothing, is
+    `test_an_omitted_source_revision_is_refused_rather_than_read_as_now` (moved here from CLAUDE.md
+    by #286)."""
     from requivo.services.discovery import DiscoveryService
 
     svc, art = SessionService(), ArtifactService()
@@ -945,6 +953,12 @@ def test_the_provider_protocol_declares_every_member_the_orchestration_reads(wor
 
 
 def test_a_revision_records_the_prompt_it_was_reasoned_against(workspace):
+    """Invariant 6: provenance is real or absent. Each revision records provider, model, surface
+    and a hash of the exact prompt it was reasoned against; a provenance field nothing populates
+    is worse than none, because a reader trusts a column that is always filled. The deterministic
+    side of the same rule — an apply that made no call carries no usage — is
+    `test_a_deterministic_apply_carries_no_usage_provenance` (moved here from CLAUDE.md by
+    #286)."""
     # A revision log that is only "anthropic, at 14:02" cannot reproduce anything: behaviour here is
     # tuned by editing prompts and context cards, so the prompt identity is half the provenance.
     from requivo.providers.anthropic import prompt_version
@@ -999,6 +1013,15 @@ SESSION_JSON_0_8_2 = """{
 
 
 def test_a_session_written_by_an_older_requivo_still_loads(workspace):
+    """Invariant 8, the backward half. `.requivo/sessions/` is the interface between every
+    surface, at `format_version` 1. Adding a field is free; renaming or repurposing a *populated*
+    one needs a version bump and a migration in `migrate_session()`, and `docs/compatibility.md`
+    is the written contract, updated in the same change. This frozen 0.8.2 `session.json` pins
+    the promise. Forward compatibility is the other half — persisted models are `extra="allow"`
+    and a retired key is explicit, in `_RETIRED_KEYS` — pinned by
+    `test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip` and
+    `test_a_retired_key_is_dropped_rather_than_carried_forever` (moved here from CLAUDE.md by
+    #286)."""
     d = store.canonical_dir("leave-approval")
     d.mkdir(parents=True, exist_ok=True)
     (d / "session.json").write_text(SESSION_JSON_0_8_2)
