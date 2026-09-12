@@ -8,8 +8,11 @@ the freeze, and `docs/compatibility.md` for the one line that says so today.
 This package imports nothing from `fastapi` at this level, so `import requivo.api` succeeds with
 the base install. Only calling `create_api()` (in `requivo.api.app`) needs the extra, and it fails
 with a clean, actionable message rather than a bare traceback when it is missing -- the same shape
-`requivo.web`'s `create_app()` is reached through from `cli.py`'s `_cmd_web`, moved one layer in
-because slice 1 of #425 ships no CLI verb yet to own that lazy import.
+`requivo.web`'s `create_app()` is reached through from `cli.py`'s `_cmd_web`, kept one layer in
+even now that `requivo api serve` (`_cmd_api_serve`, slice 4) exists to own a lazy import of its
+own, because a third-party launcher reaches the factory without going through the verb.
+`requivo.api.auth` is the bind discipline that verb enforces (framework-free, base-install
+importable, like this module).
 """
 
 from __future__ import annotations

@@ -226,11 +226,13 @@ Even though it is a local app:
   use, or the allowlist below refuses every request — see [Binding beyond loopback](#binding-beyond-loopback).
 - **Writes are protected against cross-site requests.** Binding to loopback keeps nobody out — any page
   open in the same browser can post to a known local port without a preflight, and for this app writing
-  is the damage (sessions created, provider calls billed). Four checks run in `web/security.py`: a host
-  allowlist (loopback, plus anything in `REQUIVO_WEB_ALLOWED_HOSTS` — this is the DNS-rebinding guard,
-  and the only one that also runs on reads), the browser's `Sec-Fetch-Site` hint, an `Origin`/`Referer`
-  trust-domain match, and a per-process request token rendered into every form. A page held open across
-  a server restart needs a reload to pick up the new token.
+  is the damage (sessions created, provider calls billed). Four checks run on every write, installed by
+  `web/security.py`: a host allowlist (loopback, plus anything in `REQUIVO_WEB_ALLOWED_HOSTS` — this is
+  the DNS-rebinding guard, and the only one that also runs on reads), the browser's `Sec-Fetch-Site`
+  hint, an `Origin`/`Referer` trust-domain match, and a per-process request token rendered into every
+  form. The first three are defined in `requivo.host_policy` and shared with the HTTP API, which runs
+  the identical checks before its own writes (#508, #425); only the token is this surface's own. A
+  page held open across a server restart needs a reload to pick up the new token.
 - **A request that names no host is refused, not waved through.** The host allowlist used to skip
   itself when it could not determine a `Host` — an absent header, or an empty one — so the one request
   nobody could attribute walked past the only check that also runs on reads, and nothing reported that
@@ -259,8 +261,8 @@ Even though it is a local app:
   equivalence: two real hostnames there must match exactly, because whether they are one trust domain is
   your call and not something the app should infer from one comma-separated list. `Origin: null` — the
   opaque origin a sandboxed cross-site frame sends — is refused; no origin header at all is accepted,
-  which is what lets `curl` with a valid token work, and the reasoning for the difference is in
-  `web/security.py`.
+  which is what lets `curl` with a valid token work, and the reasoning for the difference is on
+  `check_request_origin` in `requivo.host_policy`.
 - **That equivalence is the loopback interface, not this process, and the port is deliberately not
   compared.** A page on *any* loopback port passes the origin check — `http://localhost:3000` as much
   as the port Requivo is serving on — because the comparison discards the port on both sides. That

@@ -43,11 +43,27 @@ WEB_LOGGER = "requivo.web"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
-def configure_web_logging(stream=None) -> logging.Logger:
-    """Attach one formatted stderr handler to `requivo.web`, and return that logger.
+# The API's logger, configured by `requivo api serve` through the same function (#425 slice 4).
+# `api/usage.py` writes the operator's cost line to it at INFO from a `finally` -- the exact record
+# #291 found being dropped on the web surface -- so a serve verb that did not attach a handler would
+# reproduce that defect one surface along. Named here, beside `WEB_LOGGER`, rather than importing
+# anything from `requivo.api`: this module is stdlib-only and stays that way.
+API_LOGGER = "requivo.api"
 
-    **Only an entry point that owns the process may call this** — `requivo web`, or a script that is
-    the program rather than a library inside somebody else's. Importing this module does nothing.
+
+def configure_web_logging(stream=None) -> logging.Logger:
+    """Attach one formatted stderr handler to `requivo.web`, and return that logger. The web-named
+    entry point of `configure_surface_logging`, kept under the name every caller and test has used
+    since #291."""
+    return configure_surface_logging(WEB_LOGGER, stream)
+
+
+def configure_surface_logging(name: str, stream=None) -> logging.Logger:
+    """Attach one formatted stderr handler to the named surface logger, and return that logger.
+
+    **Only an entry point that owns the process may call this** — `requivo web`, `requivo api
+    serve`, or a script that is the program rather than a library inside somebody else's. Importing
+    this module does nothing.
 
     Idempotent, and it declines rather than competing. Three states, and the third is the point:
 
@@ -59,7 +75,7 @@ def configure_web_logging(stream=None) -> logging.Logger:
       the process; it does not own a logger another caller has already spoken for, and taking it over
       would be the import-time hijack this module exists to avoid, arriving one function later.
 
-    The returned logger is the same object `getLogger(WEB_LOGGER)` returns, whichever of the three
+    The returned logger is the same object `getLogger(name)` returns, whichever of the three
     happened — so a caller can log through it without having to know.
 
     `stream` is for tests. Left `None`, it resolves `sys.stderr` **at call time**, not at import: by
@@ -68,7 +84,7 @@ def configure_web_logging(stream=None) -> logging.Logger:
     handler cannot kill the process on one either way — `StreamHandler.emit` routes an encoding
     failure to `handleError` — but it would drop the record silently, which is the same hole.
     """
-    logger = logging.getLogger(WEB_LOGGER)
+    logger = logging.getLogger(name)
     if logger.handlers:
         return logger
     handler = logging.StreamHandler(sys.stderr if stream is None else stream)

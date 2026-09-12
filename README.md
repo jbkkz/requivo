@@ -76,7 +76,10 @@ Two other ways in, on the same local sessions — nothing is locked to the inter
   On native Windows it also needs [Git for Windows](https://git-scm.com/downloads/win), which is what
   gives Claude Code the Bash tool the skills run through.
 - **[CLI][cli]** — infrastructure. `requivo discover | status | brief …`, for automation and
-  anything you drive from a script or a pipeline.
+  anything you drive from a script or a pipeline. The same services are also reachable over HTTP:
+  `requivo api serve` (the `[api]` extra, experimental) serves a local REST API on
+  `127.0.0.1:8767` with its OpenAPI docs at `/docs` — loopback needs no credential; anything
+  wider requires `REQUIVO_API_TOKEN` and refuses to start without it.
 
 Install and first run in depth: [`docs/getting-started.md`][getting-started].
 

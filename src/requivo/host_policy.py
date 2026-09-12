@@ -22,12 +22,15 @@ string and returns or raises. Nothing here imports fastapi or starlette, so the 
 reach it with neither extra present, and `tests/test_boundaries.py` scans `api/` and `web/` as
 surfaces rather than needing an allowlist entry for this module.
 
-**What this module deliberately does not hold:** the `Sec-Fetch-Site`, `Origin`/`Referer` and
-synchronizer-token checks. Those run on unsafe methods, they are shaped by the fact that Requivo Web
-serves HTML forms, and the API's answer for its own future writes is argued separately in
-`docs/decisions/0004-the-http-api-facade.md` §5 -- a JSON content-type requirement rather than a
-token. Sharing the host axis is what #508 asked for; sharing the rest would be assuming an answer
-that record has not reached.
+**Since #425 slice 4 it also holds the `Sec-Fetch-Site` and `Origin`/`Referer` checks**
+(`check_request_origin`, and the three refusal codes it raises), because that record's §5 reached
+its answer: of the web guard's four checks the API keeps three -- this host axis, these two
+origin-attribution checks, and a JSON content-type floor in place of the synchronizer token. The two
+moved here rather than being copied because both surfaces run them on the same headers for the same
+reason (a browser attributing an unsafe request to a page this server did not serve), and a second
+copy is the drift shape #508 was filed about. **What this module still does not hold:** the
+synchronizer token, the body cap and the form parsing. Those are shaped by Requivo Web serving HTML
+forms, which the API does not, and they stay in `web/security.py`.
 """
 
 from __future__ import annotations
@@ -183,3 +186,134 @@ def check_host(raw_host: str | None) -> str:
             f"this server does not answer to host {host!r}",
             details={"host": host, "hint": f"set {ALLOWED_HOSTS_ENV} to bind elsewhere on purpose"})
     return host
+
+
+# ── the origin axis: who does the browser say sent this? (moved out of web/security.py, #425) ──
+
+class CrossSiteFetchError(CrossSiteRequestError):
+    """The browser's own `Sec-Fetch-Site` says this came from elsewhere. `details`:
+    `{sec_fetch_site}`."""
+
+    code = "cross_site_fetch"
+
+
+class OpaqueOriginError(CrossSiteRequestError):
+    """`Origin: null` — a browser speaking and declining to attribute itself (#43). `details`:
+    `{origin, host}`."""
+
+    code = "opaque_origin"
+
+
+class OriginMismatchError(CrossSiteRequestError):
+    """The stated origin is not the same trust domain as the host addressed. `details`:
+    `{origin, host}` — the same keys as `opaque_origin` and a different fact, which is why they are
+    two codes rather than one: a shared shape is not a shared meaning."""
+
+    code = "origin_mismatch"
+
+
+# The Origin header's opaque value, sent verbatim and never as part of a URL: a browser saying "a
+# context I decline to attribute". Matched on the raw header rather than on `hostname()`, which parses
+# it into the plausible-looking hostname `"null"`.
+OPAQUE_ORIGIN = "null"
+
+
+def same_trust_domain(origin_host: str, host: str) -> bool:
+    """Is a page served from `origin_host` the same trust domain as the server answering to `host`?
+
+    The same string always is. Beyond that, only the loopback set: `localhost`, `127.0.0.1` and `::1`
+    are three spellings of one interface on one machine, and the host check above already accepts any
+    of them interchangeably. Comparing the two spellings as strings refused a post that used both at
+    once, which is a false positive rather than a boundary (#43).
+
+    What that accepts is the loopback **interface**, not this process. `hostname` discards the port on
+    both sides, so `http://localhost:3000` and `http://localhost:8765` arrive here as the same string:
+    the accepted set is every page served by every process on any loopback port, which on a developer
+    machine is a populated one. This docstring used to claim the opposite — that such a page *"can only
+    have been served by this process, nothing else is listening there"* — and that was simply false. A
+    rationale is what the next change gets reasoned from, so a wrong one is worse than none (#46).
+
+    The port-blindness is deliberate, and it predates #43 rather than following from it: before that
+    fix, `Origin: http://localhost:3000` against `Host: localhost:8765` already compared equal. It
+    stays, because what gates the write on each surface is a check a page on another loopback port
+    cannot satisfy: the request token on Requivo Web, and on the API a JSON content type no
+    cross-origin page can send without a CORS preflight this app never answers. The browser's own
+    same-origin policy is (scheme, host, port), so reading a page this server rendered is a
+    cross-origin read; neither app sends CORS headers, so the body never reaches the script.
+    `Sec-Fetch-Site` refuses that same post one check earlier, as `same-site`, on every browser that
+    sends it. Comparing ports here would add nothing those do not already do, and it would reintroduce
+    #43's exact failure shape — a default port elided in an `Origin` but spelled out in a `Host`,
+    refusing a form with no way forward. Tightening it is a separate decision needing its own tests;
+    `test_a_cross_port_loopback_origin_is_accepted_and_that_is_the_decision` pins the behaviour so that
+    change has to argue with this paragraph rather than slip past it.
+
+    The hosts an operator listed in `REQUIVO_WEB_ALLOWED_HOSTS` deliberately do **not** join that
+    equivalence class, so this is not a membership test over `allowed_hosts()`. Those are real
+    hostnames pointing at a deliberate non-loopback bind, and two of them may well be meant as two
+    distinct origins — that is the operator's call to make, and inferring it from co-membership in one
+    comma-separated list would make it for them, silently, in the widening direction.
+
+    An empty string on either side is not a match, and that arm is the point rather than a special
+    case. `""` is what `hostname` returns when it could not find a hostname *at all* — an absent or
+    unparseable `Host`, or an origin such as `http:///` that is a well-formed URL naming nobody. Two of
+    those facing each other used to compare equal, so the one input where **neither** side was
+    determined produced the same verdict as a verified match: a check that could not look, answering
+    anyway. Refusing costs nothing real — no browser omits `Host`, and a request that reaches here at
+    all has already stated an origin — and it keeps this function's name true for every input.
+
+    Since #45 the `host` half of that arm is unreachable from either caller: both guards refuse an
+    undetermined `Host` outright through `check_host`, several checks earlier, so `host` is always
+    determined by the time it gets here. It is kept rather than pruned as now-dead, and deliberately. A
+    helper that makes a claim by name should hold for every input it is handed, this one is called
+    directly by its own tests, and narrowing a security helper on the grounds that today's callers
+    happen to pre-filter its input is how the next caller inherits a guarantee nobody re-checked.
+    """
+    if not origin_host or not host:
+        return False
+    if origin_host == host:
+        return True
+    return origin_host in LOOPBACK_HOSTS and host in LOOPBACK_HOSTS
+
+
+def check_request_origin(host: str, *, sec_fetch_site: str | None, origin: str | None,
+                         referer: str | None) -> None:
+    """The two origin-attribution checks every unsafe request faces, or a refusal -- the single
+    definition both surfaces' guards call (#425 slice 4; `web/security.py`'s `_enforce` before it).
+
+    Takes the raw header values and the host `check_host` already determined, and returns or raises,
+    so it needs no framework and either surface can call it from inside whatever middleware shape it
+    has. **Which methods it runs on is the caller's decision**, not this function's: Requivo Web runs
+    it on everything outside `SAFE_METHODS`, the API on its own `_UNSAFE_METHODS` set, and both are
+    right for their surface. Reads never reach here on either.
+
+    `Sec-Fetch-Site` first -- the browser's own account of where the request came from, free,
+    unspoofable from script, and refused outright for `cross-site` / `same-site`.
+
+    `Origin: null` is refused on purpose, and the asymmetry with an *absent* origin below is the
+    reason rather than an oversight. A browser attaches `Origin` to every POST, so no origin at all
+    means no browser is speaking — a scripted client, which each surface's load-bearing check already
+    gates and which is a supported caller. `null` is the opposite: a browser that is speaking and
+    declining to attribute itself, and it is the one origin a browser-borne attacker can *choose* to
+    emit, from a sandboxed cross-site frame. No page either server serves ever produces it. Before #43
+    this arm fired only by accident, because `hostname("null")` happens to return `"null"` and fail an
+    equality test; the outcome is unchanged and the reason is now stated. It is a cheap filter either
+    way. Read unstripped, so a whitespace-only `Origin` stays truthy here exactly as it did before and
+    still reaches the hostname comparison (where it resolves to `""` and is refused) rather than newly
+    falling through to `Referer`.
+    """
+    fetch_site = sec_fetch_site or ""
+    if fetch_site and fetch_site not in ("same-origin", "none"):
+        raise CrossSiteFetchError(
+            "this request came from another site", details={"sec_fetch_site": fetch_site})
+
+    origin_header = origin or ""
+    if origin_header.strip().lower() == OPAQUE_ORIGIN:
+        raise OpaqueOriginError(
+            "this request came from an opaque origin, which this server does not accept",
+            details={"origin": OPAQUE_ORIGIN, "host": host})
+
+    stated = origin_header or referer or ""
+    if stated and not same_trust_domain(hostname(stated), host):
+        raise OriginMismatchError(
+            "this request came from another origin",
+            details={"origin": hostname(stated), "host": host})

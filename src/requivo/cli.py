@@ -876,39 +876,49 @@ def _is_wildcard_bind_address(host: str) -> bool:
         return False
 
 
+def _announce_bind(host: str, *, verb: str, exposure: str) -> None:
+    """What both local HTTP surfaces say and do when asked to bind beyond loopback -- shared by
+    `requivo web` and `requivo api serve` (#425 slice 4) rather than copied, since the host
+    allowlist they both answer under is one definition (`requivo.host_policy`, #508) and the bind
+    it has to be told about is the same bind. `exposure` is the one sentence that differs: what
+    binding this surface wide actually exposes. Loopback: no warning, nothing written."""
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return
+    if _is_wildcard_bind_address(host):
+        # A wildcard bind address names every interface the machine has, not one a browser could
+        # ever send back in a `Host` header — no client addresses a server as "0.0.0.0", it
+        # addresses whatever IP or hostname it actually connected to. Auto-allowlisting the
+        # literal wildcard string used to make `--host 0.0.0.0` *look* like it worked while every
+        # LAN client got 403 `host_not_allowed` with no clue why. The guard staying fail-closed
+        # here is right; the gap was that the one thing an operator actually needs to do next --
+        # name the address LAN clients will use -- was never said. Pinned by
+        # `test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var`.
+        print(f"⚠  Binding to {host} (every interface): {exposure} A wildcard bind address is not "
+              "a valid Host header, so it is NOT auto-allowlisted — every request will be refused "
+              "until you set REQUIVO_WEB_ALLOWED_HOSTS to the hostname or IP LAN clients will "
+              f"actually use, e.g.:\n"
+              f"    REQUIVO_WEB_ALLOWED_HOSTS=192.168.1.50 requivo {verb} --host {host}",
+              file=sys.stderr)
+    else:
+        print(f"⚠  Binding to {host}: {exposure} Prefer 127.0.0.1 unless you fully control the "
+              "network.", file=sys.stderr)
+        # The app only answers to hosts it recognises (the DNS-rebinding guard in host_policy.py),
+        # and loopback is all it recognises by default. A deliberate bind elsewhere is the operator
+        # saying this specific address is legitimate, so record it — without silently widening the
+        # default. Unlike the wildcard case above, `host` here IS a real address a browser could
+        # send as `Host`, so auto-allowlisting it is not the bug #217 found.
+        os.environ.setdefault("REQUIVO_WEB_ALLOWED_HOSTS", host)
+
+
 def _cmd_web(a, client) -> None:
     """Launch the local, single-user web interface (the `[web]` extra). Binds to localhost by default;
     the Anthropic key is read from the server environment and is only needed for provider actions —
     consulting existing sessions needs none. Uvicorn is imported and started here, never at module
     import, and the FastAPI app is a factory so nothing binds a port until this runs."""
     host, port = a.host, a.port
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        if _is_wildcard_bind_address(host):
-            # A wildcard bind address names every interface the machine has, not one a browser could
-            # ever send back in a `Host` header — no client addresses a server as "0.0.0.0", it
-            # addresses whatever IP or hostname it actually connected to. Auto-allowlisting the
-            # literal wildcard string used to make `--host 0.0.0.0` *look* like it worked while every
-            # LAN client got 403 `host_not_allowed` with no clue why. The guard staying fail-closed
-            # here is right; the gap was that the one thing an operator actually needs to do next --
-            # name the address LAN clients will use -- was never said. Pinned by
-            # `test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var`.
-            print(f"⚠  Binding to {host} (every interface): Requivo Web has NO authentication and "
-                  "must not be exposed on an untrusted network. A wildcard bind address is not a "
-                  "valid Host header, so it is NOT auto-allowlisted — every request will be refused "
-                  "until you set REQUIVO_WEB_ALLOWED_HOSTS to the hostname or IP LAN clients will "
-                  f"actually use, e.g.:\n"
-                  f"    REQUIVO_WEB_ALLOWED_HOSTS=192.168.1.50 requivo web --host {host}",
-                  file=sys.stderr)
-        else:
-            print(f"⚠  Binding to {host}: Requivo Web has NO authentication and must not be exposed "
-                  "on an untrusted network. Prefer 127.0.0.1 unless you fully control the network.",
-                  file=sys.stderr)
-            # The app only answers to hosts it recognises (the DNS-rebinding guard in web/security.py),
-            # and loopback is all it recognises by default. A deliberate bind elsewhere is the operator
-            # saying this specific address is legitimate, so record it — without silently widening the
-            # default. Unlike the wildcard case above, `host` here IS a real address a browser could
-            # send as `Host`, so auto-allowlisting it is not the bug #217 found.
-            os.environ.setdefault("REQUIVO_WEB_ALLOWED_HOSTS", host)
+    _announce_bind(host, verb="web",
+                   exposure="Requivo Web has NO authentication and must not be exposed on an "
+                            "untrusted network.")
     try:
         import uvicorn
 
@@ -953,8 +963,55 @@ def _cmd_web(a, client) -> None:
         uvicorn.run(create_app(), host=host, port=port)
 
 
+def _cmd_api_serve(a, client) -> None:
+    """Serve the local HTTP API (the `[api]` extra, #425 slice 4) -- `requivo web`'s shape, one
+    surface along: the same bind announcement, the same lazy import with the same install hint, the
+    same logging placement, and no browser to open.
+
+    The one thing this verb has that `web` does not is the bind discipline of
+    `docs/decisions/0004-the-http-api-facade.md` §5: `create_api(bind_host=host)` refuses to build
+    the app for a bind beyond loopback with no `REQUIVO_API_TOKEN` set, and it does so *before*
+    uvicorn is handed anything, so the refusal is a clean one-line `RequivoError` and never a bound
+    port. With a token set, every `/api/v1` route except `/health` requires it as a bearer -- the
+    warning below says so, because "NO authentication" would be false for this surface.
+    """
+    host, port = a.host, a.port
+    try:
+        import uvicorn
+
+        from requivo.api.app import create_api
+        from requivo.web.logging_setup import API_LOGGER, configure_surface_logging
+    except ImportError as e:
+        # The same decision, and the same published code, as `_cmd_web`'s arm above: a missing
+        # optional install is `provider_unavailable`. `create_api()` raises the identical message
+        # for a missing fastapi; this arm is for uvicorn, which `[api]` also declares but the
+        # factory never imports. Pinned by `test_the_missing_api_extra_keeps_its_published_error_code`.
+        raise EngineError(
+            "The HTTP API is not installed. Install it with `pip install 'requivo[api]'` "
+            f"(or `uv tool install 'requivo[api]'`). You do NOT need it for the CLI, Requivo Web, or "
+            f"Claude Code. (import error: {e})") from e
+    # Built before the bind warning, the logger and the banner: a refusal to bind should be the only
+    # thing this verb prints when it refuses. Pinned by
+    # `test_the_serve_verb_refuses_a_non_loopback_bind_with_no_token_before_binding`.
+    app = create_api(bind_host=host)
+    _announce_bind(host, verb="api serve",
+                   exposure="the Requivo API is protected only by the REQUIVO_API_TOKEN bearer "
+                            "token and must not be exposed on an untrusted network.")
+    # Same placement and same reason as `configure_web_logging()` in `_cmd_web`: the process is
+    # ours from here. `api/usage.py` writes the operator's cost line to `requivo.api` at INFO from
+    # a `finally`, which `lastResort` would drop (#291's exact defect, one surface along).
+    # Pinned by `test_the_api_serve_verb_configures_the_logger_before_it_serves`.
+    configure_surface_logging(API_LOGGER)
+    url = f"http://{host}:{port}"
+    print(f"\nRequivo API → {url}   (docs: {url}/docs)")
+    print("  Sessions stay local under .requivo/sessions/. An Anthropic key (server env) is needed only")
+    print("  for provider actions (discovery, generation); reading existing sessions needs none.")
+    print("  EXPERIMENTAL: paths and shapes may still change -- see docs/decisions/0004.\n")
+    uvicorn.run(app, host=host, port=port)
+
+
 # The closing paragraph of `requivo --help` (#244). It carries the two things a flat list of
-# nineteen verbs cannot: the first command to run, and what the (API) marker on nine of them means.
+# verbs cannot: the first command to run, and what the (API) marker on nine of them means.
 # A marker nobody defines is a decoration, and the old help defined nothing at all -- a reader could
 # not tell from it that `brief` would bill them and `status` would not.
 EPILOG = (
@@ -990,8 +1047,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
     # Registration order IS render order in argparse, so this list is the first screen (#244). It
-    # runs demo → discover → the refinement verbs → the generators → the plumbing → web, which is
-    # the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
+    # runs demo → discover → the refinement verbs → the generators → the plumbing → web → api, which
+    # is the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
     # diagnostic entries led and the two verbs a visitor needs sat seventh and eighth.
     #
     # `model_cmd` is defined here rather than further down for the same reason: the twelve journey
@@ -1098,6 +1155,20 @@ def _build_parser() -> argparse.ArgumentParser:
     web.add_argument("--no-open", action="store_true", help="do not open a browser automatically")
     web.add_argument("--reload", action="store_true", help="auto-reload on code changes (development)")
     web.set_defaults(func=_cmd_web)
+
+    # Beside `web`, for the same reason: a surface, not a step. `api` is a group so that `serve` is
+    # not the last verb it ever grows (#425 slice 4); `--workspace` follows `web`'s SUPPRESS pattern
+    # for the reason stated on that copy.
+    api = sub.add_parser("api", help="the local HTTP API (needs the [api] extra)")
+    api_sub = api.add_subparsers(dest="api_command", required=True, metavar="<command>")
+    serve = api_sub.add_parser(
+        "serve", help="serve the local HTTP API -- experimental; needs the [api] extra")
+    serve.add_argument("--host", default="127.0.0.1",
+                       help="bind address (default: 127.0.0.1, localhost only; anything else "
+                            "requires REQUIVO_API_TOKEN)")
+    serve.add_argument("--port", type=int, default=8767, help="port (default: 8767)")
+    serve.add_argument("--workspace", metavar="DIR", default=argparse.SUPPRESS, help=_WORKSPACE_HELP)
+    serve.set_defaults(func=_cmd_api_serve)
 
     # Last, after every verb group has registered: a global flag is global wherever it is written.
     _accept_workspace_after_the_command(p)
