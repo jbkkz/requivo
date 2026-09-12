@@ -290,6 +290,28 @@ def test_a_bare_model_file_is_not_reviewed_and_says_so(tmp_path):
     assert "none rests on thinner evidence" not in text
 
 
+def test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name(tmp_path):
+    """Found in review. `_resolve_ref` names a loose file's parent directory as its slug, and a real
+    session of that name has a revision history -- so `svc.exists(slug)` would have reviewed *that*
+    session and printed its flagged decisions under a file that holds none of them. The split is
+    the file predicate, never the slug's existence."""
+    svc = SessionService()
+    svc.create_session("Speed up CI.", slug="ci")
+    _walk(svc, "ci",
+          _model(_decision("current_process"), current_process=slot(0, "empty", "high")),
+          _model(_decision("current_process"), current_process=slot(90, "explicit", "high")))
+    # Positive control: the session itself is reviewed and flags the decision.
+    assert "THINNER EVIDENCE" in _run_app(["impact", "ci", "current_process"])
+
+    loose = tmp_path / "elsewhere" / "ci" / "model.json"
+    loose.parent.mkdir(parents=True)
+    loose.write_text(_model(current_process=slot(90, "explicit", "high")).model_dump_json(),
+                     encoding="utf-8")
+    text = _run_app(["impact", str(loose), "current_process"])
+    assert "not reviewed" in text
+    assert DECISION not in text and "THINNER EVIDENCE" not in text
+
+
 def test_the_full_map_form_reviews_the_evidence_too():
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")

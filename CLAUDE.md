@@ -87,7 +87,7 @@ requivo/
     analysis.py      readiness / soft slots / blockers    context.py   card + prompt assembly (no LLM)
     persistence.py   session store: .requivo layout, revisions, migrate_legacy, atomic writes
     validation.py    validate_proposal → structured errors  errors.py  RequivoError (+ .to_dict())
-    dependencies.py  the dependency DAG: propagate / diff_models / diff_reasoning
+    dependencies.py  the dependency DAG: propagate / diff_models / diff_reasoning / thinner_evidence
     integrity.py     does a session directory tell the truth about itself? evidence is the
                      directory and only the directory: nothing outside becomes a verdict (a lost
                      context card is an environment finding), and nothing inside aims a filesystem
@@ -493,7 +493,10 @@ what. `core/dependencies.py` holds the graph: a `DesignDecision` records the slo
 `derived_from`; a `Challenge` records the slots it `contests`; `ARTIFACT_SLOTS` records which slots each
 artifact consumes. The assessment maps to `*` — it is a judgment over the whole model, so any material
 change invalidates the saved copy. `propagate()` gives the blast radius, `diff_models()` the material
-change between two versions (value/confidence/impact — completeness alone is noise).
+change between two versions (value/confidence/impact — completeness alone is noise), and
+`thinner_evidence()` the decisions derived while a slot they rest on was `empty`/`inferred` and is
+`explicit` now — *worth re-reading*, never *contradicted* (#493; the service finds the derivation
+revision, the pure comparison only takes the two models).
 
 Each generator is the same shape — **prompt + contract + generator fn + writer** — and every interface
 reaches them through `DiscoveryService.generate()`, which owns the revision lock, the provenance and

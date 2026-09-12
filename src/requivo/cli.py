@@ -703,10 +703,12 @@ def _cmd_impact(a, client) -> None:
     out, slug = _resolve_ref(a.session)
     # Decisions derived from thinner evidence than the session now holds (#493) -- a walk over the
     # frozen revisions, so only a session has it. A bare model.json is *not reviewed*, which the
-    # renderer says in those words rather than as an empty section; same `svc.exists(slug)` split
-    # `_status_payload` makes for revision and artifact freshness.
-    svc = SessionService()
-    evidence = svc.thinner_evidence(slug) if svc.exists(slug) else None
+    # renderer says in those words rather than as an empty section. Decided by the same predicate
+    # `_resolve_ref` took the file branch on, never by `svc.exists(slug)`: the slug a file resolves
+    # to is its parent directory's name, and a session of that name in the workspace is a different
+    # model whose review would print as this file's. Pinned by
+    # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
+    evidence = None if Path(a.session).is_file() else SessionService().thinner_evidence(slug)
     if not a.slots:
         render_dependency_map(out)
         render_evidence(evidence)

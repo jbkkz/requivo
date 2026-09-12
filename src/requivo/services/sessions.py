@@ -549,17 +549,21 @@ class SessionService:
         per-slot dependency map (`render_dependency_map`) -- a different shape (many small reports,
         one per schema slot) that this method does not attempt to produce; the API route requires
         `slots` for that reason (see #425's own report for the boundary)."""
-        model = self.load_model(slug)
-        resolved, unmatched = resolve_slots(slots)
-        if unmatched:
-            raise UnknownSlotError(
-                f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
-                "(e.g. 'permissions', 'workflow', 'reporting').",
-                details={"unmatched": unmatched})
-        report = propagate(model, resolved)
-        # Not narrowed to `slots` on purpose (#493): the review is a fact about the session, and
-        # the slot that thickened is exactly the one nobody thinks to ask about.
-        report.evidence = self.thinner_evidence(slug)
+        # One lock around both reads (invariant 12): the blast radius and the evidence review must
+        # describe the same revision, and the review re-reads the model under the lock itself (the
+        # lock is re-entrant per thread, so its inner take is free).
+        with self.repo.lock(slug):
+            model = self.load_model(slug)
+            resolved, unmatched = resolve_slots(slots)
+            if unmatched:
+                raise UnknownSlotError(
+                    f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
+                    "(e.g. 'permissions', 'workflow', 'reporting').",
+                    details={"unmatched": unmatched})
+            report = propagate(model, resolved)
+            # Not narrowed to `slots` on purpose (#493): the review is a fact about the session, and
+            # the slot that thickened is exactly the one nobody thinks to ask about.
+            report.evidence = self.thinner_evidence(slug)
         return report
 
     def thinner_evidence(self, slug: str) -> EvidenceReport:
@@ -573,8 +577,9 @@ class SessionService:
         later revision and not the earlier one a reader would call the same decision
         (`test_a_reworded_decision_counts_as_newly_derived_at_its_rewording`).
 
-        Reads under the session lock so the model and the revisions it is compared against are one
-        snapshot (invariant 12). No write, no provider call.
+        The revision number and the current model are read under the session lock, one snapshot
+        (invariant 12); the frozen revisions are immutable and are walked outside it. No write, no
+        provider call.
 
         Three states, and the third does not fold into the first (invariant 15): a revision this
         Requivo cannot read -- missing, or persisted by an older one without the fields the
@@ -588,23 +593,27 @@ class SessionService:
             if meta.current_revision == 0:
                 return EvidenceReport()
             now = self.load_model(slug)
-            pending = {d.id for d in now.decisions}
-            derived_at: dict[int, set[str]] = {}
-            frozen: dict[int, EngineOutput] = {}
-            unreadable: str | None = None
-            for rev in range(1, meta.current_revision + 1):
-                if not pending:
-                    break
-                try:
-                    then = self.repo.load_revision(slug, rev)
-                except (SessionNotFoundError, ModelUnreadableError) as e:
-                    unreadable = f"revision {rev} could not be read ({e.code})"
-                    break
-                found = pending & {d.id for d in then.decisions}
-                if found:
-                    derived_at[rev] = found
-                    frozen[rev] = then
-                    pending -= found
+        # The walk runs outside the lock: `revisions/NNNN-model.json` is frozen once written and
+        # the snapshot above fixes which ones are read (1..current_revision), so a writer landing
+        # meanwhile changes nothing this walk opens. Holding the lock here would block every apply
+        # on the session for the length of its own history (found in review).
+        pending = {d.id for d in now.decisions}
+        derived_at: dict[int, set[str]] = {}
+        frozen: dict[int, EngineOutput] = {}
+        unreadable: str | None = None
+        for rev in range(1, meta.current_revision + 1):
+            if not pending:
+                break
+            try:
+                then = self.repo.load_revision(slug, rev)
+            except (SessionNotFoundError, ModelUnreadableError) as e:
+                unreadable = f"revision {rev} could not be read ({e.code})"
+                break
+            found = pending & {d.id for d in then.decisions}
+            if found:
+                derived_at[rev] = found
+                frozen[rev] = then
+                pending -= found
         by_id: dict[str, tuple] = {}
         for rev, ids in derived_at.items():
             partial = thinner_evidence(frozen[rev], now)
