@@ -15,7 +15,7 @@ SKILLS = PLUGIN / "skills"
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`, so the directory name must NOT repeat
 # the plugin name — `skills/requivo-discover/` in a plugin called `requivo` is invoked as
 # `/requivo:requivo-discover`, which is not what any of the docs said.
-EXPECTED_SKILLS = {"discover", "answer", "status", "brief", "prd", "impact",
+EXPECTED_SKILLS = {"run", "discover", "answer", "status", "brief", "prd", "impact",
                    "stories", "estimate", "criteria", "epic", "release"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills. The
 # plugin's own README may name it too — that file is a reader's document, not an instruction Claude
@@ -161,8 +161,12 @@ def test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path():
 
     What is load-bearing is pinned instead: apply through the CLI, on stdin, under the optimistic-lock
     precondition, with a stated route out of a refusal. A skill that emits a proposal and says nothing
-    about `code`/`details` sends the reasoning session into a retry loop with no error to read."""
-    for name in ("discover", "answer"):
+    about `code`/`details` sends the reasoning session into a retry loop with no error to read.
+
+    `run` is checked alongside `discover`/`answer` since #539: it is built out of the same two
+    applies (a fresh model, then a refinement), and each still needs its own recovery path stated in
+    the loop rather than inherited by reference."""
+    for name in ("discover", "answer", "run"):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "model apply" in text, f"{name}: must apply via the CLI"
         assert "model apply <slug> - --expected-revision" in text, (
@@ -205,8 +209,11 @@ def test_no_skill_stages_content_through_a_temp_file():
 def test_session_scoped_skills_read_the_session_s_context_cards():
     """A session's card selection is held constant across its turns — it is what the impact estimates
     were made against. A later turn calling bare `requivo context` reads every card and reasons from a
-    wider context than the model was built on, which the golden harness has measured as a real cost."""
-    for name in ("answer", "brief"):
+    wider context than the model was built on, which the golden harness has measured as a real cost.
+
+    `run` joined this set in #539: it resumes and refines sessions the same way `answer` does, so the
+    same wider-context risk applies to it."""
+    for name in ("answer", "brief", "run"):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "context --session" in text, f"{name}: must read context scoped to the session"
 
@@ -299,20 +306,21 @@ def test_every_skill_has_an_answer_for_an_unavailable_requivo():
 
 
 def test_every_skill_body_points_at_another_skill():
-    """The six skills are one arc — discover, answer, brief, prd, with status and impact alongside —
-    and a user only walks it if each step says where the next one is. Three bodies carried a forward
-    pointer and three did not, and the three that did not included `status`, which is what a returning
-    user reaches for first: the worst place for the chain to break.
+    """The seven skills are one arc — run, discover, answer, brief, prd, with status and impact
+    alongside — and a user only walks it if each step says where the next one is. Three bodies
+    carried a forward pointer and three did not, and the three that did not included `status`, which
+    is what a returning user reaches for first: the worst place for the chain to break (`run` is
+    checked the same way since it joined the set in #539).
 
     Checked on the **body**, deliberately not on the frontmatter. A `description` naming another skill
     would satisfy a whole-file scan while doing nothing for the reader, and the descriptions are the
-    routing signal a model matches on when choosing between skills — six of them each reciting the
-    same six-verb arc makes them more similar to one another, which spends the most valuable text in
+    routing signal a model matches on when choosing between skills — seven of them each reciting the
+    same seven-verb arc makes them more similar to one another, which spends the most valuable text in
     the plugin on the least discriminating content. So the pointer belongs in the body and the
     assertion has to look there.
 
     Its own H1 does not count. That is the trap this would otherwise fall into: every SKILL.md opens
-    with `# /requivo:<name>`, so a naive scan for the invocation form passes on all six whatever the
+    with `# /requivo:<name>`, so a naive scan for the invocation form passes on all seven whatever the
     bodies say — a guard that cannot fail, on the exact convention it claims to hold.
     """
     files = _skill_files()
@@ -399,8 +407,8 @@ def test_every_skill_reaches_the_cli_through_the_bash_tool():
     Code's Bash tool on that platform is Git Bash, and every skill drives the deterministic CLI
     through it (#121).
 
-    That claim is true because of a property of these six files, and nothing was holding it true. A
-    skill added tomorrow that declares no Bash grant makes the prerequisite over-broad; a skill that
+    That claim is true because of a property of these seven files, and nothing was holding it true.
+    A skill added tomorrow that declares no Bash grant makes the prerequisite over-broad; a skill that
     reached a shell some other way makes it incomplete. Either way the README goes wrong in silence,
     because prose has no failing build.
 
@@ -462,3 +470,49 @@ def test_generator_skills_name_the_prompt_they_mirror_and_at_which_commit():
             assert prompt in text, f"{name}: does not name the prompt file it mirrors ({prompt})"
         assert re.search(r"\bcommit\b", text, re.IGNORECASE), f"{name}: does not say 'commit'"
         assert re.search(r"`[0-9a-f]{7,40}`", text), f"{name}: names no commit-like hash"
+
+def test_run_pins_its_three_stop_conditions_and_never_asks_mid_loop():
+    """`/requivo:run` (#539) replaces a per-turn `/requivo:answer <slug>` with one continuous
+    conversation, so the two things a reader needs to be able to check — how it decides to stop, and
+    that it never falls back to asking for the mechanics it already holds — live in prose with no
+    apply to fail on if they drift. Pinned as a property rather than as a sentence, per #96: this
+    reads for the three stop conditions and the anti-mid-loop rule wherever they are stated, not for
+    one fixed wording, so the page stays cheap to rewrite.
+
+    Scoped to the section that actually *defines* the three conditions, not the whole file — a
+    self-review of this test (#539) found `readiness.ready` and `questions` named again, in passing,
+    in step 4's dispatch, and "say which"/"user says stop" echoed in the frontmatter and the intro
+    paragraph. An unscoped scan stayed green after deleting the defining section entirely, because
+    those echoes alone satisfied it; scoping to the "Stop, and say which" heading is what makes the
+    assertions fail if that section — not merely the words — goes missing.
+    """
+    text = (SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8")
+
+    head = re.search(r"^##\s*8\.\s*Stop.*$", text, re.MULTILINE)
+    assert head, "run: must carry a numbered section defining when the loop stops"
+    rest = text[head.end():]
+    nxt = re.search(r"^##\s", rest, re.MULTILINE)
+    section = rest[: nxt.start()] if nxt else rest
+
+    # The three conditions, and only three — `readiness.ready`, an empty `questions` list, and the
+    # user's own words. A skill that only names two of them can silently loop forever on the third.
+    assert "readiness.ready" in section, (
+        "run: the stop section must name `readiness.ready` as a stop condition")
+    assert re.search(r"questions[\s\S]{0,40}empty|empty[\s\S]{0,40}questions", section, re.IGNORECASE), (
+        "run: the stop section must name an empty `questions` list as a stop condition")
+    assert re.search(r"user says stop|says to stop", section, re.IGNORECASE), (
+        "run: the stop section must name the user saying stop as a stop condition")
+    assert re.search(r"say which", section, re.IGNORECASE), (
+        "run: the stop section must instruct saying which of the three conditions ended the loop")
+    # And the one pointer at the end is /requivo:docs, never a hand-back to /requivo:answer.
+    assert "/requivo:docs" in section, "run: the stop section must end with the /requivo:docs pointer"
+    assert re.search(r"[Nn]ever suggest running[\s\S]{0,20}/requivo:answer", section), (
+        "run: the stop section must say explicitly that it never hands back to /requivo:answer")
+
+    # The rule #538 exists for: no slug, no revision, no other /requivo:* command mid-loop. This one
+    # is stated where the loop actually waits (step 7), not necessarily inside the stop section, so
+    # it is checked over the whole body rather than the scoped section above.
+    assert re.search(r"[Nn]ever ask.{0,80}slug", text), (
+        "run: must state it never asks the user for a slug mid-loop")
+    assert re.search(r"never.{0,120}/requivo:\*", text) or re.search(r"never.{0,120}another `/requivo:", text), (
+        "run: must state it never tells the user to run another /requivo:* command mid-loop")
