@@ -205,9 +205,9 @@ def estimate(client, out: EngineOutput, stories: Stories,
 # `estimate` is the one entry that does not fit the plain model → contract shape, and it is listed
 # rather than hidden: it takes the prior `stories` through `**kwargs`, and it returns
 # `(EstimateDraft, soft_slots, confidence)` — the last two computed in core from the same model, so a
-# caller cannot get the draft and the confidence out of step. It is absent from `_WRITERS` and from
-# `GENERATABLE` because it is a terminal analysis with no document; `DiscoveryService.reason()` is
-# the way in, and `DiscoveryService.generate()` refuses it by name.
+# caller cannot get the draft and the confidence out of step. Since #519 it is a saved artifact
+# like the rest: `DiscoveryService.generate("estimate")` reasons the stories first from the same
+# snapshot, saves both, and files them against one revision (`_generate_estimate`).
 _GENERATORS = {
     "brief": advise,
     "stories": derive_stories,
