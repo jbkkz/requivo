@@ -1,37 +1,9 @@
-"""Which hosts a local Requivo listener answers to -- the one cross-site check that applies to reads,
-shared by every HTTP surface this project ships (#508).
-
-Binding to `127.0.0.1` is not a security boundary, and the reason is not about forms. A hostile page
-the user has open can make the browser resolve `evil.example.com` to `127.0.0.1` and then issue
-same-origin requests at whatever is listening there -- DNS rebinding, which is transport-level and
-therefore applies to any local listener whether or not it has a form, a cookie or a token. That is
-why `web/security.py` calls this check "the only one that applies to reads as well": every other arm
-of that module's guard runs on unsafe methods only, and a rebound origin's *reads* sail past all of
-them.
-
-`api/app.py` (#425) is a second local listener whose reads are the client's verbatim request and the
-understanding built from it, and it shipped with no host check at all: `GET /api/v1/sessions` with
-`Host: evil.example.com` answered 200 where Requivo Web answered 403. This module is where the check
-lives now, so a third surface inherits it instead of copying it -- the same move, for the same
-reason, as `requivo.security_headers` (#503) and `requivo.http` (#422), and the general form
-`CLAUDE.md` already states about a neutral concept trapped in the module that happens to own it:
-move the concept out, never write the next consumer a second copy.
-
-Framework-free by construction, like its two siblings: `check_host` takes the raw `Host` header as a
-string and returns or raises. Nothing here imports fastapi or starlette, so the base install can
-reach it with neither extra present, and `tests/test_boundaries.py` scans `api/` and `web/` as
-surfaces rather than needing an allowlist entry for this module.
-
-**Since #425 slice 4 it also holds the `Sec-Fetch-Site` and `Origin`/`Referer` checks**
-(`check_request_origin`, and the three refusal codes it raises), because that record's §5 reached
-its answer: of the web guard's four checks the API keeps three -- this host axis, these two
-origin-attribution checks, and a JSON content-type floor in place of the synchronizer token. The two
-moved here rather than being copied because both surfaces run them on the same headers for the same
-reason (a browser attributing an unsafe request to a page this server did not serve), and a second
-copy is the drift shape #508 was filed about. **What this module still does not hold:** the
-synchronizer token, the body cap and the form parsing. Those are shaped by Requivo Web serving HTML
-forms, which the API does not, and they stay in `web/security.py`.
-"""
+"""Which hosts a local Requivo listener answers to -- the one cross-site check that applies to reads too (#508).
+Binding to `127.0.0.1` is not a boundary: DNS rebinding makes the browser resolve another name to it and issue
+same-origin requests at whatever is listening. Shared by every HTTP surface (`web/security.py`, `api/app.py`,
+since #425 slice 4 including `check_request_origin`) rather than forked per surface, like `requivo.http` (#422),
+framework-free. The synchronizer token, body cap and form parsing -- shaped by HTML forms the API has none of --
+stay in `web/security.py`."""
 
 from __future__ import annotations
 
@@ -40,45 +12,24 @@ from urllib.parse import urlsplit
 
 from requivo.core.errors import RequivoError
 
-# Where the server may legitimately be addressed. A non-loopback bind is a deliberate act (`requivo
-# web --host`), so it is an explicit opt-in here too rather than a hole left open by default.
+# A non-loopback bind is a deliberate act (`requivo web --host`), so any wider host is an explicit opt-in below.
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
-# Named for the surface that introduced it and read by every surface since. Renaming it to something
-# neutral would be a user-facing break for one word: it is documented in `docs/web.md`, promised in
-# `docs/compatibility.md`'s environment-variable section, and `cli.py` prints it in the warning a
-# wildcard bind produces. The name is the compatibility surface; the scope is what widened.
+# A compatibility surface (docs/web.md, cli.py's wildcard-bind warning) whose scope widened when the API joined.
 ALLOWED_HOSTS_ENV = "REQUIVO_WEB_ALLOWED_HOSTS"
 
 
 class CrossSiteRequestError(RequivoError):
-    """A request did not prove it came from this app's own pages — the family, not a code to raise.
-
-    Every arm carries its own code and its own `details` shape (#52) — `docs/compatibility.md`'s
-    rule that a code carries one fact — because before the split the six facts shared this one
-    code and a caller could tell them apart only by message, which the same policy says never to
-    match on. `test_every_arm_has_its_own_code` and
-    `test_each_arm_carries_exactly_the_details_shape_its_code_promises` are the guards, and the
-    argument that was made against the split is in the first one's docstring.
-
-    The family is kept because `install_cross_site_guard` catches it and answers 403 for every arm,
-    and because a caller that wants *any* cross-site refusal should not have to enumerate six names.
-    Nothing raises it directly (`test_the_family_base_is_not_raised_by_any_arm`).
-
-    It lives here rather than in `web/security.py` because two of its arms do (#508): the base has
-    to sit with whichever half is reachable from a surface that has no forms, and that is this one.
-    """
+    """A request did not prove it came from this app's own pages -- the family, not a code to raise (#52);
+    every arm carries its own code and `details` shape, and `install_cross_site_guard` answers 403 for all.
+    Pinned by `test_every_arm_has_its_own_code`, `test_the_family_base_is_not_raised_by_any_arm` and
+    `test_each_arm_carries_exactly_the_details_shape_its_code_promises`."""
 
     code = "cross_site_request"
 
 
 class UndeterminedHostError(CrossSiteRequestError):
-    """No host could be read from the request at all — absent, empty, or not an authority (#45, #51).
-
-    `details`: `{host_header_present, host_header, hint}`. `host_header_present` is what separates
-    *no header was sent* from *a header was sent and could not be read*; both are the same fact here
-    — nobody could attribute this request — and the same shape, so they share a code.
-    """
+    """No host could be read from the request at all -- absent, empty, or not an authority (#45, #51). `details`: `{host_header_present, host_header, hint}`."""
 
     code = "undetermined_host"
 
@@ -90,49 +41,19 @@ class HostNotAllowedError(CrossSiteRequestError):
 
 
 def allowed_hosts() -> frozenset[str]:
-    """Hostnames a Requivo listener accepts in a `Host` header: loopback, plus any the operator listed
-    in `REQUIVO_WEB_ALLOWED_HOSTS` (comma-separated) when deliberately binding elsewhere."""
+    """Hostnames a listener accepts: loopback, plus any the operator listed in `REQUIVO_WEB_ALLOWED_HOSTS`."""
     extra = os.getenv(ALLOWED_HOSTS_ENV, "")
     return frozenset(LOOPBACK_HOSTS | {h.strip().lower() for h in extra.split(",") if h.strip()})
 
 
-# What a determined host may contain once `urlsplit` has lowercased it and removed the port and any
-# IPv6 brackets: the letter-digit-hyphen set of a DNS name, plus what an IPv6 literal leaves behind
-# (`:` between groups, `%` before a zone id) and `_`, which is not legal in a DNS hostname but does
-# occur in internal names an operator may deliberately bind to. Anything else means `urlsplit`
-# handed back a string that is not a host, and this returns the third state instead of that string.
+# DNS letter-digit-hyphen plus IPv6 punctuation and `_`; anything else is a non-host string urlsplit handed back.
 _HOST_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789.-_:%")
 
 
 def hostname(value: str) -> str:
-    """The bare hostname from a `Host` header (`[::1]:8765`) or an origin URL (`http://evil.com`),
-    lowercased, port and IPv6 brackets removed — so the two are comparable. `""` when this could not
-    determine a host at all, which every caller reads as a refusal.
-
-    **Userinfo is refused rather than stripped, and that is #51.** `urlsplit` is a URL parser and
-    correctly discards the `user@` part of an authority, so `Host: evil.com@127.0.0.1` resolved to
-    `127.0.0.1`, passed `allowed_hosts()`, and `Origin: http://evil.com@127.0.0.1` came out
-    same-trust-domain. Not reachable from a browser — none of `Host`, `Origin` or `Referer` is ever
-    serialized with userinfo, and RFC 7231 requires a `Referer` to have it removed — so this closes
-    a hole with no attacker who benefits.
-
-    It is fixed for the class, not the instance. This is the third time this parser answered
-    *confidently* about an input it should have refused: #43 was the opaque origin parsing to the
-    plausible hostname `"null"`, #45 was an undetermined host read as *no host check needed*, and this
-    is the same shape again. The first two were closed with checks at the caller. **This one is closed
-    in the parser**, because a caller-side check is a guarantee the next caller inherits without
-    re-checking — and it has three callers now, on two different headers and two surfaces.
-
-    The charset test is the general form of the same rule and is why `Host: 127.0.0.1 evil.com` now
-    refuses too: it previously came back as that whole string, which is not a hostname, and was
-    refused only by happening to miss the allowlist. A parser that returns a non-host and relies on a
-    later equality test to reject it is answering where it should be declining.
-
-    Known residue, stated rather than implied: an **unbracketed** IPv6 literal (`Host: fe80::1`) still
-    parses to `fe80` with the rest read as a port. It is malformed as an authority, no browser emits
-    it, and it fails the allowlist — but the parser does answer, so this docstring does not claim the
-    class is empty.
-    """
+    """The bare hostname from a `Host` header or an origin URL, lowercased, port/brackets removed; `""` when
+    undetermined, read by every caller as a refusal. Userinfo is refused, not stripped (#51), fixed in the
+    parser since this is the third input it answered confidently about rather than refusing (#43, #45)."""
     raw = value.strip()
     if not raw:
         return ""
@@ -149,31 +70,9 @@ def hostname(value: str) -> str:
 
 
 def check_host(raw_host: str | None) -> str:
-    """The host this request named, or a refusal. The single definition every surface's guard calls.
-
-    An undetermined `Host` is a **refusal**, not a skip. `hostname` returns `""` when it could not
-    find a host at all — an absent header, an empty or whitespace-only one, or one that will not
-    parse — and the check this replaced read that as *no host check needed* (`if host and host not in
-    allowed_hosts()`). So the one request nobody could attribute walked past the only check that also
-    runs on reads, and the guard reported nothing while it was off. Observed rather than reasoned:
-    against the 0.10.1 candidate, `GET / HTTP/1.0` with no `Host` and `GET / HTTP/1.1` with an empty
-    one both answered 200, because h11 requires `Host` on 1.1 only and passes an empty one straight
-    through.
-
-    This refuses a `GET`, which is a real behaviour change and the intended one. HTTP/1.1 requires a
-    `Host` and every browser, `curl`, httpx and requests sends one; nothing here documents HTTP/1.0
-    support; and a caller able to craft a hostless request can open a socket to this port directly,
-    so it gains nothing from the skip that it did not already have. The cost is a caller that does
-    not exist. What it buys is the third state stated instead of silently folded into the clean one:
-    *could not determine the host* now reads differently from *determined it and was happy* (#45).
-
-    Since #51 the undetermined arm also covers a header that *was* sent and is not an authority —
-    userinfo, or a character no hostname carries. The wording says "could not read" rather than "did
-    not state" so it is true of both; `host_header_present` in `details` is what tells them apart,
-    which is why they are one code and one shape rather than two (#52).
-
-    Pinned across both surfaces by `test_an_unrecognised_host_is_refused_by_every_surface`.
-    """
+    """The host this request named, or a refusal -- the single definition every surface's guard calls. An
+    undetermined `Host` is a **refusal**, not a skip (#45): the check this replaced treated an empty
+    `hostname()` as "no check needed". Pinned by `test_an_unrecognised_host_is_refused_by_every_surface`."""
     host = hostname(raw_host or "")
     if not host:
         raise UndeterminedHostError(
@@ -191,83 +90,33 @@ def check_host(raw_host: str | None) -> str:
 # ── the origin axis: who does the browser say sent this? (moved out of web/security.py, #425) ──
 
 class CrossSiteFetchError(CrossSiteRequestError):
-    """The browser's own `Sec-Fetch-Site` says this came from elsewhere. `details`:
-    `{sec_fetch_site}`."""
+    """The browser's own `Sec-Fetch-Site` says this came from elsewhere. `details`: `{sec_fetch_site}`."""
 
     code = "cross_site_fetch"
 
 
 class OpaqueOriginError(CrossSiteRequestError):
-    """`Origin: null` — a browser speaking and declining to attribute itself (#43). `details`:
-    `{origin, host}`."""
+    """`Origin: null` -- a browser speaking and declining to attribute itself (#43). `details`: `{origin, host}`."""
 
     code = "opaque_origin"
 
 
 class OriginMismatchError(CrossSiteRequestError):
-    """The stated origin is not the same trust domain as the host addressed. `details`:
-    `{origin, host}` — the same keys as `opaque_origin` and a different fact, which is why they are
-    two codes rather than one: a shared shape is not a shared meaning."""
+    """The stated origin is not the same trust domain as the host addressed. `details`: `{origin, host}`."""
 
     code = "origin_mismatch"
 
 
-# The Origin header's opaque value, sent verbatim and never as part of a URL: a browser saying "a
-# context I decline to attribute". Matched on the raw header rather than on `hostname()`, which parses
-# it into the plausible-looking hostname `"null"`.
+# Sent verbatim: a browser declining to attribute itself, matched on the raw header, not `hostname()`.
 OPAQUE_ORIGIN = "null"
 
 
 def same_trust_domain(origin_host: str, host: str) -> bool:
-    """Is a page served from `origin_host` the same trust domain as the server answering to `host`?
-
-    The same string always is. Beyond that, only the loopback set: `localhost`, `127.0.0.1` and `::1`
-    are three spellings of one interface on one machine, and the host check above already accepts any
-    of them interchangeably. Comparing the two spellings as strings refused a post that used both at
-    once, which is a false positive rather than a boundary (#43).
-
-    What that accepts is the loopback **interface**, not this process. `hostname` discards the port on
-    both sides, so `http://localhost:3000` and `http://localhost:8765` arrive here as the same string:
-    the accepted set is every page served by every process on any loopback port, which on a developer
-    machine is a populated one. This docstring used to claim the opposite — that such a page *"can only
-    have been served by this process, nothing else is listening there"* — and that was simply false. A
-    rationale is what the next change gets reasoned from, so a wrong one is worse than none (#46).
-
-    The port-blindness is deliberate, and it predates #43 rather than following from it: before that
-    fix, `Origin: http://localhost:3000` against `Host: localhost:8765` already compared equal. It
-    stays, because what gates the write on each surface is a check a page on another loopback port
-    cannot satisfy: the request token on Requivo Web, and on the API a JSON content type no
-    cross-origin page can send without a CORS preflight this app never answers. The browser's own
-    same-origin policy is (scheme, host, port), so reading a page this server rendered is a
-    cross-origin read; neither app sends CORS headers, so the body never reaches the script.
-    `Sec-Fetch-Site` refuses that same post one check earlier, as `same-site`, on every browser that
-    sends it. Comparing ports here would add nothing those do not already do, and it would reintroduce
-    #43's exact failure shape — a default port elided in an `Origin` but spelled out in a `Host`,
-    refusing a form with no way forward. Tightening it is a separate decision needing its own tests;
-    `test_a_cross_port_loopback_origin_is_accepted_and_that_is_the_decision` pins the behaviour so that
-    change has to argue with this paragraph rather than slip past it.
-
-    The hosts an operator listed in `REQUIVO_WEB_ALLOWED_HOSTS` deliberately do **not** join that
-    equivalence class, so this is not a membership test over `allowed_hosts()`. Those are real
-    hostnames pointing at a deliberate non-loopback bind, and two of them may well be meant as two
-    distinct origins — that is the operator's call to make, and inferring it from co-membership in one
-    comma-separated list would make it for them, silently, in the widening direction.
-
-    An empty string on either side is not a match, and that arm is the point rather than a special
-    case. `""` is what `hostname` returns when it could not find a hostname *at all* — an absent or
-    unparseable `Host`, or an origin such as `http:///` that is a well-formed URL naming nobody. Two of
-    those facing each other used to compare equal, so the one input where **neither** side was
-    determined produced the same verdict as a verified match: a check that could not look, answering
-    anyway. Refusing costs nothing real — no browser omits `Host`, and a request that reaches here at
-    all has already stated an origin — and it keeps this function's name true for every input.
-
-    Since #45 the `host` half of that arm is unreachable from either caller: both guards refuse an
-    undetermined `Host` outright through `check_host`, several checks earlier, so `host` is always
-    determined by the time it gets here. It is kept rather than pruned as now-dead, and deliberately. A
-    helper that makes a claim by name should hold for every input it is handed, this one is called
-    directly by its own tests, and narrowing a security helper on the grounds that today's callers
-    happen to pre-filter its input is how the next caller inherits a guarantee nobody re-checked.
-    """
+    """Is a page served from `origin_host` the same trust domain as `host`? The same string always is; beyond
+    that, only the loopback set (one interface, #43). **Deliberately port-blind**, since the request token
+    (Web) and JSON content type (API) already gate the write against another loopback port -- pinned by
+    `test_a_cross_port_loopback_origin_is_accepted_and_that_is_the_decision`. `REQUIVO_WEB_ALLOWED_HOSTS`
+    entries do **not** join this class; an empty string on either side is never a match."""
     if not origin_host or not host:
         return False
     if origin_host == host:
@@ -277,30 +126,10 @@ def same_trust_domain(origin_host: str, host: str) -> bool:
 
 def check_request_origin(host: str, *, sec_fetch_site: str | None, origin: str | None,
                          referer: str | None) -> None:
-    """The two origin-attribution checks every unsafe request faces, or a refusal -- the single
-    definition both surfaces' guards call (#425 slice 4; `web/security.py`'s `_enforce` before it).
-
-    Takes the raw header values and the host `check_host` already determined, and returns or raises,
-    so it needs no framework and either surface can call it from inside whatever middleware shape it
-    has. **Which methods it runs on is the caller's decision**, not this function's: Requivo Web runs
-    it on everything outside `SAFE_METHODS`, the API on its own `_UNSAFE_METHODS` set, and both are
-    right for their surface. Reads never reach here on either.
-
-    `Sec-Fetch-Site` first -- the browser's own account of where the request came from, free,
-    unspoofable from script, and refused outright for `cross-site` / `same-site`.
-
-    `Origin: null` is refused on purpose, and the asymmetry with an *absent* origin below is the
-    reason rather than an oversight. A browser attaches `Origin` to every POST, so no origin at all
-    means no browser is speaking — a scripted client, which each surface's load-bearing check already
-    gates and which is a supported caller. `null` is the opposite: a browser that is speaking and
-    declining to attribute itself, and it is the one origin a browser-borne attacker can *choose* to
-    emit, from a sandboxed cross-site frame. No page either server serves ever produces it. Before #43
-    this arm fired only by accident, because `hostname("null")` happens to return `"null"` and fail an
-    equality test; the outcome is unchanged and the reason is now stated. It is a cheap filter either
-    way. Read unstripped, so a whitespace-only `Origin` stays truthy here exactly as it did before and
-    still reaches the hostname comparison (where it resolves to `""` and is refused) rather than newly
-    falling through to `Referer`.
-    """
+    """The two origin-attribution checks every unsafe request faces, or a refusal -- called by both surfaces
+    on whichever methods each decides (#425 slice 4). `Sec-Fetch-Site` first (unspoofable); `Origin: null`
+    refused asymmetrically with an absent origin, since no origin means no browser speaking, while `null` is
+    one declining to attribute itself (#43)."""
     fetch_site = sec_fetch_site or ""
     if fetch_site and fetch_site not in ("same-origin", "none"):
         raise CrossSiteFetchError(
