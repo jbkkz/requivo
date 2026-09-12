@@ -1,7 +1,7 @@
 """Path traversal via the API's own path parameters (#425, slice 1).
 
 Written in review, in answer to CodeQL. Introducing an HTTP surface gave CodeQL its first
-user-controlled source reaching `core/persistence.py`'s path expressions, and it raised 12 high
+user-controlled source reaching `core/persistence/`'s path expressions, and it raised 12 high
 "uncontrolled data used in path expression" alerts against lines this pull request does not touch.
 Both parameters are in fact sanitized, and CodeQL models neither sanitizer:
 

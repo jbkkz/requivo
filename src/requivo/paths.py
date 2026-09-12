@@ -45,7 +45,7 @@ def store_root() -> Path:
 
     It exists as a name of its own because something has to own *the moment this directory comes into
     existence* — that is where the privacy `.gitignore` is written (`ensure_store_dir` in
-    `core/persistence.py`, #211). Evaluated per call, like every other root."""
+    `core/persistence/store.py`, #211, #550). Evaluated per call, like every other root."""
     return workspace_root() / ".requivo"
 
 
@@ -90,7 +90,7 @@ def debug_root() -> Path:
     """Where a provider reply that never validated is written for a bug report to attach:
     `<workspace>/.requivo/debug/` (#283). A sibling of `session_root()` and `lock_root()`, under the
     same `store_root()` -- so the privacy `.gitignore` `ensure_store_dir` writes the first time
-    `.requivo/` is created (core/persistence.py, #211) already covers it with `*`, the same way it
+    `.requivo/` is created (core/persistence/store.py, #211, #550) already covers it with `*`, the same way it
     already covers `sessions/` and `locks/`. A raw provider reply can contain the client's request
     text verbatim, which is exactly the confidential material that marker exists to keep out of a
     `git add .`. Evaluated per call, like every other root."""

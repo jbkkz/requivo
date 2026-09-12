@@ -25,7 +25,8 @@ from _cli_harness import _SESSIONS_ROW, _full_model, _run, _run_json, _run_stdin
 from requivo.cli import app
 from requivo.core import persistence as store
 from requivo.core.errors import InvalidSlugError
-from requivo.deterministic.sessions import _REPLACE_ATTEMPTS, MAX_ARCHIVE_FILES
+from requivo.core.persistence import _REPLACE_ATTEMPTS
+from requivo.deterministic.sessions.archives import MAX_ARCHIVE_FILES
 
 
 @pytest.fixture
@@ -134,7 +135,7 @@ def test_import_refuses_an_archive_holding_more_than_one_session(workspace, tmp_
 
 
 def test_import_refuses_an_archive_that_is_too_large_or_too_many_files(workspace, tmp_path):
-    from requivo.deterministic.sessions import MAX_ARCHIVE_FILES
+    from requivo.deterministic.sessions.archives import MAX_ARCHIVE_FILES
 
     many = {f"s/artifacts/f{i}.md": "x" for i in range(MAX_ARCHIVE_FILES + 1)}
     _zip(tmp_path / "many.zip", many)
@@ -167,7 +168,7 @@ def test_import_refuses_an_archive_bounded_by_files_and_bytes_but_not_by_directo
     same `problem` code with the real ceiling. Must-fire, not just "raises": the refusal has to
     happen at `_inspect_archive`, before any extraction, so none of the (many) directories this
     archive names -- nor the session itself -- may exist afterwards."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
     monkeypatch.setattr(det, "MAX_ARCHIVE_ENTRIES", 50)
 
     entries = {**_good_entries("s"), **_dir_entries("s", 500)}
@@ -187,7 +188,7 @@ def test_an_archive_with_directory_entries_just_under_the_cap_still_imports(
     ceiling. Without this, a cap that merely rejects everything with a directory entry in it would
     also make this test pass, which is why the assertion is a successful import rather than an
     absence of one."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
     monkeypatch.setattr(det, "MAX_ARCHIVE_ENTRIES", 50)
 
     entries = {**_good_entries("s"), **_dir_entries("s", 30)}   # 2 files + 30 dirs = 32, under 50
@@ -273,7 +274,7 @@ def _lower_the_byte_ceiling(mp):
     `test_import_refuses_an_archive_that_is_too_large_or_too_many_files`, which asserts this same
     code. Paying 64 MiB of allocation a second time to re-read the same branch buys nothing, so the
     ceiling moves instead of the archive — `_inspect_archive` reads the module global at call time."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
     mp.setattr(det, "MAX_ARCHIVE_BYTES", 32)
 
 
@@ -281,7 +282,7 @@ def _lower_the_entries_ceiling(mp, value=50):
     """The real ceiling (`MAX_ARCHIVE_ENTRIES`) is driven end-to-end by
     `test_import_refuses_an_archive_bounded_by_files_and_bytes_but_not_by_directory_entries`. Same
     reasoning as `_lower_the_byte_ceiling`: paying that scale twice buys nothing here."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
     mp.setattr(det, "MAX_ARCHIVE_ENTRIES", value)
 
 
@@ -835,7 +836,7 @@ def test_a_session_created_during_the_extraction_window_is_refused_not_destroyed
 
     `_validate_extracted` runs after the archive is on disk and before anything is moved into place,
     so patching it is the honest way to stand inside the window without reaching into the store."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
 
     _zip(tmp_path / "race.zip", _good_entries("race"))
     real = det._validate_extracted
@@ -862,7 +863,7 @@ def test_that_window_refusal_names_the_conflict_rather_than_a_move_failure(
     The caller is entitled to the answer they would have got had the timing been different, and the
     remedy is the same one: pass `--force`. `import_move_failed` would send them looking at their
     filesystem for a fault that is not there."""
-    from requivo.deterministic import sessions as det
+    from requivo.deterministic.sessions import archives as det
 
     _zip(tmp_path / "race.zip", _good_entries("race"))
     real = det._validate_extracted

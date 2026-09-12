@@ -254,7 +254,7 @@ def test_a_session_path_is_not_resolved_before_it_exists(tmp_path, monkeypatch):
     instance: `artifact_path` (`test_an_artifact_path_is_not_resolved_before_it_exists`) and
     `integrity.py`'s artifact containment check, where a spurious disagreement reported
     `unsafe_artifact_filename` about a perfectly bare name — the verb that answers *is this session
-    intact* accusing the user. All three are now **one** function, `core/persistence.py`'s
+    intact* accusing the user. All three are now **one** function, `core/persistence/lock.py`'s
     `is_contained`, because each had to be corrected separately for this and then again for its
     sequel (`test_a_dangling_symlink_is_refused_where_the_platform_cannot_resolve_it`). It resolves
     only a path that is actually there: `validate_slug`/`validate_filename` already make a separator

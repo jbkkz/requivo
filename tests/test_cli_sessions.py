@@ -17,7 +17,7 @@ from _cli_harness import _full_model, _run, _run_json, _run_stdin, _slot
 
 from requivo.cli import app
 from requivo.core import persistence as store
-from requivo.deterministic.sessions import _REPLACE_ATTEMPTS
+from requivo.core.persistence import _REPLACE_ATTEMPTS
 
 
 @pytest.fixture
@@ -74,15 +74,16 @@ def test_session_list_and_show(workspace, tmp_path):
 
 @pytest.mark.skipif(store.fcntl is None, reason="the fixture needs a directory literally named "
                      "'con' already on disk, which Windows itself refuses to create at the OS level "
-                     "regardless of anything Requivo's own code does (see core/persistence.py's "
-                     "comment above _RESERVED_DEVICE_NAMES). REASONED, NOT OBSERVED on an actual "
+                     "regardless of anything Requivo's own code does (see "
+                     "core/persistence/identifiers.py's comment above _RESERVED_DEVICE_NAMES). "
+                     "REASONED, NOT OBSERVED on an actual "
                      "Windows machine; it follows from the documented behaviour #221 already relies "
                      "on for the reserved-name refusal itself.")
 def test_a_reserved_slug_already_on_disk_is_readable_by_list_show_and_verify(workspace):
     # #372: `.requivo/sessions/con/` already on disk (created before #221 shipped, or on a platform
     # that never refused the name) must stay reachable through every read verb this module owns,
     # `session export` and `session import` excluded — those live in `test_cli_session_archives.py`,
-    # a file this lane does not own this round; `core/persistence.py`'s own
+    # a file this lane does not own this round; `core/persistence/`'s own
     # `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it`
     # covers the lock `session export` takes. Built by hand, not through `session init`, which must
     # keep refusing to *create* one — that half is pinned in `test_persistence_guards.py`.
@@ -302,7 +303,7 @@ def test_session_verify_exits_four_when_the_lock_could_not_be_taken(workspace, m
     remove. Same structure as `test_session_verify_exits_four_when_it_could_not_check_the_product_context`:
     the clean run is the must-fire control, and the exit code is checked on both surfaces."""
     from requivo.core.errors import SessionLockedError
-    from requivo.deterministic import sessions as sessions_mod
+    from requivo.deterministic.sessions import verify as sessions_mod
 
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     healthy = _run_json(["session", "verify", "s", "--json"])
@@ -624,7 +625,7 @@ def test_session_restore_refuses_when_nothing_in_the_history_is_readable(workspa
 def test_session_restore_survives_a_transient_permission_error(workspace, tmp_path, monkeypatch):
     """Windows' `rename` can fail with a transient `PermissionError` when a scanner or the Search
     Indexer briefly opens the destination microseconds after it is written -- the same cause
-    invariant 18's `_atomic_write` retries for in `core/persistence.py`. `_replace_with_retry` is
+    invariant 18's `_atomic_write` retries for in `core/persistence/atomic.py`. `_replace_with_retry` is
     this module's own small statement of the identical shape, for the one write here that is not
     routed through that helper."""
     slug = _apply_two_revisions(workspace, tmp_path)

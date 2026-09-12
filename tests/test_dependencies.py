@@ -535,7 +535,7 @@ def test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file()
     ARTIFACT_FILES answered for `stories`/`estimate` with `None` ("the provider-path generator does
     not persist this itself"), where ARTIFACT_FILENAMES omitted `estimate` entirely and gave
     `stories` a real filename -- Claude Code could save one even though the provider path never did.
-    A merge needs a three-state marker per type and would touch core/persistence.py,
+    A merge needs a three-state marker per type and would touch core/persistence/,
     render/terminal.py and services/sessions.py, none of which that issue's own Scope section
     named. Pinned instead, per the acceptance criteria's own stated alternative: wherever both
     tables name a type, the filename must agree.
