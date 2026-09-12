@@ -1,47 +1,41 @@
 """The shared rule for a caller-supplied selector — the one place a token list becomes a filter.
 
 Three selectors in this package turn caller-typed tokens into a subset of a vocabulary:
-`resolve_cards` and `load_context` (context cards) and `resolve_slots` (slot ids). Each of them
-independently reached the same failure, in opposite directions and always silently:
+`resolve_cards` and `load_context` (context cards) and `resolve_slots` (slot ids). Two rules are
+stated here, once, so a fourth selector inherits them instead of re-deriving them:
 
-  * an **empty or whitespace token** matches every candidate a substring test is run against, and is
-    invisible to an exact-match test. `--slots "workflow,"` reported the *entire* model as changed
-    with zero unmatched tokens; `--context ","` loaded every card while looking like a narrowing.
-  * dropping such a token instead is no safer, because it can leave the selection empty, and an
-    empty selection is what every reader downstream spells "all of them".
+  * an **empty or whitespace token** is a refusal (invariant 3, *refuse, don't filter*). Matched, it
+    widens to everything a substring test runs against; dropped, it can leave an empty selection,
+    which every reader downstream spells "all of them" — and a widened selection arrives well-formed
+    and calm. Each selector reached that on its own before the rule was shared:
+    `test_empty_slot_token_is_refused_rather_than_matching_every_label`,
+    `test_resolve_cards_refuses_an_empty_token_instead_of_returning_all_cards`, and the shared rule
+    itself, `test_every_selector_refuses_an_empty_token`.
+  * a token carrying a **control character** is a refusal too (#40). Every selector echoes an
+    offending token into an error message, and a card name persists into `session.json` and is
+    rendered by `doctor` and `session verify`, where a newline ends the line rather than looking
+    odd. Refusing here means a render site cannot be handed one — the same choice `validate_slug`
+    and `validate_filename` make — where escaping at the print sites would have closed the ones that
+    existed and said nothing about the next. Pinned by
+    `test_a_control_character_in_a_selector_token_is_refused_not_echoed`.
 
-Both are the absence-shaped bug invariant 3 names — *refuse, don't filter* — and a selection is
-exactly where it is most expensive, because the widened answer is well-formed and arrives calmly.
+What a selector does with a token that is well-formed but matches nothing is its own business and
+stays at the call site — the vocabularies differ (a card name is exact, a slot token is an id *or* a
+label substring) and folding those into one helper would mean a flag per caller, which is three
+local rules again with an import in front.
 
-So the rule lives here rather than in each selector: an empty token is a **refusal**, stated once, so
-a fourth selector inherits it instead of re-deriving it. What a selector does with a token that is
-well-formed but matches nothing is its own business and stays at the call site — the vocabularies
-differ (a card name is exact, a slot token is an id *or* a label substring) and folding those into one
-helper would mean a flag per caller, which is three local rules again with an import in front.
-
-A second rule now lives here for the same reason (#40): a token carrying a **control character** is a
-refusal too. Every selector echoes an offending token back into an error message, and a card name
-additionally *persists* — `session.json` stores the selection, `session import` passes it through
-intact, and `doctor` and `session verify` render it into a receipt. A newline inside such a name does
-not look odd, it ends the line: a session could write `doctor`'s own `sessions` row and answer *all
-clear* underneath the row reporting it, while `session verify` — the anti-tampering verb — still
-exited 1. Escaping at the print sites would have closed the two that existed and said nothing about
-the third; refusing here means a render site cannot be handed one, which is the same choice
-`validate_slug` and `validate_filename` make for their own untrusted siblings.
-
-Stated precisely, because the loose version of that sentence was false when it was first written:
-the guard inspects the **stripped** token, so what every selector may echo is a token with no
-interior control character. It is not a promise that no control character was ever typed — a leading
-or trailing one is normalised away by `str.strip()`, not refused. The two halves only add up while
-each selector echoes `raw.strip()` rather than the original, which is a discipline at the call site
-and not something this module can enforce. `resolve_slots` echoed the original and leaked a leading
-newline into `requivo impact`'s output; that is fixed, and the rule is written into
-`normalize_tokens`' own docstring so the next selector meets it.
+Stated precisely: the guard inspects the **stripped** token, so what a selector may echo is a token
+with no *interior* control character — a leading or trailing one is normalised away by
+`str.strip()`, not refused. That only adds up while each selector echoes `raw.strip()` rather than
+the original, a discipline at the call site this module cannot enforce; `resolve_slots` once did
+not, and `test_impact_cannot_be_made_to_print_a_line_by_an_unmatched_slot_token` is the guard.
+`normalize_tokens`' own docstring states the rule so the next selector meets it.
 
 `display_token` is the companion for the one shape that guard cannot cover: a site that *shows* a
-stored token without selecting anything with it, where no refusal can run. Nothing makes an arbitrary
-future f-string safe, and this module does not pretend otherwise — the guarantee it offers is about
-the data, and the display helper is what the exceptions call.
+stored token without selecting anything with it, where no refusal can run
+(`test_display_token_is_the_render_side_companion_where_no_selector_runs`). Nothing makes an
+arbitrary future f-string safe, and this module does not pretend otherwise — the guarantee it
+offers is about the data, and the display helper is what the exceptions call.
 
 Pure and IO-free: it reads no file and knows no vocabulary, so it stays inside core's boundary.
 """

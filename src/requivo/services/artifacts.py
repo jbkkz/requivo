@@ -111,13 +111,11 @@ class ArtifactService:
         source revision against the current model and see whether this artifact's dependencies were
         touched. Recording it fresh because the caller said so was how a stale PRD stayed unflagged.
 
-        Omitting it used to mean "the current revision", which is the same bug one level down (#6): the
-        answer was then computed against a revision nobody had claimed to read, and it came out
-        `stale=False` every time because a source revision that *is* the current one cannot have moved.
-        The parameter keeps its `None` default rather than becoming positionally required so that the
-        omission arrives as a structured `UnstatedSourceRevisionError` a surface can print — the CLI
-        passes `--revision`'s value straight through, and a `TypeError` traceback is not an answer to
-        a user who left a flag off."""
+        Omitting it used to mean "the current revision" (#6), which came out `stale=False` every time
+        because a source revision that *is* the current one cannot have moved;
+        `test_an_omitted_source_revision_is_refused_rather_than_read_as_now` is the guard. The `None`
+        default stays so the omission arrives as a structured `UnstatedSourceRevisionError` a surface
+        can print rather than a `TypeError` traceback — the CLI passes `--revision` straight through."""
         filename = self._filename(artifact_type)
         if not self.repo.has_meta(slug):
             raise SessionNotFoundError(
@@ -244,12 +242,11 @@ class ArtifactService:
         the HTTP API's artifact envelope reports together (#425): `{type, filename, source_revision,
         updated_at, stale, content}`.
 
-        `show()` and `list()`, called separately, are two reads at two different instants: a
-        regeneration landing between them could hand back content from one revision beside a
-        freshness row describing another, and the disagreement is undetectable afterwards -- the
-        exact shape invariant 12 names for a provider snapshot, one layer over, for a plain read
-        rather than a paid one. This takes the lock once, the way `mark_stale` already does for a
-        compound *write*, and reads both under it.
+        `show()` and `list()`, called separately, are two reads at two different instants, and a
+        regeneration landing between them hands back content from one revision beside a freshness
+        row describing another, undetectably -- invariant 12's shape, one layer over, for a plain
+        read. This takes the lock once and reads both under it;
+        `test_show_with_status_is_not_interleaved_by_a_concurrent_save` is the guard.
 
         Raises `SessionNotFoundError` if nothing has ever been saved under `artifact_type` -- the
         same refusal `show()` raises alone."""

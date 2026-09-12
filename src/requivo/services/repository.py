@@ -74,9 +74,10 @@ class SessionRepository(Protocol):
         reasoning that keeps every other mutation here rather than only on `FileSessionRepository`.
         A backing that claims a slug atomically on `create` (invariant 11) must release it just as
         atomically here: once this returns, `exists(slug)` is False and `create(slug, ...)` for the
-        identical slug must succeed as though nothing had ever occupied it. See
-        `requivo.testing.repository_conformance.SessionRepositoryConformance` for the shared proof
-        every implementation runs against."""
+        identical slug must succeed as though nothing had ever occupied it --
+        `test_delete_removes_the_session_from_the_backing` and
+        `test_deleting_then_recreating_the_same_slug_succeeds`, on the shared
+        `requivo.testing.repository_conformance.SessionRepositoryConformance` every backing runs."""
         ...
 
     def read_meta(self, slug: str) -> SessionMeta:
@@ -108,7 +109,9 @@ class SessionRepository(Protocol):
         listing path exists to end.
 
         Failing to enumerate **at all** is not this — it is the aggregate having no members to speak
-        for, and it raises, exactly as `list_slugs` does."""
+        for, and it raises, exactly as `list_slugs` does. `test_the_repository_exposes_the_third_bucket`
+        pins the file backing; `test_known_slugs_and_unexaminable_entries_do_not_overlap` is the
+        conformance bar every backing runs."""
         ...
 
     def load_model(self, slug: str) -> EngineOutput:

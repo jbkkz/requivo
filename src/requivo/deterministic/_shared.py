@@ -105,19 +105,14 @@ def is_file_argument(arg: str) -> bool:
     It is not literal text either -- it is stdin. A caller that has to tell all three apart wants
     `read_source` below, which is what `discover` was missing (#360).
 
-    A blank string makes `Path("")` resolve to the current directory, which exists; a bare
-    directory name exists too, and a naive `.exists()` check accepts both, where the caller then
-    reads the "file" with `read_text()` and raises. `.is_file()`, which this function actually calls,
-    already excludes a directory on its own -- the trap is in reaching for `.exists()` instead, which
-    is exactly what a caller who has not read this docstring is liable to do. And an argument longer
-    than the OS filename limit makes the check itself *raise* rather than return False. All three
-    must read as 'not a file' here, so the caller falls back to treating the argument as literal
-    text.
-
-    Public since #301: `cli.py`'s `discover` re-implemented these same three traps under its own
-    name (`_is_file_arg`) rather than sharing this one -- the classic two-session duplicate, where a
-    future fix to one copy has no way to reach the other. `read_source` below is this function's
-    other caller.
+    The three traps, each of which must read as 'not a file' so the caller falls back to literal
+    text: a blank string, which `Path("")` resolves to the current directory
+    (`test_discover_file_check_rejects_blank_arg`); a bare directory name, which `.exists()` accepts
+    and `read_text()` then raises on (`test_discover_file_check_rejects_a_directory`); and an
+    argument past the OS filename limit, on which the check itself *raises* rather than returning
+    False (`test_discover_file_check_survives_a_real_length_request`). Public since #301, when
+    `cli.py`'s `discover` was found re-implementing all three under its own name; `read_source`
+    below is this function's other caller.
     """
     if not arg.strip():
         return False

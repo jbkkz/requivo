@@ -29,14 +29,11 @@ _Item = TypeVar("_Item")
 MAX_QUESTIONS = 6
 
 # The ceiling on a raw text input the engine reasons over: a discovery request, or the answers a
-# refinement turn folds in. It used to live only in `web/config.py`, enforced by the Web routes alone
-# — a rule enforced by one interface is not enforced (invariant 14), and any caller reaching
-# `DiscoveryService`/`SessionService` directly (the CLI, Claude Code, a future Postgres-backed
-# consumer) sent unbounded text straight to a billed provider call. `claude-sonnet-5`'s 1M-token
-# context window means a multi-megabyte paste does not even fail at the API — it just bills, and the
-# interactive loop resends the request on every turn, multiplying the cost by however many turns it
-# takes to converge (#255). Enforced by `require_input_within_bounds` in `core/validation.py`;
-# `web/config.py` re-exports it under its own names so the routes keep their friendly re-render on top.
+# refinement turn folds in. Enforced by `require_input_within_bounds` in `core/validation.py`, not
+# only by the Web routes as it once was (#255) — a rule enforced by one interface is not enforced
+# (invariant 14), and the cost of the gap was unbounded text billed on every turn of the interactive
+# loop; `test_an_oversized_request_is_refused_before_any_provider_call` and its siblings are the
+# guard. `web/config.py` re-exports it under its own names so the routes keep their re-render on top.
 MAX_INPUT_CHARS = 20_000
 
 
@@ -225,14 +222,12 @@ class ModelProposal(StrictModel):
         discovery) an unstated collection is simply empty: there is nothing to carry.
 
         A key `current` carries that this version cannot name is carried the same way, and for the
-        same reason (#14). A proposal is `extra="forbid"`, so it *cannot* speak to a field a newer
-        Requivo added — silence there is not a decision to delete it, exactly as an omitted
-        `decisions` is not. Dropping it here would undo the fix one layer along: the model would
-        load with the unknown key and lose it on the first refinement turn, which is the loud
-        failure #14 removed returning as a quiet one. The result is then a `PersistedEngineOutput`,
-        because that is the only kind of `EngineOutput` that can hold such a key; the round trip
-        through `model_dump()` is what re-admits it, and it costs one extra validation on the rare
-        path rather than on every apply.
+        same reason (#14): a proposal is `extra="forbid"`, so its silence about a field a newer
+        Requivo added is not a decision to delete it. The result is then a `PersistedEngineOutput`,
+        the only kind of `EngineOutput` that can hold such a key, re-admitted through `model_dump()`
+        at the cost of one extra validation on the rare path. Dropping it here would turn the refusal
+        #14 removed into a silent loss on the first refinement turn —
+        `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save` is the guard.
 
         What is *not* carried, and is a real narrowing rather than an oversight: the slots, the
         summary and the questions come from the proposal, which replaces them wholesale. An unknown

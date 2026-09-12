@@ -150,7 +150,22 @@ def _arm_classes():
 
 def test_every_arm_has_its_own_code():
     """Before #52 all six raised `cross_site_request`, so the only way to tell *bad token* from
-    *wrong host* was the message — which `docs/compatibility.md` says never to match on."""
+    *wrong host* was the message — which `docs/compatibility.md` says never to match on.
+
+    The one code was raised for six distinct facts whose `details` payloads had five different
+    shapes between them, against the rule `docs/compatibility.md` states for exactly this reason
+    (#35): a code carries one fact and one `details` shape. A consumer matching `cross_site_request`
+    and reading `details["origin"]` got a `KeyError` from the host arm, and the shape it was written
+    against was never the contract.
+
+    The counter-argument, which is real and which the split rejects: nothing serializes `details` on
+    the Web surface — a refusal renders as HTML — so no consumer could observe the inconsistency,
+    and an argued exception in the policy was the other defensible answer. What decided it is that
+    the cost was already being paid: both #43 and #45 had to distinguish their new arm by message,
+    because the code could not tell them apart. So the only handle a caller had for the distinction
+    was the one it is told not to use — a present cost, not a future one — and
+    `empty_selector_token` had been split for the identical shape one release earlier.
+    """
     codes = [code for code, _ in ARMS]
     assert set(_arm_classes()) == set(codes)
     assert len(set(codes)) == len(codes)            # must fire: six distinct codes, not one reused

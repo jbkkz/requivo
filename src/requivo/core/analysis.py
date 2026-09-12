@@ -17,15 +17,11 @@ from requivo.core.contracts import (
 def slot_meta() -> tuple[dict, dict]:
     """`(pillars, labels)`, both keyed by slot id, projected from the framework schema and cached.
 
-    Public since #302: four other modules (`core/dependencies.py`, `cli.py`, `render/terminal.py`,
-    `render/markdown.py`) already imported this under its underscore name -- the privacy marker was
-    false everywhere it mattered, and a rename inside this module broke four files with no
-    deprecation surface. It is genuinely shared API: the schema projection every one of those
-    callers needs, not a detail any single caller could sensibly own instead.
-
-    Reads `schema_slots()` rather than parsing the file itself (#301): this and `_default_impacts`
-    below were two of the four sites across this file and `contracts.py` that each re-read and
-    re-parsed the same `model_schema.json` independently.
+    Public since #302: four modules outside this one already imported it under its underscore name,
+    so the privacy marker was false everywhere it mattered. Reads `schema_slots()` rather than parsing
+    the file itself (#301) — this and `_default_impacts` were two of four independent parses of the
+    same `model_schema.json`; `test_the_four_slot_projections_all_read_from_one_schema_parse` is the
+    guard.
     """
     slots = schema_slots()
     return ({s["id"]: s["pillar"] for s in slots}, {s["id"]: s["label"] for s in slots})
