@@ -58,8 +58,8 @@ already paid the price of its absence.
   (#256 open).
 - There is no auth story of any kind, and no spend ceiling: the one thing standing between a
   runaway client loop and the server's Anthropic key is the cross-site guard, which exists for
-  browsers. (**The ceiling landed since**, #427 — read section 5 for what it is and is not; auth
-  is still nothing, and is slice 4's.)
+  browsers. (**The ceiling landed since**, #427 — read section 5 for what it is and is not; and
+  **auth landed with slice 4**, as the bearer-token bind discipline that section describes.)
 - Sessions have no delete (#238 — **landed since**, see section 6); `estimate` is a terminal-only
   analysis with no artifact type — it is absent even from `ARTIFACT_FILENAMES`, so it cannot be
   persisted by any path.
@@ -227,11 +227,11 @@ rule), taken on only where it pays.
 
 ### 5. Auth, and the spend ceiling
 
-**None of the three steps below is built**, and the reason is one fact rather than three: this
-extra ships **no listener**. `[api]` declares fastapi and no ASGI server, there is no `requivo api
-serve` verb, and nothing outside the package calls `create_api()` — running it at all means
-installing uvicorn yourself and writing a launcher. Auth is a property of a bind, so it arrives with
-slice 4, which is the slice that binds. **The progression, in three explicit steps:**
+**The first two steps below are built (slice 4, #425); the third never will be here.** When this
+was written the reason none was built was one fact rather than three: this extra shipped **no
+listener** — `[api]` declared fastapi and no ASGI server, there was no `requivo api serve` verb,
+and nothing outside the package called `create_api()`. Auth is a property of a bind, so it arrived
+with slice 4, the slice that binds. **The progression, in three explicit steps:**
 
 1. **Local, loopback: no auth.** Default bind `127.0.0.1`, same wildcard-bind refusal discipline
    `requivo web` already implements. This is the CLI-parity mode: the user on the machine already
@@ -240,6 +240,16 @@ slice 4, which is the slice that binds. **The progression, in three explicit ste
    the server refuses to start unless `REQUIVO_API_TOKEN` is set — the same deliberate-act shape as
    `REQUIVO_WEB_ALLOWED_HOSTS`. `Authorization: Bearer`, constant-time compare, every route. One
    token, no users, no roles: this is "my other machine may call this", not identity.
+   **Landed** (#425 slice 4, `api/auth.py`), with "every route" settled as *every route under
+   `/api/v1` except the liveness probe*: `/api/v1/health` reads nothing of the reader's and a 401
+   there would tell a monitor the service is down when it is merely locked, and `/docs`, `/redoc`,
+   `/openapi.json` and the vendored `/api-static/` assets sit outside the prefix and are not gated
+   either — they are the route skeleton, never session data, and a browser navigation cannot carry
+   a bearer header, so gating them would make the docs unreachable from the one client they exist
+   for. "Loopback" for the bind is the three spellings the host allowlist accepts, no wider; a
+   bind to `127.0.0.2` asks for the token. And the token, once set, gates those routes *whatever*
+   the bind — auth is a property of the token's presence; only the refusal to start is a property
+   of the bind.
 3. **Cloud identity: never in this repo.** Accounts, orgs, quotas, billing are the hosted product's
    private concern, standing on the API (or on the services directly) behind its own identity
    layer. The open-core boundary is already decided; this record just restates which side of it
@@ -256,9 +266,13 @@ time**, which this paragraph originally did not say (#509):
   this surface serves today: before #508, `GET /api/v1/sessions` with `Host: evil.example.com`
   answered 200 where Requivo Web answered 403. `tests/test_host_allowlist.py` is parameterised over
   both surfaces.
-- **The `Sec-Fetch-Site`/`Origin` checks on unsafe methods — slice 4.** When this was written
-  there was no unsafe method on this surface for them to run on; slice 2 (#425) has since shipped
-  the writes, and these two checks are still slice 4's, alongside the bind discipline.
+- **The `Sec-Fetch-Site`/`Origin` checks on unsafe methods — shipped with slice 4 (#425).** When
+  this was written there was no unsafe method on this surface for them to run on; slice 2 shipped
+  the writes, and slice 4 moved the two checks out of `web/security.py` into
+  `requivo.host_policy.check_request_origin` — the same move #508 made for the host axis, for the
+  same reason — so both surfaces call one definition and refuse with the same three codes
+  (`cross_site_fetch`, `opaque_origin`, `origin_mismatch`). `tests/api/test_api_cross_site_guard.py`
+  pins the API side; the web's own tests are unchanged.
 - **`Content-Type: application/json` required on unsafe methods — shipped with slice 2 (#425),
   brought forward from slice 4** where this record first placed it: a write surface with none of
   this posture in front of it is the state #508 was filed about, and this check is the one leg cheap
@@ -271,7 +285,8 @@ time**, which this paragraph originally did not say (#509):
 **The ordering constraint, because it is the one that can go wrong:** the host guard lands with, or
 before, `requivo api serve`. A serve verb shipping first would turn a hypothetical into a default,
 which is why #508 was fixed ahead of the slice that owns the rest of this posture rather than inside
-it.
+it. **Held:** `requivo api serve` landed with slice 4, after #508, alongside the bind discipline and
+the origin checks, and `[api]` declares `uvicorn` from that slice on.
 
 **The spend ceiling is a service-layer seam, not an HTTP feature (#427). Landed**, in the shape
 proposed here. The pieces already existed: `requivo.usage` scopes a ledger per operation, every call

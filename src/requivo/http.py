@@ -120,6 +120,11 @@ STATUS_BY_CODE = {
     # the web's request-origin checks). Not 429: a budget does not reset with time, so "retry later"
     # is the wrong instruction to send (#427, `decision: the-http-api-facade`).
     "spend_ceiling_reached": 403,
+    # 401, not 403: the request carried no acceptable credential, and the response says which one
+    # to send (`WWW-Authenticate: Bearer`, RFC 6750). 403 is what the rows above answer when the
+    # server has understood a request and declines it regardless of credentials; this row is the
+    # one case where sending the right credential is the remedy (#425 slice 4, `api/auth.py`).
+    "unauthorized": 401,
     "input_too_large": 413,
     # 409 — a conflict with the store's current state, not a malformed request
     "revision_conflict": 409,
@@ -136,6 +141,11 @@ STATUS_BY_CODE = {
     # The content was produced (paid for) and only the write failed — the store, not the request
     # (#208).
     "artifact_write_failed": 500,
+    # Nominal, like the two family bases above: this is `create_api(bind_host=...)` refusing to
+    # *start* bound beyond loopback with no `REQUIVO_API_TOKEN`, raised before any listener exists,
+    # so no HTTP response ever carries it. It has a row because every code in the vocabulary has
+    # one, and 500 is the honest nominal answer -- the operator's configuration, not a caller.
+    "api_token_required": 500,
 }
 
 # What an *unknown* code gets. Deliberately a 5xx: with every known code mapped above, this only

@@ -82,12 +82,12 @@ anthropic = ["anthropic>=0.42.0,<2"]
 web = ["fastapi>=0.110,<1", "uvicorn>=0.29,<1", "jinja2>=3.1,<4", "python-multipart>=0.0.9,<1"]
 # The local HTTP API facade (#425): `pip install 'requivo[api]'`. A thin FastAPI layer over the same
 # services as the CLI and Requivo Web -- no Jinja2, no HTMX, no form parsing (every body here is
-# JSON, so `python-multipart` buys nothing). Same `fastapi` floor and ceiling as `[web]`, on purpose:
-# holding a second, independently-drifting pin for the identical dependency is how the two extras'
-# tested version ranges silently diverge. `uvicorn` is not declared here yet -- slice 1 (#425) ships
-# no CLI verb that binds a port; the serve verb lands in a later slice of the same issue and adds it
-# then, not before something needs it.
-api = ["fastapi>=0.110,<1"]
+# JSON, so `python-multipart` buys nothing). Same `fastapi` and `uvicorn` floors and ceilings as
+# `[web]`, on purpose: holding a second, independently-drifting pin for the identical dependency is
+# how the two extras' tested version ranges silently diverge. `uvicorn` joined with slice 4 of #425,
+# the slice that added `requivo api serve` -- the first thing in this extra to bind a port -- and
+# not before something needed it.
+api = ["fastapi>=0.110,<1", "uvicorn>=0.29,<1"]
 # The repository conformance suite (#424): `pip install 'requivo[testing]'` for a consumer building a
 # non-file SessionRepository (a Postgres backing, most concretely) who wants to subclass
 # `requivo.testing.repository_conformance.SessionRepositoryConformance` in their own pytest suite.

@@ -345,7 +345,7 @@ def test_documented_cli_commands_exist():
     parser = _build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     documented = {"discover", "answer", "status", "impact", "brief", "prd", "stories", "estimate",
-                  "criteria", "epic", "release", "web", "demo", "doctor", "schema", "context",
+                  "criteria", "epic", "release", "web", "api", "demo", "doctor", "schema", "context",
                   "session", "model", "artifact"}
     missing = documented - set(sub.choices)
     assert not missing, f"documented CLI commands missing from the parser: {sorted(missing)}"

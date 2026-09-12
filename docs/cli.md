@@ -125,6 +125,12 @@ full envelope shape, per-version skeleton and a worked consumer flow live in
 |---|---|
 | `requivo web [--host --port --workspace --no-open --reload]` | Launch the local Web interface (needs the `[web]` extra). Binds to `127.0.0.1` by default. See [web.md](web.md) |
 
+## Local HTTP API (experimental)
+
+| Command | Does |
+|---|---|
+| `requivo api serve [--host --port --workspace]` | Serve the local REST API (needs the `[api]` extra; `pip install 'requivo[api]'`). Binds to `127.0.0.1:8767` by default, with the OpenAPI docs at `/docs`. **Bound to anything but loopback it refuses to start unless `REQUIVO_API_TOKEN` is set**; with that variable set, every route under `/api/v1` except `/api/v1/health` requires `Authorization: Bearer <token>` (401 `unauthorized` otherwise), whatever the bind. The surface is experimental -- paths and shapes may still change; the design and the freeze conditions are in `docs/decisions/0004-the-http-api-facade.md` |
+
 ## Offline / deterministic verbs (no LLM, no key)
 
 | Command | Does |
