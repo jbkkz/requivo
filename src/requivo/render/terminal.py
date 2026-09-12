@@ -485,6 +485,39 @@ def render_impact(report) -> None:
         print("\n  → Regenerate these after confirming the change.")
 
 
+def render_evidence(report) -> None:
+    """Decisions derived from thinner evidence than the session now holds (#493).
+
+    Three states, each its own sentence, because the review can *fail to look* and that must not
+    print the same thing as a clean one: `None` is not reviewed (a bare model.json has no revision
+    history); a report with `reviewed == 0` has no decisions to speak of and prints nothing; a
+    reviewed report either names the decisions worth re-reading -- *worth re-reading*, never
+    "contradicted": whether the new evidence disagrees is a judgment the assessment makes, not a
+    comparison this renderer can -- or says every decision checked out, with the ones it could not
+    check listed by name. The decision text is the model's own, so it goes through `_bullet`."""
+    if report is None:
+        print("\n  Evidence since derivation: not reviewed — no revision history to compare "
+              "against (a session has one; a bare model file does not).")
+        return
+    if report.reviewed == 0:
+        return
+    if report.flagged:
+        print("\nDECISIONS DERIVED FROM THINNER EVIDENCE THAN EXISTS NOW — worth re-reading")
+        for f in report.flagged:
+            print(_bullet(f.decision))
+            when = f"at revision {f.derived_at}" if f.derived_at is not None else "when recorded"
+            print(f"    ↳ {', '.join(f.thickened)}: assumed or empty {when}, confirmed since")
+    else:
+        checked = report.reviewed - len(report.could_not_tell)
+        print(f"\n  Evidence since derivation: {checked} of {report.reviewed} decision(s) checked, "
+              "none rests on thinner evidence than it did when recorded.")
+    if report.could_not_tell:
+        print("\n  Could not check:")
+        for u in report.could_not_tell:
+            print(_bullet(u.decision))
+            print(f"    ↳ {display_text(u.reason)}")
+
+
 def render_dependency_map(out: EngineOutput) -> None:
     """No-args overview: for every slot that can still move, what it would invalidate.
 

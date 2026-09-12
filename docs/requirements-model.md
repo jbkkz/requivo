@@ -83,6 +83,14 @@ and the artifacts that would go **stale**; a discovery turn that materially move
 already-generated files that no longer match it. An unrelated (or completeness-only) change leaves an
 artifact fresh — staleness follows the dependency graph, not the revision number.
 
+The same edge answers a second question, in the other direction of time: a decision **derived from
+thinner evidence than exists now** is one whose `derived_from` slot was `empty` or `inferred` at the
+revision the decision was first recorded and is `explicit` now (#493). The slot did not move away
+from the decision — it moved *toward* being filled, which is the change nobody re-reads a decision
+for. `requivo impact` and the Web's traceability panel name such decisions as *worth re-reading*.
+Never as *contradicted*: whether the confirmed value disagrees with the decision is a judgment over
+both, and judgment is the assessment's, at the cost of a call.
+
 Every required slot is guaranteed to reach at least one artifact's staleness check — a specific one
 (prd, stories, estimate, criteria, epic, release) when it shapes that artifact's content, or the
 solution assessment's judgment over the whole model when it does not. A slot reaching neither used to

@@ -199,7 +199,12 @@ def test_impact_with_a_blank_slots_value_is_the_empty_report_not_a_refusal(clien
     resp = client.get("/api/v1/sessions/leave-approval/impact", params={"slots": ""})
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"changed": [], "decisions": [], "challenges": [], "artifacts": []}
+    assert body == {"changed": [], "decisions": [], "challenges": [], "artifacts": [],
+                    # The review ran (#493) -- `evidence` is a report, not `None` -- over the zero
+                    # decisions `seed_session` writes; the firing arm is pinned in
+                    # `tests/test_thinner_evidence.py`, and the count is pinned here so a review
+                    # that examined nothing cannot pass as one that examined the model.
+                    "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
 
 
 def test_impact_still_refuses_a_genuinely_malformed_list(client):

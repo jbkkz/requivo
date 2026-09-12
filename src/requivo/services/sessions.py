@@ -22,14 +22,23 @@ from requivo.core.contracts import EngineOutput
 from requivo.core.dependencies import (
     ARTIFACT_FILES,
     REASONING_CONSUMERS,
+    EvidenceReport,
+    EvidenceUnknown,
     ImpactReport,
     ReasoningDiff,
     diff_models,
     diff_reasoning,
     propagate,
     resolve_slots,
+    thinner_evidence,
 )
-from requivo.core.errors import RevisionConflictError, SessionExistsError, SessionNotFoundError, UnknownSlotError
+from requivo.core.errors import (
+    ModelUnreadableError,
+    RevisionConflictError,
+    SessionExistsError,
+    SessionNotFoundError,
+    UnknownSlotError,
+)
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
@@ -540,14 +549,95 @@ class SessionService:
         per-slot dependency map (`render_dependency_map`) -- a different shape (many small reports,
         one per schema slot) that this method does not attempt to produce; the API route requires
         `slots` for that reason (see #425's own report for the boundary)."""
-        model = self.load_model(slug)
-        resolved, unmatched = resolve_slots(slots)
-        if unmatched:
-            raise UnknownSlotError(
-                f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
-                "(e.g. 'permissions', 'workflow', 'reporting').",
-                details={"unmatched": unmatched})
-        return propagate(model, resolved)
+        # One lock around both reads (invariant 12): the blast radius and the evidence review must
+        # describe the same revision, and the review re-reads the model under the lock itself (the
+        # lock is re-entrant per thread, so its inner take is free).
+        with self.repo.lock(slug):
+            model = self.load_model(slug)
+            resolved, unmatched = resolve_slots(slots)
+            if unmatched:
+                raise UnknownSlotError(
+                    f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
+                    "(e.g. 'permissions', 'workflow', 'reporting').",
+                    details={"unmatched": unmatched})
+            report = propagate(model, resolved)
+            # Not narrowed to `slots` on purpose (#493): the review is a fact about the session, and
+            # the slot that thickened is exactly the one nobody thinks to ask about.
+            report.evidence = self.thinner_evidence(slug)
+        return report
+
+    def thinner_evidence(self, slug: str) -> EvidenceReport:
+        """Which decisions were derived while a slot they rest on was thinner than it is now (#493).
+
+        The comparison itself is `core.dependencies.thinner_evidence`, pure. What this method adds
+        is the *derivation revision*: for each decision in the current model, the earliest frozen
+        revision that carries its content-derived `id` (invariant 5), found by walking
+        `revisions/0001..NNNN` in order. That is also the accepted limit -- a reworded decision is
+        a new id, first recorded at its rewording, so it is compared against the evidence of that
+        later revision and not the earlier one a reader would call the same decision
+        (`test_a_reworded_decision_counts_as_newly_derived_at_its_rewording`).
+
+        Reads under the session lock -- the revision number, the current model and the frozen
+        revisions it walks -- so the whole comparison is one snapshot (invariant 12). No write, no
+        provider call.
+
+        Three states, and the third does not fold into the first (invariant 15): a revision this
+        Requivo cannot read -- missing, or persisted by an older one without the fields the
+        comparison needs -- makes every decision not yet located a `could_not_tell` naming that
+        revision, because a later revision that also carries the decision is not where it was
+        derived. Never a flag, never a crash
+        (`test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_tell`).
+        """
+        # The whole walk runs under the lock, and not only the two reads that can move. A frozen
+        # revision file never changes -- but `session import --force` swaps the entire session
+        # directory under this same lock, after which `revisions/NNNN-model.json` names a different
+        # history and a walk outside the lock would compare `now` against it, silently. The cost is
+        # the lock held for the length of the walk: measured at 300 revisions, well under 100 ms.
+        with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            if meta.current_revision == 0:
+                return EvidenceReport()
+            now = self.load_model(slug)
+            pending = {d.id for d in now.decisions}
+            derived_at: dict[int, set[str]] = {}
+            frozen: dict[int, EngineOutput] = {}
+            unreadable: str | None = None
+            for rev in range(1, meta.current_revision + 1):
+                if not pending:
+                    break
+                try:
+                    then = self.repo.load_revision(slug, rev)
+                except (SessionNotFoundError, ModelUnreadableError) as e:
+                    unreadable = f"revision {rev} could not be read ({e.code})"
+                    break
+                found = pending & {d.id for d in then.decisions}
+                if found:
+                    derived_at[rev] = found
+                    frozen[rev] = then
+                    pending -= found
+        by_id: dict[str, tuple] = {}
+        for rev, ids in derived_at.items():
+            partial = thinner_evidence(frozen[rev], now)
+            for f in partial.flagged:
+                if f.id in ids:
+                    f.derived_at = rev
+                    by_id[f.id] = ("flagged", f)
+            for u in partial.could_not_tell:
+                if u.id in ids:
+                    by_id[u.id] = ("unknown", u)
+        report = EvidenceReport(reviewed=len(now.decisions))
+        for d in now.decisions:
+            state, item = by_id.get(d.id, (None, None))
+            if state == "flagged":
+                report.flagged.append(item)
+            elif state == "unknown":
+                report.could_not_tell.append(item)
+            elif d.id in pending:
+                # Located in no readable revision: either the walk stopped at an unreadable one, or
+                # the decision is in `model.json` and in no frozen file (a hand-edited model).
+                report.could_not_tell.append(EvidenceUnknown(
+                    d.decision, d.id, unreadable or "recorded in no frozen revision"))
+        return report
 
     def rescope(self, slug: str, context_cards: list[str] | None) -> RescopeResult:
         """Re-scope an existing session's context-card selection (`session rescope`).

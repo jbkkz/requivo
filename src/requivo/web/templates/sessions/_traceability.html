@@ -42,6 +42,13 @@
          document's `lang="en"` is the true claim here. See base.html, and
          `test_the_decision_briefs_own_content_still_declares_english`, which asserts this side. #}
       <div class="head">{{ d.decision }}</div>
+      {# Derived while a topic under it was still assumed or empty, and that topic is confirmed
+         now (#493). The caption is the view model's, computed by the Core from the frozen
+         revisions; "worth re-reading", never "contradicted" -- see `evidence_view`. A decision
+         the review could not decide about says so, so an untagged row is not read as a clean one. #}
+      {% if d.reread %}<p class="badge warn">{{ d.reread }}</p>
+      {% elif d.unchecked %}<p class="muted">Evidence since derivation not checked: {{ d.unchecked }}.</p>
+      {% endif %}
       <dl>
         {% if d.why %}<dt>Why</dt><dd>{{ d.why }}</dd>{% endif %}
         {% if d.alternative %}<dt>Alternative weighed</dt><dd>{{ d.alternative }}</dd>{% endif %}

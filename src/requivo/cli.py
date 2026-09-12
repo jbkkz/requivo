@@ -43,6 +43,7 @@ from requivo.render.terminal import (
     render_brief,
     render_dependency_map,
     render_estimate,
+    render_evidence,
     render_grounding,
     render_impact,
     render_next_command,
@@ -699,9 +700,18 @@ def _cmd_demo(a, client) -> None:
 def _cmd_impact(a, client) -> None:
     """Offline query over the dependency DAG — no API call. With slots, show their blast
     radius; without, map every slot's downstream."""
-    out, _ = _resolve_ref(a.session)
+    out, slug = _resolve_ref(a.session)
+    # Decisions derived from thinner evidence than the session now holds (#493) -- a walk over the
+    # frozen revisions, so only a session has it. A bare model.json is *not reviewed*, which the
+    # renderer says in those words rather than as an empty section. Decided by the same predicate
+    # `_resolve_ref` took the file branch on, never by `svc.exists(slug)`: the slug a file resolves
+    # to is its parent directory's name, and a session of that name in the workspace is a different
+    # model whose review would print as this file's. Pinned by
+    # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
+    evidence = None if Path(a.session).is_file() else SessionService().thinner_evidence(slug)
     if not a.slots:
         render_dependency_map(out)
+        render_evidence(evidence)
         return
     resolved, unmatched = resolve_slots(a.slots)
     if unmatched:
@@ -709,6 +719,7 @@ def _cmd_impact(a, client) -> None:
               f"(e.g. 'permissions', 'workflow', 'reporting').")
     if resolved:
         render_impact(propagate(out, resolved))
+        render_evidence(evidence)
     if unmatched:
         # A wrong probe used to be indistinguishable from an empty result -- both exited 0 -- so a
         # script gating on the exit code alone could not tell "nothing downstream" from "you asked

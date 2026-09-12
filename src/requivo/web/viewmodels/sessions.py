@@ -14,6 +14,7 @@ from requivo.web.example import is_example
 from requivo.web.viewmodels.labels import PRIMARY_ARTIFACT, UNREADABLE_BADGE, artifact_label, unreadable_hint
 from requivo.web.viewmodels.status import (
     PRIORITY_QUESTIONS,
+    evidence_view,
     grounding_view,
     readiness_view,
     understanding_view,
@@ -188,6 +189,9 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
     always stated so a reader can tell there is more."""
     status = sessions.status(slug)
     model = sessions.load_model(slug)
+    # Which decisions were derived while a topic under them was thinner than it is now (#493).
+    # Computed by the service from the frozen revisions; this page only tags the rows.
+    evidence = evidence_view(sessions.thinner_evidence(slug))
     questions = status.get("questions", [])
     artifacts = _artifacts_view(status)
     generatable = generatable_view()
@@ -224,7 +228,11 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
         "more_generatable": [g for g in generatable if g["type"] != PRIMARY_ARTIFACT],
         # `mode="json"` so enums arrive as their value. A plain dump leaves `Leverage.high` in the
         # dict, and Jinja renders an enum by its repr — the page read "leverage Leverage.high".
-        "decisions": [d.model_dump(mode="json") for d in model.decisions],
+        "decisions": [{**d.model_dump(mode="json"),
+                       "reread": evidence["reread"].get(d.id),
+                       "unchecked": evidence["unchecked"].get(d.id)}
+                      for d in model.decisions],
+        "evidence_reviewed": evidence["reviewed"],
         "challenges": [c.model_dump(mode="json") for c in model.challenges],
         "opportunities": [o.model_dump(mode="json") for o in model.opportunities],
     }
