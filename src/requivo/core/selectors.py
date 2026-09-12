@@ -1,8 +1,9 @@
 """The shared refusal rule for a caller-supplied selector token, used by `resolve_cards`,
 `load_context` and `resolve_slots`: empty/whitespace is refused, not matched-or-dropped (invariant
 3); a control character is refused, not echoed, checked on the **stripped** token so a selector
-must echo `raw.strip()` (#40). Pinned by `test_every_selector_refuses_an_empty_token` and
-`test_a_control_character_in_a_selector_token_is_refused_not_echoed`. `display_token`/`display_text`/
+must echo `raw.strip()` (#40). Pinned by `test_every_selector_refuses_an_empty_token`,
+`test_a_control_character_in_a_selector_token_is_refused_not_echoed` and
+`test_impact_cannot_be_made_to_print_a_line_by_an_unmatched_slot_token`. `display_token`/`display_text`/
 `display_document` are the render-side companions where no selector runs.
 """
 

@@ -66,13 +66,15 @@ def _resolve_client() -> tuple[object | None, str | None]:
 
 
 def credential_present() -> bool:
-    """Can this install authenticate -- the SDK's own answer, never raising (`test_credential_present_does_not_raise_on_an_unloadable_profile`)."""
+    """Can this install authenticate -- the SDK's own answer, never raising (#332, #334;
+    `test_credential_present_does_not_raise_on_an_unloadable_profile`)."""
     client, _ = _resolve_client()
     return client is not None
 
 
 def credential_diagnosis() -> tuple[bool, str | None]:
-    """`credential_present()` plus *why*, for an unloadable profile (`test_credential_diagnosis_names_the_unloadable_profile_the_bool_hides`)."""
+    """`credential_present()` plus *why*, for an unloadable profile (#365;
+    `test_credential_diagnosis_names_the_unloadable_profile_the_bool_hides`)."""
     client, problem = _resolve_client()
     if client is not None:
         return True, None
@@ -83,7 +85,8 @@ def credential_diagnosis() -> tuple[bool, str | None]:
 
 def new_client() -> _AnthropicClient:
     """An Anthropic client, or a clean refusal -- `Anthropic()` itself does not raise on a missing credential,
-    deferring to a bare `TypeError` on the first request (`test_a_missing_api_key_refuses_before_the_sdk_can_traceback`)."""
+    deferring to a bare `TypeError` on the first request (#201,
+    `test_a_missing_api_key_refuses_before_the_sdk_can_traceback`)."""
     if Anthropic is None:
         raise EngineError(
             "The Anthropic provider is not installed. Install it with `pip install 'requivo[anthropic]'` "
@@ -97,7 +100,10 @@ def new_client() -> _AnthropicClient:
 
 
 def current_model_name() -> str:
-    """`REQUIVO_MODEL`, else bare `MODEL` (deprecated), else `MODEL_DEFAULT` (`test_current_model_name_prefers_requivo_model_when_both_are_set`)."""
+    """`REQUIVO_MODEL`, else bare `MODEL` (deprecated), else `MODEL_DEFAULT` (#268,
+    `test_current_model_name_prefers_requivo_model_when_both_are_set`)."""
+    # Presence, not truth: an exported-but-empty override is an override in effect (#268,
+    # `test_a_model_override_that_is_set_but_empty_is_reported_as_one`).
     override = os.getenv("REQUIVO_MODEL")
     if override is not None:
         return override

@@ -12,7 +12,8 @@ from requivo.providers.errors import EngineError
 # Allowlisted isinstance-only reach into providers/errors.py — see tests/test_boundaries.py.
 
 # Every code needs an explicit row, or it silently defaults below and misreports a server fault as
-# the caller's bad request (#34) -- rationale per row: test_http_status_table.py.
+# the caller's bad request (#34) -- rationale for the rows a test pins: test_http_status_table.py;
+# for the rest, docs/compatibility.md's exit-code and status tables.
 STATUS_BY_CODE = {
     "session_not_found": 404,
     "invalid_slug": 400,
@@ -20,7 +21,7 @@ STATUS_BY_CODE = {
     "unknown_slot": 400,
     "unknown_context_card": 400,
     "missing_required_slot": 400,
-    "invalid_session": 500,
+    "invalid_session": 500,  # a store fault is not the caller's bad request (#34)
     "unsupported_format_version": 409,  # not 426: no Upgrade header to send
     "unsupported_schema_version": 409,
     "session_unreadable": 500,
@@ -31,7 +32,7 @@ STATUS_BY_CODE = {
     "unreadable_archive": 400,
     "invalid_archive": 400,
     "import_move_failed": 500,
-    "unstated_source_revision": 400,
+    "unstated_source_revision": 400,  # not 409: the remedy is entirely the caller's (#57)
     "invalid_filename": 400,
     "empty_selector_token": 400,
     "empty_selection": 400,

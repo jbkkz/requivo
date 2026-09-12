@@ -22,7 +22,8 @@ ALLOWED_HOSTS_ENV = "REQUIVO_WEB_ALLOWED_HOSTS"
 class CrossSiteRequestError(RequivoError):
     """A request did not prove it came from this app's own pages -- the family, not a code to raise (#52);
     every arm carries its own code and `details` shape, and `install_cross_site_guard` answers 403 for all.
-    Pinned by `test_every_arm_has_its_own_code` and `test_the_family_base_is_not_raised_by_any_arm`."""
+    Pinned by `test_every_arm_has_its_own_code`, `test_the_family_base_is_not_raised_by_any_arm` and
+    `test_each_arm_carries_exactly_the_details_shape_its_code_promises`."""
 
     code = "cross_site_request"
 
