@@ -25,7 +25,7 @@ from _cli_harness import _SESSIONS_ROW, _full_model, _run, _run_json, _run_stdin
 from requivo.cli import app
 from requivo.core import persistence as store
 from requivo.core.errors import InvalidSlugError
-from requivo.deterministic.sessions import MAX_ARCHIVE_FILES
+from requivo.deterministic.sessions import _REPLACE_ATTEMPTS, MAX_ARCHIVE_FILES
 
 
 @pytest.fixture
@@ -759,6 +759,61 @@ def test_export_excludes_the_lock_file_and_waits_for_the_writer(workspace, tmp_p
         names = z.namelist()
     assert not [n for n in names if ".lock" in n]
     assert "s/model.json" in names and "s/revisions/0001-model.json" in names
+
+
+def test_session_export_survives_a_transient_permission_error(workspace, tmp_path, monkeypatch):
+    """The same cause invariant 18's `_atomic_write` and `session restore`'s `_replace_with_retry`
+    already retry: on Windows the final `rename` of the freshly written archive can fail with a
+    transient `PermissionError` when a scanner or the Search Indexer briefly opens it microseconds
+    after it lands (#524). `_cmd_session_export`'s `tmp.replace(dest)` now goes through the same
+    helper, the identical shape to `test_session_restore_survives_a_transient_permission_error`."""
+    _run(["session", "init", "Something.", "--slug", "s", "--json"])
+    _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
+
+    attempts = {"n": 0}
+    real_replace = Path.replace
+
+    def flaky(self, dst):
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise PermissionError(13, "Access is denied")
+        return real_replace(self, dst)
+
+    monkeypatch.setattr(Path, "replace", flaky)
+    dest = tmp_path / "s.zip"
+    _run(["session", "export", "s", "-o", str(dest), "--json"])
+    assert attempts["n"] == 3, "the export did not actually go through the retry path"
+    assert dest.exists(), "the retried rename never landed the archive"
+    with zipfile.ZipFile(dest) as z:
+        names = z.namelist()
+    assert "s/model.json" in names and "s/revisions/0001-model.json" in names
+
+
+def test_session_export_still_gives_up_on_a_permanent_permission_error(workspace, tmp_path,
+                                                                          monkeypatch):
+    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail
+    loudly and quickly, and leave no completed archive behind under a scratch name — the failure
+    mode #524 was filed for is a finished export that reports a traceback while `finally:
+    tmp.unlink(missing_ok=True)` quietly deletes it."""
+    _run(["session", "init", "Something.", "--slug", "s", "--json"])
+    _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
+
+    attempts = {"n": 0}
+
+    def always_denied(self, dst):
+        attempts["n"] += 1
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(Path, "replace", always_denied)
+    dest = tmp_path / "s.zip"
+    with pytest.raises(PermissionError):
+        app(["session", "export", "s", "-o", str(dest)], client=None)
+    # The attempt count is what makes this a test of the *retry* rather than of `replace`: without
+    # it every assertion here holds identically with the loop deleted (found in review of #483).
+    assert attempts["n"] == _REPLACE_ATTEMPTS, (
+        f"expected exactly {_REPLACE_ATTEMPTS} attempts before giving up, got {attempts['n']}")
+    assert not dest.exists()
+    assert not list(tmp_path.glob(".*.part")), "scratch left behind after a failed export"
 
 
 # ── #111: a session created while the archive was being read is not destroyed ───
