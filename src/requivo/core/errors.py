@@ -217,8 +217,9 @@ class ArtifactWriteFailedError(RequivoError):
 
 
 class SpendCeilingReachedError(RequivoError):
-    """An injected `SpendPolicy` refused the next call: the ledger shows spend at or above the ceiling (#427).
-    `details`: `{ceiling_usd, spent_usd, calls, reason}`; `reason` is `"ceiling_reached"` or `"unpriced_call"`
-    (refuse rather than guess a call cost zero, invariant 6). 403, not 429: it does not reset with time."""
+    """An injected `SpendPolicy` refused the next call: the ledger shows spend at or above the ceiling
+    (#427, `decision: the-http-api-facade`). `details`: `{ceiling_usd, spent_usd, calls, reason}`; `reason` is
+    `"ceiling_reached"` or `"unpriced_call"` (refuse rather than guess a call cost zero, invariant 6). 403, not
+    429: it does not reset with time."""
 
     code = "spend_ceiling_reached"

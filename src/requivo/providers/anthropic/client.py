@@ -20,8 +20,8 @@ except ImportError as _e:  # pragma: no cover - exercised only in a no-SDK insta
     APIError = Exception  # type: ignore[assignment,misc]
 
     class _NeverRaised(Exception):
-        """Unreachable stand-in so an absent SDK's arms catch nothing rather than swallowing every transport failure
-        -- `test_the_typed_error_arms_are_inert_without_the_sdk`."""
+        """Unreachable stand-in so an absent SDK's arms catch nothing rather than swallowing every transport
+        failure -- `test_the_typed_error_arms_are_inert_without_the_sdk`."""
 
     AuthenticationError = _NeverRaised  # type: ignore[assignment,misc]
     PermissionDeniedError = _NeverRaised  # type: ignore[assignment,misc]
@@ -32,13 +32,13 @@ else:
 
 MODEL_DEFAULT = "claude-sonnet-5"
 
-# A remedy named in _NO_KEY_MESSAGE, not a decision -- _resolve_client asks the SDK's own chain (#334).
+# A remedy in _NO_KEY_MESSAGE, not a decision -- _resolve_client asks the SDK's own chain (#334).
 _AUTH_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
-# getattr defaults: `credentials` is absent on some supported SDK majors, meaning no such source.
+# getattr defaults: `credentials` absent on some SDK majors means no source (`test_the_resolved_credential_attributes_are_read_through_getattr_defaults`).
 _CREDENTIAL_ATTRS = ("api_key", "auth_token", "credentials")
 
-# "resolved none", not "none found" -- a working profile/federation install must not be mis-refused.
+# "resolved none", not "none found": a federation install must not be mis-refused (`test_a_federation_install_is_not_false_refused`).
 _NO_KEY_MESSAGE = (
     "No Anthropic credential found: the SDK resolved none from the environment, from a profile, or "
     "from workload identity federation. The usual fix is to set ANTHROPIC_API_KEY (or "
@@ -51,7 +51,7 @@ _NO_KEY_MESSAGE = (
 
 def _resolve_client() -> tuple[object | None, str | None]:
     """`(client, problem)`, exactly one set. The SDK resolves credentials in `Anthropic.__init__` itself (#334);
-    `problem` reports a configured profile the SDK could not load, in its own words (see test_provider.py)."""
+    `problem` reports a configured profile the SDK could not load, in its own words (`test_an_unloadable_profile_is_refused_with_the_sdk_s_own_reason`)."""
     if Anthropic is None:
         return None, None
     try:
@@ -66,13 +66,13 @@ def _resolve_client() -> tuple[object | None, str | None]:
 
 
 def credential_present() -> bool:
-    """Can this install authenticate -- the SDK's own answer, never raising (#332, #334)."""
+    """Can this install authenticate -- the SDK's own answer, never raising (`test_credential_present_does_not_raise_on_an_unloadable_profile`)."""
     client, _ = _resolve_client()
     return client is not None
 
 
 def credential_diagnosis() -> tuple[bool, str | None]:
-    """`credential_present()` plus *why*, for an unloadable profile (#365)."""
+    """`credential_present()` plus *why*, for an unloadable profile (`test_credential_diagnosis_names_the_unloadable_profile_the_bool_hides`)."""
     client, problem = _resolve_client()
     if client is not None:
         return True, None
@@ -83,7 +83,7 @@ def credential_diagnosis() -> tuple[bool, str | None]:
 
 def new_client() -> _AnthropicClient:
     """An Anthropic client, or a clean refusal -- `Anthropic()` itself does not raise on a missing credential,
-    deferring to a bare `TypeError` on the first request (#201)."""
+    deferring to a bare `TypeError` on the first request (`test_a_missing_api_key_refuses_before_the_sdk_can_traceback`)."""
     if Anthropic is None:
         raise EngineError(
             "The Anthropic provider is not installed. Install it with `pip install 'requivo[anthropic]'` "
@@ -97,8 +97,7 @@ def new_client() -> _AnthropicClient:
 
 
 def current_model_name() -> str:
-    """`REQUIVO_MODEL`, else bare `MODEL` (deprecated), else `MODEL_DEFAULT` -- a generic `MODEL` a shell exports
-    for another tool must not silently steer Requivo elsewhere (#268)."""
+    """`REQUIVO_MODEL`, else bare `MODEL` (deprecated), else `MODEL_DEFAULT` (`test_current_model_name_prefers_requivo_model_when_both_are_set`)."""
     override = os.getenv("REQUIVO_MODEL")
     if override is not None:
         return override
