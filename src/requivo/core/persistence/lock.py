@@ -14,8 +14,12 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from requivo.core.errors import InvalidSlugError, SessionLockedError, SessionUnreadableError
+
+if TYPE_CHECKING:
+    from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence.identifiers import _refuse_new_reserved_slug, _slug_shape
 
 try:  # POSIX
@@ -207,6 +211,15 @@ def is_contained(child: Path, parent: Path) -> bool:
 class _LockMixin:
     """The locking third of `Store` -- see that class's own docstring for why root identity, not
     `id(self)`, decides re-entrancy. Composed into `Store` (`store.py`) rather than duplicated."""
+
+    if TYPE_CHECKING:  # what `Store` provides; declared so pyright can read the mixin alone
+        _root_key: str
+
+        def session_root(self) -> Path: ...
+        def lock_root(self) -> Path: ...
+        def ensure_store_dir(self, path: Path) -> Path: ...
+        def session_exists(self, slug: str) -> bool: ...
+        def _no_session(self, slug: str) -> SessionNotFoundError: ...
 
     def _lock_key(self, slug: str) -> tuple[str, str]:
         """The re-entrancy key for `slug` in *this* store -- see the class docstring for why root

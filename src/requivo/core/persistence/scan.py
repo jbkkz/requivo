@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from requivo.core.persistence.identifiers import _is_lock_stem, _shape_only
 
@@ -127,6 +128,10 @@ def _describe_non_session(p: Path) -> NonSessionEntry:
 class _ScanMixin:
     """The diagnostics third of `Store` -- see `core/persistence/scan.py`'s module docstring.
     Composed into `Store` (`store.py`) rather than duplicated."""
+
+    if TYPE_CHECKING:  # what `Store` provides; declared so pyright can read the mixin alone
+        def session_root(self) -> Path: ...
+        def lock_root(self) -> Path: ...
 
     def _scan_session_root(self) -> tuple[list[str], list[Path], list[UnexaminableEntry]]:
         """One listing of the session root, partitioned three ways: the canonical sessions, everything
