@@ -19,6 +19,14 @@ rather than fixed by flipping the default.
 Nothing in `tests/` can go red for a probability threshold — it is arithmetic about a tradeoff, not a
 behaviour the suite observes, which is `docs/decisions/README.md`'s third shape.
 
+**Scope since #258.** The system prompt is two blocks now, and the arithmetic above applies to the
+op-specific remainder only (~1-3k tokens): the shared schema + product-context block that opens
+every prompt (~9k tokens with the bundled cards) carries a breakpoint on every call, so on a retry it
+is a 0.1x cache read whatever `reuse_system` says. The threshold below is unchanged — it is a ratio,
+and the block it is taken over is simply smaller — but the absolute cost of the regression is now a
+fraction of what this record first described, which is the number to hold in mind when reading
+"pays the write price twice".
+
 ## Decision
 
 Keep `reuse_system=False` as the default for single-call generators, and accept the retry-path
