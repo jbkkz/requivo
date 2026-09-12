@@ -35,7 +35,7 @@ invariant 12: one snapshot, two files.
 slice each, traceable to the model's slots by their labels, honouring confidence and impact) —
 this skill does not repeat them; the referenced skill is the source.
 
-**First, name the soft slots** — this is what the CLI's own `estimate` generator computes in Python
+**Next, name the soft slots** — this is what the CLI's own `estimate` generator computes in Python
 (`core/analysis.py:soft_slots`) and hands the model as ground truth, so name them the same way rather
 than reasoning about uncertainty from scratch: a slot is **soft** when its `impact` is `medium` or
 `high` **and** either its `completeness` is below 70 or its `confidence` is not `explicit`. Read these
