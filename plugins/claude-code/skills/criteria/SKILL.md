@@ -91,5 +91,5 @@ requivo artifact save <slug> --type criteria --file - --revision N --json
 
 ## 4. Point at the next step, once
 The same model turned into a work breakdown is `/requivo:epic <slug>` — the delivery epic a dev team
-tracks and ships. If a scenario surfaced a gap the model should record, `/requivo:answer <slug>` is
+tracks and ships. If a scenario surfaced a gap the model should record, `/requivo:run <slug>` is
 where that goes back in.

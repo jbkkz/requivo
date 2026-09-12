@@ -96,10 +96,10 @@ Windows; under WSL nothing extra is needed. See the
 2. Then:
 
    ```text
-   /requivo:discover  We'd like a leave approval system.
-   /requivo:answer    <slug>  <your answers>
-   /requivo:status    <slug>
-   /requivo:brief     <slug>
+   /requivo:run     We'd like a leave approval system.
+   ... answer the questions in prose; it folds each one in and stops when the session is ready ...
+   /requivo:status  <slug>
+   /requivo:brief   <slug>
    ```
 
 See the [plugin README](../plugins/claude-code/) for the full skill list and workflow.

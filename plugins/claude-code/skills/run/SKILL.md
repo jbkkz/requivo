@@ -1,6 +1,6 @@
 ---
 name: run
-description: Run a Requivo session end to end, in one conversation. No argument resumes the most recent session (or lists several to choose from); a request or a path starts a new one; a slug resumes that one. Reason with this Claude session (no API key): discover, present questions, fold the user's prose answers into new revisions, and stop on ready, on convergence, or when the user says stop. Use when the user wants to work a Requivo session without typing /requivo:answer or a slug themselves.
+description: Run a Requivo session end to end, in one conversation. No argument resumes the most recent session (or lists several to choose from); a request or a path starts a new one; a slug resumes that one. Reason with this Claude session (no API key): discover, present questions, fold the user's prose answers into new revisions, and stop on ready, on convergence, or when the user says stop. Use when the user wants to work a Requivo session without typing a slug or choosing a verb themselves.
 allowed-tools: Bash(requivo:*), Read
 ---
 
@@ -245,7 +245,7 @@ Go to **7. Wait for the reply**.
 Before reasoning, check what the user's reply touches against the model you already hold (from
 step 4's `model show`/`status`, or from the apply you just made in step 5). If any touched slot is
 already `confidence: explicit` — the user is revising something already settled, not filling in an
-open question — announce its blast radius before applying, the same query `/requivo:impact` runs:
+open question — announce its blast radius before applying — a deterministic query over the dependency graph, free:
 ```
 requivo impact <slug> <slot-or-label> [<slot-or-label> ...]
 ```
@@ -309,7 +309,7 @@ if not, present the next questions and go to **7. Wait for the reply** again.
 
 Stay in this conversation. The user answers in prose, in whatever order they like, and may also say
 to stop instead of answering. Never fabricate an answer, never ask them for a slug or a revision —
-you already hold both — and never tell them to run `/requivo:answer` or any other `/requivo:*`
+you already hold both — and never tell them to run any other `/requivo:*`
 command: folding their reply in is this skill's own next step, **6. Fold in an answer**. When they
 reply, go there.
 
@@ -329,4 +329,4 @@ When one of these fires, close with:
   assuming*, *open question*, *needs updating* — never slot ids or raw confidence labels,
 - which of the three conditions ended it,
 - one pointer, and only one: **`/requivo:docs` when you want a document.** Never suggest running
-  `/requivo:answer` — this skill has been doing its job the whole time, and the loop already stopped.
+  `/requivo:run` again — this skill has been doing its job the whole time, and the loop already stopped.

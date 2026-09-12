@@ -80,5 +80,5 @@ requivo artifact save <slug> --type release --file - --revision N --json
 
 ## 4. Point at the next step, once
 Release notes are usually the last document in the set: once they read right, `/requivo:status <slug>`
-shows the whole set's freshness at a glance. If the scope changed since, `/requivo:answer <slug>` is
+shows the whole set's freshness at a glance. If the scope changed since, `/requivo:run <slug>` is
 where that goes back into the model first.
