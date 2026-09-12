@@ -38,6 +38,7 @@ command, so the cost of a false positive is that command.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import shutil
@@ -136,6 +137,24 @@ def surface_digest(root: Path = REPO) -> str:
     its bytes rather than raising: `SURFACE` names only text today, and a guard is not the place to
     discover otherwise.
 
+    **A `.py` file is hashed by its parsed structure, not its text (#530).** `viewmodels/` is the one
+    directory in `SURFACE` that holds Python, and English prose in a `.py` file -- a comment or a
+    docstring -- cannot change a single pixel of a screenshot. Hashing it as text disagreed: a
+    comment-only compression pass in four viewmodel modules (#529) moved this digest exactly as a
+    real code change would, sent an operator through a Playwright + Chromium install, and produced a
+    re-shoot whose only effect was four new digests over four byte-identical images. `ast.parse` a
+    `.py` file's text, strip the leading docstring of the module and of every class/function
+    (`_strip_docstrings`), and hash `_stable_dump()` of what is left -- comments are never part of the
+    tree to begin with, and a docstring is the one remaining node that carries prose rather than
+    structure. `_stable_dump` is a hand-rolled `ast.dump()`, not the real one: the real one is not
+    stable across the Python versions this project's own CI matrix runs (3.9 through 3.14), which the
+    first version of this fix shipped straight into and self-review caught -- see `_stable_dump`'s own
+    docstring for the two confirmed disagreements. Templates, CSS and JS keep hashing as normalised
+    text below: every byte in them can render, so there is no prose/structure line to draw. A `.py`
+    file that fails to decode or to parse falls back to the same normalised-text hash as everything
+    else, for the same reason the UTF-8 fallback above exists -- a guard is not the place to discover
+    a syntax error.
+
     `root` is a parameter only so the guard's must-fire control can build a tree of its own --
     `test_the_screenshot_freshness_digest_moves_when_the_surface_does`. Nothing in this script
     passes anything but the default.
@@ -152,7 +171,8 @@ def surface_digest(root: Path = REPO) -> str:
             raise SystemExit(f"SURFACE names {entry}, which is not in the tree - update this script")
     for path in sorted(files, key=lambda p: p.relative_to(root).as_posix()):
         h.update(path.relative_to(root).as_posix().encode("utf-8"))
-        h.update(_normalised_bytes(path.read_bytes()))
+        raw = path.read_bytes()
+        h.update(_normalised_python(raw) if path.suffix == ".py" else _normalised_bytes(raw))
     return h.hexdigest()
 
 
@@ -168,6 +188,86 @@ def _normalised_bytes(raw: bytes) -> bytes:
     except UnicodeDecodeError:
         return raw
     return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+_DOCSTRING_HOLDERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _strip_docstrings(tree: ast.AST) -> ast.AST:
+    """Remove the leading string-literal statement from the module and from every class/function
+    body, in place -- `ast.walk` reaches every nested one, not only top-level definitions.
+
+    A body left empty by the removal is not re-padded with a `pass`: this tree is only ever handed
+    to `_stable_dump`, never `compile`, so it does not need to stay syntactically valid.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, _DOCSTRING_HOLDERS) and node.body:
+            first = node.body[0]
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                node.body = node.body[1:]
+    return tree
+
+
+def _stable_dump(node: object) -> str:
+    """`ast.dump()`, reimplemented, because the real one is not stable across the Python versions
+    this project supports and tests in CI (#530, found in self-review).
+
+    Two disagreements, both confirmed against the installed interpreters rather than assumed: 3.13
+    added `ast.dump`'s `show_empty` keyword, defaulting to `False`, which *omits* a field holding its
+    empty/`None` default -- so the same tree dumps shorter on 3.13 than on 3.9-3.12. Separately, 3.12
+    added a `type_params` field (PEP 695) to `FunctionDef`/`AsyncFunctionDef`/`ClassDef` that 3.9-3.11
+    do not have at all -- always `[]` for any file this project can ship, since `type_params` syntax
+    itself does not parse below 3.12 and `requires-python` is `>=3.9`. Both are the same shape: a
+    field whose value carries no information beyond "absent", represented differently release to
+    release. Dropped uniformly here rather than named one field at a time, so a future Python version
+    adding another such field does not reopen this exact defect: an empty list is skipped outright,
+    and a bare `None` is skipped unless the node is `ast.Constant`, because that node's own `value`
+    (and `kind`) can legitimately *be* `None` as literal source content (`x = None`) -- collapsing
+    that into "absent" would make `x = None` indistinguishable from `x = True` after stripping.
+    Verified stable across 3.9.6, 3.12.13 and 3.13.14 on this repository's own `viewmodels/*.py`
+    (identical digest all three) and against a synthetic module exercising docstrings, annotated and
+    defaulted/varargs/kwargs parameters, async def/with/for, comprehensions, the walrus operator,
+    f-strings, nested decorators and try/except/finally (identical digest all three there too).
+    """
+    if isinstance(node, ast.AST):
+        parts = []
+        for name, value in ast.iter_fields(node):
+            if isinstance(value, list) and not value:
+                continue
+            if value is None and not isinstance(node, ast.Constant):
+                continue
+            parts.append(f"{name}={_stable_dump(value)}")
+        return f"{type(node).__name__}({', '.join(parts)})"
+    if isinstance(node, list):
+        return "[" + ", ".join(_stable_dump(item) for item in node) + "]"
+    return repr(node)
+
+
+def _normalised_python(raw: bytes) -> bytes:
+    """The structure of a `.py` file: `_stable_dump()` of its parsed tree with every docstring
+    stripped.
+
+    Parsing already discards comments (they are never part of the tree) and `_stable_dump` never
+    carries line/column numbers -- so the only English prose left to strip is a docstring, sitting in
+    the tree as an ordinary string constant. Stripping that is what makes a comment-only or
+    docstring-only edit to a viewmodel leave `surface_digest` unchanged (#530) while a change to what
+    the module does still moves it -- two programs whose docstring-stripped, version-normalised trees
+    agree are the same program.
+
+    Falls back to `_normalised_bytes` on anything that does not decode as UTF-8 or does not parse:
+    this function exists to ignore prose, not to turn a real syntax error into a script crash.
+    """
+    try:
+        tree = ast.parse(raw.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError, ValueError):
+        # `ValueError`, not just `SyntaxError`: `ast.parse` raises `ValueError` rather than
+        # `SyntaxError` for a source string containing a NUL byte on this project's floor
+        # interpreter (3.9), while 3.12/3.13 raise `SyntaxError` for the identical input -- caught
+        # in self-review (#530). Narrow the same way `_normalised_bytes` is: a real parse failure
+        # falls back to text, it does not fall through the guard.
+        return _normalised_bytes(raw)
+    return _stable_dump(_strip_docstrings(tree)).encode("utf-8")
 
 
 def read_manifest() -> dict:

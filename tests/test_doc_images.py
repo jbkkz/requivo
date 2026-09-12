@@ -215,6 +215,78 @@ def test_the_screenshot_freshness_digest_moves_when_the_surface_does(tmp_path):
     )
 
 
+# #530: the digest hashed a `.py` viewmodel as text, so a comment or docstring edit -- which
+# cannot change a pixel -- moved it exactly as a real code change would. The three source strings
+# below share one function body and differ only in prose (comment/docstring reworded) or in the one
+# line that is actual behaviour, so the two tests below pin both directions off the same fixture.
+_PY_SOURCE_BASELINE = """\"\"\"Module docstring.\"\"\"
+
+
+def f():
+    \"\"\"Docstring for f.\"\"\"
+    return 1
+"""
+_PY_SOURCE_PROSE_EDIT = """\"\"\"Module docstring, reworded for clarity.\"\"\"
+
+
+def f():
+    # a new comment that changes nothing
+    \"\"\"Docstring for f, also reworded.\"\"\"
+    return 1
+"""
+_PY_SOURCE_CODE_EDIT = """\"\"\"Module docstring.\"\"\"
+
+
+def f():
+    \"\"\"Docstring for f.\"\"\"
+    return 2
+"""
+
+
+def test_a_comment_or_docstring_only_edit_to_a_viewmodel_does_not_move_the_digest(tmp_path):
+    """The digest hashes a `.py` file's `ast.dump` with docstrings stripped, and comments are never
+    part of the AST at all -- so English prose moving inside a viewmodel module cannot move the
+    digest, because it cannot change what a screenshot shows (#530)."""
+    digest = _shoot_module().surface_digest
+    _surface_tree(tmp_path)
+    target = tmp_path / "src/requivo/web/viewmodels/a.py"
+
+    target.write_bytes(_PY_SOURCE_BASELINE.encode("utf-8"))
+    baseline = digest(tmp_path)
+
+    target.write_bytes(_PY_SOURCE_PROSE_EDIT.encode("utf-8"))
+    assert digest(tmp_path) == baseline, (
+        "a comment/docstring-only edit to a viewmodel moved the freshness digest"
+    )
+
+
+def test_a_code_edit_to_a_viewmodel_still_moves_the_digest(tmp_path):
+    """The other direction of #530's fix: stripping docstrings must not swallow a real behaviour
+    change along with the prose it was aimed at."""
+    digest = _shoot_module().surface_digest
+    _surface_tree(tmp_path)
+    target = tmp_path / "src/requivo/web/viewmodels/a.py"
+
+    target.write_bytes(_PY_SOURCE_BASELINE.encode("utf-8"))
+    baseline = digest(tmp_path)
+
+    target.write_bytes(_PY_SOURCE_CODE_EDIT.encode("utf-8"))
+    assert digest(tmp_path) != baseline, "a code edit to a viewmodel left the freshness digest unchanged"
+
+
+def test_a_python_file_that_fails_to_parse_falls_back_to_text_instead_of_crashing(tmp_path):
+    """`_normalised_python` must degrade to `_normalised_bytes` on a `.py` file it cannot parse,
+    never raise -- a guard is not the place to discover a syntax error (surface_digest's own
+    docstring). Two distinct exceptions cover this on the versions this project supports: a NUL byte
+    raises `SyntaxError` on 3.12/3.13 and `ValueError` on 3.9 for the identical input, found in
+    self-review (#530) after the first cut of this function caught only `SyntaxError`."""
+    shoot = _shoot_module()
+    for broken in (b"def f(:\n", b"x = 1\x00\n"):
+        assert shoot._normalised_python(broken) == shoot._normalised_bytes(broken), (
+            f"{broken!r} should fall back to the text hash, not raise or diverge from it"
+        )
+
+
 def test_the_freshness_guard_refuses_a_surface_path_that_no_longer_exists(tmp_path):
     """The third state. A `SURFACE` entry pointing at a deleted directory must be a hard failure and
     not a quietly smaller digest: a guard that silently stops watching half the surface is the
