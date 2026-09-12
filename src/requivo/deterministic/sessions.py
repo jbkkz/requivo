@@ -586,7 +586,7 @@ def _cmd_session_export(a, client) -> None:
                 for f in sorted(d.rglob("*")):
                     if f.is_file() and not any(part.startswith(".") for part in f.relative_to(d).parts):
                         z.write(f, f.relative_to(d.parent))
-        tmp.replace(dest)
+        _replace_with_retry(tmp, dest)
     finally:
         tmp.unlink(missing_ok=True)
     if a.json:
@@ -791,9 +791,12 @@ def _cmd_session_verify(a, client) -> None:
 # The same transient-`PermissionError` retry invariant 18's `_atomic_write` applies in
 # `core/persistence.py`, restated here rather than called into: this write's payload is already read
 # off disk, not composed by this module, and `core/persistence.py` is outside #210's own stated scope.
-# `_cmd_session_export`'s `tmp.replace(dest)` has the identical gap and no retry yet: #524.
-# `test_session_restore_survives_a_transient_permission_error` and
-# `test_session_restore_still_gives_up_on_a_permanent_permission_error`.
+# `_cmd_session_export`'s `tmp.replace(dest)` is routed through this same helper too (#524) -- both
+# writes in this module now share it.
+# `test_session_restore_survives_a_transient_permission_error`,
+# `test_session_restore_still_gives_up_on_a_permanent_permission_error`,
+# `test_session_export_survives_a_transient_permission_error` and
+# `test_session_export_still_gives_up_on_a_permanent_permission_error`.
 _REPLACE_ATTEMPTS = 8
 _REPLACE_BACKOFF_S = 0.01
 
@@ -902,8 +905,9 @@ def _cmd_session_restore(a, client) -> None:
         # Temp file + rename, the same shape `_cmd_session_export` already uses for a write this
         # module's own repository seam has no method for: a crash mid-write can never leave
         # model.json half-written, because the rename is atomic on the same filesystem and nothing
-        # else on disk ever points at the temp file's name. `_replace_with_retry` above is the one
-        # difference from that sibling: a transient Windows lock retries instead of raising raw.
+        # else on disk ever points at the temp file's name. `_replace_with_retry` above retries a
+        # transient Windows lock instead of raising raw -- `_cmd_session_export`'s own rename goes
+        # through the identical helper (#524).
         tmp = model_path.with_name(f".{model_path.name}.{os.getpid()}.restore.tmp")
         try:
             tmp.write_text(payload, encoding="utf-8")
