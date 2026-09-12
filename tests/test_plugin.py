@@ -15,7 +15,7 @@ SKILLS = PLUGIN / "skills"
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`, so the directory name must NOT repeat
 # the plugin name — `skills/requivo-discover/` in a plugin called `requivo` is invoked as
 # `/requivo:requivo-discover`, which is not what any of the docs said.
-EXPECTED_SKILLS = {"run", "discover", "answer", "status", "brief", "prd", "impact",
+EXPECTED_SKILLS = {"run", "status", "brief", "prd",
                    "stories", "estimate", "criteria", "epic", "release"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills. The
 # plugin's own README may name it too — that file is a reader's document, not an instruction Claude
@@ -163,10 +163,10 @@ def test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path():
     precondition, with a stated route out of a refusal. A skill that emits a proposal and says nothing
     about `code`/`details` sends the reasoning session into a retry loop with no error to read.
 
-    `run` is checked alongside `discover`/`answer` since #539: it is built out of the same two
-    applies (a fresh model, then a refinement), and each still needs its own recovery path stated in
-    the loop rather than inherited by reference."""
-    for name in ("discover", "answer", "run"):
+    `run` is the one mutating skill since #545 (it absorbed `discover` and `answer`): it makes both
+    applies, a fresh model and then a refinement, and each needs its own recovery path stated in the
+    loop rather than inherited by reference."""
+    for name in ("run",):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "model apply" in text, f"{name}: must apply via the CLI"
         assert "model apply <slug> - --expected-revision" in text, (
@@ -211,9 +211,9 @@ def test_session_scoped_skills_read_the_session_s_context_cards():
     were made against. A later turn calling bare `requivo context` reads every card and reasons from a
     wider context than the model was built on, which the golden harness has measured as a real cost.
 
-    `run` joined this set in #539: it resumes and refines sessions the same way `answer` does, so the
-    same wider-context risk applies to it."""
-    for name in ("answer", "brief", "run"):
+    `run` joined this set in #539 and is the only refining skill since #545, so the wider-context
+    risk lands on it and on `brief`."""
+    for name in ("brief", "run"):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "context --session" in text, f"{name}: must read context scoped to the session"
 
@@ -371,7 +371,8 @@ def test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of(
             f"{path.parent.name}/{path.name} asks for `questions` and never names {missing}. A "
             f'required field the prose leaves out is guessed at, and `extra="forbid"` turns the '
             f"guess into a wasted validate cycle (#489).")
-    assert len(checked) >= 2, (
+    # One mutating skill since #545, so the floor is that one rather than a count.
+    assert "run" in checked, (
         f"only {checked} were found to build a proposal — this guard is watching almost nothing")
 
 
@@ -504,10 +505,11 @@ def test_run_pins_its_three_stop_conditions_and_never_asks_mid_loop():
         "run: the stop section must name the user saying stop as a stop condition")
     assert re.search(r"say which", section, re.IGNORECASE), (
         "run: the stop section must instruct saying which of the three conditions ended the loop")
-    # And the one pointer at the end is /requivo:docs, never a hand-back to /requivo:answer.
+    # And the one pointer at the end is /requivo:docs, never a hand-back into the loop (#545: the
+    # `answer` skill is gone, so the only loop left to hand back into is `run` itself).
     assert "/requivo:docs" in section, "run: the stop section must end with the /requivo:docs pointer"
-    assert re.search(r"[Nn]ever suggest running[\s\S]{0,20}/requivo:answer", section), (
-        "run: the stop section must say explicitly that it never hands back to /requivo:answer")
+    assert re.search(r"[Nn]ever suggest running[\s\S]{0,20}/requivo:run", section), (
+        "run: the stop section must say explicitly that it never hands back into the loop")
 
     # The rule #538 exists for: no slug, no revision, no other /requivo:* command mid-loop. This one
     # is stated where the loop actually waits (step 7), not necessarily inside the stop section, so

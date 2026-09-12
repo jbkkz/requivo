@@ -84,4 +84,4 @@ requivo artifact save <slug> --type stories --file - --revision N --json
 ## 4. Point at the next step, once
 Stories are what an estimate is reasoned against: `/requivo:estimate <slug>` produces a day-based
 range per story, from the same model, and saves both together against one revision. If the stories
-themselves need rework first, `/requivo:answer <slug>` is where an answer goes back into the model.
+themselves need rework first, `/requivo:run <slug>` is where an answer goes back into the model.

@@ -8,13 +8,11 @@ Requivo asks a question only when the answer would materially change the solutio
 and marks as an assumption to confirm, so you can see what a plan is resting on before you commit to
 the scope.
 
-The plugin adds these skills: `/requivo:run`, `/requivo:discover`, `/requivo:status`,
-`/requivo:answer`, `/requivo:brief`, `/requivo:prd` and `/requivo:impact`, plus the five generator skills
-listed under *The generators* below. `/requivo:run` is the whole
-conversation in one skill — give it a request, a path or a slug (or nothing, to resume), and it
-discovers, asks, waits for your prose answers and folds each one in, stopping when the session is
-ready, converged, or you say so. The other six are still there, unrewritten, for driving one step by
-hand.
+The plugin adds three journey skills — `/requivo:run`, `/requivo:status` and the documents — plus the
+generator skills listed under *The generators* below. `/requivo:run` is the whole conversation in one
+skill: give it a request, a path or a slug (or nothing, to resume), and it discovers, asks, waits for
+your prose answers and folds each one in, stopping when the session is ready, converged, or you say
+so. `/requivo:status` is where things stand, a local read. The rest turn the model into a document.
 
 ## Two things to know before the first command
 
@@ -26,7 +24,7 @@ the reasoning itself. That is not this plugin, and you do not need it.)
 
 **Sessions are written next to you.** A discovery lands in `.requivo/sessions/<slug>/` under your
 current workspace, meaning the directory Claude Code is running in, unless `REQUIVO_WORKSPACE` says
-otherwise. So the directory you run `/requivo:discover` from decides where the work lives, and running
+otherwise. So the directory you run `/requivo:run` from decides where the work lives, and running
 it from the wrong one fails in no visible way: the session is created, valid, and somewhere you will
 not think to look. `requivo doctor` prints the workspace it resolved and the exact sessions directory
 it will use; `requivo session list` prints what that directory already holds.
@@ -45,7 +43,7 @@ a fresh Claude Code it is:
 ```
 
 Then `/help` → **Custom commands**: the skills appear under the `requivo` namespace, and are typed
-as `/requivo:run`, `/requivo:discover` and so on. Claude Code always namespaces a plugin's skills as
+as `/requivo:run`, `/requivo:status` and so on. Claude Code always namespaces a plugin's skills as
 `/<plugin>:<skill>`.
 
 **The `requivo` CLI**, the deterministic engine every skill drives. It is a Python package on PyPI,
@@ -87,52 +85,43 @@ or nothing, to resume the session you left off on (it lists more than one to cho
 to jump straight to a session. It discovers, asks the questions, waits for your prose answers, folds
 each one in as a new revision, and tells you when it stops: ready, no high-value question left, or
 because you said so. It ends with one pointer, `/requivo:docs` when you want a document — that skill
-does not exist yet (#543), so until it lands the way to get one is steps 5 and 6 below,
+does not exist yet (#543), so until it lands the way to get one is steps 3 and 4 below,
 `/requivo:brief` or `/requivo:prd`.
 
-The step-by-step skills below are still there, unrewritten — `/requivo:run` is built entirely out of their
-steps. Reach for one directly to drive a single turn by hand, or for a deterministic read (`status`,
-`impact`) that spends no reasoning at all.
-
 The commands, in the order they are usually reached. Every one after the first takes the session
-slug, which `/requivo:discover` or `/requivo:run` reports when it creates the session.
+slug, which `/requivo:run` reports when it creates the session.
 
-1. **`/requivo:run [request | path | slug]`**. The whole conversation: start or resume, ask, wait,
-   fold answers in, and repeat — steps 2 through 7 below, run for you in one skill.
-2. **`/requivo:discover <the request>`**. Paste the client or stakeholder request in whatever shape it
-   arrived. You get the first structured read of it: what the request states outright, what Requivo
-   inferred and marked as an assumption, what is genuinely unknown, and the few questions whose answers
-   would change the solution.
-3. **`/requivo:status <slug>`**. Where it stands: readiness, what is still blocking, which generated
-   documents have gone stale. A local read, so use it as often as you like.
-4. **`/requivo:answer <slug>`**. Bring back what the client said. The answers are folded in, the model
-   is validated and applied as a new revision, and you are told what moved and what that made stale.
-   Repeat from 3 until the questions stop being load-bearing.
-5. **`/requivo:brief <slug>`**. The decision brief: what a reviewer needs before estimating or
+1. **`/requivo:run [request | path | slug]`**. Paste the client or stakeholder request in whatever
+   shape it arrived. You get the first structured read of it — what the request states outright, what
+   Requivo inferred and marked as an assumption, what is genuinely unknown — and the few questions
+   whose answers would change the solution. Answer in prose; each answer is validated and applied as
+   a new revision, and you are told what moved and what that made stale. When you revise something
+   already settled, the skill says what that change reaches — the decisions to re-validate and the
+   documents to regenerate, read off the dependency graph — *before* applying it. It stops when the
+   session is ready, when nothing left is worth asking, or when you say so.
+2. **`/requivo:status <slug>`**. Where it stands: readiness, what is still blocking, which generated
+   documents need updating. A local read, so use it as often as you like.
+3. **`/requivo:brief <slug>`**. The decision brief: what a reviewer needs before estimating or
    committing to scope. Saved as a tracked document, tied to the revision it was written from.
-6. **`/requivo:prd <slug>`**. A PRD from the same model, with the unknowns still visible and the open
+4. **`/requivo:prd <slug>`**. A PRD from the same model, with the unknowns still visible and the open
    decisions still open. Also saved and tracked.
-7. **`/requivo:impact <slug> [topics]`**. Before you change an answer, what that change would reach:
-   the decisions to re-validate and the documents to regenerate, read off the dependency graph. Another
-   local read, and the clearest reason to keep the model rather than just its output.
 
-Steps 5 and 6 are not the end of anything. The model is the durable product and each document is a view
+Steps 3 and 4 are not the end of anything. The model is the durable product and each document is a view
 of it, so any of them can be regenerated later from the saved model without redoing discovery.
 
 ## The skills
 
 | Skill | What you get | Where the thinking happens |
 |---|---|---|
-| `/requivo:run` | The whole conversation: discovery, questions, answers, revisions, in one loop | this Claude session |
-| `/requivo:discover` | A new session: the structured model and the questions that could change the solution | this Claude session |
-| `/requivo:answer` | The answers folded in, a new revision, and what moved | this Claude session |
+| `/requivo:run` | The whole conversation: discovery, questions, answers, revisions, and what a revised answer reaches, in one loop | this Claude session |
+| `/requivo:status` | Readiness, open questions, which documents need updating | local read, no reasoning |
 | `/requivo:brief` | The decision brief, saved and tied to its revision | this Claude session |
 | `/requivo:prd` | A PRD from the same model, saved and tied to its revision | this Claude session |
-| `/requivo:status` | Readiness, open questions, which documents need updating | local read, no reasoning |
-| `/requivo:impact` | What a change would reach, from the dependency graph | local read, no reasoning |
 
-The ones that reason spend this session's context window. The two local reads do not: they call the
-CLI and print what it computed. None of them calls an API.
+The ones that reason spend this session's context window. The local read does not: it calls the CLI
+and prints what it computed. None of them calls an API. The dependency-graph query behind *what a
+change reaches* is deterministic too — `/requivo:run` runs it for you, and the CLI's `requivo impact`
+answers it directly.
 
 ## What a session holds
 
@@ -147,7 +136,7 @@ CLI and print what it computed. None of them calls an API.
 
 The model is the source of truth and every document is a view of it, so Requivo knows what rests on
 what: when the model moves, `/requivo:status` names the documents that need regenerating and
-`/requivo:impact` answers the same question *before* you make the change. Each revision records the
+`/requivo:run` answers the same question *before* it applies a revised answer. Each revision records the
 provider, the model and a hash of the prompt it was reasoned against, so a document can be traced back
 to the understanding it came from.
 

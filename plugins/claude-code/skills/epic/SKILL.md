@@ -110,5 +110,5 @@ one saved here.
 
 ## 4. Point at the next step, once
 Once the epic is agreed, `/requivo:release <slug>` writes the client-facing announcement for the same
-scope. If the breakdown surfaced something the model should record, `/requivo:answer <slug>` is where
+scope. If the breakdown surfaced something the model should record, `/requivo:run <slug>` is where
 that goes back in.

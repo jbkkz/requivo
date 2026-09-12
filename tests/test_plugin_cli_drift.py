@@ -104,7 +104,7 @@ def test_the_shared_preflight_is_walked_and_not_only_the_skills():
     sources = invocation_sources(PLUGIN_ROOT)
     names = [p.name for p in sources.paths]
     assert "REASONING.md" in names, f"the preflight is not walked; walked {names}"
-    assert names.count("SKILL.md") == 12, f"expected twelve skills, walked {names}"  # #542, #539
+    assert names.count("SKILL.md") == 9, f"expected nine skills, walked {names}"  # #542, #539, #545
     # And the real plugin is fully readable, so this walk is a whole answer rather than a subset.
     assert sources.unreadable == [], sources.unreadable
     # And it must actually contribute -- a file that is walked but unreadable would look identical.

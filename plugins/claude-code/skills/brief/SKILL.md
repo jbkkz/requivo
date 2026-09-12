@@ -104,5 +104,5 @@ writing — tell the user plainly that the brief is already behind and offer to 
 ## 6. Point at the next step, once
 The brief is what a scope review is run from, so once it has been reviewed and the scope is agreed,
 `/requivo:prd <slug>` renders the same understanding for build — no second discovery, the same model
-seen from a different angle. If the review reopened something instead, `/requivo:answer <slug>` is
+seen from a different angle. If the review reopened something instead, `/requivo:run <slug>` is
 where that goes.
