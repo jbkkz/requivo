@@ -75,9 +75,11 @@ Two other ways in, on the same local sessions — nothing is locked to the inter
   on your PATH. If it is not, every skill says so and how to fix it, rather than failing at the shell.
   On native Windows it also needs [Git for Windows](https://git-scm.com/downloads/win), which is what
   gives Claude Code the Bash tool the skills run through.
-- **[CLI][cli]** — infrastructure. `requivo discover | status | brief …`, for automation and
-  anything you drive from a script or a pipeline. The same services are also reachable over HTTP:
-  `requivo api serve` (the `[api]` extra, experimental) serves a local REST API on
+- **[CLI][cli]** — infrastructure. `requivo run "…"`, then answer in prose, then `requivo docs`
+  — the same three verbs as everywhere else. The seven generators and `discover`/`answer`/`impact`
+  stay as the scripted contract underneath, for automation and anything you drive from a script or
+  a pipeline: see [`docs/integrations.md`][integrations]. The same services are also reachable over
+  HTTP: `requivo api serve` (the `[api]` extra, experimental) serves a local REST API on
   `127.0.0.1:8767` with its OpenAPI docs at `/docs` — loopback needs no credential; anything
   wider requires `REQUIVO_API_TOKEN` and refuses to start without it.
 
@@ -222,7 +224,7 @@ Requivo reads and writes **UTF-8 everywhere**, regardless of the machine's local
 codepage. A session written on one machine reads back byte-identically on another. Where a console
 cannot represent a character Requivo prints, the character is escaped rather than dropped and never
 crashes the command — `requivo doctor` reports your console's encoding when there is something worth
-saying about it. A file you pass in (`requivo discover ./brief.md`) must be UTF-8; one that is not is
+saying about it. A file you pass in (`requivo run ./brief.md`) must be UTF-8; one that is not is
 refused by name rather than silently decoded into something that reads like prose and is wrong.
 
 ---
@@ -286,6 +288,7 @@ the code license — see [TRADEMARKS.md][trademarks].
 [web]: https://github.com/jbkkz/requivo/blob/main/docs/web.md
 [claude-code]: https://github.com/jbkkz/requivo/tree/main/plugins/claude-code/
 [cli]: https://github.com/jbkkz/requivo/blob/main/docs/cli.md
+[integrations]: https://github.com/jbkkz/requivo/blob/main/docs/integrations.md
 [providers]: https://github.com/jbkkz/requivo/blob/main/docs/providers.md
 [leave-approval]: https://github.com/jbkkz/requivo/tree/main/examples/leave-approval/
 [event-checkin-reconciliation]: https://github.com/jbkkz/requivo/tree/main/examples/event-checkin-reconciliation/

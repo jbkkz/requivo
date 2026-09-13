@@ -99,20 +99,24 @@ Windows; under WSL nothing extra is needed. See the
    /requivo:run     We'd like a leave approval system.
    ... answer the questions in prose; it folds each one in and stops when the session is ready ...
    /requivo:status  <slug>
-   /requivo:brief   <slug>
+   /requivo:docs    <slug>
    ```
 
 See the [plugin README](../plugins/claude-code/) for the full skill list and workflow.
 
 ## 3. CLI — inspect, automate, script
 
-With [uv](https://docs.astral.sh/uv/) — no virtualenv to manage. Discovery calls the Anthropic API, so
-pull in the `anthropic` extra and set a key:
+With [uv](https://docs.astral.sh/uv/) — no virtualenv to manage. The conversation calls the Anthropic
+API, so pull in the `anthropic` extra and set a key:
 
 ```bash
 cp .env.example .env                       # set ANTHROPIC_API_KEY
-uv run --extra anthropic requivo discover examples/case1_leave.md
+uv run --extra anthropic requivo run examples/case1_leave.md
 ```
+
+`run` is the one verb for the whole conversation: it discovers, asks, waits for your prose answers and
+folds each one in, stopping when the session is ready, converged, or you say so. No argument resumes
+the workspace's default session; a slug jumps straight to one.
 
 <details><summary>Classic pip + venv install</summary>
 
@@ -121,23 +125,27 @@ python -m venv .venv && source .venv/bin/activate
 pip install -U pip setuptools   # a fresh venv may ship a pip too old for editable installs
 pip install -e '.[anthropic]'   # deps + the anthropic SDK + the `requivo` command
 cp .env.example .env
-requivo discover examples/case1_leave.md
+requivo run examples/case1_leave.md
 ```
 
 </details>
 
-Discovery claims the session under `.requivo/sessions/<slug>/` before the first paid call, and nothing
-you pay for is discarded after that: stopping the loop early — or a provider failure part-way through
-it — saves the turns that had already run, and tells you the `requivo answer <slug> "…"` that picks up
-where you left off. Every verb takes the session **slug** (`status` and `impact` also accept a path to
-a saved `model.json`, since they read it directly rather than writing back into a session); regenerate
-any artifact without redoing discovery:
+The conversation claims the session under `.requivo/sessions/<slug>/` before the first paid call, and
+nothing you pay for is discarded after that: stopping it early — or a provider failure part-way
+through — saves the turns that had already run, and resuming picks up where you left off
+(`requivo run <slug>`). Once it is ready:
 
 ```bash
-requivo prd    <slug>                      # also: stories · estimate · criteria · release · brief
-requivo epic   <slug> --export-json --github --gitlab   # + a tool-neutral epic.json and tracker plans
-requivo impact <slug> permissions          # what rests on a slot
+requivo status <slug>                      # where the session stands, no network
+requivo docs   <slug>                      # menu of every document the model can produce; pick one or several
 ```
+
+`docs` is a loop over the same seven generators (`brief`, `prd`, `stories`, `estimate`, `criteria`,
+`epic`, `release`) `requivo <type> <slug>` already reaches — regenerate any one directly once you know
+which you want, or script over them individually (`--json`, `epic --export-json/--github/--gitlab`,
+`requivo impact <slug> <slot>` for what a change reaches): see
+[`docs/integrations.md`](integrations.md) for the automation contract, including `discover`/`answer`,
+the two verbs `run` is built on.
 
 Full reference: [cli.md](cli.md).
 
