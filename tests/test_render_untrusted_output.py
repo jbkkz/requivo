@@ -47,10 +47,12 @@ from requivo.core.contracts import (
     Stories,
 )
 from requivo.core.dependencies import propagate, thinner_evidence
-from requivo.core.persistence import RevisionRecord
+from requivo.core.persistence import ArtifactStatus, RevisionRecord
 from requivo.render.terminal import (
+    docs_menu_rows,
     render_brief,
     render_dependency_map,
+    render_docs_menu,
     render_estimate,
     render_evidence,
     render_grounding,
@@ -219,6 +221,19 @@ def test_a_persisted_usage_priced_as_of_cannot_forge_a_line_of_the_session_cost_
     assert "FORGED AT COLUMN ZERO" in text
 
 
+def test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu():
+    """`render_docs_menu`'s filename comes off a persisted `ArtifactStatus`, read back off
+    session.json on every `requivo docs` -- the same disk-sourced class `render_session_cost` and
+    `render_grounding` are swept for below, not model prose. `docs_menu_rows` escapes it with
+    `display_token` before `render_docs_menu` ever sees it (#544)."""
+    forged = ArtifactStatus(revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)
+    text = _render(render_docs_menu, docs_menu_rows({"prd": forged}))
+    assert not _forged_lines(text), text
+    assert _raw_controls(text) == ""
+    assert "FORGED AT COLUMN ZERO" in text, "the forged filename was dropped rather than neutralized"
+    assert "DOCUMENTS" in text, "the other rows rendered nothing to be forged through"
+
+
 def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout():
     """`render_grounding`'s input is a persisted `context_cards` entry, which invariant 14 names as
     untrusted **every time it is read back**, whatever wrote it -- and #40 is the reproduced
@@ -260,6 +275,10 @@ _SWEPT_RENDERERS = {
     # #40 forged a line of `doctor`'s output through. Swept by
     # `test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout` (#492).
     "render_grounding",
+    # render_docs_menu's untrusted field is a persisted ArtifactStatus.filename, the same disk-sourced
+    # class as the two above. Swept by
+    # `test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu` (#544).
+    "render_docs_menu",
 }
 
 # `render_*` functions in `render/terminal.py` that render no model-authored prose, named with a

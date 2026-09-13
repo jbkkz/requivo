@@ -84,9 +84,8 @@ To run the plugin from a checkout instead, for development:
 or nothing, to resume the session you left off on (it lists more than one to choose from) — or a slug
 to jump straight to a session. It discovers, asks the questions, waits for your prose answers, folds
 each one in as a new revision, and tells you when it stops: ready, no high-value question left, or
-because you said so. It ends with one pointer, `/requivo:docs` when you want a document — that skill
-does not exist yet (#543), so until it lands the way to get one is steps 3 and 4 below,
-`/requivo:brief` or `/requivo:prd`.
+because you said so. It ends with one pointer, `/requivo:docs`, which shows what the model can
+produce and its freshness and generates whichever documents you pick.
 
 The commands, in the order they are usually reached. Every one after the first takes the session
 slug, which `/requivo:run` reports when it creates the session.
@@ -101,13 +100,13 @@ slug, which `/requivo:run` reports when it creates the session.
    session is ready, when nothing left is worth asking, or when you say so.
 2. **`/requivo:status <slug>`**. Where it stands: readiness, what is still blocking, which generated
    documents need updating. A local read, so use it as often as you like.
-3. **`/requivo:brief <slug>`**. The decision brief: what a reviewer needs before estimating or
-   committing to scope. Saved as a tracked document, tied to the revision it was written from.
-4. **`/requivo:prd <slug>`**. A PRD from the same model, with the unknowns still visible and the open
-   decisions still open. Also saved and tracked.
+3. **`/requivo:docs <slug>`**. A menu of the seven documents the model can produce — decision brief,
+   PRD, user stories, estimate, acceptance criteria, delivery epic, release notes — each with its
+   freshness. Pick one or several; each is saved as a tracked document, tied to the revision it was
+   written from.
 
-Steps 3 and 4 are not the end of anything. The model is the durable product and each document is a view
-of it, so any of them can be regenerated later from the saved model without redoing discovery.
+Step 3 is not the end of anything. The model is the durable product and each document is a view of
+it, so any of them can be regenerated later from the saved model without redoing discovery.
 
 ## The skills
 
@@ -115,8 +114,7 @@ of it, so any of them can be regenerated later from the saved model without redo
 |---|---|---|
 | `/requivo:run` | The whole conversation: discovery, questions, answers, revisions, and what a revised answer reaches, in one loop | this Claude session |
 | `/requivo:status` | Readiness, open questions, which documents need updating | local read, no reasoning |
-| `/requivo:brief` | The decision brief, saved and tied to its revision | this Claude session |
-| `/requivo:prd` | A PRD from the same model, saved and tied to its revision | this Claude session |
+| `/requivo:docs` | A menu of every document the model can produce, each with its freshness — pick one or several | this Claude session |
 
 The ones that reason spend this session's context window. The local read does not: it calls the CLI
 and prints what it computed. None of them calls an API. The dependency-graph query behind *what a
