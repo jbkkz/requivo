@@ -101,6 +101,20 @@ class SessionEntry:
 
 
 @dataclass(frozen=True)
+class SessionResolution:
+    """The outcome of resolving a default session for a journey verb given no explicit slug (#541).
+
+    `default` is always a real slug once any session exists -- the tie-break among several falls
+    back to the first (by slug) when none is readable enough to carry an `updated_at`, so a caller
+    never has to handle "several, but no default". `candidates` is empty for the "exactly one"
+    case, where there is nothing to disambiguate, and otherwise lists every session considered --
+    including a degraded row (invariant 15) -- so the caller can show the default was not a guess
+    made in the dark before anything paid happens."""
+    default: str
+    candidates: list[SessionEntry]
+
+
+@dataclass(frozen=True)
 class RescopeResult:
     """The structured outcome of `session rescope` — the payload of `session rescope [--json]`."""
     slug: str
@@ -498,6 +512,24 @@ class SessionService:
         for entry in self.repo.list_unexaminable():
             entries.append(SessionEntry(slug=entry.name, meta=None, error=entry.error))
         return sorted(entries, key=lambda e: e.slug)
+
+    def resolve_default_session(self) -> SessionResolution:
+        """The one resolver behind `run`/`status`/`impact` when the caller names no session (#541):
+        exactly one session -> that one; several -> the most recently written (`session.json`
+        `updated_at`, never directory mtime) is the default, with every candidate returned so the
+        CLI can list them, default marked, before anything paid happens; none -> a `RequivoError`
+        naming `run`. A read over `list_entries()`, so one degraded row never hides the others
+        (invariant 15). An explicit slug never reaches this -- it always wins at the call site."""
+        entries = self.list_entries()
+        if not entries:
+            raise SessionNotFoundError(
+                "no session in this workspace yet -- run `requivo run` to start one.", details={})
+        if len(entries) == 1:
+            return SessionResolution(default=entries[0].slug, candidates=[])
+        readable = [e for e in entries if e.readable]
+        default = (max(readable, key=lambda e: cast(SessionMeta, e.meta).updated_at).slug
+                   if readable else entries[0].slug)
+        return SessionResolution(default=default, candidates=entries)
 
     def cards(self, slug: str) -> list[str] | None:
         """The context-card selection recorded for a session (None == all cards)."""

@@ -23,9 +23,10 @@ import argparse
 from requivo.cli import _build_parser
 from requivo.providers.anthropic.generators import _OP_PROMPTS
 
-# The verbs that make a paid call. `analyze` is the provider operation behind both `discover` and
-# `answer`, so it expands to two; every other operation is one verb of the same name.
-API_VERBS = (set(_OP_PROMPTS) - {"analyze"}) | {"discover", "answer"}
+# The verbs that make a paid call. `analyze` is the provider operation behind `discover`, `answer`
+# and `run` (#540: a fresh request or an existing session's slug both reach it), so it expands to
+# three; every other operation is one verb of the same name.
+API_VERBS = (set(_OP_PROMPTS) - {"analyze"}) | {"discover", "answer", "run"}
 
 MARKER = "(API)"
 
@@ -52,7 +53,7 @@ def test_the_plumbing_verbs_come_after_the_journey_verbs():
     top to bottom should meet the product before the diagnostics."""
     order = [name for name, _ in _subcommands()]
     plumbing = {"doctor", "schema", "context", "session", "model", "artifact"}
-    journey = ["discover", "answer", "status", "brief"]
+    journey = ["run", "discover", "answer", "status", "brief"]
     first_plumbing = min(order.index(name) for name in plumbing)
     assert all(order.index(v) < first_plumbing for v in journey), order
 

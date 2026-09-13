@@ -11,12 +11,20 @@ from typing import NamedTuple
 from dotenv import load_dotenv
 
 from requivo import __version__
-from requivo.cli_support import _announce_bind, _generator_service, _render_usage_safely, _wrote, _wrote_file
+from requivo.cli_support import (
+    _announce_bind,
+    _generator_service,
+    _print_session_candidates,
+    _render_usage_safely,
+    _resolve_optional_session,
+    _wrote,
+    _wrote_file,
+)
 from requivo.core import persistence as store
 from requivo.core.adapters import epic_export_json, to_github_json, to_gitlab_json
 from requivo.core.analysis import model_status, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
-from requivo.core.contracts import EngineOutput
+from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
 from requivo.core.errors import RequivoError, SessionNotFoundError
 from requivo.core.persistence import load_model
@@ -189,43 +197,54 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         if not out.questions:
             break
 
-        print("\nYour answers (Enter = skip a question · 'q' = stop):")
-        replies = []
-        try:
-            for i, q in enumerate(out.questions, 1):
-                # `q.q` is LLM-authored prose over an untrusted client request (SECURITY.md), and
-                # `render_turn` already neutralizes the identical field one call earlier -- this is
-                # the second interpretation site invariant 14 warns about, unapplied. `display_text`
-                # escapes embedded control characters per character rather than dropping them, so a
-                # multi-line forged question becomes one long readable line with a visible `\n`
-                # instead of writing a second line at column 0 that `input()`'s prompt cannot own.
-                # Reproduced through this loop, not through a renderer, by
-                # `test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt`
-                # (#330); the readability half is `test_an_ordinary_question_still_reads_at_the_input_prompt`.
-                safe_q = display_text(q.q)
-                ans = input(f"  {i}. {safe_q}\n     > ").strip()
-                if ans.lower() == "q":
-                    print("Stopped.")
-                    return Drafted(out, stopped=True)
-                if ans:
-                    # Same field folded back into the transcript sent to the provider -- an embedded
-                    # newline would break the `[slot: ...] Q: ... → A: ...` structure the next turn
-                    # reads. Pinned by
-                    # `test_a_forged_question_cannot_break_the_answer_folded_back_to_the_provider`.
-                    replies.append(f"[slot: {q.slot}] Q: {safe_q} → A: {ans}")
-        except (EOFError, KeyboardInterrupt):
-            print("\nStopped.")
+        answers = _prompt_answers(out.questions)
+        if answers is None:
             return Drafted(out, stopped=True)
-
-        if not replies:
-            print("No answer provided — stopping.")
-            return Drafted(out, stopped=True)
-
-        answers = "\n".join(replies)
     else:
         print(f"\n⚠️  Reached the {MAX_TURNS}-turn limit.")
 
     return Drafted(out, stopped=False)
+
+
+def _prompt_answers(questions: list[Question]) -> str | None:
+    """Prompt for one turn's answers at the terminal, folding them into the
+    `[slot: ...] Q: ... → A: ...` shape both `converse()` and `run`'s resume loop send back to the
+    provider. `None` means the user stopped -- quit, Ctrl-C/EOF, or answered nothing -- and this
+    already printed why. Extracted from `converse()` (#540) so a second loop over an existing
+    session does not reimplement the terminal side of a turn."""
+    print("\nYour answers (Enter = skip a question · 'q' = stop):")
+    replies = []
+    try:
+        for i, q in enumerate(questions, 1):
+            # `q.q` is LLM-authored prose over an untrusted client request (SECURITY.md), and
+            # `render_turn` already neutralizes the identical field one call earlier -- this is
+            # the second interpretation site invariant 14 warns about, unapplied. `display_text`
+            # escapes embedded control characters per character rather than dropping them, so a
+            # multi-line forged question becomes one long readable line with a visible `\n`
+            # instead of writing a second line at column 0 that `input()`'s prompt cannot own.
+            # Reproduced through this loop, not through a renderer, by
+            # `test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt`
+            # (#330); the readability half is `test_an_ordinary_question_still_reads_at_the_input_prompt`.
+            safe_q = display_text(q.q)
+            ans = input(f"  {i}. {safe_q}\n     > ").strip()
+            if ans.lower() == "q":
+                print("Stopped.")
+                return None
+            if ans:
+                # Same field folded back into the transcript sent to the provider -- an embedded
+                # newline would break the `[slot: ...] Q: ... → A: ...` structure the next turn
+                # reads. Pinned by
+                # `test_a_forged_question_cannot_break_the_answer_folded_back_to_the_provider`.
+                replies.append(f"[slot: {q.slot}] Q: {safe_q} → A: {ans}")
+    except (EOFError, KeyboardInterrupt):
+        print("\nStopped.")
+        return None
+
+    if not replies:
+        print("No answer provided — stopping.")
+        return None
+
+    return "\n".join(replies)
 
 
 # ── Subcommand CLI (`requivo`) ────────────────────────────────────────────────
@@ -504,6 +523,108 @@ def _cmd_answer(a, client) -> None:
         print(f'\n→ Keep going: requivo answer {slug} "<your answers>"')
 
 
+def _is_existing_session(svc: SessionService, ref: str) -> bool:
+    """Whether `ref` already names a session -- the branch `run` needs between resuming and
+    discovering (#540). A request sentence is not a valid slug shape, so the resulting
+    `InvalidSlugError` fails closed to "no" rather than escaping this check."""
+    try:
+        return svc.exists(ref)
+    except RequivoError:
+        return False
+
+
+def _prompt_for_request() -> str:
+    """`run` with nothing to resume: ask for a request the same three shapes `discover` accepts."""
+    print(f"No session to resume yet. What would you like to build? ({_REQUEST_SHAPES})")
+    try:
+        return input("> ")
+    except EOFError:
+        return ""
+
+
+def _run_target(svc: SessionService) -> tuple[str, bool]:
+    """`run` with no argument: resolve the workspace's default session (#541) -- listing the
+    candidates when there are several -- or prompt for a request when none exists at all (#540).
+
+    Returns `(value, resume)`: `resume` is True only when `value` came straight from the resolver,
+    so `_cmd_run` resumes it directly instead of re-running it through file/session detection --
+    where a file in the cwd sharing the resolved slug's name would hijack it into an unrelated
+    discovery. Found in review; pinned by
+    `test_run_with_no_argument_is_not_hijacked_by_a_same_named_file`."""
+    try:
+        resolution = svc.resolve_default_session()
+    except SessionNotFoundError:
+        return _prompt_for_request(), False
+    if resolution.candidates:
+        _print_session_candidates(resolution)
+    return resolution.default, True
+
+
+def _refuse_resume_only_flags(a) -> None:
+    """`--once`/`--context` describe a *new* discovery; on a resume they used to be silently
+    ignored, so refuse before any provider call rather than discard what the user asked for --
+    found in review. Pinned by `test_run_refuses_once_and_context_when_resuming`."""
+    if a.once or a.context:
+        raise RequivoError(
+            "requivo run <slug>: --once and --context apply to a new discovery, not to resuming an "
+            "existing session, which reuses the session's own context cards. Drop them, or discover "
+            "a fresh session with `requivo discover`/`requivo run <request>`.")
+
+
+def _resume_run(disco: DiscoveryService, slug: str) -> None:
+    """`run <slug>`'s loop on an already-discovered session (#540): each turn folds the answers in
+    through `DiscoveryService.answer`, the path `requivo answer` already takes -- resuming is
+    `answer` inside a loop, never a second discovery. Shares `_prompt_answers` with `converse()`
+    rather than reimplementing the terminal side of a turn."""
+    svc = disco.sessions
+    out = svc.load_model(slug)
+    for _turn in range(1, MAX_TURNS + 1):
+        render_turn(out)
+        if not out.questions:
+            print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
+            return
+        answers = _prompt_answers(out.questions)
+        if answers is None:
+            print(f"\nSaved session → {store.canonical_dir(slug)}")
+            return
+        result = disco.answer(slug, answers, surface="cli-run")
+        if result.stale_artifacts:
+            pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
+            render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
+        out = svc.load_model(slug)
+    else:
+        print(f"\n⚠️  Reached the {MAX_TURNS}-turn limit.")
+    print(f"\nSaved session → {store.canonical_dir(slug)}")
+
+
+def _cmd_run(a, client) -> None:
+    """`run [request | path | slug] [--context CARDS] [--once]` -- one verb over the conversation
+    `discover` and `answer` already run (#538, #540). No argument resumes the workspace's default
+    session or asks for a request; a request or a path is `discover`, unchanged; an existing
+    session's slug resumes it through the *answer* path, never a second discovery."""
+    svc = SessionService()
+    ref = a.request
+    if ref is None:
+        # `resume=True` came straight off the resolver, not off `ref`'s own shape -- so it is
+        # resumed directly and never re-checked against `is_file_argument`/`_is_existing_session`,
+        # where a same-named file in the cwd would hijack a resolved slug into an unrelated
+        # discovery. Pinned by `test_run_with_no_argument_is_not_hijacked_by_a_same_named_file`.
+        ref, resume = _run_target(svc)
+        if resume:
+            _refuse_resume_only_flags(a)
+            _resume_run(DiscoveryService(client=client or new_client(), sessions=svc), ref)
+            return
+    elif ref != "-" and not is_file_argument(ref) and _is_existing_session(svc, ref):
+        slug = svc.resolve_slug(ref, accept_path=False)
+        if not svc.exists(slug):
+            raise svc.no_session(slug)
+        _refuse_resume_only_flags(a)
+        _resume_run(DiscoveryService(client=client or new_client(), sessions=svc), slug)
+        return
+    a.request = ref
+    _cmd_discover(a, client)
+
+
 def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
     """Resolve a reference to (model, slug). Accepts a model.json path (legacy or direct) OR a session
     slug in the canonical/legacy store — so the read verbs work both on a raw file and on a session.
@@ -556,8 +677,13 @@ def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
 
 
 def _cmd_status(a, client) -> None:
-    out, payload = _status_payload(a.session)
-    if getattr(a, "json", False):
+    want_json = getattr(a, "json", False)
+    # `quiet=want_json`: the resolved `slug` already rides the JSON payload below, so a candidate
+    # listing here would be the exact line beside a `--json` payload #246 already refuses (a
+    # second such line, one call earlier) -- `_resolve_optional_session`'s own docstring.
+    ref = _resolve_optional_session(SessionService(), a.session, quiet=want_json)
+    out, payload = _status_payload(ref)
+    if want_json:
         # `--json` deliberately gets no pointer (#246): a machine consumer picks its own next step,
         # and a line printed beside the payload would break every caller that pipes this into `jq`.
         # `print_json`, not a second `json.dumps(..., indent=2)` (#301): it carries the #70
@@ -676,7 +802,9 @@ def _cmd_demo(a, client) -> None:
 def _cmd_impact(a, client) -> None:
     """Offline query over the dependency DAG — no API call. With slots, show their blast
     radius; without, map every slot's downstream."""
-    out, slug = _resolve_ref(a.session)
+    svc = SessionService()
+    ref = _resolve_optional_session(svc, a.session)
+    out, slug = _resolve_ref(ref)
     # Decisions derived from thinner evidence than the session now holds (#493) -- a walk over the
     # frozen revisions, so only a session has it. A bare model.json is *not reviewed*, which the
     # renderer says in those words rather than as an empty section. Decided by the same predicate
@@ -684,7 +812,7 @@ def _cmd_impact(a, client) -> None:
     # to is its parent directory's name, and a session of that name in the workspace is a different
     # model whose review would print as this file's. Pinned by
     # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
-    evidence = None if Path(a.session).is_file() else SessionService().thinner_evidence(slug)
+    evidence = None if Path(ref).is_file() else svc.thinner_evidence(slug)
     if not a.slots:
         render_dependency_map(out)
         render_evidence(evidence)
@@ -957,19 +1085,20 @@ def _build_parser() -> argparse.ArgumentParser:
     # is the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
     # diagnostic entries led and the two verbs a visitor needs sat seventh and eighth.
     #
-    # `model_cmd` is defined here rather than further down for the same reason: the twelve journey
-    # verbs are registered above the plumbing now, and they need it. Pinned by
+    # `model_cmd` is defined here rather than further down for the same reason: the journey verbs
+    # are registered above the plumbing now, and they need it. Pinned by
     # `test_the_plumbing_verbs_come_after_the_journey_verbs`.
 
     # Two verbs (`status`, `impact`) genuinely open a path they are handed -- `_resolve_ref` reads
-    # the file's own bytes directly, no session lookup involved. The other eight resolve a *slug*
-    # and read/write the store's own copy, so a path was never a meaningful input for them and their
+    # the file's own bytes directly, no session lookup involved. The rest resolve a *slug* and
+    # read/write the store's own copy, so a path was never a meaningful input for them and their
     # help must not claim otherwise (#402); `_generator_service`/`_cmd_answer` pass
     # `resolve_slug(..., accept_path=False)` to refuse one outright, naming what was given.
     _SESSION_HELP_WITH_PATH = "a session slug, or a path to a saved model.json"
     _SESSION_HELP_SLUG_ONLY = "a session slug"
 
-    def model_cmd(name: str, help_: str, func, extra=None, *, accepts_path: bool = False):
+    def model_cmd(name: str, help_: str, func, extra=None, *, accepts_path: bool = False,
+                  session_required: bool = True):
         sp = sub.add_parser(name, help=help_)
         # `session`, not `model` (#248). The two authoring eras spelled one concept two ways: every
         # verb under `deterministic/` says `session`, and this helper said `model` -- so the usage
@@ -979,13 +1108,35 @@ def _build_parser() -> argparse.ArgumentParser:
         # `test_every_session_reference_positional_is_spelled_session` and
         # `test_the_missing_argument_error_names_a_session_not_a_model`.
         session_help = _SESSION_HELP_WITH_PATH if accepts_path else _SESSION_HELP_SLUG_ONLY
-        sp.add_argument("session", help=session_help)
+        # `nargs="?"`/`default=None` on the two verbs #541 makes optional -- never on a plumbing
+        # verb (`session`/`model`/`artifact` keep it required: a script must never act on
+        # "whichever session is newest"). `SessionResolution` picks the default when it is omitted.
+        if session_required:
+            sp.add_argument("session", help=session_help)
+        else:
+            sp.add_argument("session", nargs="?", default=None,
+                            help=session_help + " (omit to use the workspace's default session)")
         if extra:
             extra(sp)
         sp.set_defaults(func=func)
 
     demo = sub.add_parser("demo", help="replay a real run from saved output — no API key needed")
     demo.set_defaults(func=_cmd_demo)
+
+    r = sub.add_parser(
+        "run", help="start or resume the conversation: no argument resumes, a request/path "
+                    "discovers, a slug refines (API)")
+    r.add_argument("request", nargs="?", default=None,
+                   help="the client request, a path to a file containing it, '-' to read one "
+                        "from stdin, an existing session's slug to resume, or omit to resume the "
+                        "workspace's default session")
+    r.add_argument("--once", action="store_true",
+                   help="single pass when starting a new discovery, no interactive loop "
+                        "(refused when resuming an existing session)")
+    r.add_argument("--context", "--cards", metavar="CARDS", dest="context",
+                   help="comma-separated context cards for a new discovery (refused when "
+                        "resuming, which reuses the session's own cards). Alias: --cards.")
+    r.set_defaults(func=_cmd_run)
 
     d = sub.add_parser("discover",
                        help="analyse a request (a string, a file path or '-') and start a session (API)")
@@ -1009,11 +1160,11 @@ def _build_parser() -> argparse.ArgumentParser:
               _cmd_answer, lambda sp: sp.add_argument("answers", help="the client's answers, as free text"))
     model_cmd("status", "show the understanding, open questions and readiness", _cmd_status,
               lambda sp: sp.add_argument("--json", action="store_true", help="emit a machine status snapshot"),
-              accepts_path=True)
+              accepts_path=True, session_required=False)
     model_cmd("impact", "show what a change to given topics would reach; no topics = full map",
               _cmd_impact, lambda sp: sp.add_argument("slots", nargs="*",
               help="slot ids or label words (e.g. permissions workflow); omit for the full map"),
-              accepts_path=True)
+              accepts_path=True, session_required=False)
     model_cmd("brief", "generate the decision brief — what to review before estimating (API)", _cmd_brief)
     model_cmd("prd", "generate the PRD (API)", _cmd_prd)
     model_cmd("stories", "derive user stories (API)", _cmd_stories)

@@ -23,6 +23,7 @@ projected half) and the prompt sentences that enforce it are in `docs/requiremen
 ```bash
 cp .env.example .env                    # ANTHROPIC_API_KEY; REQUIVO_MODEL defaults to claude-sonnet-5
 uv run requivo demo                     # replays a saved run — no key, no network, no arguments
+uv run requivo run "We'd like a leave approval system."        # the whole conversation, one verb
 uv run requivo discover "We'd like a leave approval system."   # → .requivo/sessions/<slug>/
 uv run requivo status <slug>            # understanding checklist + readiness (offline)
 uv run requivo prd <slug>               # regenerate any artifact from the saved model

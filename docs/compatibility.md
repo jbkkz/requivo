@@ -1077,6 +1077,23 @@ The first row is the one this page's own rule calls breaking: an invocation that
 the defect — the same reasoning #360 above already rejects for the identical shape. `status` and
 `impact` are unaffected; they never went through `resolve_slug` for a path and keep the wider help.
 
+### `requivo run` is new, and `run`/`status`/`impact` take an optional slug (#540, #541)
+
+`requivo run [request|file|-|slug]` is a new verb: additive, and it moves nothing else. It is a
+thin layer over `discover`'s interactive loop and `answer`'s apply path, both unchanged and still
+directly callable — the automation contract in [integrations.md](integrations.md) does not move.
+
+`run`, `status` and `impact`'s session positional becomes *optional* (`nargs="?"`): a slug still
+means exactly what it did, and omitting one used to be exit **2** (argparse's own missing-argument
+error) and is now **0** (resolved against the workspace's default session) or a `session_not_found`
+**1** naming `run` when none exists. Both are moves off exit 2, never onto it, so — like #249 above
+— they are compatible under this page's own direction-of-motion rule: nothing could have depended on
+an invocation that always failed with a usage error starting to succeed. `session`, `model` and
+`artifact` keep the slug required, so nothing on the scripted, plumbing surface moves at all.
+
+Nothing stored changes: the session format, every `--json` payload's shape, and every existing verb
+name are unaffected.
+
 ### `resolve_slug`'s directory branch closes the identical gap, one branch over (#414)
 
 Every `deterministic/` verb (`accept_path=True`, the default) can still be handed a directory rather
