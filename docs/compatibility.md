@@ -1104,6 +1104,14 @@ changes: the session format, every `--json` payload's shape, and every existing 
 unaffected. The plugin's `/requivo:docs` is the same addition one surface over — a new skill, and the
 seven generator skills it now reaches for stay directly callable by name.
 
+### `--help` groups the verbs into three tiers; nothing about what a verb does moves (#546, #547)
+
+`requivo --help` now renders "Start here" / "For scripts and integrations" / "Plumbing" instead of
+one flat, registration-order list, and the closing example points at `run` rather than `discover`.
+Presentational only: every verb keeps its name and its behaviour, `requivo <verb> --help` is
+unchanged (verified byte-for-byte per verb), and no session field, `--json` payload or exported file
+changes shape.
+
 ### `resolve_slug`'s directory branch closes the identical gap, one branch over (#414)
 
 Every `deterministic/` verb (`accept_path=True`, the default) can still be handed a directory rather

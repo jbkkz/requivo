@@ -40,8 +40,8 @@ pip install -e ".[dev]"                 # deps + the `requivo` command + pytest
 .venv/bin/ruff check src tests scripts  # lint (CI runs the same)
 ```
 
-`requivo` is the command. Verbs: `discover`,
-`answer`, `demo`, `status`, `impact`, `docs` (a menu over the seven generators below, or
+`requivo` is the command. Verbs: `run` (the whole conversation, one verb over `discover`+`answer`),
+`discover`, `answer`, `demo`, `status`, `impact`, `docs` (a menu over the seven generators below, or
 `docs <slug> <type>...` to skip it), `brief`, `prd`, `stories`, `estimate`, `criteria`,
 `epic` (`--export-json/--github/--gitlab` — three flags of one kind, each writing an export file;
 `epic` deliberately has no stdout `--json`, see #83), `release`, `web`, plus the offline ones in `deterministic/`

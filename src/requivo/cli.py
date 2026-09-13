@@ -1160,17 +1160,99 @@ def _cmd_api_serve(a, client) -> None:
 # verbs cannot: the first command to run, and what the (API) marker on nine of them means.
 # A marker nobody defines is a decoration, and the old help defined nothing at all -- a reader could
 # not tell from it that `brief` would bill them and `status` would not.
+#
+# `requivo run`, not `requivo discover` (#546/#547): the three-journey-verb decision
+# (docs/decisions/0018-three-journey-verbs.md) makes `run` the second command a first-time reader
+# meets, and naming `discover` here would send that reader straight back at the verb #546 moved
+# under "For scripts and integrations".
 EPILOG = (
     "Try it first, with no key and no network:\n"
     "  requivo demo\n"
     "\n"
     "Then start real work:\n"
-    "  requivo discover \"We need a leave approval system\"   (API)\n"
+    "  requivo run \"We need a leave approval system\"   (API)\n"
     "\n"
     "Verbs marked (API) call the Anthropic API and spend money on your own key; every other verb\n"
     "is offline and free. Set ANTHROPIC_API_KEY, or put it in a .env file in the directory you run\n"
     "from. `requivo doctor` reports whether this install can make a call, and which model it uses.\n"
 )
+
+# The two-tier `--help` grouping (#546): "Start here" (`demo`/`run`/`docs`/`status`/`web`), "For
+# scripts and integrations" (the automation contract docs/integrations.md documents) and "Plumbing"
+# (session/model/artifact CRUD, install diagnostics). Presentational only -- registration order below
+# is untouched and stays the axis
+# `test_the_plumbing_verbs_come_after_the_journey_verbs_in_registration_order` and
+# CLAUDE.md's tree entry for `cli.py` read; this table is what `_JourneyHelpFormatter` renders
+# instead of argparse's flat subaction listing. Every verb the parser registers must appear in
+# exactly one of these three tuples -- `_JourneyHelpFormatter` refuses to render, rather than
+# silently narrowing `--help`, if one is missing or duplicated: a dropped verb here is invariant 3's
+# shape one layer up, half a listing reading as a complete one. Pinned by
+# `test_every_registered_verb_appears_in_exactly_one_help_group`.
+_HELP_GROUP_START = ("demo", "run", "docs", "status", "web")
+_HELP_GROUP_SCRIPTS = (
+    "discover", "answer", "brief", "prd", "stories", "estimate", "criteria", "epic", "release",
+    "impact",
+)
+_HELP_GROUP_PLUMBING = ("doctor", "schema", "context", "session", "model", "artifact", "api")
+
+
+class _JourneyHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Renders the top-level command list in the three `_HELP_GROUP_*` tiers instead of argparse's
+    flat, registration-order listing (#546).
+
+    Only the *root* parser is built with this class (`_build_parser`, below). `add_parser` does not
+    inherit `formatter_class` from the parent it is added to -- each verb's own subparser defaults to
+    plain `argparse.HelpFormatter` unless told otherwise, which none of them are -- so
+    `requivo <verb> --help` renders exactly as it did before this class existed. Pinned by
+    `test_every_verb_help_is_byte_identical_to_before_546`, which is the guard that actually matters
+    here: this class's own rendering is easy to eyeball, `requivo <verb> --help` staying untouched is
+    the property that is easy to break by accident.
+    """
+
+    def _format_action(self, action):
+        if isinstance(action, argparse._SubParsersAction):
+            return self._format_grouped_commands(action)
+        return super()._format_action(action)
+
+    def _format_grouped_commands(self, action) -> str:
+        by_name = {choice.dest: choice for choice in action._choices_actions}
+        named = set(_HELP_GROUP_START) | set(_HELP_GROUP_SCRIPTS) | set(_HELP_GROUP_PLUMBING)
+        if named != set(by_name):
+            # Not reached by a passing suite --
+            # `test_every_registered_verb_appears_in_exactly_one_help_group` catches this at test
+            # time. Kept as a live check too, so a `--help` a person actually asks for cannot
+            # silently narrow itself if the two ever drift apart.
+            raise AssertionError(
+                "a verb is registered but not in exactly one --help group (#546): "
+                f"missing={sorted(named - set(by_name))} extra={sorted(set(by_name) - named)}")
+
+        header = self._format_action_invocation(action)
+        parts = [f"{' ' * self._current_indent}{header}\n"]
+        self._indent()
+        parts.append(self._format_full_group("Start here:", _HELP_GROUP_START, by_name))
+        parts.append("\n")
+        parts.append(self._format_compact_group(
+            "For scripts and integrations (docs/integrations.md):", _HELP_GROUP_SCRIPTS))
+        parts.append("\n")
+        parts.append(self._format_compact_group("Plumbing:", _HELP_GROUP_PLUMBING))
+        self._dedent()
+        return self._join_parts(parts)
+
+    def _format_full_group(self, title, names, by_name) -> str:
+        """One row per verb, its own help text beside it -- the shape argparse renders a subaction
+        list in natively, reused via `_format_action` so alignment matches the rest of the page."""
+        lines = [f"{' ' * self._current_indent}{title}\n"]
+        self._indent()
+        lines.extend(self._format_action(by_name[name]) for name in names)
+        self._dedent()
+        return self._join_parts(lines)
+
+    def _format_compact_group(self, title, names) -> str:
+        """Names only, comma-joined on one line -- these two groups are the automation contract and
+        the plumbing, neither the first screen a new user needs, so the per-verb help text
+        `requivo <verb> --help` gives would only add noise here."""
+        body = f"{' ' * (self._current_indent + 2)}{', '.join(names)}\n"
+        return f"{' ' * self._current_indent}{title}\n{body}"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1178,9 +1260,10 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="requivo",
         description="Requivo — find what could change the solution before you commit to the scope.",
         epilog=EPILOG,
-        # Raw, or argparse reflows the epilog into one paragraph and the two example commands stop
-        # being copy-pasteable. It affects the description and the epilog only, never a verb help.
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        # `_JourneyHelpFormatter` extends `RawDescriptionHelpFormatter`, so the epilog still renders
+        # raw and the two example commands stay copy-pasteable -- it affects the description and the
+        # epilog exactly as the plain class did, and additionally groups the command list (#546).
+        formatter_class=_JourneyHelpFormatter,
     )
     # Read from `requivo.__version__` rather than written here (#247). `tests/test_version_sites.py`
     # scans pyproject, the package dunder and the two plugin manifests; `cli.py` is in none of those
@@ -1192,14 +1275,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--workspace", metavar="DIR", help=_WORKSPACE_HELP)
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
 
-    # Registration order IS render order in argparse, so this list is the first screen (#244). It
-    # runs demo → discover → the refinement verbs → the generators → the plumbing → web → api, which
-    # is the order a user meets them in. It used to open with `register_deterministic(sub)`, so the six
-    # diagnostic entries led and the two verbs a visitor needs sat seventh and eighth.
+    # Registration order is no longer render order -- #546 moved that job to `_JourneyHelpFormatter`
+    # and the `_HELP_GROUP_*` tables above. It stays the axis CLAUDE.md's tree entry for `cli.py`
+    # documents: demo → discover → the refinement verbs → the generators → the plumbing → web → api,
+    # the order a user meets them in even though the printed page now groups them differently.
     #
     # `model_cmd` is defined here rather than further down for the same reason: the journey verbs
     # are registered above the plumbing now, and they need it. Pinned by
-    # `test_the_plumbing_verbs_come_after_the_journey_verbs`.
+    # `test_the_plumbing_verbs_come_after_the_journey_verbs_in_registration_order`.
 
     # Two verbs (`status`, `impact`) genuinely open a path they are handed -- `_resolve_ref` reads
     # the file's own bytes directly, no session lookup involved. The rest resolve a *slug* and
