@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import textwrap
+from typing import NamedTuple
 
 from requivo.core.analysis import readiness_blockers, slot_label, state_of
 from requivo.core.contracts import Brief, Confidence, EngineOutput, EstimateDraft, Impact, Leverage, Stories
+from requivo.core.dependencies import ARTIFACT_FILENAMES
+from requivo.core.persistence import ArtifactStatus
 from requivo.core.selectors import display_text, display_token
 from requivo.usage import CallRecord, UsageLedger
+from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
 STATE_ROWS = [
     ("confirmed", "✅ Confirmed"),
@@ -211,6 +215,58 @@ def render_next_command(payload: dict) -> None:
     line = next_command(payload)
     if line:
         print(f"\n→ {line}")
+
+
+# ── `docs` menu (#544) ────────────────────────────────────────────────────────
+# Seven generators, one action -- `DOC_TYPES` fixes the menu order (from `ARTIFACT_FILENAMES`'s own
+# key order), `ARTIFACT_LABELS` is the one user-facing name table (never a second one, CLAUDE.md),
+# and the state reads `ArtifactStatus.stale` -- never a revision comparison (invariant 1).
+DOC_TYPES: tuple[str, ...] = tuple(ARTIFACT_FILENAMES)
+
+DOC_BLURBS: dict[str, str] = {
+    "brief": "The judgment call to review before estimating or committing to scope.",
+    "prd": "The requirements document a dev team builds from.",
+    "stories": "The backlog, broken into shippable user stories.",
+    "estimate": "Day-range estimates per story, reasoned from the stories above.",
+    "criteria": "Given/When/Then acceptance criteria a client can sign off on.",
+    "epic": "The delivery epic, ready for a tracker.",
+    "release": "Client-facing release notes.",
+}
+
+
+class DocRow(NamedTuple):
+    """One line of the `docs` menu, built by `docs_menu_rows` and read by `render_docs_menu`."""
+    number: int
+    doc_type: str
+    label: str
+    blurb: str
+    state: str
+
+
+def docs_menu_rows(artifact_status: dict[str, ArtifactStatus]) -> list[DocRow]:
+    """The seven menu rows, in `DOC_TYPES` order -- never `artifact_status`'s own key order, so a
+    forged type key in session.json cannot add or reorder a row. State reads `ArtifactStatus.stale`
+    (invariant 1); `filename` is disk content and is escaped, `revision` is a validated `int`."""
+    rows = []
+    for i, doc_type in enumerate(DOC_TYPES, 1):
+        status = artifact_status.get(doc_type)
+        if status is None:
+            state = "not generated"
+        else:
+            filename = display_token(status.filename)
+            state = (f"needs updating (from rev {status.revision}, {filename})" if status.stale
+                     else f"up to date (rev {status.revision}, {filename})")
+        rows.append(DocRow(i, doc_type, ARTIFACT_LABELS.get(doc_type, doc_type),
+                           DOC_BLURBS.get(doc_type, ""), state))
+    return rows
+
+
+def render_docs_menu(rows: list[DocRow]) -> None:
+    """Data -> str, no side effects beyond printing (render/ owns no logic, per CLAUDE.md)."""
+    print("DOCUMENTS")
+    for row in rows:
+        print(f"  {row.number}. {row.label:<20} {row.state}")
+        print(f"     {row.blurb}")
 
 
 def render_usage(ledger: UsageLedger) -> None:

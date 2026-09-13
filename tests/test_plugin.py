@@ -15,7 +15,7 @@ SKILLS = PLUGIN / "skills"
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`, so the directory name must NOT repeat
 # the plugin name — `skills/requivo-discover/` in a plugin called `requivo` is invoked as
 # `/requivo:requivo-discover`, which is not what any of the docs said.
-EXPECTED_SKILLS = {"run", "status", "brief", "prd",
+EXPECTED_SKILLS = {"run", "status", "docs", "brief", "prd",
                    "stories", "estimate", "criteria", "epic", "release"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills. The
 # plugin's own README may name it too — that file is a reader's document, not an instruction Claude

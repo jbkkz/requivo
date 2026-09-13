@@ -1094,6 +1094,16 @@ an invocation that always failed with a usage error starting to succeed. `sessio
 Nothing stored changes: the session format, every `--json` payload's shape, and every existing verb
 name are unaffected.
 
+### `requivo docs` is new (#543, #544)
+
+`requivo docs [slug] [type...] [--all]` is a new verb: additive, and it moves nothing else. It is a
+thin loop over the seven existing generator verbs (`brief`, `prd`, `stories`, `estimate`, `criteria`,
+`epic`, `release`), each unchanged and still directly callable — `epic --export-json/--github/
+--gitlab`, the n8n contract in [integrations.md](integrations.md), stays on `epic`. Nothing stored
+changes: the session format, every `--json` payload's shape, and every existing verb name are
+unaffected. The plugin's `/requivo:docs` is the same addition one surface over — a new skill, and the
+seven generator skills it now reaches for stay directly callable by name.
+
 ### `resolve_slug`'s directory branch closes the identical gap, one branch over (#414)
 
 Every `deterministic/` verb (`accept_path=True`, the default) can still be handed a directory rather
