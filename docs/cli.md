@@ -27,11 +27,20 @@ flag the parser binds cannot ship silently undocumented.
 | `requivo --version` | Print `requivo <version>` and exit 0. Read from the package, so it is the version you actually have |
 | `requivo --workspace DIR <command>` | Where sessions are read and written (default: cwd). Accepted *before or after* the command |
 
-`requivo --help` lists the verbs in journey order — `demo`, `run` and `discover` first, then
-refinement, then the generators, then the offline plumbing — and marks the ones that spend money
-**`(API)`**. Everything without the marker is offline and free, including `status` and `impact`,
-which take a slug exactly like `brief` does (or resolve the default session, #541) and cost nothing.
-What the marked verbs cost is in [providers.md](providers.md#what-a-run-costs).
+`requivo --help` groups the verbs into three tiers (#546, `decision: three-journey-verbs`):
+
+- **Start here** — `demo`, `run`, `docs`, `status`, `web` — the first screen, each with its own
+  help line and the `(API)` marker where it applies.
+- **For scripts and integrations** — `discover`, `answer`, `brief`, `prd`, `stories`, `estimate`,
+  `criteria`, `epic`, `release`, `impact` — the automation contract this page documents, listed by
+  name only; `requivo <verb> --help` still shows each one's own usage.
+- **Plumbing** — `doctor`, `schema`, `context`, `session`, `model`, `artifact`, `api` — session/
+  model/artifact CRUD and install diagnostics, also by name only.
+
+`(API)` marks a verb that spends money on your own key; everything without it is offline and free,
+including `status` and `impact`, which take a slug exactly like `brief` does (or resolve the default
+session, #541) and cost nothing. What the marked verbs cost is in
+[providers.md](providers.md#what-a-run-costs).
 
 ## When a session cannot be found
 
