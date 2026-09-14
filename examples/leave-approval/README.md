@@ -70,13 +70,9 @@ to re-validate and two premises back in question.
 **4 — Change the answer.**
 
 ```bash
-requivo run <slug>
+requivo answer <slug> "Correction: the migration is one-time. After cutover the legacy
+                       system becomes read-only — nothing writes back to it."
 ```
-
-Correct it:
-
-> Correction: the migration is one-time. After cutover the legacy system becomes read-only — nothing
-> writes back to it.
 
 **5 — Read what moved.**
 
