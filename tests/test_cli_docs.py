@@ -19,9 +19,8 @@ from requivo.web.example import seed_example
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+def _isolate_workspace(workspace):
+    """`workspace` (conftest.py) does the pointing; autouse means no test here has to ask."""
 
 
 # ── pure helpers ─────────────────────────────────────────────────────────────────

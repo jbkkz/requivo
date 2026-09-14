@@ -16,13 +16,6 @@ from requivo.core import persistence as store
 from requivo.services.sessions import SessionService
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def test_model_validate_ok_and_invalid_exit(workspace, tmp_path):
     good = tmp_path / "good.json"
     good.write_text(json.dumps(_full_model()))
@@ -97,13 +90,7 @@ def test_apply_invalid_proposal_emits_error_envelope(workspace, tmp_path):
 
 def test_a_refused_apply_writes_nothing_and_answers_like_validate(workspace, tmp_path):
     """The plugin's mutating skills apply a proposal directly instead of validating it first, and
-    that rests on two properties of `apply` rather than on care in the prompt (#511).
-
-    `update_model` validates *inside* the session lock and *before* `_plan` writes, so a refused
-    apply is indistinguishable from a dry run: no revision, no `model.json`, the session still at its
-    old revision, and the same error envelope `model validate` produces for that payload. Were either
-    half to stop holding, the skills would be walking a session through a half-applied state on every
-    typo — so it is pinned here rather than restated in `REASONING.md` and hoped for."""
+    that rests on two properties of `apply` rather than on care in the prompt (#511)."""
     _run(["session", "init", "X.", "--slug", "s"])
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"model": {"ghost": _slot()}, "summary": {"objective": "o"}}))
@@ -156,16 +143,7 @@ def test_model_apply_honours_the_expected_revision_precondition(workspace, tmp_p
 
 
 def test_a_corrupt_model_reaches_the_operator_as_one_line_not_a_traceback(workspace, capsys):
-    """The end-to-end half of #204, from the three verbs a user actually types.
-
-    `status` and `impact` resolve a model through `_resolve_ref`; `model show` goes through the
-    service. Two different doors into the same file, which is why the assertion is over all three
-    rather than over whichever one the bug was reported against.
-
-    Asserting on **stderr** rather than on the exception is the point: a `ValidationError` reaching
-    `cli.app()` produces a traceback and exit 1, and a test that only checked the exit code would
-    have been green on the defect.
-    """
+    """The end-to-end half of #204, from the three verbs a user actually types."""
     svc = SessionService()
     svc.create_session("A leave approval system.", slug="corrupt")
     svc.update_model("corrupt", _full_model())
@@ -184,13 +162,7 @@ def test_a_corrupt_model_reaches_the_operator_as_one_line_not_a_traceback(worksp
 
 
 def test_a_corrupt_model_gives_the_json_envelope_its_own_code(workspace):
-    """A caller reading `--json` branches on the code, and this condition had none to branch on.
-
-    `model_unreadable` rather than `session_unreadable`: the session opens, the listing is
-    unaffected, `session verify` answers, and `revisions/` holds every applied model — none of which
-    is true when `session.json` is the file that will not parse. Two situations, two remedies, two
-    codes.
-    """
+    """A caller reading `--json` branches on the code, and this condition had none to branch on."""
     svc = SessionService()
     svc.create_session("A leave approval system.", slug="corrupt-json")
     svc.update_model("corrupt-json", _full_model())
@@ -207,10 +179,8 @@ def test_a_corrupt_model_gives_the_json_envelope_its_own_code(workspace):
 def test_status_and_model_show_agree_on_a_revision_zero_session(workspace, capsys):
     """The issue as filed claimed `status` exits 1 and `model show` exits 0 on the identical
     revision-0 session, printing the identical message. Reproducing it against this tree found both
-    already exiting 1 -- so this pins the (already-true) agreement rather than a fix for it, and
-    guards the copy fix that *is* real: engine jargon ("apply a proposal first") replaced by the
-    actual remedy, naming `requivo discover`.
-    """
+    already exiting 1 -- so this pins the agreement rather than a fix, and guards the real copy fix:
+    engine jargon replaced by the actual remedy, naming `requivo discover`."""
     _run(["session", "init", "A tiny tool to track something.", "--slug", "rev0"])
 
     for argv in (["status", "rev0"], ["model", "show", "rev0"]):

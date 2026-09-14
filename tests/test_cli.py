@@ -8,12 +8,12 @@ artifact where every other surface writes it, and records what it read.
 The parser-shape tests (which verbs bind, which flags exist) live in `test_cli_flag_names.py`; the
 no-LLM verbs live in the `test_cli_*.py` set that mirrors `requivo/deterministic/` — `_doctor`,
 `_sessions`, `_session_archives`, `_model`, `_artifacts`, `_shared`, plus `_untrusted_output` for the
-render-safety class that runs across all of them (#141).
+render-safety class that runs across all of them (#141). `_cmd_web`'s own bind-warning tests moved
+out to `test_cli_bind_address.py`, beside `_cmd_api_serve`'s (#555) — the two verbs share one bind
+helper, so their tests do too now.
 """
-import argparse
 import io
 import json
-import os
 import shutil
 import sys
 
@@ -21,22 +21,19 @@ import pytest
 from _fakes import _ENGINE_REPLY, FakeClient, _model_in_out, _run_app, full_slots, slot
 from _fakes import out as _built_model
 
-from requivo.cli import _cmd_web, app
+from requivo.cli import app
 from requivo.core import persistence as store
 from requivo.core.context import available_cards
 from requivo.core.contracts import EngineOutput
-from requivo.core.errors import RequivoError
 from requivo.core.persistence import load_model
 from requivo.deterministic import is_file_argument
 from requivo.services.artifacts import ArtifactService
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
+def _isolate_workspace(workspace):
     """Every test in this module writes sessions/artifacts into an isolated temp workspace, never the
-    real repo. Points both the canonical root (.requivo/sessions) and the legacy root (out/) at tmp."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+    real repo — `workspace` (conftest.py) does the pointing; autouse means no test here has to ask."""
 
 
 def test_pc_status_runs_offline():
@@ -143,13 +140,7 @@ def test_pc_demo_runs_offline_from_saved_example():
 
 def test_the_demo_shows_the_computed_blast_radius_of_a_changed_answer():
     """The demo used to end at the decision brief — one beat short of the only step in it that a
-    strong prompt cannot also produce (#223).
-
-    Steps ① to ③ are a request, an understanding and a judgment. Step ④ is the dependency graph:
-    `propagate` walks the edges the discovery recorded, so the same change yields the same list every
-    time. Asserting the *contents* rather than the header is the point — a heading can be printed
-    over an empty graph, and an empty blast radius is the shape this step must never silently take.
-    """
+    strong prompt cannot also produce (#223)."""
     text = _run_app(["demo"])  # client=None — the whole step is offline
     assert "④ CHANGE ONE ANSWER" in text
     assert "Computed, not generated" in text
@@ -188,14 +179,7 @@ def test_the_demo_ends_on_something_a_reader_without_a_key_can_do():
 
 
 def test_the_demo_points_a_wheel_install_at_something_it_can_reach():
-    """The demo's closing evidence used to be two paths that exist only in a clone (#225).
-
-    The README's own recommended installs are `uvx`, `uv tool install` and `pipx` — none of which
-    leaves a checkout — and step ⑤ proved "everything else is a view" by naming
-    `examples/<slug>/epic.md` and `acceptance-criteria.md`. For the majority install path those were
-    two dead pointers, in the one place the walkthrough asks to be believed. The files ship inside
-    the wheel; what was missing was any way for that reader to reach them.
-    """
+    """The demo's closing evidence used to be two paths that exist only in a clone (#225)."""
     text = _run_app(["demo"])
     assert "https://github.com/jbkkz/requivo/tree/main/examples/event-checkin-reconciliation" in text
     tail = text[text.index("⑤ EVERYTHING ELSE"):]
@@ -294,17 +278,11 @@ def test_the_browsable_examples_deterministic_half_matches_the_renderer():
 
 
 def test_the_leave_approval_brief_still_projects_its_own_model():
-    """The canonical example's decision brief is half a projection, and this is that half.
-
-    `What is confirmed` and `Important assumptions` are not prose the provider was asked to write —
-    `_stated()` reads each topic's value and provenance off the model, precisely so a restatement
-    cannot drift from what it restates. Which means a committed pair can be checked with no API call,
-    and a `model.json` swapped in without its brief goes red here.
-
-    That could not be asserted before #223: the shipped assessment was a frozen capture from an
-    earlier run, against an earlier layout, and its own README said so. Regenerating the example's
-    whole chain from one model in one sitting is what makes the pair checkable at all.
-    """
+    """The canonical example's decision brief is half a projection: `What is confirmed`/`Important
+    assumptions` are not provider prose but `_stated()` reading each topic's value/provenance off the
+    model, so a committed pair is checkable with no API call and a swapped-in `model.json` goes red
+    here. Not assertable before #223 regenerated the example's whole chain from one model in one
+    sitting."""
     from requivo.core.analysis import readiness_blockers
     from requivo.core.contracts import Confidence
     from requivo.core.persistence import load_model
@@ -330,13 +308,7 @@ def test_the_leave_approval_brief_still_projects_its_own_model():
 
 
 def test_the_canonical_example_can_reproduce_the_change_impact_moment():
-    """`impact` on the committed leave-approval model has something to say (#223).
-
-    The shipped model carried no reasoning layer at all — six top-level keys, three of them empty —
-    so `impact` on the example the README calls "the one to read first" listed stale artifacts and
-    nothing else, while that README promised it would name the decisions resting on the integration
-    topic. The differentiator was claimed on the example and reproducible only on the other one.
-    """
+    """`impact` on the committed leave-approval model has something to say (#223)."""
     from requivo.core.dependencies import propagate
     from requivo.core.persistence import load_model
     from requivo.paths import DEMO
@@ -390,17 +362,7 @@ def test_pc_estimate_renders():
 
 def test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot(monkeypatch):
     """`estimate` makes two provider calls and the second is read against the first's output, so both
-    reason from one `SessionSnapshot` (#135).
-
-    Two snapshots is invariant 12's own sentence — two reads, two instants — and a write landing
-    between them estimates one model's stories against a different model. Nothing is written here, so
-    unlike the case that invariant was written about there is no provenance to become a lie; what
-    drifts is the answer itself, in a single terminal output that shows both halves and no revision.
-    The snapshot is taken by the verb and the rendering stays between the two calls, so the stories
-    still appear while the estimate is being reasoned.
-
-    The call count is the must-fire half: "one snapshot" is also true of a verb that never ran.
-    """
+    reason from one `SessionSnapshot` (#135)."""
     from requivo.services.sessions import SessionService
 
     taken = []
@@ -474,12 +436,11 @@ def test_pc_epic_writes_all_views():
 
 
 def test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_against():
-    """#274: epic.json is the machine-consumed input an n8n flow acts on, and it used to carry no
-    provenance -- an automation reading it had no signal that the session had moved on since it was
-    written. `_cmd_epic` must thread the one `Generated.status.revision` snapshot the `epic.md` save
-    used, not take a second read of the revision (invariant 12) -- so the assertion here is against
-    the session's own recorded `artifact_status["epic"].revision`, not a hardcoded number, which is
-    what would let a hardcoded stamp slip through."""
+    """#274: `epic.json` is the machine-consumed input an n8n flow acts on and needs provenance, so
+    `_cmd_epic` threads the one `Generated.status.revision` snapshot the `epic.md` save used rather
+    than re-reading the revision (invariant 12) -- asserted against the session's own recorded
+    `artifact_status["epic"].revision`, not a hardcoded number that would let a stale stamp slip
+    through."""
     slug = "clitest-epic-revision"
     with _model_in_out(slug) as p:
         # Bump past revision 1 first, so a test that only ever sees "1" cannot pass by accident --
@@ -514,12 +475,11 @@ def test_pc_discover_once_saves_model():
 
 
 def test_pc_discover_prints_the_default_cards_before_the_paid_call():
-    """#257: the default (no --context) reasons over every installed card, which CLAUDE.md's own
-    "Known limit" note already names as the most expensive and most diluted path -- and nothing told
-    a user which cards that was. The disclosure must be additive only: it must not change which
-    cards actually get loaded, so `context_cards` on the saved session must still be `None` (== every
-    card), the same as before this change -- a test that only checked the printed line could pass
-    even if the disclosure secretly started narrowing the selection."""
+    """#257: the default (no `--context`) reasons over every installed card -- CLAUDE.md's own "Known
+    limit" note calls this the most expensive, most diluted path, and nothing told a user which cards
+    that was. The disclosure is additive only: `context_cards` on the saved session must still be
+    `None` (every card), the same as before, so a fix that quietly narrowed the selection cannot pass
+    here."""
     from requivo.services.sessions import SessionService
 
     output = _run_app(["discover", "clitest discover default cards", "--once"],
@@ -533,12 +493,11 @@ def test_pc_discover_prints_the_default_cards_before_the_paid_call():
 
 
 def test_pc_discover_names_the_fallback_weight_when_the_average_cannot_be_measured(monkeypatch):
-    """Found in review: `average_card_byte_size() -> None` (an edge case -- reachable only when the
-    card set's own average happens to be falsy, e.g. an empty install) has a dedicated fallback
-    string in `_cmd_discover` ("measurable weight" instead of a byte figure), and nothing exercised
-    it. Monkeypatches the CLI's own imported name, not the underlying function, so this pins the
-    branch `_cmd_discover` actually takes rather than re-testing `average_card_byte_size` itself
-    (that half is `tests/test_context.py`'s `..._is_none_on_an_empty_install`)."""
+    """Found in review: `average_card_byte_size() -> None` (reachable only on an empty install) has a
+    dedicated fallback string in `_cmd_discover` ("measurable weight" instead of a byte figure), and
+    nothing exercised it. Monkeypatches the CLI's own imported name so this pins the branch
+    `_cmd_discover` takes, not `average_card_byte_size` itself (`tests/test_context.py` owns that
+    half)."""
     import requivo.cli as cli_module
 
     monkeypatch.setattr(cli_module, "average_card_byte_size", lambda: None)
@@ -774,99 +733,3 @@ def test_cli_help_exits_cleanly():
         app(["--help"])
     assert ei.value.code == 0
 
-def test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var(monkeypatch, capsys):
-    """#217: `--host 0.0.0.0` used to `os.environ.setdefault(REQUIVO_WEB_ALLOWED_HOSTS, "0.0.0.0")` --
-    the literal string `"0.0.0.0"`, which no browser's `Host` header is ever going to equal, since a
-    browser addresses the server by the reachable interface it actually connected to. So the flag
-    appeared to bind wide and then 403'd every LAN request with no clue why. A wildcard bind address
-    is meaningless as a `Host` value and must not be auto-allowlisted; the warning has to say what to
-    do instead, by name, with a copy-pasteable example.
-
-    Driven straight at `_cmd_web` (the same seam `test_the_missing_web_extra_keeps_its_published_error_code`
-    uses) rather than through a real server: `uvicorn` is stubbed out so the function raises before it
-    would ever bind a port, and the host-handling logic under test runs entirely before that import.
-    """
-    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
-    monkeypatch.setitem(sys.modules, "uvicorn", None)
-    args = argparse.Namespace(host="0.0.0.0", port=8000, no_open=True, reload=False)
-
-    with pytest.raises(RequivoError):
-        _cmd_web(args, None)
-
-    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ, (
-        "the literal wildcard address must not be allowlisted -- no Host header will ever equal it")
-    warning = capsys.readouterr().err
-    assert "REQUIVO_WEB_ALLOWED_HOSTS" in warning, "the warning has to name the env var, not just hint at it"
-    assert "0.0.0.0" in warning              # the copy-pasteable example names the flag that was passed
-
-    # must-fire control, same fixture: a real (non-wildcard) LAN address IS a legitimate Host value, so
-    # it keeps being auto-allowlisted exactly as before -- this is not a tightening of that path.
-    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
-    args_lan = argparse.Namespace(host="192.168.1.50", port=8000, no_open=True, reload=False)
-    with pytest.raises(RequivoError):
-        _cmd_web(args_lan, None)
-    assert os.environ["REQUIVO_WEB_ALLOWED_HOSTS"] == "192.168.1.50"
-    capsys.readouterr()  # drain this leg's own warning before the next assertion reads stderr
-
-    # and the loopback default is untouched: no warning, no env var written.
-    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
-    args_default = argparse.Namespace(host="127.0.0.1", port=8000, no_open=True, reload=False)
-    with pytest.raises(RequivoError):
-        _cmd_web(args_default, None)
-    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ
-    assert capsys.readouterr().err == ""
-
-
-@pytest.mark.parametrize("spelling", ["::0", "0000:0000:0000:0000:0000:0000:0000:0000", "0:0:0:0:0:0:0:0"])
-def test_an_equivalent_spelling_of_the_wildcard_address_is_caught_too(monkeypatch, capsys, spelling):
-    """A string-literal check for `"::"` alone recognises exactly one spelling of the IPv6 unspecified
-    address and none of its equivalents -- `::0`, the fully-expanded all-zeros form, and every other
-    way to write "every interface" in IPv6 all mean the identical bind address (`ipaddress.ip_address`
-    agrees they are all `is_unspecified`), and a socket layer binds them identically. `--host ::0`
-    would otherwise fall into the "real address" branch, get auto-allowlisted verbatim, and reproduce
-    #217's exact symptom -- every LAN request 403ing with no diagnostic pointing at the cause -- under
-    a spelling the literal-string guard simply does not recognise (flagged by this diff's own review,
-    #217's audit)."""
-    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
-    monkeypatch.setitem(sys.modules, "uvicorn", None)
-    args = argparse.Namespace(host=spelling, port=8000, no_open=True, reload=False)
-
-    with pytest.raises(RequivoError):
-        _cmd_web(args, None)
-
-    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ, (
-        f"{spelling!r} is the same address as '::' and must not be allowlisted verbatim either")
-    warning = capsys.readouterr().err
-    assert "REQUIVO_WEB_ALLOWED_HOSTS" in warning
-
-
-def test_the_missing_web_extra_keeps_its_published_error_code(monkeypatch):
-    """A missing `[web]` extra reports `provider_unavailable`, and that is a decision, not an oversight
-    (#135).
-
-    The type reads oddly at the call site: `EngineError` is the *provider transport* error, and an
-    optional dependency has nothing to do with a provider. It stays anyway, because the code travels
-    in the `--json` envelope and `docs/compatibility.md` promises that moving a condition from one
-    code to another is a breaking change — from 1.0.0 that costs a major version, so this is a
-    decision about a published payload rather than a rename.
-
-    And the vocabulary already answers this question the same way one layer down: `new_client()`
-    raises the same code for a missing `[anthropic]` extra. `provider_unavailable` is what this
-    product says when an optional install is absent, so `_cmd_web` is consistent with its sibling
-    rather than an outlier — which is the half that makes the comment at the call site an argument
-    instead of an excuse.
-
-    This test is what makes that decision checkable: swap the type for a new core error and it goes
-    red under the name of the promise being broken.
-    """
-    # `None` in sys.modules is what makes `import uvicorn` raise without uninstalling anything —
-    # the extra really is installed in the dev environment this runs in.
-    monkeypatch.setitem(sys.modules, "uvicorn", None)
-    args = argparse.Namespace(host="127.0.0.1", port=8000, no_open=True, reload=False)
-
-    with pytest.raises(RequivoError) as e:
-        _cmd_web(args, None)
-
-    assert e.value.code == "provider_unavailable"
-    assert "requivo[web]" in str(e.value), "the remedy is the message's whole job"
-    assert e.value.to_dict()["code"] == "provider_unavailable", "the envelope is what a caller reads"
