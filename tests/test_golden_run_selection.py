@@ -140,14 +140,10 @@ def test_main_resolves_the_model_once_and_threads_it_to_every_capture(tmp_path, 
 # ── the announced cost is derived from the set, never written down as a total (#290) ───────────
 
 def test_the_announced_call_count_moves_with_the_request_set():
-    """must fire on the class #290 reports: a *total* written into prose ("a full six-request cycle
-    is 18") is right the day it is written and silently wrong the day an eighth request lands in
-    `requests.md`, with nothing going red in between. The fix is that no site states a total --
-    `planned_calls` derives it from the requests actually selected and `main` prints that number
-    before spending anything.
-
-    A constant satisfies the first assertion and fails the second, which is the whole test.
-    """
+    """must fire on the class #290 reports: a total written into prose is right the day it's
+    written and silently wrong once an eighth request lands, with nothing going red. The fix:
+    `planned_calls` derives the total from what was actually selected rather than a stated number.
+    A constant would satisfy the first assertion and fail the second -- that's the whole test."""
     six = [_req(f"single-{i}") for i in range(6)]
     assert planned_calls(six, with_brief=False) == 6 * golden_run.K
     assert planned_calls(six + [_req("single-6")], with_brief=False) == 7 * golden_run.K

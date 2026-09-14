@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from _cli_harness import _full_model, _run
 
 from requivo.core import persistence as store
@@ -33,13 +32,6 @@ from requivo.core.contracts import EngineOutput
 from requivo.render.terminal import next_command
 
 _SLUG = "leave-approval"
-
-
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
 
 
 def _payload(*, questions=0, ready=True, artifacts=None) -> dict:

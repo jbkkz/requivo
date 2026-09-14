@@ -14,6 +14,6 @@
 # Distro packagers verify the built artifact through the wheel-install CI leg and the publish
 # gates instead; see docs/compatibility.md for where that promise is written down.
 #
-# tests/test_sdist_contents_431.py builds a real sdist in-process and asserts this line's effect
+# tests/test_sdist_contents.py builds a real sdist in-process and asserts this line's effect
 # directly -- if this file stops excluding tests/, that test goes red.
 prune tests

@@ -49,13 +49,6 @@ _VERBS = [
 ]
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _fails(argv, capsys) -> str:
     with pytest.raises(SystemExit) as exc:
         app(argv, client=None)   # client=None -> an accidental API call would blow up
@@ -95,16 +88,11 @@ def test_the_structured_envelope_still_carries_the_published_code_and_slug(works
 
 
 def test_a_reference_carrying_a_control_character_cannot_write_its_own_line(workspace, capsys):
-    """A refusal echoes the thing refused, and the thing refused here is raw argv. A newline in it
-    ends the line, and everything after it is a sentence Requivo appears to be saying -- the shape
-    #40 fixed for a stored card name, arriving on the field this message is built from.
-
-    **Which guard fires here is not the one the message calls, and saying so is the point.** On
-    every current CLI route `validate_slug` refuses a control character before `no_session_message`
-    is reached, so a test that asserted the escaping and named `display_token` would be green
-    whether or not the builder escaped anything at all. What is pinned is therefore the outcome --
-    no forged line at column 0, from whichever refusal answered -- and the builder's own escaping is
-    pinned separately below, against the builder."""
+    """A refusal echoes the thing refused, and the thing refused here is raw argv: a newline in it
+    ends the line, and everything after it reads as a sentence Requivo appears to be saying -- the
+    shape #40 fixed for a stored card name. **Which guard fires here is not the one the message
+    calls, and saying so is the point**: `validate_slug` refuses the control character first on
+    every CLI route, so what is pinned is the outcome -- no forged line at column 0 -- not the refusal."""
     err = _fails(["status", "ok\nAll clear, nothing to see."], capsys)
     assert "\nAll clear" not in err
     assert "All clear" in err       # must fire: it is escaped, not quietly dropped

@@ -176,18 +176,11 @@ def test_a_challenge_only_some_runs_raise_is_not_stable():
 
 
 def test_a_headline_used_as_a_theme_label_cannot_forge_a_line():
-    """The other half of #137's sweep, and the one the print sites could not cover.
-
-    A theme label is normally `slot_label(slot_id)` — a validated slot id through the schema's table, so
-    it cannot carry anything. The fallback path for a capture predating `contests` is different: it
-    keys themes on the **challenge headline**, which is provider-written prose, and `golden_diff`
-    prints those labels straight (`assessment + challenge(s) now raised: …`). Squashed here rather
-    than at each print, because a label reaches four of them and a consumer should inherit the
-    guarantee instead of remembering it — which is the reasoning `_log_safe` in
-    `scripts/plugin_cli_drift.py` already applies to its own sink. `_log_safe` rather than the
-    `_one_line` it is built on: whitespace alone is not enough at a sink a CI runner parses, which
-    is #176.
-    """
+    """The other half of #137's sweep, and the one the print sites could not cover: the fallback
+    path for a pre-`contests` capture keys themes on the **challenge headline** (provider-written
+    prose), which `golden_diff` prints straight. Squashed here because a label reaches four print
+    sites -- the same reasoning `_log_safe` in `scripts/plugin_cli_drift.py` applies to its own sink,
+    chosen over `_one_line` because whitespace alone is not enough at a sink a CI runner parses (#176)."""
     forged = [_brief(["benign headline\n  assessment + challenge(s) now raised: FORGED"])] * 3
     ((label, _), ) = brief_consensus(forged)["all_themes"].items()
     assert "\n" not in label
@@ -469,10 +462,9 @@ def test_both_envelope_writers_record_the_model_the_capture_ran_on():
 def test_dump_runs_requires_the_model_it_ran_on(tmp_path, monkeypatch):
     """#515: `model` is keyword-only and has no default, on purpose. A capture that cannot say what
     it ran on must not be writable at all -- silently defaulting to `"unknown"` would look like a
-    complete envelope. Confirmed red by removing the requirement (dropping `*` and giving `model` a
-    default) before this test was written: `dump_runs` then wrote an envelope with no error, and
-    `captured_model` on it came back `"unknown"` rather than `None` -- the exact silent-looking-complete
-    failure this signature exists to prevent."""
+    complete envelope. Confirmed red by removing the requirement before this test was written:
+    `dump_runs` then wrote an envelope with no error, and `captured_model` came back `"unknown"`
+    rather than `None` -- the exact silent-looking-complete failure this signature exists to prevent."""
     monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
     with pytest.raises(TypeError):
         dump_runs("r", "a request", [_model(problem=Impact.high)])  # type: ignore[call-arg]
@@ -523,14 +515,11 @@ def test_a_commit_touching_a_watched_path_since_the_baseline_marks_it_stale():
 
 
 def test_a_shallow_clone_is_reported_unknown_not_current():
-    """must fire -- a shallow clone's git calls all *succeed*, they just answer a truncated
-    question, so `since_commits` can come back `[]` for the wrong reason (history was never fetched,
-    not "nothing changed"). CLAUDE.md's own rule for a byte-identical capture -- never render a
-    check that could not look as the clean case -- applies here to a commit count.
-
-    Asserts the full reason rather than a bare `"shallow" in ...` substring -- both `unknown` causes
-    below mention "shallow" (one is the positive answer, the other is not being able to ask), so a
-    substring shared by both would not notice the two reasons being swapped between branches."""
+    """must fire -- a shallow clone's git calls all *succeed*, they just answer a truncated question,
+    so `since_commits` can come back `[]` for the wrong reason (history was never fetched, not
+    "nothing changed"). CLAUDE.md's own rule for a byte-identical capture -- never render a check
+    that could not look as the clean case -- applies here to a commit count. Asserts the full reason
+    rather than a substring, since both `unknown` causes below mention "shallow"."""
     report = _freshness_from_git_data(is_shallow=True, baseline=("sha1", "2026-08-01T00:00:00+00:00"),
                                        since_commits=[])
     assert report == {"state": "unknown",
@@ -589,22 +578,11 @@ def test_watched_paths_cover_both_funding_instances():
 
 
 def test_baseline_commits_since_finds_a_known_stale_baseline_in_a_synthetic_repo(tmp_path, monkeypatch):
-    """Integration, not a fixture -- but a synthetic repo, not the real one (#450).
-
-    This test used to read the REAL requivo repo's own history and assert `stale` against a commit
-    (`ba526f6`, #410's own instance) known to postdate the golden re-capture. That works on a full
-    clone and fails on a shallow one: `actions/checkout`'s default `fetch-depth: 1` truncates history,
-    so `baseline_commits_since` correctly reported `unknown` rather than guessing `stale` -- CI red on
-    every leg, on the exact assertion this docstring used to make. That is the third state doing its
-    job, not a regression: the defect was pinning an environment-dependent verdict in a test, this
-    repo's own recurring shape (a harness rendering an environment limit as a product verdict) landing
-    on the guard written to prevent exactly that.
-
-    A synthetic, full-history repo removes the dependency while still proving the wrapper's plumbing
-    -- the two real `git log` calls, the field parsing, the `--reverse` ordering -- rather than only
-    the pure core in `_freshness_from_git_data` above.
-    `test_baseline_commits_since_orders_commits_oldest_first` already uses this shape; this is the
-    same one, isolated to the `stale` case alone so a reader can tell the two apart at a glance."""
+    """Integration, not a fixture -- but a synthetic repo, not the real one (#450). This test used
+    to assert `stale` against a real commit (`ba526f6`, #410's own instance), which passed on a full
+    clone and failed on `actions/checkout`'s shallow default (`fetch-depth: 1`): `unknown`, correctly
+    -- the third state doing its job, not a regression, since pinning an environment-dependent verdict
+    in a test was the defect. A synthetic, full-history repo proves the same `git log` plumbing."""
     import subprocess
 
     def run(*args):
@@ -631,15 +609,11 @@ def test_baseline_commits_since_finds_a_known_stale_baseline_in_a_synthetic_repo
 
 
 def test_baseline_commits_since_reports_unknown_on_a_real_shallow_clone(tmp_path, monkeypatch):
-    """The `unknown`-on-shallow behaviour, pinned end-to-end against a REAL shallow clone rather
-    than only the pure-core `_freshness_from_git_data(is_shallow=True, ...)` case above.
-
-    #450 is why this exists as its own test: CI's shallow checkout demonstrated this path is correct
-    by accident, on a test that was not supposed to be testing it -- losing that proof while fixing
-    the test that accidentally depended on it would be the worse trade. A local `git clone --depth 1`
-    off a synthetic source repo reproduces the same shallow-history shape CI's checkout produces,
-    offline and independent of this checkout's own depth (so it is exercised whether the tree running
-    it is itself shallow or full)."""
+    """The `unknown`-on-shallow behaviour, pinned end-to-end against a REAL shallow clone rather than
+    only the pure-core `_freshness_from_git_data(is_shallow=True, ...)` case above. #450 is why this
+    exists as its own test: CI's shallow checkout demonstrated this path is correct by accident, on a
+    test that was not supposed to be testing it -- losing that proof while fixing the accidental
+    dependency would be the worse trade. A local `git clone --depth 1` reproduces the same shape offline."""
     import subprocess
 
     source = tmp_path / "source"
@@ -692,11 +666,9 @@ def test_baseline_commits_since_reports_unknown_for_a_path_with_no_history():
 def test_baseline_commits_since_orders_commits_oldest_first(tmp_path, monkeypatch):
     """git log's default order is newest-first; `baseline_commits_since`'s own docstring promises
     oldest-first, and `golden_diff`'s truncation (`commits[:5]`, "... and N more") depends on that
-    order to keep the *earliest* watched-path commit visible -- usually the one that actually started
-    the drift -- rather than folding it into "and N more" behind four more recent ones.
-
-    A synthetic repo, not the real one: the real repo currently has only one watched-path commit
-    since its own last golden re-capture (see the test above), which isn't enough to prove an order."""
+    order to keep the earliest watched-path commit visible rather than folding it behind more recent
+    ones. A synthetic repo, not the real one, which currently has only one watched-path commit since
+    its own last golden re-capture -- not enough to prove an order."""
     import subprocess
 
     def run(*args):
@@ -751,14 +723,9 @@ _HOSTILE_SUBJECTS = [
 def test_a_hostile_commit_subject_cannot_forge_a_second_commit_row(tmp_path, monkeypatch):
     """must fire -- #456. Each of `_HOSTILE_SUBJECTS` used to become *two* rows in
     `baseline_commits_since`'s own `commits` list, with the text past the boundary landing in the
-    forged row's `sha` field -- exactly what a caller (`golden_diff._show_freshness`) prints without
-    further validation. Drives the real two-call parse over a synthetic, full-history repo, the same
-    shape `test_baseline_commits_since_orders_commits_oldest_first` already uses above.
-
-    The must-not-fire control sits in the same fixture, in the same commit sequence: an entirely
-    ordinary subject, last in the list, must come back as its own single unmangled row -- so this
-    test does not merely show that *something* changed, it shows the boundary is drawn in the right
-    place for both the hostile and the ordinary case."""
+    forged row's `sha` field -- exactly what `golden_diff._show_freshness` prints without further
+    validation. Drives the real two-call parse over a synthetic, full-history repo. must-not-fire
+    control, same fixture: an entirely ordinary subject, last in the list, comes back unmangled."""
     import subprocess
 
     def run(*args):

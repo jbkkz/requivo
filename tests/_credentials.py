@@ -2,11 +2,12 @@
 that are *about* credential discovery.
 
 Not a test module and not a `conftest.py` — the `_fakes.py`/`_cli_harness.py` precedent, applied to
-a third shared concern. This used to live inside `tests/test_provider.py` alone, which made it
+a third shared concern. This used to live inside `tests/test_provider.py` alone (now split into subject files by
+#555), which made it
 invisible to the rest of the suite; #419 is what that cost: with no suite-wide net, one journey
 test reached the default provider path on a keyed machine and made a real paid Anthropic call.
-`tests/conftest.py` now applies the environment half to every test; `test_provider.py` and
-`test_cli_doctor.py` keep importing the same helpers for the tests that exercise the discovery
+`tests/conftest.py` now applies the environment half to every test; `test_provider_credentials.py`
+and `test_cli_doctor.py` keep importing the same helpers for the tests that exercise the discovery
 chain itself.
 """
 

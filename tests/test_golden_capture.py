@@ -170,23 +170,22 @@ def test_every_run_starts_the_sheet_over(capture):
 # two cases are what stop that regressing silently, since nothing else in this file's suite reads
 # `capture_interactive`'s own stdout.
 
-def test_a_shallow_capture_prints_which_sheet_layers_it_never_reached(capture):
-    """must fire. The engine stops asking about `problem` after turn 1, so the run converges at
-    depth 2 with two of the sheet's three `problem` layers still unused -- the live print has to
-    name that right where the 15 API calls were just spent, not only on a later `golden_diff.py`
-    run against a committed baseline."""
-    _, _, output = capture([_model("problem"), _model()],
-                           {"problem": ["first", "second", "third"]})
-    assert "sheet layers never reached" in output, output
-    assert "Real problem (2)" in output, output
-
-
-def test_a_deep_capture_does_not_report_leftover_sheet_layers(capture):
-    """must not fire, the control for the case above. The engine keeps asking about `problem`
-    every turn, so the run reaches the loop's own five-turn cap -- `deep_enough` -- with six of the
-    sheet's ten `problem` layers still unused. Those leftovers are by design: the sheet is
-    deliberately authored deeper than five turns so a run does not go dry before the cap, and
-    reporting them here would be noise on every healthy capture."""
-    replies = [_model("problem")] * 5
-    _, _, output = capture(replies, {"problem": [f"l{i}" for i in range(1, 11)]}, turns=5)
-    assert "sheet layers never reached" not in output, output
+@pytest.mark.parametrize(
+    "replies, answers, must_report",
+    [
+        pytest.param([_model("problem"), _model()], {"problem": ["first", "second", "third"]}, True,
+                     id="#163-shallow-must-fire"),
+        pytest.param([_model("problem")] * 5, {"problem": [f"l{i}" for i in range(1, 11)]}, False,
+                     id="#163-deep-must-not-fire"),
+    ],
+)
+def test_capture_reports_unreached_sheet_layers_only_when_shallow(capture, replies, answers,
+                                                                   must_report):
+    """#163: a run that converges early must name the sheet layers it never reached -- the live
+    print has to say so right where the API calls were just spent. A run that used the loop's own
+    five-turn cap must not: the sheet is deliberately authored deeper than the cap, so leftover
+    layers there are by design and reporting them would be noise on every healthy capture."""
+    _, _, output = capture(replies, answers)
+    assert ("sheet layers never reached" in output) is must_report, output
+    if must_report:
+        assert "Real problem (2)" in output, output

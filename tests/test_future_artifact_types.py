@@ -32,13 +32,6 @@ from requivo.core import persistence as store
 from requivo.core.integrity import SEVERITY_NOTE, check_session, inspect_session
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _session(slug: str, monkeypatch) -> None:
     """A healthy session at revision 1 with one real artifact on disk."""
     _run(["session", "init", "Something.", "--slug", slug, "--json"])

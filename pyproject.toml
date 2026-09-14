@@ -138,7 +138,7 @@ testing = ["pytest>=8.0"]
 # floor, and PR #453's CI run put a real number on what that costs -- `setuptools==64.0.0` under
 # Python 3.12 crashes `import pkg_resources` itself (`AttributeError: module 'pkgutil' has no
 # attribute 'ImpImporter'`, from `pkg_resources/__init__.py`'s own `register_finder` call), before
-# `tests/test_sdist_contents_431.py`'s or `tests/test_repository_conformance_424.py`'s own assertions
+# `tests/test_sdist_contents.py`'s or `tests/test_repository_conformance_424.py`'s own assertions
 # ever run -- not a defect in what those tests check, but the declared floor being unable to build
 # *anything* on the newer end of this project's own supported Python range (3.12 is a declared
 # classifier). Bisected directly against Python 3.12.13/3.12.14 rather than guessed: 64.0.0 through
@@ -159,7 +159,7 @@ testing = ["pytest>=8.0"]
 # it was never published. The history above is kept because it is still what decides the floor for
 # anyone who reverts the licence form; it is no longer what decides it today.
 #
-# dev-only: `tests/test_sdist_contents_431.py` and `tests/test_repository_conformance_424.py` call
+# dev-only: `tests/test_sdist_contents.py` and `tests/test_repository_conformance_424.py` call
 # `setuptools.build_meta.build_sdist()`/`build_wheel()` in-process to prove what `MANIFEST.in` and
 # the package-data config actually ship; nothing at runtime imports setuptools. Both tests also
 # degrade to a named skip (`_setuptools_build_backend_reason` in the sdist test file, reused by the
@@ -357,7 +357,7 @@ requivo = "requivo.cli:app"
 # helpers, conftest.py, tests/web/, scripts/ or fixtures/ those tests need to even collect — verified
 # against the actual PyPI 3.0.0 artifact). The wheel-install CI job and the publish gates are what
 # verify a built artifact; a distro packager runs the wheel, not a re-assembled copy of this suite.
-# See docs/compatibility.md and tests/test_sdist_contents_431.py.
+# See docs/compatibility.md and tests/test_sdist_contents.py.
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["requivo*"]
@@ -372,7 +372,7 @@ include = ["requivo*"]
 # 500 on a missing static file. The wheel-install CI job guards all three.
 # `py.typed` is the PEP 561 marker (#423): an empty file whose presence, not content, tells a type
 # checker that requivo ships its own inline types rather than needing a stub package. Nothing reads
-# it at import time -- `tests/test_public_seam_423.py` is what would go red if it stopped shipping.
+# it at import time -- `tests/test_public_import_seam.py` is what would go red if it stopped shipping.
 requivo = ["assets/**/*", "web/templates/**/*", "web/static/**/*", "api/static/**/*", "py.typed"]
 
 [tool.ruff]

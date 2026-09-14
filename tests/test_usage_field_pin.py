@@ -63,12 +63,11 @@ def _usage_field_names_completion_reads() -> tuple[str, ...]:
 
 
 def test_the_extractor_still_finds_getattr_u_calls_in_completion_py():
-    """A sanity control on the extractor itself, not on the SDK. If `completion.py` is refactored
-    away from `getattr(u, "name", 0)` -- a different accessor, a helper function, a loop over a
-    tuple of names -- the AST walk above would quietly find nothing and the test below would pass
-    vacuously (an empty `missing` list is still `not missing`), which is the exact silent-absence
-    shape this file exists to avoid. This is the third-state check for the extractor itself, so a
-    change to the read site's *shape* is loud even before it changes any *name*.
+    """A sanity control on the extractor itself, not on the SDK: if the AST walk's shape
+    assumption breaks -- a different accessor, a helper, a loop over a tuple -- it would quietly
+    find nothing and the test below would pass vacuously, the exact silent-absence shape this
+    file exists to avoid. This is the third-state check for the extractor itself, so a shape
+    change is loud before a name change ever needs to be.
     """
     names = _usage_field_names_completion_reads()
     assert names, (
@@ -81,10 +80,9 @@ def test_the_extractor_still_finds_getattr_u_calls_in_completion_py():
 def test_the_sdk_usage_object_still_has_every_field_completion_py_reads():
     """Red the moment a name `completion.py` actually reads is missing from the installed SDK.
 
-    `getattr(u, name, 0) or 0` never raises on a missing attribute -- that is the whole point of
-    reading it that way -- so a rename upstream would otherwise surface as nothing at all: not an
-    exception, not a warning, just every token count for that field silently pinned to 0. This
-    assertion is what turns that silence into a failing test instead.
+    `getattr(u, name, 0) or 0` never raises on a missing attribute, so a rename upstream would
+    otherwise surface as nothing at all -- not an exception, just every token count for that
+    field silently pinned to 0. This assertion turns that silence into a failing test instead.
     """
     names = _usage_field_names_completion_reads()
     present = set(Usage.model_fields)

@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 
@@ -96,39 +98,39 @@ def test_the_pip_block_sets_one_prefix_and_no_development_split():
     assert offence is None, offence
 
 
-def test_the_guard_fires_on_a_reintroduced_development_split():
-    """The must-fire half -- without this, the assertion above could pass on a guard that flags
-    nothing at all."""
-    offender = (
+# The three cases a guard over `_prefix_offence` has to get right, merged from three
+# near-identical functions (#555): two must-fire halves (a reintroduced `prefix-development`,
+# and no `commit-message` block at all -- dependabot's own unmodified default) and the positive
+# control -- a detector flagging every input, including a correct one, would satisfy both
+# must-fire cases and say nothing true about the real file.
+@pytest.mark.parametrize("block, flagged, why", [
+    (
         "  - package-ecosystem: pip\n"
         "    commit-message:\n"
         "      prefix: \"chore(deps)\"\n"
         "      prefix-development: \"chore(deps-dev)\"\n"
-        "    groups:\n"
-    )
-    assert _prefix_offence(offender) is not None, (
-        "a pip block that sets prefix-development alongside prefix must be caught"
-    )
-
-
-def test_the_guard_fires_when_no_commit_message_block_exists_at_all():
-    offender = "  - package-ecosystem: pip\n    groups:\n"
-    assert _prefix_offence(offender) is not None, (
+        "    groups:\n",
+        True,
+        "a pip block that sets prefix-development alongside prefix must be caught",
+    ),
+    (
+        "  - package-ecosystem: pip\n    groups:\n",
+        True,
         "a pip block with no commit-message key at all must be caught -- that is dependabot's "
-        "default split, unmodified"
-    )
-
-
-def test_a_clean_single_prefix_block_is_not_flagged():
-    """The positive control: a guard flagging every input, including a correct one, would satisfy
-    the two must-fire tests above and say nothing true about the real file."""
-    clean = (
+        "default split, unmodified",
+    ),
+    (
         "  - package-ecosystem: pip\n"
         "    commit-message:\n"
         "      prefix: \"chore(deps)\"\n"
-        "    groups:\n"
-    )
-    assert _prefix_offence(clean) is None
+        "    groups:\n",
+        False,
+        "a clean single-prefix block must not be flagged",
+    ),
+], ids=["#347-reintroduced-split", "#347-no-commit-message-block", "#347-clean-block"])
+def test_the_guard_classifies_a_pip_block_correctly(block, flagged, why):
+    offence = _prefix_offence(block)
+    assert (offence is not None) == flagged, why
 
 
 def test_the_github_actions_block_is_untouched():

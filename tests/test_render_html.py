@@ -64,13 +64,9 @@ def test_inline_emphasis_becomes_emphasis():
 
 def test_a_marker_inside_a_code_span_is_shown_rather_than_obeyed():
     """A backtick span is the one place these markers are meant to be seen, so the passes must not run
-    over each other's output.
-
-    Three separate substitutions did: the code pass wrapped the span, and the bold pass then marked up
-    what was inside it, so the reader was shown emphasis where the author had written the characters.
-    One left-to-right pass over an alternation consumes each match whole, which is what makes
-    "code first" mean anything.
-    """
+    over each other's output: an earlier version let the code pass wrap the span and the bold pass
+    then mark up what was inside it, showing emphasis where the author had written characters. One
+    left-to-right pass over an alternation consumes each match whole."""
     html = markdown_to_html(md("Write `**not bold**` and `_not italic_` literally."))
     assert "<code>**not bold**</code>" in html
     assert "<code>_not italic_</code>" in html
@@ -94,14 +90,10 @@ def test_bullets_nest_one_level():
 
 
 def test_a_line_break_inside_a_paragraph_is_kept():
-    """These documents never wrap, so consecutive lines are consecutive facts.
-
-    A general Markdown renderer folds a soft break into a space, and that is right for prose flowed
-    across a column. `render/markdown.py` emits one source line per value, so folding turned the
-    decision brief's opening block — objective, problem, solution, complexity, cost driver — into one
-    run-on paragraph, on the most-read part of the primary deliverable, where the code block this
-    replaced had shown five lines.
-    """
+    """These documents never wrap, so consecutive lines are consecutive facts. A general renderer
+    folds a soft break into a space, right for flowed prose -- but `render/markdown.py` emits one
+    source line per value, so folding turned the decision brief's opening block into one run-on
+    paragraph, on the most-read part of the primary deliverable."""
     html = markdown_to_html(md("**Objective:** ship it",
                                "**Problem:** it is not shipped",
                                "**Complexity:** medium"))
@@ -143,14 +135,10 @@ def test_an_escaped_pipe_comes_back_as_a_pipe():
 
 
 def test_a_pipe_block_with_no_header_degrades_instead_of_crashing():
-    """The dialect's floor is *escaped text*, never an exception.
-
-    A block of nothing but rule-shaped lines — a lone `|---|---|`, which a hand-edited artifact file
-    can easily carry — used to leave the table renderer with nothing to unpack, and the `ValueError`
-    went straight past every handler `create_app` registers, because it is not a `RequivoError`. The
-    artifact page answered a bare 500: the one outcome worse than the code block this replaced, on a
-    module whose docstring promises it can never be worse.
-    """
+    """The dialect's floor is *escaped text*, never an exception. A lone rule-shaped line like
+    `|---|---|` -- which a hand-edited artifact file can easily carry -- used to leave the table
+    renderer with nothing to unpack, and the `ValueError` went straight past every handler
+    `create_app` registers (it is not a `RequivoError`): a bare 500, worse than the `<pre>` block."""
     html = markdown_to_html(md("Some notes.", "", "|---|---|", "", "More notes."))
 
     assert "<table>" not in html, "a block with no header is not a table"
@@ -162,13 +150,10 @@ def test_a_pipe_block_with_no_header_degrades_instead_of_crashing():
 
 
 def test_a_body_row_that_looks_like_a_rule_is_still_a_row():
-    """A row is dropped only for being in the rule's *position*, never for its contents.
-
-    The separator used to be recognised by pattern anywhere in the block, so a genuine data row whose
-    cells held only dashes — a placeholder, an "n/a" written as `--` — matched it and vanished from
-    the rendered table with nothing raised and nothing said. A requirements table quietly one row
-    short is exactly the silent wrong answer this project is careful about everywhere else.
-    """
+    """A row is dropped only for being in the rule's *position*, never for its contents. The
+    separator used to be recognised by pattern anywhere in the block, so a genuine data row whose
+    cells held only dashes -- a placeholder, an "n/a" written as `--` -- matched it and silently
+    vanished from the rendered table."""
     html = markdown_to_html(md("| ID | Priority |", "|----|----------|",
                                "| R-1 | Must |", "|--|--|", "| R-3 | Should |"))
 
@@ -185,15 +170,10 @@ def _unescape(html: str) -> str:
 
 
 def test_a_checkbox_marker_renders_as_text_and_not_as_an_input():
-    """`render/markdown.py` emits `- [ ] …` and `### [ ] …`, and both stay text on purpose.
-
-    Rendering a real checkbox would mean an `<input>`, which is an element carrying at least two
-    attributes — and "this renderer emits no attribute anywhere" is the property the artifact
-    template's `| safe` leans on and that
-    `test_an_attribute_break_out_cannot_reach_an_attribute` pins. A prettier checkbox is not worth
-    trading that for, so the decision is written down here rather than left for someone to
-    "fix" later.
-    """
+    """`render/markdown.py` emits `- [ ] …` and `### [ ] …`, and both stay text on purpose: a real
+    checkbox would mean an `<input>` carrying at least two attributes, and "this renderer emits no
+    attribute anywhere" is the property `test_an_attribute_break_out_cannot_reach_an_attribute` pins.
+    A prettier checkbox is not worth trading that for."""
     html = markdown_to_html(md("### [ ] SC-1 — Manager approves", "", "- [ ] the request is approved"))
 
     assert "<input" not in html and "=" not in html.split("<h3>")[1], (
@@ -271,16 +251,11 @@ def test_no_inline_style_is_emitted():
 
 
 def test_an_unclosed_fence_does_not_swallow_the_document():
-    """A construct outside the dialect degrades to escaped text — the same thing the `<pre>` block
-    did, and never worse. What it must not do is consume everything after it.
-
-    **No blank line before the heading, and that is the whole test.** The first version of this
-    fixture had one, and a blank line already ends a paragraph on its own — so it passed identically
-    with `_is_block_start` stubbed out to `False`, while citing that function as the thing it pinned.
-    A reference that resolves and guards nothing is the defect CLAUDE.md names at invariant 13, and
-    it was in a test written to demonstrate the opposite. `test_a_paragraph_stops_at_the_heading_that_follows_it`
-    is the same claim on the case the docstring actually describes.
-    """
+    """A construct outside the dialect degrades to escaped text, the same as the `<pre>` block it
+    replaced, and never worse -- it must not consume everything after it. No blank line before the
+    heading, deliberately: a blank line already ends a paragraph on its own, so a fixture with one
+    passed identically with `_is_block_start` stubbed to `False`, guarding nothing (CLAUDE.md's
+    invariant 13)."""
     html = markdown_to_html(md("# Title", "", "```", "some code", "## Still rendered"))
     assert "<h1>Title</h1>" in html
     assert "<h2>Still rendered</h2>" in html, (
@@ -309,15 +284,10 @@ def test_a_paragraph_stops_at_the_heading_that_follows_it():
 
 def test_every_inline_markup_branch_is_a_named_group_with_a_tag():
     """`_inline`'s callback indexes `_INLINE_TAGS` with `match.lastgroup` and never checks it for
-    `None`. That is sound only while every capturing group in `_INLINE_MARKUP` is *named* -- one
-    unnamed alternation branch and a match through it has `lastgroup` `None`, which before #393
-    meant a `KeyError` out of a renderer whose module promises that anything outside the dialect
-    degrades to escaped text and never worse.
-
-    Asserted on the pattern's own counts rather than by rendering samples: a sample suite only
-    covers the branches somebody thought to write, and the failure being guarded against is a
-    branch nobody here knows about yet. `groups` counts every capturing group, `groupindex` only
-    the named ones, so their equality *is* the claim."""
+    `None` -- sound only while every capturing group in `_INLINE_MARKUP` is *named*, since one
+    unnamed branch gives `lastgroup` `None`, which before #393 meant a `KeyError`. Asserted on the
+    pattern's own counts (`groups` vs `groupindex`) rather than by rendering samples, which only
+    cover branches somebody thought to write."""
     assert _INLINE_MARKUP.groups == len(_INLINE_MARKUP.groupindex), (
         "an unnamed capturing group was added to _INLINE_MARKUP: `match.lastgroup` can now be None "
         f"in `_inline`'s callback (groups={_INLINE_MARKUP.groups}, "
@@ -331,16 +301,10 @@ def test_every_inline_markup_branch_is_a_named_group_with_a_tag():
 
 
 def test_every_inline_marker_still_names_the_group_that_matched_it():
-    """The runtime half of the claim above, on the dialect's own three markers plus the awkward
-    combinations. `lastgroup` naming a group is what makes the `_INLINE_TAGS` lookup total.
-
-    **This drives `_inline` itself, not only the pattern**, and that was a review finding on the
-    change that added it: asserting over `_INLINE_MARKUP.finditer` alone never enters the callback
-    where `lastgroup` is actually read, so the test passed identically against the code before
-    #393 and was evidence about the regex rather than about the renderer. The guard on the
-    callback's own narrowing is the pyright leg, which `render/` is inside since #393; this test
-    is what makes the callback *run* on all three branches, so a `lastgroup` that stopped naming a
-    group would surface here as a tag rather than only as a type error."""
+    """The runtime half of the claim above: `lastgroup` naming a group is what makes the
+    `_INLINE_TAGS` lookup total -- a review finding on the change that added it, since asserting over
+    `_INLINE_MARKUP.finditer` alone never enters the callback where `lastgroup` is actually read, so
+    the test passed identically against the code before #393. In scope for the pyright leg since #393."""
     text = "plain `code` and **bold** and _italic_ and `**not bold**` and a_b_c"
     matched = [m.lastgroup for m in _INLINE_MARKUP.finditer(text)]
     assert None not in matched, matched
@@ -361,15 +325,10 @@ def test_every_inline_marker_still_names_the_group_that_matched_it():
 
 def test_a_list_line_that_matches_neither_marker_is_refused_by_name():
     """`_list_items` reads `_ORDERED.match(line).group(1)` with no `None` check, and it is right to:
-    `markdown_to_html` collects a line only when `_BULLET` or `_ORDERED` matched it, so a line that
-    is not a bullet is an ordered item. The invariant belongs to the *caller*, which is why the
-    assert is worth having -- this function cannot see it, and a second caller handing it arbitrary
-    lines used to get `AttributeError: 'NoneType' object has no attribute 'group'`, which names
-    neither the line nor the rule it broke.
-
-    Called directly on purpose. There is no document that reaches this state through
-    `markdown_to_html`, and a test that could only be written by breaking the collector would be
-    pinning the collector instead."""
+    `markdown_to_html` collects a line only when `_BULLET` or `_ORDERED` matched it. The invariant
+    belongs to the *caller*, which is why the assert is worth having -- a second caller handing it
+    arbitrary lines used to get an `AttributeError` naming neither the line nor the rule it broke.
+    Called directly on purpose, since no document reaches this state through `markdown_to_html`."""
     with pytest.raises(AssertionError, match="matched neither marker"):
         _list_items(["not a list item at all"], ordered=True)
 

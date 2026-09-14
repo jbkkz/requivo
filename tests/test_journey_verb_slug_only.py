@@ -29,13 +29,6 @@ from requivo.core.errors import SessionNotFoundError
 from requivo.services.sessions import SessionService
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _fails(argv, capsys) -> str:
     with pytest.raises(SystemExit) as exc:
         # client=None is the default-construction path, not a poison pill (#419); the conftest
@@ -246,12 +239,11 @@ def test_resolve_slug_still_mines_a_real_legacy_session_directory(tmp_path):
 
 
 def test_a_directory_reference_does_not_silently_use_an_unrelated_real_session(workspace, capsys):
-    """The worse half, matching #402's own pattern one branch over. A session named `loose`
-    really exists in the canonical store; the directory the user gave is a genuinely different,
-    unrelated directory that merely shares that final path segment and holds nothing
-    session-shaped. This must never resolve to the real `loose` session -- paired with the
-    must-fire positive control below, which proves `loose` stays reachable by its own slug, so
-    this is not merely a harness that refuses everything."""
+    """The worse half, matching #402's own pattern one branch over: a session named `loose`
+    really exists in the canonical store, and the directory the user gave is a genuinely
+    different, unrelated directory that merely shares that final path segment. This must never
+    resolve to the real `loose` session -- paired with the must-fire positive control below,
+    which proves `loose` stays reachable by its own slug rather than a harness that refuses all."""
     store.create_session("loose", "an unrelated real session")
     ref_dir = workspace / "elsewhere" / "loose"
     ref_dir.mkdir(parents=True)
@@ -314,14 +306,11 @@ def test_an_unreadable_session_directory_refuses_cleanly_instead_of_crashing(
 
 
 def test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too(tmp_path, request):
-    """Found in review of #414 itself. The referenced directory's own contents being unreadable is
-    not the only way this branch's probes can raise: `p.exists()`/`p.is_dir()` on the *entry gate*
-    -- unchanged by this fix, and still outside any `try` -- independently stat `p` itself, which
-    re-raises `PermissionError` when an ANCESTOR of the reference denies traversal, a distinct case
-    from the referenced directory's own contents being blocked (which is all `_unreadable_session_
-    directory` above exercises). A directory that is otherwise perfectly healthy -- it carries its
-    own `session.json` -- must still refuse cleanly rather than crash, purely because something
-    above it on the path could not be traversed."""
+    """Found in review of #414 itself: the referenced directory's own contents being unreadable is
+    not the only way this branch's probes can raise. `p.exists()`/`p.is_dir()` on the *entry gate*
+    independently stat `p` itself, which re-raises `PermissionError` when an ANCESTOR of the
+    reference denies traversal -- distinct from `_unreadable_session_directory`'s own-contents
+    case. A directory that is otherwise healthy must still refuse cleanly, not crash, when its ancestor blocks."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny traversal on Windows. UNTESTED HERE: that the "
                     "directory branch's entry gate (not just its marker probe) converts an "

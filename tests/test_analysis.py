@@ -72,16 +72,10 @@ def test_state_of_maps_confidence():
 
 
 def test_the_four_slot_projections_all_read_from_one_schema_parse(monkeypatch):
-    """#301. `schema_slot_ids`/`_schema_order` (core/contracts.py) and `slot_meta`/
-    `_default_impacts` (core/analysis.py) used to each open and `json.loads` `model_schema.json`
-    independently -- one file, parsed four times on a cold cache. All four now project from
-    `schema_slots()`, the one cached parse both modules share.
-
-    Every cache below `schema_slots()` is cleared explicitly, not assumed cold -- a cache another
-    test left warm would let this pass having read nothing, which is the same silent-pass shape a
-    positive control exists to catch elsewhere in this suite. Spies on `contracts.json.loads`, the
-    one remaining call site that ever touches the file, so what is measured is the parse itself
-    rather than a proxy for it.
+    """#301. `schema_slot_ids`/`_schema_order` and `slot_meta`/`_default_impacts` used to each parse
+    `model_schema.json` independently; all four now project from `schema_slots()`, the one cached
+    parse they share. Caches are cleared explicitly (not assumed cold) and `contracts.json.loads`
+    is spied on, so what is measured is the parse count itself, not a proxy for it.
     """
     from requivo.core import analysis, contracts
 

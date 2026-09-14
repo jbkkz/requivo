@@ -171,11 +171,9 @@ def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
 
 def test_the_assessment_lens_runs_when_the_slot_consensus_held_still(diff):
     """The finding. Slots flat, challenges moved: the run must report the challenge and must not
-    report itself as flat.
-
-    Asserting the *verdict* is not enough on its own and asserting the exit code is worth nothing at
-    all -- `golden_diff` exited 0 throughout the defect. What settles it is that the assessment line
-    is present, because that is the lens having actually looked."""
+    report itself as flat. Asserting the verdict or exit code alone is not enough -- `golden_diff`
+    exited 0 throughout the defect -- what settles it is that the assessment line is present, proof
+    the lens actually looked."""
     old = _capture(completeness=80, briefs=_briefs(["problem", "workflow"]))
     new = _capture(completeness=70, briefs=_briefs(["workflow"]))
 
@@ -220,15 +218,11 @@ def test_an_assessment_nobody_captured_is_named_as_a_lens_that_did_not_look(diff
 
 
 def test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal(diff):
-    """HEAD has an assessment and this capture does not.
-
-    Marked `!` because committing this capture would drop a lens the baseline had — and graded as
-    *nothing measured*, not as a finding. This was `strong` when the change was first written, on the
-    analogy of `_show_turns`' matching state, and the analogy fails: interactivity is declared in
-    `requests.md` and reproduced on every capture, while `--brief` is a per-invocation flag no
-    capture remembers. Every single-pass baseline in `fixtures/golden/` carries one, so grading this
-    strong turned the documented no-`--brief` workflow into six strong signals over a run where
-    nothing moved. The assertion that matters is the second one."""
+    """HEAD has an assessment and this capture does not. Marked `!` because committing this capture
+    would drop a lens the baseline had -- graded as *nothing measured*, not a finding. Grading it
+    `strong` (by analogy with `_show_turns`) fails because `--brief` is a per-invocation flag no
+    capture remembers, unlike interactivity, which is declared in `requests.md`. The assertion that
+    matters is the second one."""
     verdict, lines = diff(_capture(completeness=80, briefs=_briefs(["problem"])),
                           _capture(completeness=70))
 
@@ -385,13 +379,10 @@ def test_a_strict_console_kills_a_harness_script_that_does_not_configure_its_str
 @pytest.mark.parametrize("runner", ["golden_diff_run", "golden_run_run"])
 def test_a_harness_script_survives_a_console_that_cannot_encode_its_output(
         runner, request, ascii_console):
-    """must not fire, and the escape is the evidence it ran rather than fell silent.
-
-    The handler is asserted directly rather than by hunting for a `?` in the bytes. `backslashreplace`
-    over `replace` is the decision that matters — a reader cannot tell a substituted character from
-    one that was never there — but scanning the output for `?` would couple this test to the claim
-    that no line of the harness ever legitimately prints a question mark, which is true today and is
-    not something this test is entitled to assume."""
+    """must not fire, and the escape is the evidence it ran rather than fell silent. The handler is
+    asserted directly rather than by hunting for a `?` in the bytes: `backslashreplace` over `replace`
+    is the decision that matters, since a reader cannot tell a substituted character from one that was
+    never there, and scanning for `?` would assume no line of the harness ever legitimately prints one."""
     raw = ascii_console()
     assert request.getfixturevalue(runner)() == 0
     sys.stdout.flush()
@@ -457,16 +448,10 @@ def test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current(dif
 
 def test_a_hostile_freshness_reason_cannot_forge_a_line(diff):
     """must fire -- #461. `reason` is the only one of `_show_freshness`'s three printed fields that
-    carries text from outside the process (git's stderr, or `str(exc)`) rather than a fixed git
-    format like `%cI`/`%H` -- #456 wrapped `date` and `sha` in `display_token` on exactly that
-    argument, for the ``stale`` branch's commit rows, and left this ``unknown`` branch's `reason`
-    raw. A `\r` in it moves the cursor back to column 0 and prints past the "could not tell ("
-    prefix, forging what reads as an unrelated second line -- the same shape #456 already fixed one
-    print site over, for a commit subject.
-
-    The must-not-fire control lives beside it, in
-    `test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current` above: an ordinary
-    reason with no control character renders unchanged."""
+    carries text from outside the process (git's stderr, or `str(exc)`) rather than a fixed git format
+    -- #456 wrapped `date`/`sha` in `display_token` for the stale branch's rows and left this unknown
+    branch's `reason` raw, so a carriage return in it forges an unrelated second line, the same shape
+    #456 already fixed once for a commit subject. must-not-fire control: the sibling test above."""
     hostile = {"state": "unknown",
                "reason": "git log failed: fatal: bad object\rFORGED continuation"}
     verdict, lines = diff(_capture(completeness=80), _capture(completeness=70), freshness=hostile)

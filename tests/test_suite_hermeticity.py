@@ -109,7 +109,7 @@ def test_the_incomplete_model_test_leaves_the_callers_workspace_untouched(tmp_pa
     Run the actual test from a disposable cwd, not the developer's checkout: the un-fixed test
     passes its own assertions while leaving a fake debug dump. This assertion must fail on that
     version even if the session guard is also absent."""
-    target = _REPO_ROOT / "tests" / "test_provider.py"
+    target = _REPO_ROOT / "tests" / "test_provider_characterization.py"
     proc = _workspace_pytest(tmp_path, f"{target}::test_run_rejects_a_model_missing_required_slots")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert not (tmp_path / ".requivo").exists(), (

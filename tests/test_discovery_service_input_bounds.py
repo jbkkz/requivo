@@ -22,8 +22,8 @@ from requivo.services.sessions import SessionService
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+def _isolate_workspace(workspace):
+    """conftest's `workspace` fixture, applied automatically to every test in this module."""
 
 
 def test_an_oversized_request_is_refused_before_any_provider_call():

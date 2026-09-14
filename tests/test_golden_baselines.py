@@ -36,6 +36,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -94,18 +96,24 @@ def _all_committed_baselines() -> dict[str, dict]:
 
 # ── must-fire / must-not-fire pairs over synthetic data -- no disk, no real fixtures ────────────
 
-def test_an_edited_request_line_without_recapture_is_reported_as_drift():
-    """must fire."""
-    requests = {"x": {"slug": "x", "request": "the NEW wording", "answers": {}}}
-    baselines = {"x": {"request": "the OLD wording", "answers": {}}}
-    report = _report(requests, baselines, declared_drift={})
-    assert report["drifted"] == ["x"]
-
-
-def test_an_added_answer_layer_without_recapture_is_reported_as_drift():
-    """must fire -- the shape #194/#275 actually found."""
-    requests = {"x": {"slug": "x", "request": "same", "answers": {"workflow": ["a", "b", "c"]}}}
-    baselines = {"x": {"request": "same", "answers": {"workflow": ["a", "b"]}}}
+@pytest.mark.parametrize(
+    "requests, baselines",
+    [
+        pytest.param(
+            {"x": {"slug": "x", "request": "the NEW wording", "answers": {}}},
+            {"x": {"request": "the OLD wording", "answers": {}}},
+            id="must-fire-edited-request-wording",
+        ),
+        pytest.param(
+            {"x": {"slug": "x", "request": "same", "answers": {"workflow": ["a", "b", "c"]}}},
+            {"x": {"request": "same", "answers": {"workflow": ["a", "b"]}}},
+            id="must-fire-#194/#275-added-answer-layer",
+        ),
+    ],
+)
+def test_a_request_baseline_disagreement_without_recapture_is_reported_as_drift(requests, baselines):
+    """must fire, both cases: an edited request line, and an added answer layer -- the #194/#275
+    shape actually found -- without a re-capture."""
     report = _report(requests, baselines, declared_drift={})
     assert report["drifted"] == ["x"]
 

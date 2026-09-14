@@ -150,13 +150,11 @@ _NOT_A_RUNTIME_PROMISE = {
 
 
 def test_every_extra_in_the_manifest_is_either_floored_or_excluded_on_record():
-    """The direction `test_every_runtime_extra_named_here_exists_in_the_manifest` does not check,
-    and the one that actually leaked. `RUNTIME_EXTRAS` is hand-maintained precisely so a new extra
-    is classified by a person -- but nothing failed when a person did not, so `[api]` shipped
-    user-installable by name and outside the floor set, which is the silent-narrower-promise this
-    whole script exists to prevent, reached through the script's own configuration (#425).
-
-    Adding an extra now forces the choice: floor it, or say here why it is not a runtime promise."""
+    """The direction `test_every_runtime_extra_named_here_exists_in_the_manifest` does not check --
+    `RUNTIME_EXTRAS` is hand-maintained, so a new extra needs a person to classify it, and nothing
+    failed when one did not: `[api]` shipped user-installable and outside the floor set, reached
+    through the script's own configuration (#425). Adding an extra now forces the choice: floor it,
+    or say here why it is not a runtime promise."""
     extras = set(_real_pyproject()["project"]["optional-dependencies"])
     unclassified = extras - set(RUNTIME_EXTRAS) - set(_NOT_A_RUNTIME_PROMISE)
     assert not unclassified, (

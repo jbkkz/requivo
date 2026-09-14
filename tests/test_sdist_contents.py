@@ -197,14 +197,11 @@ def test_the_check_fires_when_setuptools_is_not_installed_at_all(monkeypatch):
 
 
 def test_the_check_never_imports_setuptools_itself_to_read_the_version(monkeypatch):
-    """The reviewer's central finding: the version this check replaced read `setuptools.__version__`
-    -- which needs `import setuptools` first -- and that import is exactly what crashes on the
-    range (setuptools 64.0.0-66.0.0 under Python 3.12) it was supposed to detect, before the check's
-    own comparison ever ran. This test cannot install a genuinely broken setuptools into the process
-    already running it (something else already imported a working one), so it proves the same fact
-    the way that matters: poison `sys.modules["setuptools"]` so any `import setuptools` anywhere in
-    this call raises `ImportError` immediately, then confirm the check still reaches a correct
-    verdict -- which is only possible if it never tried to import setuptools at all."""
+    """The reviewer's central finding: the version this check replaced read `setuptools.__version__`,
+    which needs `import setuptools` first -- exactly what crashes on the range (64.0.0-66.0.0 under
+    Python 3.12) it was supposed to detect. Cannot install a genuinely broken setuptools into this
+    process, so it poisons `sys.modules["setuptools"]` so any `import setuptools` raises, then
+    confirms the check still reaches a correct verdict without ever importing it."""
     monkeypatch.setitem(sys.modules, "setuptools", None)  # any `import setuptools` now raises
     monkeypatch.setattr(importlib.metadata, "version", lambda name: "64.0.0")
     reason = _setuptools_build_backend_reason("66.1.0")  # must not raise ImportError

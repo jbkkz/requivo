@@ -29,13 +29,8 @@ from _cli_harness import _run, _run_json
 import requivo
 from requivo.cli import app
 
-
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
+# `workspace` (tmp_path + REQUIVO_WORKSPACE/REQUIVO_OUTPUT_DIR) is the shared fixture from
+# conftest.py (#555) -- this file used to declare its own byte-identical copy.
 
 # -- requivo --version -----------------------------------------------------------------------
 
@@ -119,16 +114,9 @@ def test_doctor_distinguishes_a_model_override_from_the_default(workspace, monke
 
 def test_a_model_override_that_is_set_but_empty_is_reported_as_one(workspace, monkeypatch):
     """`name` and `source` are read from the same fact or they can disagree, and they did.
-
-    `current_model_name()` is `os.getenv("MODEL", MODEL_DEFAULT)`, which falls back only when the
-    variable is **absent**; `source` tested the value for truth, which an exported-but-empty `MODEL`
-    fails. So `MODEL=` produced `{"name": "", "source": "default"}` -- a row naming neither the
-    default it claimed nor the override that was really in force, in the verb whose entire purpose is
-    being accurate in a bug report. Both now key on presence.
-
-    And the human row stops printing a tick over an empty name. An empty model id is not a working
-    install: every provider call would send no model at all, so this is a finding `doctor` should
-    state rather than a blank it should render calmly."""
+    `current_model_name()` falls back only when `MODEL` is **absent**; an exported-but-empty `MODEL`
+    produced `{"name": "", "source": "default"}`, naming neither the default nor the real override.
+    Both now key on presence, with no tick printed over an empty model id."""
     monkeypatch.setenv("MODEL", "")
     report = _run_json(["doctor", "--json"])
     assert report["model"]["source"] == "env", (
@@ -157,11 +145,9 @@ def test_doctor_prefers_requivo_model_over_bare_model_and_reports_it_as_an_overr
 def test_a_requivo_model_override_that_is_set_but_empty_is_reported_as_one(workspace, monkeypatch):
     """The `REQUIVO_MODEL` twin of `test_a_model_override_that_is_set_but_empty_is_reported_as_one`.
 
-    Both `current_model_name()` and `doctor_report()`'s `source` check read `REQUIVO_MODEL` through
-    presence (`is not None`), not truthiness, for exactly the reason that test states for bare
-    `MODEL`: a truthy check on `""` would fall through to `MODEL`/the default and silently report the
-    comfortable lie that nothing was overridden, for the one variable every doc now teaches first.
-    """
+    Both `current_model_name()` and `doctor_report()`'s `source` check key on presence
+    (`is not None`), not truthiness -- a truthy check on `""` would silently report the comfortable
+    lie that nothing was overridden, for the variable every doc now teaches first."""
     monkeypatch.delenv("MODEL", raising=False)
     monkeypatch.setenv("REQUIVO_MODEL", "")
     report = _run_json(["doctor", "--json"])["model"]

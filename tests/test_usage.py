@@ -51,11 +51,8 @@ def launch_priced_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
-    """Every test in this module writes sessions/artifacts into an isolated temp workspace, never the
-    real repo. Points both the canonical root (.requivo/sessions) and the legacy root (out/) at tmp."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+def _isolate_workspace(workspace):
+    """conftest's `workspace` fixture, applied automatically to every test in this module."""
 
 
 # ── Tier 3: API usage tracking (tokens / cost / latency) ──────────────────────
@@ -100,14 +97,11 @@ def test_usage_ledger_totals_and_cost():
 
 
 def test_launch_pricing_applies_until_it_lapses(launch_priced_model):
-    """A dated table with no expiry gets exactly one of these two days right.
-
-    Written against a *fixture* model rather than a live one, and that is the whole point (#254).
-    The first version of this test asserted Sonnet 5's own launch window, so it measured the
-    mechanism only while that window was open — and when the introductory $2/$10 quietly became the
-    standard price, the assertion that would have caught the stale 3.00/15.00 sitting in the table
-    was the one thing guaranteed to be edited alongside it. A guard whose subject can be retired by
-    a calendar is a guard with an expiry date of its own.
+    """A dated table with no expiry gets exactly one of these two days right, written against a
+    *fixture* model rather than a live one on purpose (#254): a test pinned to a live model's own
+    launch window only measures the mechanism while that window is open, and stops testing
+    anything the day the rate becomes standard. A guard whose subject can be retired by a
+    calendar is a guard with an expiry date of its own.
     """
     assert price_per_mtok(launch_priced_model, _date(2026, 8, 31)) == (2.00, 10.00)
     assert price_per_mtok(launch_priced_model, _date(2026, 9, 1)) == (3.00, 15.00)
@@ -182,12 +176,11 @@ def test_render_usage_shows_tokens_cache_latency_and_estimate():
 
 
 def test_render_usage_omits_the_rate_date_it_was_not_given():
-    """The third state, and the reason it is a state rather than a fallback.
-
-    A record can carry a rate with no table date — a caller building one by hand, a second provider
-    that prices without publishing a date. Printing a cost with no "rates as of" clause says exactly
-    that; borrowing a date from somewhere would print an undated estimate that reads as a dated one,
-    and nothing downstream could tell the two apart.
+    """The third state, and the reason it is a state rather than a fallback: a record can carry a
+    rate with no table date -- a caller building one by hand, a second provider that prices
+    without publishing a date. Printing a cost with no "rates as of" clause says exactly that;
+    borrowing a date from somewhere would print an undated estimate indistinguishable from a
+    dated one.
     """
     ledger = UsageLedger()
     ledger.record(CallRecord(model="claude-sonnet-5", input_tokens=1_000_000,
@@ -292,12 +285,11 @@ class _NonconformingClient:
 
 
 def test_a_failed_call_is_still_recorded_on_every_exit():
-    """All three failure exits file the spend, and each is asserted on its numbers.
-
-    Delete `_record(rec)` from `_stop()` and the first two go red; delete the one on the give-up path
-    and the third does. That is the whole point of pinning it: the ordering is invisible at both
-    ends of a module boundary, and a ledger that silently forgets a failed call under-reports a run
-    in exactly the direction nobody checks.
+    """All three failure exits file the spend, and each is asserted on its numbers. Delete
+    `_record(rec)` from `_stop()` and the first two go red; delete the one on the give-up path
+    and the third does -- the ordering is invisible at both ends of a module boundary, and a
+    ledger that silently forgets a failed call under-reports a run in exactly the direction
+    nobody checks.
     """
     # 1. Transport failure. The SDK raises before any usage is reported, so the record is empty of
     #    tokens — but it exists, and it carries the attempt and a latency.
@@ -373,12 +365,10 @@ def test_render_usage_is_unaffected_by_the_operation_field():
 
 def test_run_stamps_the_analyze_operation_onto_the_call_record():
     """`run()` is the discovery turn -- `"analyze"` in `_OP_PROMPTS`'s own vocabulary -- and it now
-    reaches `_complete()` with that name, so a ledger read back per-verb can tell a discovery turn's
-    spend from a generator's without reconstruction (#435's whole point). `providers/anthropic/
-    generators.py`'s other seven `_complete()` call sites (`derive_stories`, `advise`,
-    `generate_prd`, `generate_criteria`, `generate_epic`, `generate_release`, `estimate`) each stamp
-    their own name the same way; this is the one every offline fixture in this file already knows
-    how to drive, so it stands for the rest rather than repeating the same assertion eight times."""
+    reaches `_complete()` with that name, so a ledger read back per-verb can tell a discovery
+    turn's spend from a generator's without reconstruction (#435's whole point). The other seven
+    `_complete()` call sites in `generators.py` each stamp their own name the same way; this is
+    the one every offline fixture here already knows how to drive, so it stands for the rest."""
     client = FakeClient(_ENGINE_REPLY)
     with track_usage() as ledger:
         run(client, [{"role": "user", "content": "leave approval"}])

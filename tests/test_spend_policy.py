@@ -6,7 +6,7 @@ now consults an optional, injected `SpendPolicy` immediately before every provid
 chokepoint `_usage_since` already brackets (`decision: the-http-api-facade`).
 
 Driven directly against `DiscoveryService` with a stub `ReasoningProvider` -- no CLI, no web, no real
-network -- the same shape `test_revision_usage_provenance_292.py` and `test_paid_call_safety_208.py`
+network -- the same shape `test_revision_usage_provenance.py` and `test_paid_call_safety.py`
 use. `_CountingProvider` records a caller-chosen, fixed-cost `CallRecord` per call so the ceiling
 arithmetic can be pinned exactly, and counts its own invocations so a refusal that happened *before*
 the call reads as `calls == 0`, not merely as a raised exception.
@@ -130,13 +130,11 @@ def test_check_refuses_an_unpriced_call_rather_than_treating_it_as_free():
 # ── every DiscoveryService chokepoint, driven from the outside ────────────────
 
 def test_default_no_policy_is_byte_identical_to_before_this_existed():
-    """Pinned by the issue's own acceptance criteria: no policy injected, no behaviour change --
-    even a ludicrously expensive call must go through uncontested.
-
-    Revision 2, not 1: since #467, `start(finalize=True)` lands `analyze()` as revision 1 through
-    `finalize_discovery` *before* attempting the brief, then folds the brief in through the ordinary
-    `generate(slug, "brief")` path -- the same two-write shape #202 already established for the CLI's
-    interactive loop in this file -- so a full success now produces two revisions, not one."""
+    """Pinned by the issue's own acceptance criteria: no policy injected, no behaviour change, even
+    a ludicrously expensive call must go through uncontested. Revision 2, not 1: since #467,
+    `start(finalize=True)` lands `analyze()` as revision 1 before attempting the brief, then folds
+    the brief in through the ordinary `generate(slug, "brief")` path, so a full success now produces
+    two revisions, not one."""
     sessions = SessionService()
     provider = _CountingProvider(cost_per_call=1_000_000.0)
     disco = DiscoveryService(provider=provider, sessions=sessions)  # no spend_policy
@@ -176,15 +174,11 @@ def test_start_refuses_before_its_first_call_once_the_ceiling_is_already_reached
 
 
 def test_start_refuses_its_second_call_once_the_first_alone_reaches_the_ceiling():
-    """The check runs before EACH provider call inside one operation, not only once at entry:
-    `start(finalize=True)` makes two calls (analyze, then generate("brief")), and a ceiling the
-    first call alone reaches must stop the second before it is made.
-
-    Since #467, "before anything is persisted" is no longer true of the *first* call, and must not
-    be: `finalize_discovery` now writes `analyze()`'s result as revision 1 before the brief is even
-    attempted, so a ceiling the first call alone reaches still leaves that write standing -- the paid
-    `analyze()` spend is never discarded, only the (also refused, so free) second call is stopped.
-    See `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467.py` for the direct guard."""
+    """The check runs before EACH provider call inside one operation: `start(finalize=True)` makes
+    two calls (analyze, then generate("brief")), and a ceiling the first alone reaches must stop the
+    second. Since #467, `finalize_discovery` writes `analyze()`'s result as revision 1 before the
+    brief is attempted, so that write stands -- only the (also refused, so free) second call is
+    stopped. See `test_finalize_discovery_keeps_a_paid_analyze_call.py` for the direct guard."""
     sessions = SessionService()
     provider = _CountingProvider(cost_per_call=0.05)
     disco = DiscoveryService(provider=provider, sessions=sessions,
