@@ -5,7 +5,7 @@ Driven directly against `DiscoveryService`, not the Web -- the guard lives in th
 own file descriptor on the guard's own lock file rather than racing a second thread -- `flock` is
 scoped to the *open file description*, not the thread or the process, so a second `os.open` in this
 same test process contends for real without needing real concurrency to prove it (the same technique
-`test_persistence_guards.py::test_a_contended_lock_raises_within_the_deadline_instead_of_hanging` uses
+`test_persistence_lock.py::test_a_contended_lock_raises_within_the_deadline_instead_of_hanging` uses
 for `session_lock` itself).
 """
 

@@ -597,7 +597,7 @@ def _forging_dir(parent, label):
 
     Probed rather than decided from `sys.platform`, because the hazard is exactly *this filesystem
     cannot hold this name*, and the probe is the staging step itself — it cannot pass for a reason
-    unrelated to what it checks. `tests/test_unexaminable_entries.py` stages the same shape the same
+    unrelated to what it checks. `tests/test_persistence_scan.py` stages the same shape the same
     way, and Windows is the case it catches: NTFS refuses every character from 1 to 31 in a name, and
     the colon besides, so `mkdir` fails with `WinError 123` before any assertion has run.
 

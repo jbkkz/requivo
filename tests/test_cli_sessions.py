@@ -86,7 +86,7 @@ def test_a_reserved_slug_already_on_disk_is_readable_by_list_show_and_verify(wor
     # a file this lane does not own this round; `core/persistence/`'s own
     # `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it`
     # covers the lock `session export` takes. Built by hand, not through `session init`, which must
-    # keep refusing to *create* one — that half is pinned in `test_persistence_guards.py`.
+    # keep refusing to *create* one — that half is pinned in `test_persistence.py`.
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()

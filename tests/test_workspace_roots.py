@@ -1,15 +1,12 @@
-"""#272: the workspace root becomes constructor state, not ambient process environment.
+"""#272: the workspace root is constructor state on `FileSessionRepository`/`Store`, not ambient
+process environment -- two instances against two distinct tmp roots, in one process, with no
+`os.environ` mutation, address and lock independently
+(`test_two_repositories_against_two_roots_are_independent_in_one_process`). The rest of this file is
+the mechanism underneath that and the three ambient reads #272's own 2026-09-01 scope amendment
+named (the discovery guard, the reserved-slug probe inside it, `SessionService.no_session`'s error
+text) plus one found in review, `output_root()`.
 
-The acceptance criterion the issue names verbatim: two `FileSessionRepository` instances against
-two distinct tmp roots, in one process, with no `os.environ` mutation, no `monkeypatch.setenv`, no
-`chdir` -- creating and listing independently. That is
-`test_two_repositories_against_two_roots_are_independent_in_one_process` below; everything else in
-this file is the mechanism underneath it and the three sites the issue's own 2026-09-01 comment
-named as a scope amendment (the discovery guard, the reserved-slug probe inside it, and
-`SessionService.no_session`'s error text).
-
-Deliberately offline and deliberately not using the `workspace` fixture the rest of the suite shares
-(`monkeypatch.setenv("REQUIVO_WORKSPACE", ...)`) except where a test is *specifically* about the
+Deliberately not using the shared `workspace` fixture except where a test is specifically about the
 ambient default's own behaviour -- using it everywhere would defeat the point of a file whose whole
 subject is "two roots addressed without env mutation".
 """
@@ -80,11 +77,8 @@ def test_a_third_slug_created_in_one_repository_does_not_appear_in_the_other(tmp
 
 def test_two_roots_sharing_a_slug_do_not_share_a_lock(tmp_path_factory):
     """Root identity, not `id(self)`, has to decide re-entrancy (see `Store`'s own docstring). Two
-    `Store` instances over two different roots that happen to use the *same* slug name are two
-    different sessions and must never be treated as one already-held lock -- keying re-entrancy by
-    slug alone (the pre-#272 shape, safe only because exactly one ambient root ever existed at once)
-    would make the second `session_lock` below believe it already holds a lock it never opened,
-    which is a silent loss of mutual exclusion for whichever root lost the race."""
+`Store` instances over two different roots that happen to use the *same* slug name are two
+different sessions and must never be treated as one already-held lock See #272."""
     root_a = tmp_path_factory.mktemp("workspace-a")
     root_b = tmp_path_factory.mktemp("workspace-b")
     store_a = Store(root_a)
@@ -103,12 +97,9 @@ def test_two_roots_sharing_a_slug_do_not_share_a_lock(tmp_path_factory):
 
 def test_reentrant_acquisition_across_fresh_ambient_stores_is_still_recognised(tmp_path, monkeypatch):
     """The other half of the same fix. The *ambient* module-level wrapper (`persistence.session_lock`,
-    what `cli.py` and every un-rooted caller use) builds a **fresh** `Store` instance on every call --
-    so a nested `with session_lock(slug): with session_lock(slug):` reaches two different `Store`
-    objects, both addressing the same ambient root. Keying re-entrancy by `id(self)` instead of by
-    root would make the inner call believe it is a stranger's lock and either deadlock retrying the
-    OS lock, or hang out the full 30s timeout -- this must return immediately, nested, with no
-    deadlock and no wait."""
+what `cli.py` and every un-rooted caller use) builds a **fresh** `Store` instance on every call
+-- so a nested `with session_lock(slug): with session_lock(slug):` reaches two different `Store`
+objects, both addressing the same ambient root."""
     from requivo.core import persistence as store
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
@@ -217,11 +208,9 @@ def test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_work
 
 def test_a_repository_with_no_store_falls_back_to_the_ambient_workspace(tmp_path, monkeypatch):
     """The other arm of `DiscoveryService._store_for_repo`, found unpinned in review of #483's first
-    pass: `SessionRepository` carries no `store()` in its protocol, so a backing without one -- the
-    Postgres shape -- must get the ambient default, which is exactly what every caller had
-    unconditionally before #272. The positive arm (an explicitly rooted `FileSessionRepository`) is
-    `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace` above; this
-    one proves the fallback resolves to the workspace and not, say, to a raise."""
+pass: `SessionRepository` carries no `store()` in its protocol, so a backing without one -- the
+Postgres shape -- must get the ambient default, which is exactly what every caller had
+unconditionally before #272."""
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
 
     class _NoStoreRepo:  # duck-typed: the only attribute `_store_for_repo` reads is `.store`
@@ -260,12 +249,10 @@ def test_no_session_names_the_root_of_an_explicitly_rooted_repository(tmp_path_f
 def test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one(
         tmp_path_factory, monkeypatch):
     """#457: `snapshot()` raised through the module-level ambient `store.no_session_message(slug)`
-    instead of `self.no_session(slug)` -- the instance method #272 added one function above it in
-    this same file, for exactly this reason: so the refusal names the store the service actually
-    addresses. One method along, in the same file and the same commit, `snapshot()` still named the
-    ambient root -- the identical bug #272 closed for `no_session` itself, unfixed one call site
-    over. Shaped as the sibling test above it (`test_no_session_names_the_root_of_an_explicitly_rooted_repository`),
-    against `snapshot()` instead of `no_session()`."""
+instead of `self.no_session(slug)` -- the instance method #272 added one function above it in
+this same file, for exactly this reason: so the refusal names the store the service actually
+addresses. One method along, in the same file and the same commit, `snapshot()` still named the
+ambient root the identical bug #272 closed for `no_session` itself, unfixed one call site over."""
     explicit_root = tmp_path_factory.mktemp("explicit")
     ambient_elsewhere = tmp_path_factory.mktemp("ambient-elsewhere")
     monkeypatch.chdir(ambient_elsewhere)
@@ -308,19 +295,11 @@ def test_default_repository_construction_is_unchanged(root_kw, tmp_path, monkeyp
 
 def test_an_explicit_stores_legacy_root_still_honours_the_ambient_output_dir_override(
         tmp_path_factory, monkeypatch):
-    """A reviewer's finding, fixed before this shipped past this branch: `Store.output_root()`
-    briefly read `self.root / "out"`, silently substituting the workspace root for cwd -- so
-    `requivo --workspace <dir>` with no `REQUIVO_OUTPUT_DIR` set would look for the legacy `out/`
-    layout under `<dir>` instead of under cwd, exactly where `paths.output_root()`'s own docstring
-    says it has always lived (`REQUIVO_OUTPUT_DIR`/cwd, deliberately independent of
-    `REQUIVO_WORKSPACE`). `session migrate` would then fail every legacy session it found, because
-    its own scan (`paths.output_root()`, ambient, correct) and its migration
-    (`Store.legacy_dir`/`Store.output_root()`, workspace-root-derived, wrong) disagreed about where
-    the legacy directory was.
-
-    An explicit `Store`'s `output_root()` must equal the ambient `paths.output_root()` regardless of
-    its own `root` -- both when `REQUIVO_OUTPUT_DIR` is set (checked here) and, by the same
-    mechanism, when it is not."""
+    """A reviewer's finding, fixed before this shipped past this branch: `Store.output_root()` briefly
+read `self.root / "out"`, silently substituting the workspace root for cwd -- so `requivo
+--workspace <dir>` with no `REQUIVO_OUTPUT_DIR` set would look for the legacy `out/` layout under
+`<dir>` instead of under cwd, exactly where `paths.output_root()`'s own docstring says it has
+always lived (`REQUIVO_OUTPUT_DIR`/cwd, deliberately independent of `REQUIVO_WORKSPACE`)."""
     explicit_root = tmp_path_factory.mktemp("explicit-workspace")
     legacy_root = tmp_path_factory.mktemp("legacy-out-dir")
     monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(legacy_root))
@@ -352,12 +331,10 @@ def test_an_explicit_stores_legacy_root_is_cwd_relative_with_no_override(
 
 def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(
         tmp_path_factory, monkeypatch):
-    """Found in review: `_lock_key` used to call `_resolve(self.root)` -- a real `os.path.realpath`
-    stat -- on every `session_lock` entry, including every re-entrant nested one, where the
-    pre-#272 re-entrancy key (`slug` alone) cost no syscalls at all. `self.root` never changes after
-    construction, so the resolve belongs in `__init__`, once. Proved by counting calls rather than by
-    reading the source: `_resolve` must be called exactly once for a `Store` that is then locked,
-    re-entrantly, three times over."""
+    """Found in review: `_lock_key` used to call `_resolve(self.root)` -- a real `os.path.realpath` stat
+-- on every `session_lock` entry, including every re-entrant nested one, where the pre-#272
+re-entrancy key (`slug` alone) cost no syscalls at all. `self.root` never changes after
+construction, so the resolve belongs in `__init__`, once."""
     from requivo.core import persistence as store
 
     # `Store.__init__` (in `core/persistence/store.py`) imports `_resolve` from `lock.py` and calls

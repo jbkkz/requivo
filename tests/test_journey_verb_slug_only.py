@@ -99,7 +99,7 @@ def test_resolve_slug_still_mines_a_real_saved_model_json(tmp_path):
 @pytest.fixture
 def _unreadable_model_json(tmp_path, request):
     """A directory `resolve_slug`'s `is_file()` probe cannot see into, on the same terms as
-    `tests/test_unexaminable_entries.py`'s `blocked` fixture: `chmod 000` denies the `x` bit, so a
+    `tests/test_persistence_scan.py`'s `blocked` fixture: `chmod 000` denies the `x` bit, so a
     stat on the `model.json` inside it raises `PermissionError`, not `False`.
 
     Found in review of #402: the new `Path.is_file()` gate that stops a nonexistent path from being
@@ -284,7 +284,7 @@ def test_the_real_session_stays_reachable_by_its_own_slug_past_the_directory_gua
 @pytest.fixture
 def _unreadable_session_directory(tmp_path, request):
     """A directory `resolve_slug`'s directory-branch marker probe cannot see into, on the same
-    terms as `_unreadable_model_json` above and `test_unexaminable_entries.py`'s `blocked`
+    terms as `_unreadable_model_json` above and `test_persistence_scan.py`'s `blocked`
     fixture: `chmod 000` denies the `x` bit, so a stat on a marker file inside it raises
     `PermissionError`, not `False`."""
     d = tmp_path / "noaccess-dir"

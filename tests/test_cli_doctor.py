@@ -434,7 +434,7 @@ def _deny_listing(directory: Path) -> None:
     Deliberately not `chmod 000`, which denies the `session.json` probe in `_scan_session_root` as
     well and so exercises a *different* state: the entry never reaches `_describe_non_session` at
     all, because the partition above it could not decide what the entry is. That is #80, fixed since,
-    and it has its own module — `tests/test_unexaminable_entries.py`. What this fixture is for is the
+    and it has its own module — `tests/test_persistence_scan.py`. What this fixture is for is the
     entry the partition *did* place, whose contents then could not be listed."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny listing on Windows — the entry-level "
@@ -705,7 +705,7 @@ def test_the_parts_of_the_session_root_are_one_partition(workspace):
 
     Three parts rather than two since #80: the predicate can *fail*, and an entry it could not
     decide about belongs in neither of the other two. The third is empty in this fixture and
-    asserted as empty for that reason — it is populated in `tests/test_unexaminable_entries.py`,
+    asserted as empty for that reason — it is populated in `tests/test_persistence_scan.py`,
     which needs a platform skip this test does not.
 
     Read through `scan_session_root` since #300, which is what `doctor` itself calls and, since the
@@ -867,7 +867,7 @@ def test_a_note_does_not_move_the_sessions_glyph(workspace, monkeypatch):
 def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(workspace):
     """Review finding on #483: the sessions-row glyph docstring in `doctor.py` says `unexaminable`
     (`blind`) shares the middle glyph with `locked`/`unchecked`, and only the `locked` half of that
-    claim had a test -- `test_unexaminable_entries.py`'s own doctor test never checks the glyph at
+    claim had a test -- `test_persistence_scan.py`'s own doctor test never checks the glyph at
     all. A blocked entry with no other finding must not tick clean: a could-not-look reading as
     looked-and-found-nothing is the exact defect `_session_health` exists to prevent.
 
@@ -875,7 +875,7 @@ def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(
     on every platform and every account rather than skipping wherever permission bits do not deny
     traversal (root, some CI sandboxes, Windows). Confirmed by mutation, not only by this assertion:
     dropping `blind` from the glyph's warning condition leaves this test red while
-    `tests/test_unexaminable_entries.py::test_doctor_reports_the_entry_instead_of_declaring_the_whole_root_unreadable`
+    `tests/test_persistence_scan.py::test_doctor_reports_the_entry_instead_of_declaring_the_whole_root_unreadable`
     stays green."""
     from requivo.core.persistence import UnexaminableEntry
     from requivo.deterministic import doctor as det
@@ -1341,7 +1341,7 @@ def test_a_lock_for_a_session_that_exists_but_is_unexaminable_is_not_claimed_as_
     d = store.canonical_dir("s")
     d.chmod(0o000)
     try:
-        # The same root guard the sibling fixtures in tests/test_unexaminable_entries.py carry, and
+        # The same root guard the sibling fixtures in tests/test_persistence_scan.py carry, and
         # the reason it is needed here too (#298): a runner whose process can read a 0o000 directory
         # makes the must-fire control below assert something the platform did not do. It fired on
         # the py3.14 leg the moment that leg existed, on a test nothing about 3.14 touches.

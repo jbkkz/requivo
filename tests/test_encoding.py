@@ -251,7 +251,7 @@ _LOCALE_DEFAULT_BY_DESIGN = {
             "demonstrates the pre-#10 failure by performing it -- the bare read IS the thing under "
             "test, and it is asserted to raise",
     },
-    "test_persistence_guards.py": {
+    "test_persistence.py": {
         "test_an_artifact_round_trips_non_ascii_content":
             "same shape as the two above, and the one this table was written a commit too late for: "
             "the bare read performs the defect under a forced ASCII default so the `raises` can catch "
