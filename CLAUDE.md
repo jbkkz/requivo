@@ -280,7 +280,7 @@ issue the test cites — *Where a bug narrative lives* (below) is the rule.
     that prints, with `errors="backslashreplace"` — never `replace`; the `UnicodeEncodeError` arm
     exits `EXIT_RENDER_FAILED` (3) and says the work is done. Cost: mojibake that still validates,
     `integrity.py` accusing the user of an edit nobody made, and a traceback after the paid work
-    landed. Guarded by `tests/test_encoding.py` — `test_every_text_read_declares_its_encoding`,
+    landed. Guarded by `tests/test_source_form.py` — `test_every_text_read_declares_its_encoding`,
     `test_a_glyph_that_cannot_be_encoded_exits_three_rather_than_a_traceback` — and, for the two
     harness scripts (#164), `test_a_harness_script_survives_a_console_that_cannot_encode_its_output`.
 17. **A guard's verdict must not depend on transient filesystem state.** Nor on where it runs.
@@ -324,8 +324,9 @@ stay on the line. Not applicable to `docs/`, which is narrative's right home.
 live in `tests/lean_budget.toml` and only go down (#553); none is written in prose, here or anywhere.
 
 **A new guard that does not exercise shipped runtime code is not free.** A source-scanning tier
-(`test_boundaries.py`, `test_encoding.py`, `test_narrative_references.py` share `tests/_scan.py`
-since #288) or a prose/CI/script guard (#287) needs **two real instances of the drift it would have
+(`test_source_form.py` -- the three sections that were `test_boundaries.py`, `test_encoding.py` and
+`test_narrative_references.py` before #551 merged them, sharing `tests/_scan.py` since #288) or a
+prose/CI/script guard (#287) needs **two real instances of the drift it would have
 caught, named by issue number** — one plausible instance is a taste. Extend an existing tier's scan set
 before opening a new file: a new file is a standing cost every future run pays. Nothing automated fails
 when the engine's questions get materially worse; the next testing investment is #169, not another guard.
