@@ -2009,3 +2009,133 @@ def test_the_decision_wrap_detector_leaves_the_shape_that_still_resolves_alone(t
     intact = tmp_path / "intact.md"
     intact.write_text("see `decision: elicitation-schema-hand-kept` for why\n", encoding="utf-8")
     assert not _WRAPPED_DECISION.search(intact.read_text(encoding="utf-8"))
+
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# SECTION 4 -- The lean ratchet (#553): `tests/lean_budget.toml` holds ceilings that only go down.
+# `scripts/prose_measure.py` does the counting; this section reads the TOML, re-measures the real
+# tree, and reports every breach -- never only the first, so a PR that moved three numbers at once
+# sees all three rather than fixing one and being told about the next only on the following run.
+# Every ceiling was set from what `main` measured on the day it landed, rounded up by at most 5% --
+# see the TOML's own header for the rule and `docs/compatibility.md`, #551, #555 and #556 for what
+# happened before a test could check it.
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+import prose_measure  # noqa: E402
+
+LEAN_BUDGET_TOML = REPO_ROOT / "tests" / "lean_budget.toml"
+
+# The meta-guard estate (#551): the tests that guard the repo's own self-description rather than
+# its runtime. Named here, not in the TOML, per #553's own direction -- the ceiling is a number the
+# TOML owns, the membership is a test diff. `test_boundaries.py`/`test_encoding.py`/
+# `test_narrative_references.py` are the near-empty stubs this file's own module docstring
+# explains; they still count, at the handful of lines each now carries.
+ESTATE_FILES = (
+    "tests/test_source_form.py",
+    "tests/test_boundaries.py",
+    "tests/test_encoding.py",
+    "tests/test_narrative_references.py",
+    "tests/test_version_sites.py",
+    "tests/test_cli_flag_names.py",
+    "tests/test_doc_images.py",
+    "tests/test_cost_claims.py",
+    "tests/test_dco_check.py",
+    "tests/test_prompt_contracts.py",
+    "tests/test_workflow_untrusted_output.py",
+    "tests/_scan.py",
+)
+
+
+def _load_budget(path: Path) -> dict:
+    """Parse TOML with the standard library, or with `tomli` below 3.11 -- same code reached by two
+    names (`scripts/dependency_floor.py`'s `_load_toml` carries the same note at more length)."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - taken on 3.9/3.10, not on the version CI lints
+        import tomli as tomllib
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _lean_budget_breaches(budget: dict) -> list[str]:
+    """Every ceiling `budget` names that the real tree currently exceeds, one string per breach
+    naming the file (or group), the measured number and the ceiling -- see this section's own
+    banner for why every breach is collected rather than returning on the first."""
+    breaches = []
+    src = prose_measure.measure_group(prose_measure.GROUPS["src"])
+    tests = prose_measure.measure_group(prose_measure.GROUPS["tests"])
+
+    if src.prose_share > budget["src"]["prose_share_max"]:
+        breaches.append(
+            f"src/ prose share is {src.prose_share:.1%}, over the "
+            f"{budget['src']['prose_share_max']:.1%} ceiling"
+        )
+    largest_src = src.largest
+    if largest_src is not None and largest_src.total > budget["src"]["largest_module_max_lines"]:
+        breaches.append(
+            f"{largest_src.path.relative_to(REPO_ROOT)} is {largest_src.total} lines, over the "
+            f"{budget['src']['largest_module_max_lines']} ceiling"
+        )
+
+    ratio = prose_measure.code_ratio(tests, src)
+    if ratio > budget["tests"]["ratio_max"]:
+        breaches.append(
+            f"tests:src code ratio is {ratio:.2f}x, over the {budget['tests']['ratio_max']:.2f}x ceiling"
+        )
+    largest_tests = tests.largest
+    if largest_tests is not None and largest_tests.total > budget["tests"]["largest_module_max_lines"]:
+        breaches.append(
+            f"{largest_tests.path.relative_to(REPO_ROOT)} is {largest_tests.total} lines, over the "
+            f"{budget['tests']['largest_module_max_lines']} ceiling"
+        )
+    mod_len, mod_where = tests.docstring_max("module")
+    if mod_len > budget["tests"]["module_docstring_max_lines"]:
+        breaches.append(
+            f"{mod_where}'s module docstring is {mod_len} lines, over the "
+            f"{budget['tests']['module_docstring_max_lines']} ceiling"
+        )
+    fn_len, fn_where = tests.docstring_max("function")
+    if fn_len > budget["tests"]["function_docstring_max_lines"]:
+        breaches.append(
+            f"{fn_where}'s docstring is {fn_len} lines, over the "
+            f"{budget['tests']['function_docstring_max_lines']} ceiling"
+        )
+
+    estate_total = sum(prose_measure.line_count(REPO_ROOT / rel) for rel in ESTATE_FILES)
+    if estate_total > budget["estate"]["total_max_lines"]:
+        breaches.append(
+            f"the meta-guard estate is {estate_total} lines, over the "
+            f"{budget['estate']['total_max_lines']} ceiling"
+        )
+
+    compat_lines = prose_measure.line_count(prose_measure.COMPATIBILITY_DOC)
+    if compat_lines > budget["docs"]["compatibility_max_lines"]:
+        breaches.append(
+            f"docs/compatibility.md is {compat_lines} lines, over the "
+            f"{budget['docs']['compatibility_max_lines']} ceiling"
+        )
+    return breaches
+
+
+def test_the_tree_stays_within_its_lean_budget():
+    """#553: every ceiling in `tests/lean_budget.toml`, re-measured against the real tree. Reports
+    every breach at once; see `_lean_budget_breaches`'s docstring for why."""
+    breaches = _lean_budget_breaches(_load_budget(LEAN_BUDGET_TOML))
+    assert not breaches, "the lean budget was exceeded:\n" + "\n".join(f"  - {b}" for b in breaches)
+
+
+def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tmp_path):
+    """MUST-FIRE, #553's own acceptance criterion: every numeric ceiling zeroed in a scratch copy of
+    the real TOML is caught, not silently passed, and each is named -- not only the first."""
+    text = LEAN_BUDGET_TOML.read_text(encoding="utf-8")
+    zeroed, count = re.subn(r"(?m)^(\w[\w.]*\s*=\s*)[0-9][0-9.]*\s*$", r"\g<1>0", text)
+    assert count == 8, f"expected 8 numeric ceilings in the real TOML, the scratch edit zeroed {count}"
+    scratch = tmp_path / "lean_budget.toml"
+    scratch.write_text(zeroed, encoding="utf-8")
+
+    breaches = _lean_budget_breaches(_load_budget(scratch))
+
+    assert len(breaches) == 8, breaches
+    joined = "\n".join(breaches)
+    for expected in ("src/", "cli.py", "code ratio", "test_source_form.py", "docstring", "meta-guard estate", "compatibility.md"):
+        assert expected in joined, f"a zeroed ceiling should have named {expected!r}: {joined}"
