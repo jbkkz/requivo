@@ -5,43 +5,37 @@
 This page is a set of promise tables, one per public surface. Each row names the promise, the
 version it has held since, and the test that goes red if it stops holding. The *history* of how a
 promise reached its current shape — which issue split a code, which release moved a status — lives
-in `CHANGELOG.md` and `docs/decisions/`; a row here links to the changelog entry rather than
-retelling it. If a row and its linked changelog entry ever disagree, the changelog is what actually
-shipped and this page is what's stale.
+in `CHANGELOG.md` and `docs/decisions/`; a row links to the changelog entry rather than retelling
+it, and where the two disagree the changelog is what shipped and this page is what's stale.
 
 ## The rules
 
-Requivo is versioned with [SemVer](https://semver.org/). **From 1.0.0, breaking anything on this
-page costs a major version, never a minor, and never silently.** Below 1.0 a minor was permitted to
-change an interface, and the entries dated 0.x in the deprecations table were taken under that
-licence; it is spent. The session format was outside this either way — it carries its own
-`format_version` and a migration, which is not a function of the release number.
+Requivo is versioned with [SemVer](https://semver.org/). **From 1.0.0, breaking anything on this page costs a major
+version, never a minor, and never silently.** Below 1.0 a minor was permitted to change an interface, and the entries
+dated 0.x in the deprecations table were taken under that licence; it is spent. The session format was outside this
+either way — it carries its own `format_version` and a migration, which is not a function of the release number.
 
-**A *break* is correct code stopping working.** An observable that moved on a path no correct code
-was ever on — an exit code that now refuses an invocation which used to operate on the wrong
-session, a call that used to be paid for and discarded — grades `compatible` in its changelog
-fragment, with the moved observable named. `decision: a-release-is-justified-by-its-contents` is the
-argument, and `changelog.d/README.md` is where a contributor states the grade.
+**A *break* is correct code stopping working.** An observable that moved on a path no correct code was ever on — an
+exit code that now refuses an invocation which used to operate on the wrong session, a call that used to be paid for
+and discarded — grades `compatible` in its changelog fragment, with the moved observable named (`decision:
+a-release-is-justified-by-its-contents`; `changelog.d/README.md` is where a contributor states the grade).
 
-**A `RequivoError.code`, a CLI exit code, and a `--json` field are governed by the same rule.**
-Adding one is free. Moving a condition off one and onto another is breaking — except that **moving a
-condition onto exit 0 is compatible, never breaking**: nothing could have depended on an invocation
-that always failed starting to succeed, so only a move *off* 0, or between two nonzero codes, costs a
-major.
+**A `RequivoError.code`, a CLI exit code, and a `--json` field are governed by the same rule.** Adding one is free;
+moving a condition off one and onto another is breaking — except that **moving a condition onto exit 0 is compatible,
+never breaking**, since nothing could have depended on an invocation that always failed starting to succeed; only a
+move *off* 0, or between two nonzero codes, costs a major.
 
-What may change **without** a `format_version` bump, in the session format, or without a row here in
-every other table: adding a field or a `--json` key anywhere (readers ignore what they don't know and
-preserve it on write); retiring a field that was never populated; a new slot, a new artifact type, or
-a new provenance value. What **requires** a bump, a changelog entry and — for the session format — a
-migration in `migrate_session()`: renaming, removing, or changing the meaning of a populated field;
-changing a directory layout or a file's role; anything that makes an older reader succeed
-*incorrectly* rather than merely incompletely.
+What may change **without** a `format_version` bump, in the session format, or without a row here in every other
+table: adding a field or a `--json` key anywhere (readers ignore what they don't know and preserve it on write);
+retiring a field that was never populated; a new slot, a new artifact type, or a new provenance value. What
+**requires** a bump, a changelog entry and — for the session format — a migration in `migrate_session()`: renaming,
+removing, or changing the meaning of a populated field; changing a directory layout or a file's role; anything that
+makes an older reader succeed *incorrectly* rather than merely incompletely.
 
-**Recommended consumption pattern:** pin exactly, `requivo==X.Y.Z`, never a range — three majors
-shipped in thirteen days once, so a range ceiling reads as prudence and works as starvation. Bump the
-pin as a routine chore gated by your own tests and, if your backing implements `SessionRepository`,
-by `requivo.testing.repository_conformance` (`pip install 'requivo[testing]'`) — a backing that
-passes it inherits the services' orchestration verbatim.
+**Recommended consumption pattern:** pin exactly, `requivo==X.Y.Z`, never a range — three majors shipped in thirteen
+days once, so a range ceiling reads as prudence and works as starvation. Bump the pin as a routine chore gated by your
+own tests and, if your backing implements `SessionRepository`, by `requivo.testing.repository_conformance` (`pip
+install 'requivo[testing]'`) — a backing that passes it inherits the services' orchestration verbatim.
 
 ## The session format is public
 
@@ -170,11 +164,20 @@ since `json.dumps` already escapes the full C0/C1 range. Pinned by
 
 **Every `RequivoError` code has an explicit HTTP status** — there is no default. An unrecognised
 code is a 500, never a 400: "we could not classify this" is not evidence the caller erred. The two
-version-frontier codes (`unsupported_format_version`, `unsupported_schema_version`) are 409; the
-five store-state arms of the `invalid_session` family (`session_unreadable`, `model_unreadable`,
-`artifact_revision_out_of_range`, `unreadable_source_revision`, `import_move_failed`) are 500; the
-three archive arms plus `unstated_source_revision` stay 400, because the caller did hand us the
-input in question; every `cross_site_request` arm is 403.
+version-frontier codes are 409, the five store-state `invalid_session` arms are 500, the three
+archive arms plus `unstated_source_revision` stay 400, and every `cross_site_request` arm is 403
+(all in [the code table above](#the-import-path-names-the-archive-not-the-model-101)). The rows
+below are the ones with a specific status and consequence worth stating on their own:
+
+| Code | Status | Note |
+|---|---|---|
+| `context_unreadable` | 500 | the server cannot read its own card directory — not the caller's fault |
+| `no_context_cards` | 500 | the install shipped no cards; nothing the caller sent caused it |
+| `provider_output_invalid` | 502 | upstream would not hold the contract, after every retry |
+| `session_locked` | 503 | the write never started — safe to retry unchanged |
+| `session_exists` | 409 | a conflict with the store's state, like `revision_conflict` (409 too) |
+| `input_too_large` | 413 | the request itself, refused before any provider call |
+| `spend_ceiling_reached` | 403 | not 429 — a spend budget does not reset with time |
 
 | Promise | Since | Test |
 |---|---|---|
@@ -195,13 +198,12 @@ than implied since 0.9.6:
 
 ## The session lock
 
-The per-session write lock lives at `.requivo/locks/<slug>.lock`, outside the session directory it
-guards (`.requivo/sessions/<slug>/.lock` before #113). **Not a session-format change** — `.lock` was
-never part of an exported session, a stray one left by an older Requivo is inert and safe to delete,
-and one real limitation follows from the move: two Requivo versions writing the same workspace at the
-same instant no longer serialise against each other, since an older version still takes the retired
-in-session path (mitigation is ordinary — finish or close the older process first; see
-`session-format.md` for the note).
+The per-session write lock lives at `.requivo/locks/<slug>.lock`, outside the session directory it guards
+(`.requivo/sessions/<slug>/.lock` before #113). **Not a session-format change** — `.lock` was never part of an
+exported session, a stray one left by an older Requivo is inert and safe to delete, and one real limitation follows
+from the move: two Requivo versions writing the same workspace at the same instant no longer serialise against each
+other, since an older version still takes the retired in-session path (mitigation is ordinary — finish or close the
+older process first; see `session-format.md` for the note).
 
 | Promise | Since | Test |
 |---|---|---|
@@ -252,15 +254,16 @@ would break a deployment for one word.
 
 ## CLI verbs
 
-Every registered verb name and its `--help` text are stable; `requivo <verb> --help` is checked
-byte-for-byte per verb. Adding a verb is free; renaming or removing one is breaking.
+**The standing promise is the verb name.** Adding one is free; renaming or removing one is breaking.
+A verb's `--help` *text* is not separately frozen by this page — a description or a flag can be
+reworded between releases without that being a breaking change.
 
 | Promise | Since | Test |
 |---|---|---|
 | `run`, `discover`, `answer`, `status`, `impact`, `docs`, `brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release`, `web`, plus the `deterministic/` verbs, are each a stable name | varies | `test_the_deterministic_package_still_registers_every_verb`, `test_every_registered_verb_appears_in_exactly_one_help_group` |
 | `requivo run [request\|file\|-\|slug]` is additive and moves nothing else — it is a thin layer over `discover`'s loop and `answer`'s apply path, both still directly callable | #540, #541 | `test_no_session_raises_and_names_run` |
 | `requivo docs [slug] [type...] [--all]` is additive — a thin loop over the seven existing generator verbs, each still directly callable | #543, #544 | `test_docs_all_flag_generates_every_document_skipping_the_menu` |
-| `--help` groups verbs into three tiers ("Start here" / "For scripts and integrations" / "Plumbing"); presentational only — every verb's name and behaviour, and `requivo <verb> --help`, are unchanged | #546, #547 | `test_start_here_leads_the_rendered_help`, `test_every_verb_help_is_byte_identical_regardless_of_the_root_formatter` |
+| `--help` groups verbs into three tiers ("Start here" / "For scripts and integrations" / "Plumbing"); presentational only, and this change specifically verified every verb's name, behaviour and `--help` text byte-for-byte unchanged (not a standing per-release guarantee — see above) | #546, #547 | `test_start_here_leads_the_rendered_help`, `test_every_verb_help_is_byte_identical_regardless_of_the_root_formatter` |
 | `epic --json` was **removed** in the same change that added `epic --export-json` — it wrote a file under a name every sibling verb's `--json` uses for a stdout payload, so there was no grace version | #83 | `test_epic_no_longer_accepts_the_old_json_spelling` |
 
 ## The epic export envelope — **stable**, and versioned
@@ -347,10 +350,9 @@ moves freely (`decision: deferring-the-neutral-provider-layer`).
 ## What the sdist and wheel contain (#431)
 
 The wheel is the installable artifact every promise on this page is verified against. The sdist
-(`requivo-X.Y.Z.tar.gz`) is source form for a distro packager or anyone building from source, and
-ships **no `tests/` directory** — the pre-decision default pulled 66 files in with none of their
-helper modules, collectible by nothing. A distro packager verifying the built artifact should run the
-wheel, not the sdist.
+(`requivo-X.Y.Z.tar.gz`) is source form for a distro packager or anyone building from source, and ships **no `tests/`
+directory** — the pre-decision default pulled 66 files in with none of their helper modules, collectible by nothing. A
+distro packager verifying the built artifact should run the wheel, not the sdist.
 
 | Promise | Since | Test |
 |---|---|---|
