@@ -72,14 +72,11 @@ def _counter_timeline() -> dict[str, dict]:
 
 
 def test_the_character_counter_counts_and_warns_without_ever_touching_the_text():
-    """The whole rule, on the shipped asset.
-
-    The two assertions that carry it are the negative ones, and each has a must-fire control in the
-    same timeline so silence cannot pass for compliance: `writes` stays empty (the page never
-    assigns to the field) and no clipping attribute is ever set — asserted on rows where the counter
-    demonstrably *did* fire, so a harness that dispatched nothing would fail on the visible half
-    first rather than passing on the invisible one.
-    """
+    """The whole rule, on the shipped asset. The two assertions that carry it are the negative
+    ones, each with a must-fire control in the same timeline so silence cannot pass for
+    compliance: `writes` stays empty (the page never assigns to the field) and no clipping
+    attribute is ever set -- asserted on rows where the counter demonstrably did fire, so a
+    harness dispatching nothing would fail on the visible half first rather than the invisible."""
     t = _counter_timeline()
 
     # Below the threshold the affordance says nothing at all. A counter that is always on is
@@ -151,13 +148,11 @@ def test_the_character_counter_counts_and_warns_without_ever_touching_the_text()
 
 
 def test_the_limit_the_page_shows_is_the_limit_the_server_refuses_on(client, with_provider):
-    """The number is rendered from `web/config.py`, never typed into a template.
-
-    Two numbers hand-kept in two files drift, and the drift is invisible in both directions: a page
-    promising 20,000 against a server refusing at 10,000 warns too late, and the reverse warns about
-    a submission that would have been accepted. Asserting the rendered attribute against the same
-    constant the routes import is what makes that impossible.
-    """
+    """The number is rendered from `web/config.py`, never typed into a template. Two numbers
+    hand-kept in two files drift invisibly in both directions: a page promising 20,000 against a
+    server refusing at 10,000 warns too late, and the reverse warns about a submission that would
+    have been accepted. Asserting the rendered attribute against the same constant the routes
+    import makes that impossible."""
     with_provider(engine_reply(problem=HIGH_EXPLICIT))
     _make_session()
 

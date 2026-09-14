@@ -132,12 +132,10 @@ def test_the_revision_claims_no_provider_it_did_not_use(client):
 
 def test_a_second_click_returns_to_the_same_session_rather_than_making_another(client):
     """`create_session` is an atomic claim on a slug (invariant 11) and idempotent on identity, so
-    the honest shapes were *navigate* or *refuse*. Navigating is chosen: the reader clicked a
-    button labelled as an example, and being told off for clicking it twice teaches nothing.
-
-    The revision must not move either. Re-applying an identical model would mint revision 2 with
-    the same content and no reason — provenance describing an event that did not happen.
-    """
+    navigating (not refusing) is the honest shape -- the reader clicked a button labelled as an
+    example, and being told off for clicking it twice teaches nothing. The revision must not move
+    either: re-applying an identical model would mint a new one with no reason, provenance
+    describing an event that did not happen."""
     first = _seed(client)
     revision = SessionService().meta(first).current_revision
     second = _seed(client)
@@ -248,14 +246,11 @@ def test_the_seeded_brief_is_listed_as_up_to_date_on_the_session_page(client):
 
 
 def test_a_second_click_does_not_reseed_or_duplicate_the_brief(client, monkeypatch):
-    """Mirrors `test_a_second_click_returns_to_the_same_session_rather_than_making_another` for the
-    model: idempotent on identity, not a fresh write every time.
-
-    Asserted by counting `ArtifactService.save` calls rather than by comparing `.list()` before and
-    after (caught in review, #428): `ArtifactStatus.updated_at` truncates to whole seconds
-    (`core.persistence._now()`), so two saves of byte-identical content inside the same wall-clock
-    second are indistinguishable through `.list()` regardless of whether the idempotency gate exists
-    at all -- a comparison that would pass even with the gate deleted is not a test of the gate."""
+    """Mirrors `test_a_second_click_returns_to_the_same_session_rather_than_making_another` for
+    the model: idempotent on identity, not a fresh write every time. Asserted by counting
+    `ArtifactService.save` calls rather than comparing `.list()` before/after (#428):
+    `updated_at` truncates to whole seconds, so two saves inside one wall-clock second are
+    indistinguishable through `.list()` even with the gate deleted -- not a test of the gate."""
     from requivo.services.artifacts import ArtifactService
 
     calls = []
@@ -303,17 +298,11 @@ def test_the_bundled_brief_is_read_rather_than_restated():
 
 
 def test_seeding_the_brief_holds_the_lock_across_the_check_and_the_save():
-    """#428 review finding: a plain check-then-act (`artifacts.list()` then `artifacts.save()`,
-    with no lock spanning both) leaves a window in which a reader's own real generation could
-    complete between the check and this call's unconditional save and be silently overwritten --
-    contradicting `seed_example`'s own docstring, which says exactly that must never happen.
-
-    Proven against the same lock-depth bookkeeping `core.persistence.Store.session_lock` already
-    keeps for re-entrancy (`_held_locks`, keyed by root identity + slug), rather than by racing real
-    threads: the store's lock is a real OS-level file lock, which would make a thread-based
-    reproduction non-deterministic to assert against reliably in a unit test. This checks the
-    mechanism the fix actually relies on -- the check running *while the lock is already held* --
-    directly, rather than only its outward, much harder to isolate consequence."""
+    """#428 review finding: a plain check-then-act (`list()` then `save()`, no lock spanning
+    both) leaves a window where a reader's real generation could be silently overwritten by this
+    call's unconditional save -- contradicting `seed_example`'s own docstring. Proven against
+    `Store.session_lock`'s re-entrancy bookkeeping (`_held_locks`) rather than racing real threads,
+    since the store's lock is a real OS-level file lock: checks the mechanism directly."""
     from requivo.core.persistence import _held_locks
     from requivo.services.artifacts import ArtifactService
     from requivo.services.sessions import SessionService

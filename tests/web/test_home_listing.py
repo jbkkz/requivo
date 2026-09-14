@@ -75,13 +75,11 @@ def _visible_text(html: str) -> str:
 # ── order ─────────────────────────────────────────────────────────────────────
 
 def test_the_recent_list_leads_with_the_session_that_moved_last():
-    """"Recent" has to mean recent (#237).
-
-    The slugs are chosen so alphabetical order is the exact reverse of recency: sorted by slug the
-    abandoned experiment leads and the session touched minutes ago sits at the bottom, which is what
-    a returning reader met. The assertion is the whole order, not just the first row — a view model
-    that merely moved one row to the top would satisfy a weaker one.
-    """
+    """"Recent" has to mean recent (#237). The slugs are chosen so alphabetical order is the
+    exact reverse of recency: sorted by slug the abandoned experiment leads and the recently
+    touched session sits last -- the opposite of what a returning reader should meet. Asserted as
+    the whole order, not just the first row, since moving one row to the top would satisfy a
+    weaker check."""
     _seed("aaa-oldest", updated_at="2026-01-01T00:00:00Z")
     _seed("mmm-newest", updated_at="2026-08-25T12:36:48Z")
     _seed("zzz-middle", updated_at="2026-05-05T05:05:05Z")
@@ -92,12 +90,11 @@ def test_the_recent_list_leads_with_the_session_that_moved_last():
 
 
 def test_a_row_nobody_could_read_sorts_last_rather_than_first():
-    """The third state does not get to lead the page.
-
-    An unreadable row states no timestamp at all — `updated_at` is empty, deliberately, because we
-    did not read a time and must not invent one (invariant 15). An empty string is also the
-    *smallest* string, so a naive ascending sort would put every broken session at the top of the one
-    screen a reader resumes from. It goes last, and it keeps its badge.
+    """The third state does not get to lead the page. An unreadable row states no timestamp at
+    all -- `updated_at` is empty, deliberately, since we did not read a time and must not invent
+    one (invariant 15). An empty string is also the smallest string, so a naive ascending sort
+    would put every broken session at the top of the one screen a reader resumes from; it goes
+    last instead, and keeps its badge.
     """
     _seed("healthy-newer", updated_at="2026-08-25T12:36:48Z")
     _seed("healthy-older", updated_at="2026-01-01T00:00:00Z")
@@ -190,11 +187,8 @@ def test_human_time_says_nothing_when_there_is_nothing_to_say():
 
 def test_human_time_hands_back_a_stamp_it_could_not_read_rather_than_hiding_it():
     """The third state, and the one a formatter usually gets wrong in both directions at once.
-
-    A hand-edited timestamp, or one written by a newer Requivo in a format this build cannot parse,
-    is a fact the row *does* have. Inventing a time for it would be a lie; swallowing it would delete
-    the only evidence a reader has that something is odd about that session. So it is passed through
-    unchanged, and it is visibly not a date.
-    """
+    A hand-edited timestamp, or one written by a newer Requivo in a format this build cannot
+    parse, is a fact the row does have -- inventing a time would lie, swallowing it would delete
+    the only evidence something is odd. So it passes through unchanged, visibly not a date."""
     assert human_time("not-a-timestamp") == "not-a-timestamp"
     assert human_time("2026-13-45T99:99:99Z") == "2026-13-45T99:99:99Z"
