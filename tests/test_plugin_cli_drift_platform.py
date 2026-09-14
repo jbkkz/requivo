@@ -86,17 +86,11 @@ def test_the_plugin_resolves_against_a_released_cli_when_one_is_provisioned():
 
 
 def test_the_module_stays_stdlib_only():
-    """The released CLI is probed in a SEPARATE interpreter (the PROBE subprocess), so this module
-    itself never needs `requivo` importable to run the comparison -- and per the module docstring it
-    must be runnable even when the tree-side `pip install -e .` step failed
-    (`continue-on-error` in `.github/workflows/plugin-validate.yml`), which is exactly the case this
-    script exists to report as could-not-look rather than crash on before it ever reaches `main()`.
-
-    This is why `_harden_streams()` is not `golden_lib.configure_output()`: that function reaches
-    `requivo.streams`, and `golden_lib` itself imports `requivo.core.analysis` and friends, so either
-    import would turn a missing tree install into an unhandled `ModuleNotFoundError` at import time --
-    worse than the bug #174 is about, since it would happen before this module's own could-not-look
-    handling ever runs."""
+    """The released CLI is probed in a SEPARATE interpreter, so this module never needs `requivo`
+    importable to run the comparison, and must be runnable even when the tree-side install failed --
+    exactly the case this script exists to report as could-not-look rather than crash on (#174).
+    This is why `_harden_streams()` is not `golden_lib.configure_output()`: that would reach
+    `requivo.streams` and turn a missing install into an unhandled `ModuleNotFoundError` at import."""
     source = Path(drift.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
     modules = set()
@@ -142,13 +136,10 @@ def _plugin_with_a_non_ascii_skill_name(tmp_path):
 def test_a_strict_console_reports_a_real_finding_as_could_not_look_when_streams_are_not_hardened(
         tmp_path, monkeypatch, ascii_console):
     """must fire. `main()`'s own blanket `except Exception` already turns an unhandled
-    `UnicodeEncodeError` into could-not-look rather than letting it escape -- so disabling
-    `_harden_streams()` does not surface as a raised exception here, it surfaces as exactly the
-    ordering bug #174 is about: a real drift Finding is computed, the crash happens while PRINTING
-    it, and the exit code ends up describing the crash (3, could-not-look) instead of the walk that
-    already found the drift (1). That silent substitution -- not a raised exception -- is the
-    positive control for the test below, and it is why this asserts an exit code rather than
-    `pytest.raises`."""
+    `UnicodeEncodeError` into could-not-look rather than letting it escape, so disabling
+    `_harden_streams()` surfaces as exactly the ordering bug #174 is about: a real drift Finding is
+    computed, the crash happens while PRINTING it, and the exit code describes the crash (3) instead
+    of the walk that already found the drift (1) -- a silent substitution, not a raised exception."""
     plugin = _plugin_with_a_non_ascii_skill_name(tmp_path)
     ascii_console()
     monkeypatch.setattr(drift, "_harden_streams", lambda: None)
@@ -161,8 +152,7 @@ def test_a_plugin_drift_run_survives_a_console_that_cannot_encode_a_skill_direct
         tmp_path, ascii_console):
     """must not fire. With `_harden_streams()` doing its job, the same real finding is reported as
     drift -- not swallowed by the crash the hardening prevents -- and the non-ASCII directory name
-    reaches the reader as a visible escape rather than a hole. The escape is the evidence the print
-    ran rather than fell silent, the same reasoning
+    reaches the reader as a visible escape rather than a hole, the same reasoning
     `test_a_harness_script_survives_a_console_that_cannot_encode_its_output` uses for the golden
     harness."""
     plugin = _plugin_with_a_non_ascii_skill_name(tmp_path)
@@ -191,11 +181,10 @@ def test_harden_streams_names_a_stream_it_could_not_reach(monkeypatch):
 
 def test_note_could_not_harden_survives_a_console_that_cannot_encode_its_own_reason(monkeypatch):
     """must not fire (silently). `reason` is composed from an exception's own `str()`, so it can
-    itself carry a character stderr cannot encode -- the exact class this whole file is about,
-    reproduced one function inward, in the code that is supposed to REPORT that class. Without the
-    fallback this writes nothing at all: a reader of stderr cannot tell "both streams hardened fine"
-    from "hardening and the report of its own failure both failed silently". Auditor-found in the
-    #174 review."""
+    itself carry a character stderr cannot encode -- the exact class this file is about, reproduced
+    in the code that is supposed to REPORT it. Without the fallback this writes nothing: a reader
+    cannot tell "both streams hardened fine" from "hardening and its own failure both failed
+    silently" (#174, auditor-found)."""
     raw = io.BytesIO()
     monkeypatch.setattr(sys, "stderr", io.TextIOWrapper(raw, encoding="ascii", errors="strict"))
     drift._note_could_not_harden("stdout", "café could not be represented")

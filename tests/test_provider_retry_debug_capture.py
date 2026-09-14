@@ -80,12 +80,10 @@ def test_a_transport_failure_writes_no_debug_file(tmp_path, monkeypatch):
 
 def test_a_prune_failure_does_not_discard_an_already_saved_reply(tmp_path, monkeypatch):
     """Found in review: `_prune_debug_dir`'s `unlink` calls carried no exception handling of their
-    own, so a failure there -- this codebase already knows a `PermissionError` on an open handle is
-    real and platform-specific, invariant 18's own `_replace_with_retry` exists because of it --
-    propagated up into `_save_failed_reply`'s broad `except Exception: return None` and discarded the
-    path of a reply that had, moments earlier, been written successfully. The write and the prune are
-    two separate failure domains now: a prune failure must never un-report a completed write.
-    """
+    own, so a failure there (a `PermissionError` on an open handle, invariant 18's own reason)
+    propagated up into `_save_failed_reply`'s broad `except Exception: return None` and discarded
+    the path of a reply that had, moments earlier, been written successfully. A prune failure must
+    never un-report a completed write."""
     from requivo.providers.anthropic import completion as mod
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))

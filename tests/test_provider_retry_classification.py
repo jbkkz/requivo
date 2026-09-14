@@ -43,16 +43,11 @@ def _complete_failing_with(exc):
 
 
 def test_an_auth_failure_names_the_key_and_does_not_advise_retry():
-    """The message that was actively wrong, and the assertion that keeps it from coming back.
-
-    `AuthenticationError`, `PermissionDeniedError` and `RateLimitError` are all `APIError`
-    subclasses, so one `except APIError` arm answered a rejected key with "Retry the command in a
-    moment" -- advice that never works on a 401, given to the single most likely failure of a fresh
-    install, with the real cause reduced to a parenthetical class name (#201).
-
-    The negative half is the load-bearing half: it is easy to add the key remedy and leave the retry
-    sentence sitting underneath it, which reads as "your key is wrong, try again".
-    """
+    """The message that was actively wrong. `AuthenticationError`, `PermissionDeniedError` and
+    `RateLimitError` are all `APIError` subclasses, so one `except APIError` arm answered a rejected
+    key with "Retry the command in a moment" -- advice that never works on a 401 (#201). The
+    negative half is the load-bearing half: it is easy to add the key remedy and leave the retry
+    sentence underneath, reading as "your key is wrong, try again"."""
     for cls in (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
         msg = _complete_failing_with(_api_status(cls, 401 if cls is anthropic.AuthenticationError else 403))
         assert "ANTHROPIC_API_KEY" in msg, "the remedy is the message's whole job"
@@ -73,12 +68,9 @@ def test_a_rate_limit_says_so_and_does_not_send_the_operator_straight_back():
 
 
 def test_a_connection_failure_keeps_the_wording_that_was_right_for_it():
-    """The third branch exists to leave something alone.
-
-    Splitting an over-general message is only an improvement if the case it was actually correct
-    for still gets it: a connection drop, a timeout or a 5xx *is* transient, and "retry in a moment"
-    is the right thing to say.
-    """
+    """The third branch exists to leave something alone. Splitting an over-general message is only
+    an improvement if the case it was actually correct for still gets it: a connection drop, a
+    timeout or a 5xx *is* transient, and "retry in a moment" is the right thing to say."""
     exc = anthropic.APIConnectionError(message="boom", request=httpx.Request("POST", "https://api.anthropic.com"))
     msg = _complete_failing_with(exc)
     assert "Anthropic API unavailable" in msg
@@ -87,14 +79,11 @@ def test_a_connection_failure_keeps_the_wording_that_was_right_for_it():
 
 
 def test_a_typeerror_out_of_the_sdk_is_not_a_traceback():
-    """The belt, and the shape of the defect it is a belt against.
-
-    #201 was an SDK raising a bare `TypeError` out of its own auth resolution: not an `APIError`, so
-    `_complete`'s transport arm did not see it, and not a `RequivoError`, so `cli.app()` did not
-    either. It threaded through every handler in the product and reached the operator as twenty-five
-    lines of stack. `new_client()` refuses upfront now, so this arm should be unreachable -- which is
-    the point of testing it, because an unreachable arm nobody exercises is one that rots.
-    """
+    """The belt, and the shape of the defect it is a belt against. #201 was an SDK raising a bare
+    `TypeError` out of its own auth resolution: not an `APIError`, so `_complete`'s transport arm
+    did not see it, and not a `RequivoError`, so `cli.app()` did not either -- it reached the
+    operator as twenty-five lines of stack. `new_client()` refuses upfront now, so this arm should
+    be unreachable, which is the point of testing it: one nobody exercises is one that rots."""
     msg = _complete_failing_with(TypeError("Could not resolve authentication method."))
     assert "TypeError" in msg
     assert "ANTHROPIC_API_KEY" in msg

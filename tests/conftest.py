@@ -13,7 +13,7 @@ machine with a resolvable credential — red locally, green in keyless CI, bille
 sentence this file makes structural was prose before: "the whole suite: no API calls, no network".
 
 Three layers, because #419 measured what one layer costs. The tests that exercise the SDK's own
-discovery chain (profile/federation, in `test_provider.py` and `test_cli_doctor.py`) are untouched:
+discovery chain (profile/federation, in `test_provider_credentials.py` and `test_cli_doctor.py`) are untouched:
 the net clears the *environment* and re-routes the *wire*, but leaves `default_credentials` real —
 those tests re-set their own sources on top and keep asserting against the SDK, not a stub.
 

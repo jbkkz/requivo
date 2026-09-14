@@ -321,12 +321,10 @@ def test_a_non_ascii_word_after_requivo_is_not_captured_at_all(tmp_path):
 
 def test_every_verb_the_plugin_names_exists_in_this_checkout():
     """The first-token counterpart of `tree_typos`, and it covers a file the existing gate does not.
-
     `tests/test_plugin.py::test_skills_reference_only_real_cli_commands` makes this assertion, but
-    only over `skills/*/SKILL.md`. This module also walks `REASONING.md`, so prose there such as
-    "requivo requires an API key" would be captured as a verb named `requires`, sail past that gate,
-    and be reported by the advisory leg as drift against the release -- a false positive in the one
-    file the older test never opens. Asserted here, where the walked set is defined."""
+    only over `skills/*/SKILL.md`; this module also walks `REASONING.md`, so prose there such as
+    "requivo requires an API key" would be captured as a verb named `requires` and sail past that
+    gate. Asserted here, where the walked set is defined."""
     tree = cli_surface(sys.executable)
     assert tree is not None
     referenced = plugin_invocations()
@@ -385,13 +383,10 @@ def readme_invocations(path):
 
 
 def test_the_plugin_readme_names_only_verbs_this_checkout_has():
-    """The gap #138 filed, closed at the narrowest width that closes it.
-
-    Checked against this checkout rather than against a release, deliberately: release skew is the
-    advisory leg's question and the README is out of that leg by decision. What is checked here is
-    the failure that actually happened -- a verb renamed or removed while the page kept naming it --
-    and that is decidable offline, with no network and no false positives.
-    """
+    """The gap #138 filed, closed at the narrowest width that closes it. Checked against this
+    checkout rather than a release, deliberately: release skew is the advisory leg's question and
+    the README is out of that leg by decision. What is checked here is the failure that actually
+    happened -- a verb renamed or removed while the page kept naming it -- decidable offline."""
     tree = cli_surface(sys.executable)
     assert tree is not None
     named = readme_invocations(README)
@@ -421,12 +416,10 @@ def test_the_readme_verb_guard_fires_on_a_verb_and_on_a_subcommand(tmp_path):
 
 
 def test_the_readme_reader_sees_code_and_never_prose(tmp_path):
-    """The answer to #138's open question, asserted rather than argued.
-
-    `requivo requires an API key` is a sentence, and feeding a page of English to `INVOCATION_RE`
-    reads `requires` as a verb -- the exact false positive #96 already hit inside the skills. This
-    reader never looks at prose, so the question of whether the classifier is strong enough for a
-    page of English does not arise: it is not asked to be."""
+    """The answer to #138's open question, asserted rather than argued. `requivo requires an API
+    key` is a sentence, and feeding a page of English to `INVOCATION_RE` reads `requires` as a verb
+    -- the exact false positive #96 already hit inside the skills. This reader never looks at prose,
+    so whether the classifier is strong enough for a page of English does not arise."""
     page = tmp_path / "README.md"
     page.write_text(
         "Note that requivo requires an API key for the optional provider mode.\n"
@@ -510,16 +503,10 @@ def test_the_walk_reports_nothing_unreadable_when_it_could_read_everything(tmp_p
 
 def test_a_stray_file_in_the_skills_directory_is_absent_and_not_could_not_look(tmp_path):
     """The other side of the same three-way split, and the one that decides whether this leg cries
-    wolf. `skills/` can hold something that is not a skill directory -- a `README.md`, a `.DS_Store`
-    a contributor's machine dropped there -- and `skills/<that>/SKILL.md` cannot be stat'ed. That is
-    an error which *decides* the question (there is no skill there) rather than one that refuses to
-    answer it, so it must sort to absent. A walk that called it could-not-look would report the
-    repository's own plugin as partly unreadable the first time somebody opened it in Finder.
-
-    Both spellings are covered because the platforms differ: POSIX raises `NotADirectoryError`
-    (ENOTDIR) for a path continuing through a regular file, and Windows more often reports the whole
-    path as not found. `_collect_file` names both, so neither leg reaches the OSError arm.
-    """
+    wolf. `skills/` can hold something that is not a skill directory, so `skills/<that>/SKILL.md`
+    cannot be stat'ed -- an error that *decides* the question (there is no skill there) rather than
+    one that refuses to answer it, so it must sort to absent. Both spellings are covered since POSIX
+    raises `NotADirectoryError` and Windows reports the path as not found; `_collect_file` names both."""
     skills = tmp_path / "skills"
     (skills / "real").mkdir(parents=True)
     (skills / "real" / "SKILL.md").write_text("Run `requivo status <slug>`.", encoding="utf-8")

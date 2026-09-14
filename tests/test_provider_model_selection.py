@@ -75,10 +75,9 @@ def test_two_constructed_providers_record_and_price_independently(monkeypatch):
 def test_a_constructed_model_makes_no_env_read(monkeypatch):
     """Acceptance criterion 1, second half, with its required positive control in the same fixture:
     a provider constructed with a model id must not consult `REQUIVO_MODEL`/`MODEL` at all -- proven
-    by setting the environment to a *third*, distinct value the constructed provider must never
-    produce, so a harness where the environment merely happened to be empty cannot make this pass by
-    accident. The default-constructed provider alongside it DOES read the environment (the must-fire
-    control), so a broken plumbing that ignores the constructor argument entirely cannot pass either."""
+    by setting the environment to a third, distinct value the constructed provider must never
+    produce. The default-constructed provider alongside it DOES read the environment (the must-fire
+    control), so a broken plumbing that ignores the constructor argument entirely cannot pass."""
     from requivo.providers.anthropic import AnthropicProvider
 
     monkeypatch.setenv("REQUIVO_MODEL", "claude-opus-4-8")

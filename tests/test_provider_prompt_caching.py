@@ -60,26 +60,11 @@ def test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call():
 
 
 def test_the_provider_seam_is_single_call_on_both_analyze_branches():
-    """#58: `AnthropicProvider.analyze` is one call per service operation, so it must not write a
-    cache entry nothing reads — on *either* branch.
-
-    Driven through the real object rather than by reading a signature, because the defect this
-    replaces was a function that took `reuse_system` and dropped it on the floor: `analyze` could
-    declare False, pass nothing down, and inherit `run()`'s True.
-
-    **What this test isolates, stated precisely because the first draft of it overclaimed.** Only the
-    `run()` arm is pinned here: dropping `analyze`'s explicit `reuse_system=False` on that arm makes
-    this red, because `run()`'s own default is True. Dropping it on the `answer_turn` arm does *not*,
-    because `answer_turn` already defaults to False — the explicit keyword there is a call-site
-    declaration (the design asks for one) sitting on top of a default that agrees with it, not a
-    second guard. What pins the `answer_turn` arm is the neighbouring
-    `test_a_looping_caller_can_still_ask_for_the_breakpoint_back`, which fails if that default is
-    flipped. Both branches are still driven here so the assertion covers the observable behaviour of
-    each; the claim about which mutation each one catches is the part that has to be exact.
-
-    The control is in the same fixture and it is the point: `run()` called directly — which is what
-    `converse()` and the golden harness do — must still carry the directive. A change that strips
-    the breakpoint from `run()` fails here rather than looking like this fix."""
+    """#58: `AnthropicProvider.analyze` is one call per service operation and must not write a
+    cache entry nothing reads, on either branch. Only the `run()` arm is pinned here (dropping
+    `analyze`'s explicit `reuse_system=False` makes this red); the neighbouring
+    `test_a_looping_caller_can_still_ask_for_the_breakpoint_back` pins the `answer_turn` arm instead.
+    The control in the same fixture is the point: `run()` called directly must still carry it."""
     from requivo.providers.anthropic import AnthropicProvider
 
     model = out({"problem": slot(80, "explicit", "high")})

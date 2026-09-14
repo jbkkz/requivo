@@ -22,18 +22,11 @@ from requivo.providers.errors import EngineError
 
 
 def test_a_missing_api_key_refuses_before_the_sdk_can_traceback(monkeypatch):
-    """The most likely first failure of a fresh install, turned into one line.
-
-    `Anthropic()` constructs fine with no credential -- it defers auth resolution to the first
-    request and raises a bare `TypeError` from its own internals there. So the guard cannot be "did
-    the client build?", and there was nothing else on the CLI paid path asking: `requivo discover`
-    on a fresh `pip install requivo[anthropic]` produced a stack ending in the SDK, naming neither
-    the environment variable, nor `.env`, nor `requivo doctor` (#201).
-
-    `EngineError` and not `SystemExit`, deliberately: the CLI turns the former into a one-line stderr
-    message *and* the `--json` envelope, and asserting the exit code instead would pass just as well
-    against a `sys.exit()` that prints nothing a machine can read.
-    """
+    """The most likely first failure of a fresh install, turned into one line. `Anthropic()`
+    constructs fine with no credential and raises a bare `TypeError` from its own internals on the
+    first request, so the guard cannot be "did the client build?" (#201). `EngineError`, not
+    `SystemExit`: the CLI turns it into a stderr line and the `--json` envelope; asserting the exit
+    code alone would pass against a `sys.exit()` that prints nothing a machine can read."""
     _no_credentials(monkeypatch)
     with pytest.raises(EngineError) as ei:
         new_client()
@@ -129,15 +122,11 @@ _NEEDS_CHAIN = pytest.mark.skipif(
 
 @_NEEDS_CHAIN
 def test_a_federation_install_is_not_false_refused(monkeypatch):
-    """The #334 defect itself, and the reason this file no longer keeps a list of variable names.
-
-    `new_client()` pre-flighted on `_AUTH_ENV_VARS` -- two entries against the five sources the SDK
-    documents. An install authenticating by workload identity federation therefore hit a refusal
-    telling it to set `ANTHROPIC_API_KEY`, while a bare `Anthropic()` in the same shell resolved a
-    credentials provider and would have made the call. Widening the tuple was rejected as the fix:
-    the resolution order belongs to the SDK, so a copy of it here is a copy that goes stale on the
-    SDK's schedule rather than on ours. Goes red on the tuple-based guard.
-    """
+    """The #334 defect itself. `new_client()` pre-flighted on `_AUTH_ENV_VARS` -- two entries
+    against the five sources the SDK documents -- so a federation install hit a refusal telling it
+    to set `ANTHROPIC_API_KEY` while a bare `Anthropic()` in the same shell would have worked.
+    Widening the tuple was rejected: the resolution order belongs to the SDK, so a copy of it here
+    goes stale on the SDK's own schedule rather than on ours."""
     _clear_credential_env(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_IDENTITY_TOKEN", "an-identity-token")
     monkeypatch.setenv("ANTHROPIC_FEDERATION_RULE_ID", "rule-1")
@@ -150,14 +139,11 @@ def test_a_federation_install_is_not_false_refused(monkeypatch):
 
 
 def test_the_resolved_credential_attributes_are_read_through_getattr_defaults():
-    """Two halves of one promise, because each fails silently on its own.
-
-    The names must be *real* -- an SDK that renamed `credentials` would make every install read as
-    credential-free, which is a refusal nobody can argue with. And they must be read through a
-    default, because the supported range is `anthropic>=0.42.0,<2` and the older majors have no
-    `credentials` attribute at all; a bare `client.credentials` would turn the whole provider into an
-    `AttributeError` on the floor this repository tests against.
-    """
+    """Two halves of one promise, because each fails silently on its own. The names must be real --
+    an SDK that renamed `credentials` would make every install read as credential-free, a refusal
+    nobody can argue with. And they must be read through a default, because the supported range is
+    `anthropic>=0.42.0,<2` and older majors have no `credentials` attribute at all; a bare
+    `client.credentials` would turn the whole provider into an `AttributeError` on the tested floor."""
     import anthropic as sdk
 
     from requivo.providers.anthropic.client import _CREDENTIAL_ATTRS
@@ -193,14 +179,10 @@ def test_the_resolved_credential_attributes_are_read_through_getattr_defaults():
 @_NEEDS_CHAIN
 def test_an_unloadable_profile_is_refused_with_the_sdk_s_own_reason(monkeypatch):
     """A third state the env-var guard could not reach: configured, and unloadable.
-
-    `ANTHROPIC_PROFILE` naming a file that is not there makes the SDK raise out of its own
-    constructor. Nothing here expected construction to fail -- the guard's whole premise was that
-    `Anthropic()` never raises -- so it escaped `new_client()` as a traceback. It is an `EngineError`
-    now, quoting the SDK, which names the missing file and the variable to change; and it is
-    deliberately *not* the no-credential message, because telling someone to set `ANTHROPIC_API_KEY`
-    when they have a profile pointed at the wrong path is the wrong remedy for the right symptom.
-    """
+    `ANTHROPIC_PROFILE` naming a missing file makes the SDK raise out of its own constructor; it now
+    surfaces as an `EngineError` quoting the SDK, naming the missing file and the variable to change
+    -- deliberately not the no-credential message, since telling someone to set `ANTHROPIC_API_KEY`
+    when their profile points at the wrong path is the wrong remedy for the right symptom."""
     _clear_credential_env(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_PROFILE", "a-profile-that-does-not-exist")
 
@@ -326,14 +308,10 @@ def _no_client_claims() -> dict[tuple[str, str], object]:
 
 def test_an_allowlist_reason_claiming_no_client_is_built_is_true_of_the_function_it_names(monkeypatch):
     """#374. Two of three entries making this claim were wrong: `credential_present()` and
-    `credential_diagnosis()` both build a client via `_resolve_client()` (since #334), and were
-    corrected as part of this fix. `current_model_name` genuinely builds none and stays a claim.
-
-    Positive control in the same fixture, and the must-fire half: `credential_present()` is known
-    to construct a client and is deliberately *not* a registered claim after this fix, so calling it
-    through the same spy proves the spy detects a real construction -- without this, a spy that
-    silently caught nothing would make every assertion below pass for the wrong reason.
-    """
+    `credential_diagnosis()` both build a client via `_resolve_client()` (since #334); corrected
+    here. Positive control in the same fixture, and the must-fire half: `credential_present()` is
+    known to construct a client and is deliberately not a registered claim, so calling it through
+    the spy proves the spy detects a real construction."""
     calls = []
     original_init = anthropic.Anthropic.__init__
 
@@ -382,13 +360,11 @@ def test_a_provider_verb_refuses_without_a_key_before_claiming_a_session(monkeyp
 
 
 def test_the_typed_error_arms_are_inert_without_the_sdk():
-    """What the auth and rate-limit arms catch when the SDK that defines them is not installed.
-
-    The obvious binding for an unimportable error class is `Exception`, which is what `APIError`
-    already does -- and it is wrong for these two. `except Exception` in the auth arm would catch
-    every transport failure and answer a network drop with a credential remedy. A class nothing ever
-    raises catches nothing, which is the correct behaviour: with no SDK there is no call to fail.
-    """
+    """What the auth and rate-limit arms catch when the SDK that defines them is not installed. The
+    obvious binding for an unimportable error class is `Exception`, which is what `APIError` already
+    does -- and it is wrong for these two: `except Exception` in the auth arm would catch every
+    transport failure and answer a network drop with a credential remedy. A class nothing ever
+    raises catches nothing, which is correct: with no SDK there is no call to fail."""
     from requivo.providers.anthropic import client as mod
 
     for name in ("AuthenticationError", "PermissionDeniedError", "RateLimitError"):

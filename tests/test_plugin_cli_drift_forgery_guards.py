@@ -122,14 +122,11 @@ def _forging_dir(parent, label):
 
 
 def test_the_sanitiser_collapses_whitespace_and_breaks_both_command_forms():
-    """The rule itself, on every leg. The end-to-end newline cases below need a filesystem that will
-    hold a newline in a name and Windows will not, so this is what keeps the claim asserted there.
-
-    Two functions rather than one, because they answer two questions and only one of them is about
-    the CI log. `_one_line` is the whitespace rule and three other call sites in `scripts/` compare
-    themselves against it by name; `_log_safe` is the rule this script's stdout needs, and it is what
-    every untrusted value now passes through.
-    """
+    """The rule itself, on every leg. The end-to-end newline cases below need a filesystem that
+    will hold a newline in a name, which Windows will not, so this is what keeps the claim asserted
+    there. Two functions rather than one: `_one_line` is the whitespace rule three other `scripts/`
+    call sites compare against by name, and `_log_safe` is the rule this script's stdout needs --
+    every untrusted value now passes through it."""
     assert _one_line("plain\n::error::forged") == "plain ::error::forged"
     assert _one_line("a\r\nb\tc  d") == "a b c d"
 
@@ -165,13 +162,10 @@ def test_the_sanitiser_collapses_whitespace_and_breaks_both_command_forms():
 
 def test_a_skill_directory_name_is_squashed_before_it_reaches_a_finding():
     """The `_label` half of the class, asserted on every platform including the one that cannot
-    stage the fixture.
-
-    `_label` reads `.parent.name` off a path and never touches the filesystem, so the hostile name
-    only has to be *representable*, not creatable — and a `PurePath` represents it identically on
-    both flavours. That is the difference between Windows skipping this class whole and Windows
-    checking the half of it a pure path can reach.
-    """
+    stage the fixture. `_label` reads `.parent.name` off a path and never touches the filesystem, so
+    the hostile name only has to be *representable*, not creatable -- a `PurePath` represents it
+    identically on both flavours. That is the difference between Windows skipping this class whole
+    and Windows checking the half a pure path can reach."""
     forged = Path("skills") / "plain\n::error::forged" / "SKILL.md"
     assert _label(forged) == "plain : :error: :forged"
     # The legacy form, which needs no newline and is therefore the half NTFS does not refuse (#176).
@@ -185,9 +179,8 @@ def test_a_skill_directory_name_is_squashed_before_it_reaches_a_finding():
 def test_an_unreadable_path_cannot_forge_a_line_of_its_own(tmp_path, capsys):
     """The half this diff introduced, end to end: an unreadable entry's name reaching `print`
     un-squashed, ahead of anything `_annotate` would have squashed on its way to an annotation.
-
-    Doubly unstageable on Windows — the name is refused by the filesystem, and the `chmod 000` would
-    not bite either — so `_forging_dir` skips first and names the whole class, rather than leaving
+    Doubly unstageable on Windows -- the name is refused by the filesystem, and `chmod 000` would
+    not bite either -- so `_forging_dir` skips first and names the whole class, rather than leaving
     the second obstacle to be discovered by whoever removes the first."""
     skills = tmp_path / "skills"
     evil = _forging_dir(skills, "an-unreadable-name")
@@ -206,12 +199,11 @@ def test_an_unreadable_path_cannot_forge_a_line_of_its_own(tmp_path, capsys):
 
 
 def test_a_skill_directory_name_cannot_forge_a_line_of_its_own(tmp_path, capsys):
-    """The `_label` half end to end, on a real tree — the integration counterpart of
-    `test_a_skill_directory_name_is_squashed_before_it_reaches_a_finding` above.
-
-    Worth having in addition to that unit, because what it pins is not that `_label` squashes but
-    that `_show` prints nothing else derived from the same name: full coverage of a function and an
-    entry point that routes around it look identical from outside."""
+    """The `_label` half end to end, on a real tree -- the integration counterpart of
+    `test_a_skill_directory_name_is_squashed_before_it_reaches_a_finding` above. Worth having in
+    addition to that unit: what it pins is not that `_label` squashes but that `_show` prints
+    nothing else derived from the same name -- full coverage of a function and an entry point that
+    routes around it look identical from outside."""
     skills = tmp_path / "skills"
     evil = _forging_dir(skills, "a-skill-directory")
     (evil / "SKILL.md").write_text("Fix it with `requivo model rebase <slug>`.", encoding="utf-8")
@@ -229,15 +221,10 @@ LEGACY_NAME = "brief##[error]FORGED-BY-A-LEGACY-DIRECTORY-NAME"
 
 def test_a_skill_directory_name_cannot_forge_the_legacy_command_form(tmp_path, capsys, monkeypatch):
     """#176 itself, end to end, on every platform including the one that skips the two cases above.
-
-    The name holds no newline and no colon — nothing NTFS refuses — because the runner's legacy
-    parser is `message.IndexOf("##[")` and needs neither. That is exactly why `_forging_dir`'s old
-    claim was unsound: the platform that cannot stage a newline stages this one without complaint.
-
-    Paired with a must-fire control in the same fixture, because the assertion below is a
-    must-not-fire and a must-not-fire passes when the harness produced nothing at all. The control
-    strips exactly one containment — `_label`'s sanitising — and asserts the forgery comes back.
-    """
+    The name holds no newline and no colon -- nothing NTFS refuses -- because the runner's legacy
+    parser is `message.IndexOf("##[")` and needs neither; that is exactly why `_forging_dir`'s old
+    claim was unsound. Paired with a must-fire control in the same fixture, because the assertion
+    below is a must-not-fire, and a must-not-fire passes when the harness produced nothing at all."""
     skills = tmp_path / "skills"
     evil = skills / LEGACY_NAME
     # Deliberately not guarded the way `_forging_dir` is. If a platform DOES refuse this name, the
@@ -270,17 +257,11 @@ FORGED_PROBE_PAYLOAD = (
 
 
 def test_a_verb_name_from_the_probe_cannot_forge_a_line_of_its_own(tmp_path, capsys, monkeypatch):
-    """The second instance of the class, found by sweeping this file rather than by being filed.
-
-    A skills directory name is not the only untrusted text here. `parse_surface` reads the probe's
-    stdout, and the probe introspects `requivo.cli._build_parser()` **in the working tree** — which a
-    fork pull request edits as freely as it names a directory. Those verb and subcommand names are
-    interpolated into `tree_typos`' reason, which `_show` prints, and a newline in one puts the rest
-    at column 0: strictly worse than #176's own case, since it reaches both parsers rather than one.
-
-    The released half of the same read is not a vector (it comes from PyPI), but it enters through
-    the same function and is sanitised by the same line.
-    """
+    """The second instance of the class, found by sweeping this file rather than by being filed. A
+    skills directory name is not the only untrusted text here: `parse_surface` reads the probe's
+    stdout, and the probe introspects `requivo.cli._build_parser()` in the working tree, which a
+    fork pull request edits as freely as it names a directory -- those verb/subcommand names are
+    interpolated into `tree_typos`' reason, which `_show` prints. The released half enters the same way."""
     skills = tmp_path / "skills" / "brief"
     skills.mkdir(parents=True)
     (skills / "SKILL.md").write_text("Fix it with `requivo model rebase <slug>`.", encoding="utf-8")
@@ -336,12 +317,10 @@ def _assert_no_forged_workflow_command(out):
 
 
 def test_the_forgery_guard_sees_both_command_forms():
-    """The must-fire half of `_assert_no_forged_workflow_command`, and the reason it exists.
-
-    Every other use of that helper is a must-not-fire assertion, and a must-not-fire assertion
-    passes when the harness produced nothing at all. So the guard is exercised here against a
-    transcript that really does forge, in each of the two shapes the runner parses, plus one clean
-    transcript so a helper that flagged everything would not read as coverage either."""
+    """The must-fire half of `_assert_no_forged_workflow_command`, and the reason it exists. Every
+    other use of that helper is a must-not-fire assertion, and a must-not-fire assertion passes when
+    the harness produced nothing at all. So the guard is exercised here against a transcript that
+    really does forge, in each of the two shapes the runner parses, plus one clean transcript."""
     for forged in ("::error::pwned",                         # TryParseV2, column 0
                    "  ::error::pwned",                       # TryParseV2 after TrimStart
                    "  requivo model x   (referenced by: brief##[error]pwned)",   # TryParse, mid-line
@@ -359,12 +338,10 @@ def test_the_forgery_guard_sees_both_command_forms():
 
 def test_a_skills_path_that_is_a_regular_file_is_absent_and_not_could_not_look(tmp_path):
     """The same three-way rule at the directory level, where it was stated and not applied.
-
-    `_collect_file` sorts `NotADirectoryError` to absent, because a path continuing through a regular
-    file *decides* the question. The `skills.iterdir()` arm above it named only `FileNotFoundError`,
-    so the identical exception twelve lines apart meant two different things: a `skills` that is a
-    file read as could-not-look. Found by review, and the edge case matters less than the split being
-    uniform -- a rule that holds in one of the two places it is written is the thing that bites."""
+    `_collect_file` sorts `NotADirectoryError` to absent, because a path continuing through a
+    regular file *decides* the question. The `skills.iterdir()` arm above it named only
+    `FileNotFoundError`, so the identical exception meant two different things twelve lines apart --
+    found by review, and the split being uniform matters more than the edge case itself."""
     (tmp_path / "skills").write_text("not a directory", encoding="utf-8")
     (tmp_path / "REASONING.md").write_text("Preflight: `requivo doctor`.", encoding="utf-8")
 
@@ -374,18 +351,11 @@ def test_a_skills_path_that_is_a_regular_file_is_absent_and_not_could_not_look(t
 
 
 def test_the_reason_names_the_unreadable_path_when_nothing_could_be_extracted(tmp_path, capsys):
-    """Could-not-look for the right reason, which is a separate question from could-not-look.
-
-    Found by review. When the only invocation-bearing file is the one the walk could not open,
-    `referenced` comes back empty and `compare()` -- which is never handed the unreadable set, and
-    should not be -- returns its own could-not-look: *no `requivo` invocations were found in the
-    plugin's files*. True as far as it goes and wrong about the cause, because the emptiness is not a
-    fact about the plugin, it is a fact about what this process was allowed to read. Worse, `_run`
-    returned on that arm before ever naming the path, so the exit code was right and the one line a
-    reader could act on never printed.
-
-    The remedy is ordering, not a new state: the unreadable set is named before any verdict detail,
-    on every path through `_run`, so the emptiness below is always read next to its cause."""
+    """Could-not-look for the right reason, which is a separate question from could-not-look. Found
+    by review: when the only invocation-bearing file is the one the walk could not open,
+    `referenced` comes back empty and `compare()` returns its own could-not-look -- true as far as
+    it goes, and wrong about the cause, since the emptiness is a fact about what this process was
+    allowed to read, not about the plugin. The remedy is ordering: the unreadable set is named first."""
     skills = tmp_path / "skills"
     only = skills / "only"
     only.mkdir(parents=True)
@@ -406,23 +376,11 @@ def test_the_reason_names_the_unreadable_path_when_nothing_could_be_extracted(tm
 
 
 def test_main_reports_could_not_look_when_it_could_only_walk_part_of_the_plugin(tmp_path, capsys):
-    """The defect (#139), staged exactly as the v1.1.0 release audit found it.
-
-    `invocation_sources` walked with `Path.glob` and `Path.is_file()`, and **both swallow
-    `OSError`**: glob skips a subdirectory it cannot descend into and raises nothing, and `is_file()`
-    returns False on EACCES. Both failures are silent, so a partially readable plugin was graded as a
-    verdict over whatever subset the walk happened to manage -- three files staged, two walked,
-    `state: resolved`, exit 0, about a plugin whose third file names a verb that exists nowhere.
-
-    The script handled the two neighbouring cases and this was the gap between them: total blindness
-    is `could-not-look` because `referenced` comes back empty, and a file-level EACCES is
-    `could-not-look` through the total `except` in `main`. Only the partial walk graded.
-
-    This is invariant 15's third paragraph one directory over -- a partition whose predicate can
-    raise has three outcomes whether or not its return type says so, and an entry it could not decide
-    about belongs in neither of the other two buckets. The vocabulary already existed: a directory
-    the walk cannot descend into is `could-not-look` for the part it could not see.
-    """
+    """The defect (#139), staged as the v1.1.0 release audit found it. `invocation_sources` walked
+    with `Path.glob`/`Path.is_file()`, and both swallow `OSError` silently, so a partially readable
+    plugin was graded as a verdict over whatever subset the walk happened to manage. Total blindness
+    and a file-level EACCES were already `could-not-look`; only the partial walk graded -- invariant
+    15's third paragraph over: an entry it could not decide about belongs in neither other bucket."""
     hidden = _stage_partly_readable(tmp_path)
     _make_unreadable(hidden)
     try:
@@ -439,12 +397,10 @@ def test_main_reports_could_not_look_when_it_could_only_walk_part_of_the_plugin(
 
 
 def test_the_same_plugin_read_whole_is_a_verdict_and_reports_nothing_unreadable(tmp_path, capsys):
-    """The must-not-fire half, on the identical fixture with the mode change as the only difference.
-
-    Two things it pins that the case above cannot. That the walk really does reach the third file
-    when it is allowed to -- otherwise the could-not-look above would be a walk that never sees three
-    files at all -- and that `unreadable` is a counted 0 rather than a constant, which is what stops
-    a broken probe from reporting every plugin as partly unreadable and calling that a guard."""
+    """The must-not-fire half, on the identical fixture with the mode change as the only
+    difference. Two things it pins that the case above cannot: that the walk really does reach the
+    third file when allowed to, and that `unreadable` is a counted 0 rather than a constant, which
+    stops a broken probe from reporting every plugin as partly unreadable and calling that a guard."""
     _stage_partly_readable(tmp_path)
     code = main(["--released-python", sys.executable, "--plugin", str(tmp_path)])
     out = capsys.readouterr().out
@@ -456,12 +412,10 @@ def test_the_same_plugin_read_whole_is_a_verdict_and_reports_nothing_unreadable(
 
 
 def test_drift_in_the_part_it_could_read_outranks_the_part_it_could_not(tmp_path, capsys):
-    """A complete answer outranks a partial one.
-
-    Invariant 15 settles this for `session verify`: a session that is inconsistent **and** whose
-    cards were unreadable exits on the firm negative, because could-not-look says the question is
-    unanswered and here part of it is answered. So an invocation that resolves nowhere keeps the
-    drift exit, and the partial walk is reported *alongside* it rather than instead of it."""
+    """A complete answer outranks a partial one. Invariant 15 settles this for `session verify`: a
+    session that is inconsistent and whose cards were unreadable exits on the firm negative, because
+    could-not-look says the question is unanswered and here part of it is answered. So an invocation
+    that resolves nowhere keeps the drift exit, reported alongside the partial walk, not instead."""
     skills = tmp_path / "skills"
     (skills / "visible").mkdir(parents=True)
     (skills / "visible" / "SKILL.md").write_text(
