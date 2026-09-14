@@ -504,11 +504,11 @@ of the tables below and not the rest, so a future omission is caught rather than
 - an entry in `core/dependencies.py`'s `_ARTIFACT_SLOTS_RAW` (which slots the artifact consumes — the
   one the staleness graph actually reads at save time, so a type missing here is never flagged stale
   regardless of what else knows about it) and, if the type is saveable, `ARTIFACT_FILENAMES` (its
-  filename) **and** `ARTIFACT_FILES` — found missing from this checklist and from the guard's own
-  first cut, in review of this same change: `services/sessions.py`'s `_resolve_stale`, which runs on
-  *every* apply rather than only at save time, iterates `for t in ARTIFACT_FILES` to decide which
-  already-saved artifacts to eagerly re-flag, so a type present everywhere else and absent from this
-  one table is never auto-flagged stale by that path even though the save-time path still catches it
+  filename), which both paths now read: `services/sessions.py`'s `_resolve_stale` runs on *every*
+  apply rather than only at save time and iterates `for t in ARTIFACT_FILENAMES` to decide which
+  already-saved artifacts to eagerly re-flag, so a type absent from it is never auto-flagged stale by
+  that path either. It was a second table, `ARTIFACT_FILES`, until #556 folded the two into one and
+  #587 caught this clause still asking for the one that had gone
 - a label in `web/viewmodels/labels.py`'s `ARTIFACT_LABELS`, so the Web has something to call it
 - a subcommand in `cli.py`
 

@@ -515,20 +515,31 @@ def _question_prose_leaks(root: Path) -> list:
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "requivo"
-_TERMINAL_SURFACE_TREES = ("render", "cli.py", "deterministic", "web")
+_TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web")
+
+
+def _terminal_surface_entries() -> tuple[str, ...]:
+    """The scan set: three packages, plus every top-level module, *derived* rather than listed.
+    A hand-written filename does not follow a split -- #550 moved 207 printing lines into
+    `cli_support.py` and this tuple kept naming `cli.py` alone (#587). Sweeping every top-level
+    module needs no exclusions: one that binds no `Question` contributes no violation, so the
+    safe default is in the scan set rather than beside it."""
+    modules = sorted(p.name for p in SRC_ROOT.glob("*.py"))
+    if not modules:
+        raise AssertionError(f"scan of {SRC_ROOT} found no top-level modules -- 'could not look'")
+    return _TERMINAL_SURFACE_PACKAGES + tuple(modules)
 
 
 def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_surface_tree():
-    """The real scan, over the real tree: `render/`, `cli.py`, `deterministic/` and `web/` are every
-    `src/requivo/` subtree that can touch a terminal (`core/`, `providers/` and `services/` are
-    guarded elsewhere never to print or prompt). Passing this does not prove there is no leak
-    anywhere -- see the file-level docstring for what the scan cannot see -- only that there is none
-    of *this* shape, in *this* tree, today."""
+    """The real scan, over the real tree: every `src/requivo/` subtree that can touch a terminal
+    (`core/`, `providers/` and `services/` are guarded elsewhere never to print or prompt), plus
+    every top-level module. Passing proves there is no leak of *this* shape in *this* tree today --
+    see the file-level docstring for what the scan cannot see."""
     violations: list = []
-    for entry in _TERMINAL_SURFACE_TREES:
+    for entry in _terminal_surface_entries():
         target = SRC_ROOT / entry
-        # `cli.py` is a single file, not a directory -- `_question_prose_leaks_in_file` works on
-        # either, so both branches of `_TERMINAL_SURFACE_TREES` reach the same one function.
+        # A top-level module is a single file, not a directory -- `_question_prose_leaks_in_file`
+        # works on either, so both branches reach the same one function.
         violations += (_question_prose_leaks(target) if target.is_dir()
                        else _question_prose_leaks_in_file(target))
     assert not violations, "\n".join(violations)
