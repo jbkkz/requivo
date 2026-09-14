@@ -31,7 +31,7 @@ Developed and measured against `claude-sonnet-5` (the default). Any current Clau
 `REQUIVO_MODEL` environment variable:
 
 ```bash
-REQUIVO_MODEL=claude-opus-4-8 requivo discover "…"
+REQUIVO_MODEL=claude-opus-4-8 requivo run "…"
 ```
 
 Bare `MODEL` still works as a fallback for existing setups, but is deprecated — see the
