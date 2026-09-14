@@ -464,7 +464,7 @@ def test_credential_diagnosis_agrees_with_credential_present_when_a_key_is_set(m
 
 # ── #374: an allowlist reason claiming "no client is built" is a claim this suite checks ─────
 #
-# `tests/test_boundaries.py`'s `_SURFACE_PROVIDER_ALLOWLIST` justifies several entries with the
+# `tests/test_source_form.py`'s `_SURFACE_PROVIDER_ALLOWLIST` justifies several entries with the
 # words "no client is built" -- a factual claim about the function the entry names, not a style
 # note. Measured once by spying on `Anthropic.__init__`: since #334, `credential_present()` and
 # `credential_diagnosis()` both route through `_resolve_client()`, which does construct a client
@@ -486,7 +486,7 @@ def _no_client_claims() -> dict[tuple[str, str], object]:
     rather than being silently left unchecked, which is the failure mode #374 is itself an instance
     of (`credential_diagnosis`'s reason went stale and nothing re-read it).
     """
-    from test_boundaries import _SURFACE_PROVIDER_ALLOWLIST
+    from test_source_form import _SURFACE_PROVIDER_ALLOWLIST
 
     from requivo.providers.anthropic import client as client_module
 
