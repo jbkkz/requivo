@@ -1,10 +1,13 @@
 """Requivo Web: one paid generation at a time, and an honest wait while it runs.
 
 Split out of `test_web_discovery.py` by #555, once that file crossed the 800-line ceiling. Three
-subjects share this file because they share one mechanism -- `static/js/app.js`'s page-wide busy
-rule, run for real against a minimal or fake-clocked DOM rather than reasoned about from the
-source: #50 (only one provider call in flight per page), #236 (the wait states an honest estimate
-instead of looking stuck), and the error-swap path that retargets a failed call into the page.
+subjects share this file because they share one asset, not one mechanism: `static/js/app.js` carries
+three separate handlers -- the page-wide busy rule (#50, only one provider call in flight per page),
+the elapsed-time signal (#236, an honest wait instead of looking stuck) and the error-swap opt-in
+that retargets a failed call into the page. Three tests run each handler for real against a minimal
+or fake-clocked DOM (skipped loudly, by name, where `node` is not on PATH); the other four assert
+what the server renders or ships around it -- three drive `client` against the live routes and one
+scans `TEMPLATES_DIR` as raw text -- rather than driving the asset itself.
 
 Offline, isolated workspace per test; the fixtures and the seeded-session helper live in
 `tests/web/conftest.py`.

@@ -3,8 +3,8 @@
 Split from the single `test_web_security.py` by #555, once that file crossed the 800-line
 ceiling -- response headers, the disk cache, the slug guard and redirect safety stayed there. The
 final section, what must never reach the browser (an API key, unescaped user content), lives here
-rather than in that file: it shares this file's `with_provider` and `full_model` imports, and
-splitting two tests alone would not have cleared either file's budget on its own.
+rather than in that file: it shares this file's `full_model` import (the other file has no use for
+it), and splitting two tests alone would not have cleared either file's budget on its own.
 
 Offline (a fake provider), isolated workspace per test; the fixtures and the seeded-session helper
 live in `tests/web/conftest.py`.

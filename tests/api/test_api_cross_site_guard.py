@@ -4,8 +4,9 @@ one definition `web/security.py`'s `_enforce` also calls, wired by `api/app.py`'
 
 Every rule in both directions, on `raw_client` (nothing added on the caller's behalf) so each
 header really is the test's own. The web surface keeps its own tests of the same checks
-(`tests/web/test_web_security.py`); these prove the API answers identically, and the unit tests at
-the foot prove the shared function's third state directly.
+(`tests/web/test_web_request_guard.py`, `tests/web/test_security_parser.py`); these prove the API
+answers identically, and the unit tests at the foot prove the shared function's third state
+directly.
 """
 
 from __future__ import annotations
