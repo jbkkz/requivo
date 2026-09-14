@@ -31,10 +31,8 @@ it will use; `requivo session list` prints what that directory already holds.
 
 ## Installing
 
-The plugin and the engine are two separate installs, and you need both.
-
-**The plugin**, which is the skills. This is what you already have if you installed from a marketplace; from
-a fresh Claude Code it is:
+The plugin and the engine are two separate installs, and neither needs a terminal of its own.
+From a fresh Claude Code:
 
 ```
 /plugin marketplace add jbkkz/requivo
@@ -46,16 +44,21 @@ Then `/help` → **Custom commands**: the skills appear under the `requivo` name
 as `/requivo:run`, `/requivo:status` and so on. Claude Code always namespaces a plugin's skills as
 `/<plugin>:<skill>`.
 
-**The `requivo` CLI**, the deterministic engine every skill drives. It is a Python package on PyPI,
-installed the way you install any command-line tool: `uv tool install requivo`, `pipx install requivo`,
-or `pip install requivo` into an environment already on your `PATH`. You do **not** need the
-`requivo[anthropic]` extra; that is for the optional standalone mode above.
+**The `requivo` CLI, the deterministic engine every skill drives, does not need a terminal of its
+own.** Run any skill — `/requivo:run "..."` is the usual first one — and its shared preflight checks
+for `requivo` on your PATH with `requivo doctor --json`. If it finds nothing, it offers to install
+it right there: it names the exact command first — `uv tool install requivo` when `uv` resolves,
+`pipx install requivo` when only `pipx` does — and asks once. Say yes and it installs, re-checks,
+and carries straight on with the request you already gave it; say no and it prints the same command
+for you to run yourself, then stops so you can come back. Either way, `requivo` is never installed
+with `pip install --user`, which leaves it off the `PATH` — the same failure one call later.
 
-Then run `requivo doctor` in a terminal. It reports what it found and what it is missing; a missing
-Anthropic SDK or API key is reported as informational rather than an error, which for this plugin is
-the expected state. Install routes in depth, including the `pip install --user` trap that leaves
-`requivo` off your `PATH`:
-[getting started](https://github.com/jbkkz/requivo/blob/main/docs/getting-started.md).
+Prefer to install it yourself, ahead of time or in an environment the preflight cannot reach a
+package manager from? The routes are the same ones it offers: `uv tool install requivo`,
+`pipx install requivo`, or `pip install requivo` into an environment already on your `PATH`. You do
+**not** need the `requivo[anthropic]` extra; that is for the optional standalone mode above. Then
+run `requivo doctor` in a terminal to confirm. Install routes in depth, including the `pip install
+--user` trap: [getting started](https://github.com/jbkkz/requivo/blob/main/docs/getting-started.md).
 
 **One platform prerequisite: on native Windows you also need
 [Git for Windows](https://git-scm.com/downloads/win).** Every skill reaches the `requivo` CLI through

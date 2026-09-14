@@ -41,16 +41,17 @@ session end to end — derived, not typed: the per-step table and its method are
 On native Windows, install [Git for Windows](https://git-scm.com/downloads/win) first — it gives
 Claude Code the Bash tool the skills run through; nothing extra is needed on macOS, Linux or WSL.
 
-1. In a terminal, install [uv](https://docs.astral.sh/uv/) if you don't already have it: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. Install the CLI the skills drive: `uv tool install requivo`
-3. In Claude Code: `/plugin marketplace add jbkkz/requivo`
-4. `/plugin install requivo@requivo`
-5. `/reload-plugins`
-6. Run it: `/requivo:run "We'd like a leave approval system."`
+All four steps are typed inside Claude Code — no separate terminal, no `uv` of your own to install:
 
-No Anthropic key needed — reasoning happens in your own Claude session; `requivo doctor` in a
-terminal confirms both halves are found. Full skill list and detail:
-[plugin README][claude-code].
+1. `/plugin marketplace add jbkkz/requivo`
+2. `/plugin install requivo@requivo`
+3. `/reload-plugins`
+4. Run it: `/requivo:run "We'd like a leave approval system."`
+
+No Anthropic key needed — reasoning happens in your own Claude session. The first
+`/requivo:run` doubles as the CLI check: if `requivo` isn't on your PATH yet, the plugin offers to
+install it there and then, names the exact command first, and only runs it once you say yes. Full
+skill list and detail: [plugin README][claude-code].
 
 ## Why Requivo
 
