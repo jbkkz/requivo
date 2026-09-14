@@ -17,4 +17,4 @@ import logging
 # `test_default_run_leaves_the_conflict_refused_warning_off_every_stream`, beside its must-fire control.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"

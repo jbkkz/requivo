@@ -12,6 +12,380 @@ fragments in `changelog.d/` are the material to summarize from.
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-14
+
+### Added
+
+- The `[api]` extra's HTTP facade gains its write routes (#425, slice 2 of the design in
+  `docs/decisions/0004-the-http-api-facade.md`): `POST /sessions` (idempotent-by-identity, 201 fresh
+  / 200 reused, 409 `session_exists` on an explicit slug taken by a different identity),
+  `POST /sessions/{slug}/discover`, `POST /sessions/{slug}/answers` (`expected_revision` required in
+  the body, stricter than the service's optional default), `POST /sessions/{slug}/revisions` (the
+  apply -- the wire path for an external reasoner) and its `.../preview` dry run,
+  `POST /sessions/{slug}/artifacts/{type}` (generate) and `PUT .../artifacts/{type}` (the
+  external-reasoner save), and `PUT /sessions/{slug}/context-cards` (rescope). Every route is a
+  one-call view over an existing `SessionService`/`DiscoveryService`/`ArtifactService` method; no
+  handler composes core calls or re-validates. Paid routes run under `track_api_usage` and carry a
+  `usage` object on the response (`null` when there is nothing to report); the figure is also logged
+  to `requivo.api` from a `finally`, so a call billed and then failed is recorded somewhere, as the
+  CLI and the Web already do. Recovery semantics are wire-visible: 503 `session_locked` carries a
+  `Retry-After` header, and a 409 `revision_conflict` is refused before any provider call runs.
+  `SessionService.create_session_report` is a new, additive method (`create_session` itself and every
+  existing caller are unchanged) that also reports whether a call actually created the session, and
+  its `strict_slug` option -- opted into only by `POST /sessions` -- refuses an explicit slug that
+  collides with a different identity instead of the CLI's and the Web's existing silently-suffixed
+  fallback, which stays exactly as `tests/web/test_web_routing.py` already pins it.
+- Every unsafe method on the `[api]` extra now requires `Content-Type: application/json`, refused
+  with 415 `unsupported_content_type` otherwise -- brought forward from slice 4 of the same decision
+  record (§5) because a write surface with no cross-site posture in front of it at all is the state
+  #508 was filed about. The `Sec-Fetch-Site`/`Origin` checks that complete that posture, the
+  bearer-token bind discipline, and the `requivo api serve` verb shipped with slice 4 of the same
+  issue (its own entry).
+
+- `requivo api serve` -- the `[api]` extra's own launcher (#425, slice 4 of the design in
+  `docs/decisions/0004-the-http-api-facade.md`): `--host`, `--port`, `--workspace`, the same lazy
+  import, install hint, bind warning and logging placement as `requivo web`, no browser opened;
+  `[api]` now declares `uvicorn` on the same floor and ceiling as `[web]`. With it, the bearer-token
+  bind discipline of that record's §5: bound to anything but loopback (`127.0.0.1`, `localhost`,
+  `::1`) the verb -- and `create_api(bind_host=...)` under it -- **refuses to start** unless
+  `REQUIVO_API_TOKEN` is set (`api_token_required`, a clean one-line refusal before any port is
+  bound). Whenever a token is set, every route under `/api/v1` except `/api/v1/health` requires
+  `Authorization: Bearer <token>`, compared in constant time (`hmac.compare_digest` over the raw
+  header bytes), and answers 401 `unauthorized` with a `WWW-Authenticate: Bearer` challenge
+  otherwise; the self-hosted `/docs`, `/redoc` and `/openapi.json` stay reachable. And the
+  `Sec-Fetch-Site`/`Origin` checks that complete the API's cross-site posture on unsafe methods --
+  moved out of `web/security.py` into `requivo.host_policy.check_request_origin` so both surfaces
+  call one definition and refuse with the same three codes (`cross_site_fetch`, `opaque_origin`,
+  `origin_mismatch`); Requivo Web's behaviour is unchanged. The API remains experimental.
+
+- Adopted the Developer Certificate of Origin 1.1 — `decision: adopting-the-dco`. Every commit in a pull request carries a `Signed-off-by:` trailer whose email matches the commit's author; `.github/workflows/dco.yml` and `scripts/check_dco.py` check it and name the commits that need it, and `CONTRIBUTING.md` states what is being certified and how to add it (`git commit -s`, or `git rebase --signoff main` for commits already made). The relicense to Apache-2.0 was possible precisely because sole authorship was provable from history, and every additional contributor raises the cost of ever changing posture again — the question is cheapest to answer while the contributor count is two (#439).
+- A full CLA is refused in the same decision, with its reason: the hosted product consumes `requivo` as an ordinary Apache-2.0 dependency, so there is no proprietary relicensing right this project needs and does not already have. The check uses no third-party action — this repository's one third-party action is the subject of its own supply-chain issue (#433), and a DCO check is forty lines of `git log` that needs no token. It is **not** a required status check on day one: a context that has never produced a run, made required, blocks every open pull request on something that will never arrive (#439).
+- Review of the pull request that introduced this check reproduced a forgery through it, and it is fixed here rather than filed: the first cut split one `git log` on `\x1e`/`\x1f`, neither of which is absent from a commit *message*, so a contributor could split their own message into a second forged record whose "SHA" was their text — landing `##[error]` at column 0 of the CI log, which is exactly what the script's own docstring said could not happen. No sign-off was bypassed. Two things hold it now: the SHAs come from their own `git log --format=%H` and the author and message are read per commit, so there is no delimiter to embed; and `_SHA_RE` is asserted on every line before it is used or printed, which would have caught it even with the old delimiters. Pinned by `test_a_commit_message_cannot_split_itself_into_a_second_record`, whose fixture makes a real commit carrying the byte — git stores it verbatim, verified rather than assumed (#439).
+- Two smaller findings from the same review: a merge commit is now **reported as not checked** rather than passed over in silence, because `--no-merges` is right about the metadata and a merge that resolved a conflict still carries a tree diff no parent certifies — a receipt claiming *every commit carries a sign-off* after declining to look at one overstates what it verified; and a `git` that cannot be spawned at all now reaches the documented exit code 2 instead of a traceback, the unspawnable-binary shape this project already names (#439).
+
+- Every surface now names the product context a session was grounded on. `requivo status` and the session page on Requivo Web state it; `requivo discover` and `requivo session show` already did, and the Claude Code skill has since #490. It matters because `information_value = uncertainty × impact` is the whole driver and the context cards are what the impact half is read against: a session grounded on the wrong product produces a model, reaches *ready*, and asks duller questions for a reason nothing on screen named. On the Web it sits on the primary screen rather than only as a clause of the history line under *Traceability details*, which is the state the issue was filed about — the fact existed and the reader was not handed it (#492).
+- **There is no `context.status: mismatched`, and that is the decision rather than a gap.** Every other value of that vocabulary is decidable from the filesystem; relevance is not, and automating it needs either a model call inside the free deterministic preflight or a keyword heuristic that is wrong silently. So the human is the detector and the product's job is to hand them the one fact they can judge instantly. `tests/test_grounding_contract.py` pins it as a property across all four surfaces — a surface names what the state was reasoned against, and says something different when the grounding was never narrowed — and a fifth surface inherits the rows rather than being forgotten. The revisit trigger is written down: a third *measured* instance of a card diluting its neighbour funds automatic relevance routing; two are on record (#492).
+- Reading the install's cards is the one thing on that path that can fail, and it now degrades the line rather than the verb. `available_cards()` raises `ContextUnreadableError` when the card directory cannot be enumerated — an install-level fact with nothing to do with the session being read, and a directory nothing on the `status` or session-page path touched before this change. Uncaught it would have been worse on the Web than a crash: the page's broad handler renders *Requivo found this session on disk and could not open it*, pointing at `session verify` and `revisions/`, so a reader could not tell a corrupt session from a permissions problem next door. It is its own third state on both surfaces now — neither a card list nor an empty one — and `requivo doctor` keeps the remedy. Found in review (#492).
+
+- `requivo impact` and the Web's *Traceability details* now name the decisions **derived from thinner evidence than exists now**: a decision is flagged when a slot it was derived from was `empty` or `inferred` in the model at the revision the decision was first recorded, and is `explicit` today. It is the case the external validation on #489 hit and nothing represented — the slot moved *toward* being filled, the measurement undermined a decision recorded against the earlier, thinner state, and everyone was pleased the slot got filled. The wording is *worth re-reading*, never *contradicted*: whether the new evidence disagrees is a judgment over both and belongs to the assessment, which costs a call; this is a comparison of two confidence values in `core/dependencies.py` and costs nothing (#493).
+- Three outcomes, each in its own words. A reviewed session lists the decisions worth re-reading with the revision they were derived at and the topics that thickened, or says how many decisions were checked and that none rests on thinner evidence than it did; a decision the review could not decide about — a frozen revision an older Requivo wrote without the confidence data, a decision recording no slots it rests on — is listed under *Could not check* with the reason; a bare `model.json` is *not reviewed*, since it has no revision history. Two limits are documented rather than discovered: a reworded decision is a new content-derived id and counts as derived at its rewording, and challenges are not reviewed (#493).
+- Compatibility: compatible - additive. `requivo impact` has no `--json`, so no public payload moved; the `[api]` extra's `/impact` body gained an `evidence` key, and that surface is outside the compatibility promise until its named freeze (#493).
+
+- `THIRD-PARTY-DIGESTS.txt` records a SHA-256 for every file under `src/requivo/api/static/vendor/` and `src/requivo/web/static/vendor/`, and `tests/test_vendored_bundles_are_not_normalized.py` recomputes them on every CI leg, Windows included. Until now nothing in the repository could falsify the claim `THIRD-PARTY-NOTICES.md` and `.gitattributes` both make — that the vendored bundles are byte-for-byte what upstream shipped — so a hand-refresh that grabbed the wrong artifact, or a local edit, was undetectable from inside the tree; of htmx the notices file says outright that its version line "is therefore the only record that this file has a version at all". It also makes `.gitattributes`'s `-text` rule enforceable rather than aspirational: a checkout that rewrote a byte inside a minified string literal now fails the digest instead of silently serving different code. The file is plain `shasum -a 256` output with no comment lines, so `shasum -a 256 -c THIRD-PARTY-DIGESTS.txt` verifies the tree from the repository root with no arguments. Nothing fetches from npm to check it, deliberately — pinning what was vendored is the point, and a network call would make the check flaky and verify the registry rather than the repository; the digests were verified against `registry.npmjs.org` once, out of band, 8 of 8 matching, with `git rev-parse HEAD:<path>` against `git hash-object` on each to confirm the committed objects and not merely a working tree (#510).
+- The two guards now scan the vendor trees instead of naming five bundles. The hardcoded list was three files short of what is actually vendored, so the three redistributed `.LICENSE.txt` notices were covered by neither the line-ending exemption check nor anything else; a newly vendored file now inherits both guards rather than neither. Refreshing a bundle is documented as four steps in `THIRD-PARTY-NOTICES.md` — replace verbatim, update the digest, bump the version line, re-run the tests (#510).
+
+- `requivo estimate` and `requivo stories` save their documents (#519). The estimate is a saved
+  artifact type now — `estimate.md`, listed by `requivo status`, labelled in the Web, and flagged
+  stale by the dependency graph when a topic it rests on moves — and `stories.md` gains the writer it
+  never had. Because the estimate is reasoned against the stories the same run derives, `estimate`
+  saves both, from one snapshot, against one source revision; `generate(slug, "estimate")` is the
+  single path every surface takes (`decision: the-estimate-graduates`, #426). Both types are reached
+  through the artifacts generate route, so the planned `/analyses/{stories,estimate}` API routes are
+  retired (addendum in decision 0008).
+- Compatibility: compatible - a new artifact type is additive to the session format (invariant 8,
+  #260): an older Requivo reports an `estimate` row as a note, `format_version` stays at 1, and no
+  prompt changed, so no golden re-capture.
+
+- Plugin: `/requivo:run [request | path | slug]` (#539), part of #538. One skill for the whole
+  conversation — no argument resumes the most recent session (or lists several to choose from), a
+  request or a path starts a new one the same idempotent way `/requivo:discover` always has, and a
+  slug resumes that one. It reasons, applies, presents the questions, waits for the user's prose
+  reply, folds it in as a new revision, and repeats — announcing the blast radius of a revised
+  earlier answer via `requivo impact` before applying it — until the session is `ready`, there is no
+  high-value question left, or the user says stop. It ends on the status and one pointer,
+  `/requivo:docs` when you want a document, and never tells the user to run `/requivo:answer` or type
+  a slug themselves. Additive: `/requivo:discover`, `/requivo:answer` and `/requivo:impact` stay for
+  now (their removal from the plugin surface is #545).
+
+- Added `requivo run [request|file|-|slug]`, one verb over the interactive loop `discover` already
+  runs: no argument resumes the workspace's default session (or prompts for a request when none
+  exists), a request/path/`-` starts a discovery exactly like `requivo discover`, and an existing
+  session's slug resumes it through the answer path -- never a second discovery (#540).
+
+- `requivo run`, `status` and `impact` no longer require a session slug: omit it and the CLI
+  resolves the workspace's default session -- the only one, or the most recently written when there
+  are several, listing every candidate with the default marked before anything paid happens.
+  `session`, `model` and `artifact` still require theirs (#541).
+
+- Five new Claude Code plugin skills close the keyless-parity gap #542 (part of #538): `/requivo:stories`,
+  `/requivo:estimate`, `/requivo:criteria`, `/requivo:epic` and `/requivo:release` now reason in the
+  Claude Code session itself, the same way `/requivo:brief` and `/requivo:prd` already did, and need
+  no `ANTHROPIC_API_KEY`. Each mirrors its CLI counterpart's prompt asset and contract, states which
+  one and at which commit, and saves through `requivo artifact save --type <t> --file - --revision N`
+  — `/requivo:estimate` saves `stories` and `estimate` together against one revision (#519). The
+  plugin's tracker-export flags (`--export-json`/`--github`/`--gitlab` on `requivo epic`) stay
+  CLI-only, since they need a fresh, API-keyed generation to build the plan they export.
+  `docs/decisions/0017-plugin-skills-mirror-a-pinned-cli-commit.md` records why the duplication
+  between each prompt asset and its mirrored skill is accepted rather than solved.
+
+- Added `/requivo:docs [slug] [type...]` to the plugin: a menu of the seven documents
+  a session's model can produce, each with its freshness, reasoning in the current
+  Claude Code session. Picking `estimate` reasons and saves `stories` first, always.
+  The seven generator skills stay individually callable but leave the plugin README's
+  user-facing table -- `/requivo:docs` is now how they are reached (#543).
+
+- Added `requivo docs [slug] [type...] [--all]`, one verb over the seven generators
+  (`brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release`): with no type
+  given it prints a menu of the seven documents -- a label, one sentence on what each
+  is for, and whether it is up to date, needs updating, or has not been generated --
+  and prompts a pick; with types given (or `--all`) it generates them, no prompt. Every
+  generation reuses the existing verb bodies, so `requivo docs <slug> prd` and
+  `requivo prd <slug>` write the identical file under the identical provenance.
+  Picking `stories` and `estimate` together writes the stories once, since `estimate`'s
+  own two-call generation already saves both against one revision (#544).
+
+### Changed
+
+- The schema and product-context block every prompt shares is now cached across operations (#258).
+  All eight prompt templates open with one byte-identical leading block (`SHARED_PROMPT_HEAD` in
+  `core/context.py`: `# Model schema`, the schema, `# Product context`, one sentence naming the cards
+  as untrusted business data, the cards), and the provider
+  sends the system prompt as two text blocks — that block first, behind a `cache_control` breakpoint
+  on every call, then the op-specific remainder, which keeps its breakpoint only under the existing
+  `reuse_system=True` contract. Measured with `count_tokens` on the issue, the block is ~9k tokens of
+  a 10-12k system prompt, so a `discover` → `brief` → `prd` → `criteria` → `epic` sitting sends
+  about 25k system tokens instead of about 56k. The accepted cost, stated in `docs/providers.md`: a
+  single verb run on its own, with nothing following inside the 5-minute cache TTL, pays the 1.25x
+  write once on that block (~2.3k token-equivalents). The default TTL is kept; the 1-hour option was
+  costed and rejected in the pull request.
+- `build_system_prompt()` (new, `core/context.py`) returns the assembled prompt split exactly at the
+  block's end, and refuses a template that does not open with the block rather than sending a
+  shorter or empty prefix; `build_prompt()` is unchanged as the whole string and still what
+  `prompt_version()` hashes. Moving the block to the head of every template is a change to what the
+  model reads, so every operation's prompt hash moves and the golden baseline is re-captured in a
+  follow-up commit on the same branch (#258).
+
+- Decided whether the estimate graduates from a terminal-only analysis to a saved artifact type: **it does**, and `stories` is finished in the same change — `decision: the-estimate-graduates`. The decisive argument is the product's own central mechanism: artifacts are views, they go stale when the model moves, and an estimate is the one artifact where being stale costs money — a number quoted against an understanding that has since changed. The dependency graph already has an opinion about what invalidates an estimate (`_ARTIFACT_SLOTS_RAW`, `ARTIFACT_FILES`, and `requivo impact` prints it in the blast radius); only the file is missing (#426).
+- `CLAUDE.md` said `stories` and `estimate` were "deliberately terminal-only analyses with no file", and measured across the seven registries a saveable type touches that was true of neither: `stories` is in `ARTIFACT_FILENAMES` and `ARTIFACT_LABELS` with no writer, `estimate` is in the staleness graph and in neither of those. Two types, three states, half-registered each — #270's drift already sitting in the tree. The sentence now describes the transition rather than claiming a design (#426).
+- The wrinkle the decision settles rather than leaves: the estimate is reasoned against a stories draft the same invocation produced and never persisted (#135), so saving it alone would record a `source_revision` naming half its basis. The graduation saves both. Implementation follows `CLAUDE.md`'s adding-a-generator checklist and needs no prompt edit, so no golden re-capture (#426).
+
+- A release is justified by its contents, not by a count or a clock (#440). The maintainer loop's
+  `merged_prs` and `soak_hours` release triggers are removed from `.oss.json` rather than raised, so
+  the only automated trigger left is a blocking-class finding; `changelog.d/README.md` and
+  `docs/compatibility.md` now define `breaking` as *correct code stops working* — an observable that
+  moved on a path no correct code was on grades `compatible`, with the observable named — and
+  `GOVERNANCE.md` states the policy. Decision record 0010 holds the argument and the alternatives it
+  rejects.
+
+- Applied the repository's own bug-narrative rule -- CLAUDE.md's *Where a bug narrative lives* -- to
+  the first pass named in #483 (successor to #285/#482): `services/discovery.py` and
+  `deterministic/sessions.py`. Five bug narratives with no test citation are compressed to one line
+  naming the invariant, the cost, and the test that goes red without the guard, in each file; two of
+  those five had no existing test at all and gained one (`_replace_with_retry`'s Windows-permission
+  retry, and `start()`'s late-caller race against a stale outer revision check); a sixth narrative
+  (the exported archive's reserved-stem filename overlap, argued out and rejected in review rather
+  than found and fixed) moved to `docs/decisions/0011-reserved-stem-export-filenames-are-not-a-live-gap.md`.
+  Zero behaviour change: the AST of each changed source file, with docstrings stripped, is
+  byte-identical to `main`.
+- Compatibility: compatible -- no code line, public `--json` payload, session-format key or error
+  code changed; comment/docstring only, plus two new tests and one new decision record.
+
+- Applied the repository's own bug-narrative rule -- CLAUDE.md's *Where a bug narrative lives* -- to
+  the fifth pass named in #483, part (a): `src/requivo/providers/**` and `src/requivo/web/**`. 31 of
+  the 34 flagged comment/docstring blocks across those two trees are compressed to one line naming
+  the invariant, the cost, and the test that goes red without the guard; the remaining 3 (a package's
+  own module docstring, a `ReasoningProvider` protocol docstring, and the provider-errors module
+  docstring) are left as architectural documentation rather than bug narrative, the same shape
+  `core/errors.py`'s docstrings were ruled to be under #285. Three narratives had no existing test to
+  cite because none is reachable -- two facts about pyright's own type-checker inference and one
+  accepted, documented cost tradeoff -- and moved to new decision records instead:
+  `docs/decisions/0013-a-type-checking-only-alias-for-the-optional-sdk-class.md`,
+  `docs/decisions/0014-a-failed-replys-debug-dump-uses-the-ambient-workspace-root.md`, and
+  `docs/decisions/0015-the-json-retry-pays-full-price-under-reuse-system-false.md`. The repo-wide
+  scan total drops from 67 blocks (after pass 5b) to 36, every one of them outside these two trees but for the three named above. Zero behaviour change: the AST of each changed source file,
+  with docstrings stripped, is byte-identical to `main`. Zero issue numbers invented: every `#N` kept
+  is one the original paragraph already carried.
+- Compatibility: compatible -- no code line, public `--json` payload, session-format key or error
+  code changed; comment/docstring only, plus three new decision records.
+
+- `scripts/dependency_floor.py`, `scripts/golden_lib.py`, `scripts/golden_diff.py` and
+  `scripts/golden_run.py` had 17 comment/docstring blocks recounting a past bug by issue number with
+  no test or decision record backing them (#483). Each is now either compressed to a one-line
+  reference naming the guarding test (writing two missing tests along the way,
+  `test_dump_runs_requires_the_model_it_ran_on` and
+  `test_main_resolves_the_model_once_and_threads_it_to_every_capture`, both confirmed red by
+  mutation before green), or moved to `docs/decisions/0012-dependency-floor-verified-by-install.md`
+  where no test can reach it. `scripts/` now reports zero such blocks under the narrative scan
+  (repo-wide: 84 -> 67).
+- Compatibility: compatible -- no runtime behavior changed; `ast.dump` with docstrings stripped is
+  identical to `origin/main` for every touched `.py` file, and the two additions are pure test
+  coverage for behavior the code already had.
+
+- Applied the repository's own bug-narrative rule -- CLAUDE.md's *Where a bug narrative lives* -- to
+  the sixth pass named in #483: `usage.py`, `host_policy.py`, `__init__.py`,
+  `core/{contracts,adapters,analysis,selectors}.py`, `services/{artifacts,repository,sessions}.py`
+  and `deterministic/{__init__,_shared,artifacts}.py`. 19 of the 21 flagged comment/docstring blocks
+  across those files are compressed to one line naming the invariant, the cost, and the test that
+  goes red without the guard (two of the citations, the `NullHandler` in `__init__.py` and the
+  `artifact list --json` envelope, re-checked red by mutation); the remaining 2 (the
+  `deterministic/_shared.py` membership rule and the `requivo.testing` package docstring) are left
+  as the module's own contract rather than bug narrative, the same shape `core/errors.py`'s
+  docstrings were ruled to be under #285. No new decision record was needed: every narrative in
+  this pass had a reachable test. The repo-wide scan total drops from 36 blocks to 17, all of them
+  outside this pass's scope (`core/errors.py`, three `providers/` docstrings ruled architecture in
+  pass 5a, `core/dependencies.py` and `api/` held by sibling lanes) but for the two named above.
+  Zero behaviour change: the AST of each changed source file, with docstrings stripped, is
+  byte-identical to `main`. One issue number relocated rather than introduced (#35, from
+  `host_policy.py` into the test docstring that now carries its paragraph), checked against the
+  issue; zero wrong.
+- Compatibility: compatible -- no code line, public `--json` payload, session-format key or error
+  code changed; comment/docstring only.
+
+- Recorded which side of the output-language policy the decision brief's projected half sits on: `decision: the-decision-briefs-quoted-half`. The saved brief stays on the **English anchor** side, and its four projected sections — objective, current understanding, what is confirmed, important assumptions — are quotations of the model's own words, which for a French request means they read in French. That is the decision, not a residue: a saved `solution-assessment.md` is read by the build side and stands as the trail behind a commitment, while the PM taking questions back to the client is served by the turn output, which mirrors. Nothing in the code changes; `docs/requirements-model.md` stops describing this as an open edge. Translating the projection is rejected because it asks the provider to restate facts it was already given — a restatement can drift, a projection cannot — and moving the brief to the mirroring side is rejected because it would put the first document in the build chain on the opposite side from the rest of it (#491).
+
+- `CodeQL` and `Test (py3.14)` are now required status checks on `main`, taking branch protection from 16 contexts to 18. CodeQL ran on every pull request and blocked nothing: on #499 its leg went red with 12 high-severity alerts and the merge gate still reported passed. The alerts were false positives and the merge was correct — the gate having no opinion either way is the part that is fixed. Both names were read off a real pull request rather than guessed from the workflow file, which matters for CodeQL: it is a check run from the `github-advanced-security` app, not an Actions job, so a required context spelled from `jobs:` would never have arrived and every pull request would have sat blocked on it. `Test (py3.14)` was green on the last eight commits to `main` before being made required (#502).
+
+- The Claude Code plugin's mutating skills (`/requivo:discover`, `/requivo:answer`) now apply a proposal directly instead of validating it first and then applying the same JSON. `SessionService.update_model` already validates inside the session lock *before* it writes, so a refused apply mints no revision, writes no `model.json`, leaves the caller's `--expected-revision` current and returns the byte-identical error envelope `requivo model validate` returns for that payload — the dry run bought nothing and cost a second full emission of the model on the way to every revision, which is the largest block of context a plugin turn spends. It is cheaper on the failing path too: three emissions become two. `requivo model validate` keeps its two remaining uses, named in `REASONING.md`: `--allow-partial`, which validates a projection that has no apply to ride on, and a proposal already failed once. `test_a_refused_apply_writes_nothing_and_answers_like_validate` pins both halves of the property the change rests on, and `test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path` now asserts what the guard it replaces meant — apply through the CLI on stdin under the optimistic-lock precondition, a stated route out of a refusal, and no `model validate` in a command block — rather than asserting that the dry run is mandatory (#511).
+
+- The plugin's skills now honour `REASONING.md`'s own opening rule instead of contradicting it. That file has always said *"Read this once per session"*; four of the six skills then told Claude to read it unconditionally, so a `discover → answer → answer → brief` flow re-read the longest document the plugin ships four times into a context that keeps every copy. The instruction is conditional now, in one shared phrasing across the four, and it names which way to err: re-read whenever you are unsure you still hold it, because a redundant read costs tokens while a skipped one costs the trust boundary and the honesty rules — a compacted conversation being exactly the case where a session remembers *having read* something whose text is gone. The `requivo doctor --json` preflight is deliberately untouched and still runs on every invocation: it is a stated safety rule and it carries the version-skew check. `tests/test_plugin.py`'s existing REASONING.md-pointer guard is extended so a skill that states the read unconditionally again goes red (#512).
+
+- `/requivo:discover` now chooses the product context cards as an explicit step, before `session init`, rather than mentioning `--context` in a parenthesis inside it. The selection is fixed at creation and then grounds every impact estimate for the life of the session — changing it afterwards costs a `requivo session rescope` — and every card in it is re-read into the conversation on each turn, so with the full set it is the largest recurring block a turn spends. It is also the quality lever: the dilution this project measured once, strongly, is why the selection exists at all. The step costs no extra call, since the card names are already in the step-1 `doctor` report (`requivo context --list` is the standalone equivalent). It deliberately asks rather than deciding: where the skill cannot tell which cards fit, it names them and waits, instead of guessing or quietly loading all of them for a request none of them is about — automatic relevance routing remains unfunded (#513).
+
+- A golden baseline now records the model it was captured on. `.runs.json` recorded a capture's *input* — the request, and the answer sheet for an interactive one — and nothing about the conditions it ran under; the model is the largest of those and the cheapest to move, since two of `current_model_name()`'s three sources are the environment and neither leaves a trace in the repository. Export `REQUIVO_MODEL=<something else>`, re-capture one request, and every lens in `golden_diff` reported the swap as prompt movement: #405's confident readout, about something the reader did not change. This is that failure on the other axis from the one `baseline_commits_since` already watches, and it is cheaper to hit — one environment variable, no commit, nothing for a commit scan to see (#515).
+- Both envelope writers take the model as a required keyword argument, and `golden_run` resolves it once per invocation and hands it to every call — `AnthropicProvider(client, model=...)` and `run(..., model=...)` do no environment read at all on that path, so what lands in the file is what reasoned rather than a second read at write time. The figure is printed beside the call budget before the first paid call, because re-capturing a baseline on a different model is a decision and should not be one made by an inherited environment (#515).
+- `golden_diff` prints the capture model per request, beside the freshness line, in three states: the two captures agree, they disagree (named, with the warning that movement below may be the swap), or **unknown**. A baseline written before this key existed renders as unknown — never as agreement with whatever is configured now, and never as a missing line, which is `_freshness_from_git_data`'s own rule on a second axis. On the day this lands all seven committed baselines are unknown, correctly and visibly, and they stop being so one paid re-capture at a time; none is re-captured here, which costs API calls and is a separate decision (#515).
+
+- Changed `requivo --help` to render three groups -- "Start here" (`demo`, `run`, `docs`,
+  `status`, `web`), "For scripts and integrations" (`discover`, `answer`, `brief`, `prd`,
+  `stories`, `estimate`, `criteria`, `epic`, `release`, `impact`, named only), "Plumbing"
+  (`doctor`, `schema`, `context`, `session`, `model`, `artifact`, `api`, named only) --
+  instead of one flat, registration-order list, and pointed its closing example at `run`
+  instead of `discover`. No verb is removed, renamed, or changed in behaviour, and
+  `requivo <verb> --help` is unchanged for every one of them (#546).
+
+- Changed the README quickstart, the getting-started CLI walkthrough, and `docs/cli.md`'s
+  verb-grouping paragraph to lead with `run` and `docs` instead of `discover`/`answer`/
+  `brief` -- the three-journey-verb decision `run`/`docs`/`status` ships. `discover`,
+  `answer`, the seven generators and `impact` stay documented as the scripted contract
+  under [docs/integrations.md](../docs/integrations.md), unchanged. No public verb,
+  payload or file shape changes; `docs/compatibility.md` gains the one line saying so
+  (#547).
+
+- Compressed the comment/docstring prose in `http.py`, `core/selectors.py`,
+  `providers/anthropic/client.py`, `web/example.py`, `core/errors.py` and `host_policy.py` from
+  57-72% down to under 25% each, following `decision: the-tree-records-the-rule` (#549): a call
+  site keeps one line naming the rule and the test that pins it, and the fuller story stays on the
+  issue tracker rather than duplicated in the tree. No behavior change (verified by AST equality
+  with docstrings stripped); `core/errors.py`'s public `code`/`details` contract is unchanged.
+
+- `core/persistence.py`, `deterministic/sessions.py` and `cli.py` -- the three modules that had
+  grown past 1,300 lines -- are reorganised, not rewritten (#550). `core/persistence.py` is now a
+  `core/persistence/` package (`atomic.py`, `identifiers.py`, `lock.py`, `scan.py`, `models.py`,
+  `store.py`), every public and private name still importable from `requivo.core.persistence`
+  exactly as before. `deterministic/sessions.py` is now `deterministic/sessions/` (`lifecycle.py`,
+  `archives.py`, `verify.py`), with `register_sessions(sub)` unchanged as the seam
+  `deterministic/__init__.py` binds. `cli.py`'s shared plumbing (`_generator_service`, `_wrote`/
+  `_wrote_file`, `_announce_bind`/`_is_wildcard_bind_address`, `_render_usage_safely`) moved to a
+  new `cli_support.py`; every verb body, flag and `--help` string is unchanged. The one behaviour
+  change: `_replace_with_retry` (the transient-rename retry) is deduplicated into
+  `core/persistence/atomic.py` instead of living twice, once in the store and once in
+  `deterministic/sessions.py`.
+- Compatible: every move is a rename, verified function-by-function (AST identical, docstrings
+  stripped, save for the `Store` class body itself, which now composes two mixins instead of
+  holding every method directly) -- no session format change, no `--json` shape change, no removed
+  name.
+
+- Internal: the meta-guard estate (the tests that guard the repo's own self-description --
+  comment references, version strings, CI YAML, source-form boundaries -- rather than its
+  runtime) is down from 6,432 to 4,382 lines. `test_boundaries.py`, `test_encoding.py` and
+  `test_narrative_references.py`, the three tiers that already shared `tests/_scan.py`'s scan
+  implementation, are merged into one `tests/test_source_form.py`; the three original names
+  stay on disk as near-empty stub modules so the ~fifty places that cite them by bare module
+  name keep resolving. One narrow guard (`test_the_new_3_14_leg_is_declared_consistently`,
+  #298) is retired -- one incident, never recurred, cited nowhere else in the tree. No test
+  removed, no command, flag or public payload changed (#551).
+
+- `docs/compatibility.md` is restructured from a 1,391-line changelog-in-prose into a set of
+  promise tables, one per public surface (session format, `--json` payloads, exit codes,
+  environment variables, CLI verbs, the lock file, the epic export envelope, the Python import
+  seam, and the `[api]` extra's not-yet-frozen line) -- 397 lines now (#552). Each row states the
+  promise, the version it has held since, and the name of the test that pins it; the history of how
+  a promise reached its current shape stays in `CHANGELOG.md` and `docs/decisions/` rather than
+  being retold. `changelog.d/README.md`'s compatibility-bullet section now points a contributor at
+  adding a row to the relevant table instead of a new paragraph.
+- Compatible: prose-only restructuring of a documentation file. Every promise the old file stated
+  is still stated (mapped row-by-row in the pull request); no session field, `--json` payload,
+  exit code, environment variable, CLI verb name or exported file shape changed, and every anchor
+  linked into this page from README.md, CHANGELOG.md and the other `docs/*.md` files still
+  resolves.
+
+- Internal: added the lean ratchet -- `scripts/prose_measure.py` measures prose share, the
+  test-to-product code ratio, the fattest modules and docstring lengths per tree (`src`, `tests`,
+  `scripts`), and a new lean-budget section in `tests/test_source_form.py` reads ceilings from
+  `tests/lean_budget.toml` and fails, naming every breach, when the real tree exceeds one. The
+  ceilings are measurements of this tree with 5% headroom, not aspirations: three numbers written
+  in good faith during the lean pass (#548) drifted from what the tree actually measured (#551,
+  #555, #556), and `CLAUDE.md` cited this TOML before it existed. No command, flag or public
+  payload changed (#553).
+
+- The bug-narrative rule takes its final form (#554): the tree records the rule, the tracker records
+  the story — one line at a call site, five lines at most in a test docstring, the issue number as the
+  pointer. Stated once in `CLAUDE.md`, argued in `decision: the-tree-records-the-rule`, and reminded
+  at edit time by a jit-context path rule on `src/` and `tests/`.
+
+- Changed the README from a manual into a landing page -- 304 lines down to 167, "Start
+  here" reduced to two self-identifying doors (an Anthropic key for Requivo Web, or
+  Claude Code for the plugin), each a complete, honest step-by-step including its real
+  prerequisites (`uv` itself, the `requivo` CLI on PATH for the plugin route), with the
+  CLI no longer presented as a third door a reader chooses. Six sections moved into the
+  docs that already exist for them: install routes, the supported-platform matrix and the
+  UTF-8 guarantee are now in [docs/getting-started.md](../docs/getting-started.md), the
+  stability/SemVer statement in [docs/roadmap.md](../docs/roadmap.md), the full privacy
+  notes in [SECURITY.md](../SECURITY.md), the AI-authorship account in
+  [CONTRIBUTING.md](../CONTRIBUTING.md), and the PEP 561/library-import seam in
+  [docs/architecture.md](../docs/architecture.md). No command, flag or public payload
+  changes (#568).
+
+- The Claude Code plugin's shared preflight (`REASONING.md`) now offers to install the `requivo` CLI itself, instead of only telling the user what to type — and every one of the ten skills' own missing-CLI lines now delegates to that one flow instead of each separately instructing Claude to stop, which had left the new offer unreachable from every skill, `/requivo:run` included. Detection is unchanged — the `requivo doctor --json` probe and its shape-not-wording rule still decide whether the CLI is missing. When `uv` or `pipx` is already on the machine, a missing CLI branches into an offer before falling back to the four-things message: it names the exact command before running it — `uv tool install requivo` when `uv` resolves, `pipx install requivo` when only `pipx` does, never `pip install --user`, which leaves `requivo` off the `PATH` — and asks once. A yes runs that one command, re-probes rather than trusting the installer's exit code, and continues the skill the preflight interrupted so the user does not have to re-issue their request; a no, or an install that fails, falls through to today's four-things message, byte-for-byte unchanged. On a machine with neither `uv` nor `pipx`, the preflight does not fetch and run a third party's installer on the user's behalf — that stays a decision the user makes in their own terminal. It instead states the complete two-line sequence (`curl -LsSf https://astral.sh/uv/install.sh | sh`, then `uv tool install requivo`), names the shell-restart the installer's PATH change requires before the second line, and says to re-run the skill afterward — no offer, no yes/no question, nothing executed on this path. `README.md`'s Claude Code door drops from six steps to four, all of them typed inside Claude Code on the common path; both READMEs now say plainly that a machine with neither package manager still touches a terminal for that one step, rather than promising a terminal is never needed. `plugins/claude-code/README.md` describes the same sequence (#573).
+
+- Changed the README: merged "Why Requivo" and "How it works", which said the same
+  things twice and had swapped halves of their job (the decision rule
+  `information value = uncertainty × impact` now sits with the reasoning it explains,
+  not with the four steps), into one "Why Requivo, and how it works" section that says
+  each thing once. "Architecture, data and privacy" and "Status" are gone from the
+  README -- the diagram, the session-format claim and the library import-surface clause
+  moved into [docs/architecture.md](../docs/architecture.md); the actively-developed
+  statement and the roadmap/compatibility pointers moved into
+  [docs/roadmap.md](../docs/roadmap.md)'s stability section; the privacy clause was
+  already covered in full in [SECURITY.md](../SECURITY.md). The discovery-feedback call
+  to action stays on the README, next to the Documentation table, which now also links
+  Architecture and Roadmap directly. 168 lines down to 145. No command, flag or public
+  payload changes (#575).
+
+- Changed the surfaces that tell a person how to start to name `requivo run` (and
+  `/requivo:run`, and Requivo Web) instead of the underlying `discover`/`answer` verbs
+  `run` was built on in #540/#543/#546: the "Real-world discovery feedback" issue
+  template no longer asks what a reader gave `requivo discover` when the README they
+  followed never had them run it; `examples/leave-approval/README.md`'s change-impact
+  walkthrough now starts and resumes with `requivo run`; and the first worked example in
+  `docs/providers.md` and `docs/context-cards.md` does the same. `docs/cli.md` and
+  `docs/integrations.md`, where `discover`/`answer` are the documented scripted contract
+  for automation, are unchanged, and no command, flag or public payload changes (#576).
+
+### Removed
+
+- The Claude Code plugin no longer ships the `/requivo:discover`, `/requivo:answer` and
+  `/requivo:impact` skills (#545): `/requivo:run` owns the whole conversation, announces what a
+  revised answer reaches before applying it, and `/requivo:status` already names what needs updating.
+  The CLI verbs `discover`, `answer` and `impact` are unchanged.
+- Compatibility: compatible - the plugin is not part of the wheel and the three skills were entry
+  points into a loop `/requivo:run` now runs end to end; no CLI verb, flag or file format moves.
+
+### Fixed
+
+- Decision record `0004-the-http-api-facade` no longer describes a cross-site posture the API does not have. §5 said the API "keeps" the host allowlist and the `Sec-Fetch-Site`/`Origin` checks, in a tense that reads equally as *keeps, once built* and *keeps, today* — so a reader checking the record before wiring up a launcher was told a protection existed. It now separates what ships (the host allowlist, #508) from what slice 4 adds alongside the unsafe methods those checks guard, and states the ordering constraint between the two (#509).
+- The rest of `0004` was swept for the same failure, and one instance was not evidence of one instance. **Twenty-two claims about the tree were checked; twelve were wrong**, every one in the same direction: the record describes the tree it was written against, and #422, #427, #272, #238 and #508 have landed since. Corrected — the HTTP status table cited as `web/app.py`'s private `_STATUS_BY_CODE` and as "trapped in the `[web]` extra" (moved to `requivo/http.py`'s public `STATUS_BY_CODE` by this record's own §3 proposal, which itself still read as future work), the pinned-payload count given as *fifteen* at two sites where the registry holds sixteen, the workspace root described as ambient process environment, "no spend ceiling", `session delete` listed as missing, the `DELETE /sessions/{slug}` row reserved against a service verb that now exists, §5's cross-site paragraph and its spend-ceiling paragraph, and two of the three freeze preconditions unmarked as met. The ten that still hold include the third precondition, the estimate-artifact decision (#426), and the absence of any auth story. Each correction says the claim was forward-looking when written, the shape `0006` already uses (#509).
+- `docs/decisions/README.md` gains a convention for records written ahead of the code: name the issue or slice that builds it, or mark the paragraph's status, and correct in place when the forward half lands rather than silently rewriting it into the present. It is a convention and not a guard because nothing mechanical can have an opinion about tense; it is written down because this repo's two-instance bar is met — #505 in `0006` and #509 in `0004`, one release apart (#509).
+
+- `session export` retries its final rename on a transient `PermissionError` instead of raising raw. On Windows the last step of writing an archive is a `MoveFileEx`, which a scanner or the Search Indexer can briefly deny microseconds after the archive lands -- the same cause invariant 18's `_atomic_write` and `session restore` already retry -- and the failure mode was a finished export reporting a traceback while the completed archive was deleted out from under it (#524).
+
+- `scripts/shoot_doc_images.py`'s screenshot freshness digest no longer hashes a `.py` file under `viewmodels/` as text. It now parses the file, strips the module's and every class's/function's docstring, and hashes the `ast.dump()` of what is left -- comments were never part of the tree to begin with. A comment-only or docstring-only edit to a viewmodel can no longer move a pixel, so it can no longer move the digest either; a real code change there, and any template/CSS/JS edit, still does. Observed on #529 (#483's pass 5a): a comment-compression pass in four viewmodel modules went red on the freshness guard, and the resulting re-shoot produced four byte-identical images and a manifest whose only change was the four digests (#530).
+
+### Security
+
+- The HTTP API (`[api]`) now refuses a `Host` header it does not recognise, exactly as Requivo Web does, through one shared definition rather than a second copy: `requivo.host_policy.check_host`. Measured before the fix, `GET /api/v1/sessions` with `Host: evil.example.com` answered **200** from the API and **403** from Requivo Web — so a page the reader visits could reach the client's verbatim request and the understanding built from it, cross-origin, by DNS rebinding. Binding to loopback does not close that: a rebound `evil.example.com` resolving to 127.0.0.1 is same-origin to the browser, which is why this check is transport-level and has nothing to do with whether a listener serves forms. It is also the only cross-site check that applies to **reads**, which is all the API serves today. The guard is installed inside the header middleware on both surfaces, so a refusal still carries the full CSP/nosniff policy; `tests/test_host_allowlist.py` is parameterised over both apps from the shared `tests/_surfaces.py` table, and removing the API's guard turns exactly its five rows red while every web row stays green. Nothing shipped was reachable: `[api]` declares no ASGI server, there is no `requivo api serve` verb, and nothing outside the package calls `create_api()` — the ordering constraint the issue names is that the guard lands with or before that verb, and it now has (#508).
+- `REQUIVO_WEB_ALLOWED_HOSTS` governs both surfaces from this release. The name keeps its `WEB` deliberately: it is documented in `docs/web.md`, promised under `docs/compatibility.md`'s environment-variable section, and printed by the CLI's wildcard-bind warning, so renaming it for accuracy would break a deployment for one word (#508).
+
 ## [3.2.0] - 2026-09-10
 
 ### Highlights
@@ -5430,7 +5804,8 @@ robustness holes that real input exposes were closed, and the regression lens an
   generators (PRD, user stories, estimate, acceptance criteria, delivery epic with GitHub/GitLab
   exports), and the MIT license.
 
-[Unreleased]: https://github.com/jbkkz/requivo/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/jbkkz/requivo/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/jbkkz/requivo/releases/tag/v3.3.0
 [3.2.0]: https://github.com/jbkkz/requivo/releases/tag/v3.2.0
 [3.1.0]: https://github.com/jbkkz/requivo/releases/tag/v3.1.0
 [3.0.0]: https://github.com/jbkkz/requivo/releases/tag/v3.0.0
