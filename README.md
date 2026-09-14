@@ -41,7 +41,7 @@ session end to end — derived, not typed: the per-step table and its method are
 On native Windows, install [Git for Windows](https://git-scm.com/downloads/win) first — it gives
 Claude Code the Bash tool the skills run through; nothing extra is needed on macOS, Linux or WSL.
 
-All four steps are typed inside Claude Code — no separate terminal, no `uv` of your own to install:
+All four steps are typed inside Claude Code:
 
 1. `/plugin marketplace add jbkkz/requivo`
 2. `/plugin install requivo@requivo`
@@ -49,9 +49,10 @@ All four steps are typed inside Claude Code — no separate terminal, no `uv` of
 4. Run it: `/requivo:run "We'd like a leave approval system."`
 
 No Anthropic key needed — reasoning happens in your own Claude session. The first
-`/requivo:run` doubles as the CLI check: if `requivo` isn't on your PATH yet, the plugin offers to
-install it there and then, names the exact command first, and only runs it once you say yes. Full
-skill list and detail: [plugin README][claude-code].
+`/requivo:run` doubles as the CLI check: if `requivo` isn't on your PATH yet and you already have
+`uv` or `pipx`, the plugin names the exact install command and only runs it once you say yes. Have
+neither? It tells you the two lines to run yourself and to re-run the skill after — the one case
+that still touches a terminal. Full skill list and detail: [plugin README][claude-code].
 
 ## Why Requivo
 

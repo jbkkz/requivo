@@ -31,8 +31,8 @@ it will use; `requivo session list` prints what that directory already holds.
 
 ## Installing
 
-The plugin and the engine are two separate installs, and neither needs a terminal of its own.
-From a fresh Claude Code:
+The plugin and the engine are two separate installs, and usually neither needs a terminal of its
+own. From a fresh Claude Code:
 
 ```
 /plugin marketplace add jbkkz/requivo
@@ -44,17 +44,26 @@ Then `/help` → **Custom commands**: the skills appear under the `requivo` name
 as `/requivo:run`, `/requivo:status` and so on. Claude Code always namespaces a plugin's skills as
 `/<plugin>:<skill>`.
 
-**The `requivo` CLI, the deterministic engine every skill drives, does not need a terminal of its
-own.** Run any skill — `/requivo:run "..."` is the usual first one — and its shared preflight checks
-for `requivo` on your PATH with `requivo doctor --json`. If it finds nothing, it offers to install
-it right there: it names the exact command first — `uv tool install requivo` when `uv` resolves,
-`pipx install requivo` when only `pipx` does — and asks once. Say yes and it installs, re-checks,
-and carries straight on with the request you already gave it; say no and it prints the same command
-for you to run yourself, then stops so you can come back. Either way, `requivo` is never installed
-with `pip install --user`, which leaves it off the `PATH` — the same failure one call later.
+**The `requivo` CLI, the deterministic engine every skill drives, usually does not need a terminal
+of its own.** Run any skill — `/requivo:run "..."` is the usual first one — and its shared preflight
+checks for `requivo` on your PATH with `requivo doctor --json`. If it finds nothing and you already
+have `uv` or `pipx`, it offers to install right there: it names the exact command first —
+`uv tool install requivo` when `uv` resolves, `pipx install requivo` when only `pipx` does — and asks
+once. Say yes and it installs, re-checks, and carries straight on with the request you already gave
+it; say no and it prints the same command for you to run yourself, then stops so you can come back.
+`requivo` is never installed with `pip install --user`, which leaves it off the `PATH` — the same
+failure one call later.
+
+**On a machine with neither `uv` nor `pipx`, that one case still touches a terminal.** The preflight
+will not fetch and run a third party's installer script on your behalf — that is a bigger thing to
+ask for than installing Requivo itself, and it is not this plugin's call to make silently. It prints
+the two lines to run yourself instead — `curl -LsSf https://astral.sh/uv/install.sh | sh`, then
+`uv tool install requivo` — says to start a new terminal before the second line (the installer writes
+to your shell profile, which the current one has not re-read), and tells you to re-run the skill once
+that is done.
 
 Prefer to install it yourself, ahead of time or in an environment the preflight cannot reach a
-package manager from? The routes are the same ones it offers: `uv tool install requivo`,
+package manager from? The routes are the same ones above: `uv tool install requivo`,
 `pipx install requivo`, or `pip install requivo` into an environment already on your `PATH`. You do
 **not** need the `requivo[anthropic]` extra; that is for the optional standalone mode above. Then
 run `requivo doctor` in a terminal to confirm. Install routes in depth, including the `pip install
