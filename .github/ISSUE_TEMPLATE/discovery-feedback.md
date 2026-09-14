@@ -1,6 +1,6 @@
 ---
 name: Real-world discovery feedback
-about: You ran `requivo discover` on a real request — tell us how the engine did. This is the feedback we most want.
+about: You ran Requivo on a real request — the CLI (`requivo run`), Claude Code (`/requivo:run`), or Web — tell us how the engine did. This is the feedback we most want.
 title: "[discovery] "
 labels: ["discovery-feedback"]
 ---
@@ -12,7 +12,7 @@ questions a good PM/BA would ask. Please anonymise anything client-confidential 
 
 ## The request
 
-<!-- The request you gave `requivo discover`, anonymised. One or two lines is fine. -->
+<!-- The request you gave Requivo (`requivo run`, `/requivo:run`, or the Web home page), anonymised. One or two lines is fine. -->
 
 ## Context cards used
 

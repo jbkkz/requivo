@@ -57,7 +57,7 @@ same dilution note, whenever `--context` is not given — before the paid call, 
 Scope a session to the cards that matter:
 
 ```bash
-requivo discover --context b2b-platform,financial-reporting "…"
+requivo run --context b2b-platform,financial-reporting "…"
 ```
 
 The selection is held constant across the session's turns (so the cached system prompt survives) and
