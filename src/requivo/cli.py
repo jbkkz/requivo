@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import textwrap
-from functools import partial
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -66,7 +65,6 @@ from requivo.render.terminal import (
 )
 from requivo.services.artifacts import ARTIFACT_FILENAMES
 from requivo.services.discovery import DiscoveryService
-from requivo.services.example import read_demo_asset
 from requivo.services.sessions import SessionService
 from requivo.streams import configure_streams, safe_write
 from requivo.usage import track_usage
@@ -737,15 +735,13 @@ def _cmd_demo(a, client) -> None:
 
     A visitor shouldn't need a key, a clone, and a venv before feeling what the product does. This
     renders the understanding + questions LIVE from the saved model (pure Python, proving the engine
-    runs offline) and shows the assessment it produced — the differentiator — from disk. No network.
-
-    Reads through `services.example.read_demo_asset` (#556), the one thing this shares with
-    `web/example.py`'s `seed_example` -- nothing else: it prints the fully narrated `request.md`,
-    never the unquoted email `seed_example` saves, and creates no session."""
-    # Point the visitor at the browsable copy under examples/ at the repo root, for the closing URL below.
-    request = read_demo_asset("request.md").strip()
-    out = load_model(DEMO / "model.json")
-    assessment = _fenced_text(read_demo_asset("solution-assessment.md"))
+    runs offline) and shows the assessment it produced — the differentiator — from disk. No network."""
+    # Read from the frozen payload bundled in the package (so `requivo demo` works from a wheel, no clone),
+    # but point the visitor at the browsable copy under examples/ at the repo root.
+    demo = DEMO
+    request = (demo / "request.md").read_text(encoding="utf-8").strip()
+    out = load_model(demo / "model.json")
+    assessment = _fenced_text((demo / "solution-assessment.md").read_text(encoding="utf-8"))
 
     bar = "═" * 72
     print(bar)
@@ -781,7 +777,7 @@ def _cmd_demo(a, client) -> None:
     print("  ⑤ EVERYTHING ELSE IS A VIEW OF THE SAME MODEL")
     print("     Regenerated from this one model.json, no re-discovery:")
     for name in ("epic.md", "acceptance-criteria.md"):
-        if (DEMO / name).exists():
+        if (demo / name).exists():
             print(f"       • {name}")
     # **A URL, because the README's own recommended installs are uvx and pipx** (#225). This block
     # used to prove its point with two `examples/<slug>/…` paths, which exist in a clone and nowhere
@@ -853,9 +849,13 @@ def _cmd_impact(a, client) -> None:
 
 def _generator_verb(type_: str) -> Callable[[argparse.Namespace, object], None]:
     """Bind `_cmd_generate` to one type, named `_cmd_<type>` so `args.func.__name__` still reads as
-    the verb -- `test_pc_parser_binds_every_subcommand` asserts exactly that name, and a bare
-    `functools.partial` has none."""
-    verb = partial(_cmd_generate, type_=type_)
+    the verb -- `test_pc_parser_binds_every_subcommand` asserts exactly that name. A real closure,
+    not a `functools.partial`: pyright refuses `partial.__name__ = ...` outright
+    (`reportAttributeAccessIssue` -- a `partial` object has no such attribute at the type level, even
+    though CPython allows the assignment at runtime), and a plain function's `__name__` is an
+    ordinary, type-checkable attribute."""
+    def verb(a: argparse.Namespace, client) -> None:
+        _cmd_generate(a, client, type_)
     verb.__name__ = f"_cmd_{type_}"
     return verb
 

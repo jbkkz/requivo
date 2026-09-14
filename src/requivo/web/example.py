@@ -1,19 +1,14 @@
 """The bundled example session -- Web's keyless activation path (#226), through the ordinary validated path
 (`create_session` + `update_model`), nothing reasoned. `is_example` answers from the request text, not the slug,
-which can be pushed to a derived name (invariant 11, test_the_example_is_recognised_by_what_it_asks_not_by_the_name_it_landed_under).
-
-This module owns every policy decision about the example: what counts as it, what a second click
-does, how its request text is derived. The one thing it does not own is the raw file read
-underneath -- `services.example.read_demo_asset` (#556) -- which `cli.py`'s `demo` verb also
-reads from, independently, for its own different purpose (see that module's docstring)."""
+which can be pushed to a derived name (invariant 11, test_the_example_is_recognised_by_what_it_asks_not_by_the_name_it_landed_under)."""
 
 from __future__ import annotations
 
 import json
 
 from requivo.core.errors import RevisionConflictError
+from requivo.paths import DEMO
 from requivo.services.artifacts import ArtifactService
-from requivo.services.example import read_demo_asset
 from requivo.services.sessions import SessionService
 
 # Absent a collision (see `is_example`); not `cli.DEMO_SLUG` (the browsable copy under `examples/`).
@@ -21,6 +16,11 @@ EXAMPLE_SLUG = "example-event-check-in"
 
 # provider/model_name stay absent (invariant 6) -- test_the_revision_claims_no_provider_it_did_not_use.
 EXAMPLE_SURFACE = "web-example"
+
+
+def _read(name: str) -> str:
+    """One bundled asset, UTF-8 (invariant 16)."""
+    return (DEMO / name).read_text(encoding="utf-8")
 
 
 def _unquote(markdown: str) -> str:
@@ -32,17 +32,17 @@ def _unquote(markdown: str) -> str:
 
 def example_request() -> str:
     """The request the example session captures."""
-    return _unquote(read_demo_asset("request.md"))
+    return _unquote(_read("request.md"))
 
 
 def example_proposal() -> dict:
     """The bundled model, parsed fresh each call."""
-    return json.loads(read_demo_asset("model.json"))
+    return json.loads(_read("model.json"))
 
 
 def example_brief() -> str:
     """The bundled decision brief, read as a file rather than reconstructed (#429) -- test_the_bundled_brief_is_read_rather_than_restated."""
-    return read_demo_asset("brief.md")
+    return _read("brief.md")
 
 
 def _normalised(text: str) -> str:
