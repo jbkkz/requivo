@@ -16,7 +16,7 @@ whenever you are unsure you still do.
 ## 1. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`,
 checking whether the command ran *at all* rather than what it reported. If it could not run, the
-CLI is not installed — say the four things REASONING.md lists and stop. This skill reads and writes
+CLI is not installed — follow REASONING.md's missing-CLI flow. This skill reads and writes
 nothing of its own, so there is no half-written document to find.
 
 ## 2. Split `$ARGUMENTS`: a session, document types, both, or neither

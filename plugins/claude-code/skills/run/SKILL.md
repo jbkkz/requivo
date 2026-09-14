@@ -18,7 +18,7 @@ opening rule says why, and which way to err).
 
 Start with the **preflight** in REASONING.md: run `requivo doctor --json` and check first whether the
 command ran *at all*. If it did not — no JSON, and a message from the shell about a command it could
-not find — the CLI is not installed. Say the four things REASONING.md lists and stop; nothing has been
+not find — the CLI is not installed. Follow REASONING.md's missing-CLI flow; nothing has been
 created yet, so there is nothing to clean up.
 
 If it ran, read the report. Confirm **both** `schema.ok` and `context.ok` are true. A missing

@@ -56,34 +56,45 @@ and without side effects:
 
 1. `command -v uv` resolves → the route is `uv tool install requivo`.
 2. No `uv`, but `command -v pipx` resolves → the route is `pipx install requivo`.
-3. Neither resolves → there is nothing safe to offer. Skip straight to the four things below; do
-   not guess a third route. **Never offer or run `pip install --user`** — it succeeds while leaving
-   `requivo` off the PATH, which is this same failure one step later, exactly as the four-things
-   message below already says.
+3. **Neither resolves.** There is no package manager to hand off to, and the README no longer tells
+   anyone to install one first — this preflight is now the only place that step lives, and stopping
+   here would be a dead end on the exact path the README advertises. The route is two commands, not
+   one: `curl -LsSf https://astral.sh/uv/install.sh | sh` to get `uv` (the same line the plugin's
+   own README used to name), then `uv tool install requivo` once it is there. **Never offer or run
+   `pip install --user`** on any route — it succeeds while leaving `requivo` off the PATH, which is
+   this same failure one step later, exactly as the four-things message below already says.
 
 **Windows** reaches this preflight the same way every other call in this file does — through the
 Bash tool, which on native Windows is Git Bash (the plugin's README states this as a prerequisite).
-Nothing about the install routes above is Windows-specific: the same `command -v` checks and the
-same two commands run there unchanged. If neither resolves, or the Bash call itself cannot be made,
-say so and fall through to the four things below rather than attempting an install blind.
+Nothing about the routes above is Windows-specific: the same `command -v` checks and the same
+commands run there unchanged. If the Bash call itself cannot be made, say so and fall through to the
+four things below rather than attempting an install blind.
 
-**Ask once, naming the exact command before running it:**
+**Ask once, naming every command before running any of it:**
 
 > Requivo isn't installed. Install it now with `uv tool install requivo`? (yes/no)
 
-(substituting `pipx install requivo` when that is the route selected above).
+(substituting `pipx install requivo` on route 2). On route 3:
 
-- **Yes**: run that one command, and only that command, through Bash. Then re-run the probe —
-  `requivo doctor --json` — rather than trusting the installer's exit code; the CLI is not there
-  until the probe says so.
-  - **Probe now succeeds**: say in one line that the install worked and which command you ran, then
-    continue the skill this preflight interrupted, from the request or answer that was already in
-    hand. The user should not have to re-issue anything.
-  - **The install command exits non-zero, or the probe still fails after it exits zero**: say
-    plainly that the install did not work — name what failed — and fall through to the four things
-    below. Never report success the re-probe did not confirm: a half-done install reported as done
-    is worse than no install, because the next skill run then fails somewhere less legible than
-    here.
+> Requivo isn't installed, and neither `uv` nor `pipx` was found to install it with. Get `uv` first
+> — `curl -LsSf https://astral.sh/uv/install.sh | sh` — then install Requivo with it —
+> `uv tool install requivo` — both now, in this session? (yes/no)
+
+- **Yes**: run the named command(s), in order, through Bash — and only those. On route 3, check
+  `command -v uv` again after the `curl` step before running `uv tool install requivo`; if it still
+  does not resolve, the installer wrote to a shell profile this session will not re-read until a new
+  one starts — the same PATH trap the four-things message already names for the CLI itself. Say that
+  plainly and stop there rather than guessing at a second workaround. Whichever route ran, finish
+  with the probe — `requivo doctor --json` — rather than trusting an installer's exit code; the CLI
+  is not there until the probe says so.
+  - **Probe now succeeds**: say in one line that the install worked and which command(s) you ran,
+    then continue the skill this preflight interrupted, from the request or answer that was already
+    in hand. The user should not have to re-issue anything.
+  - **Any command exits non-zero, `uv` still does not resolve after route 3's first step, or the
+    probe still fails once everything has run**: say plainly what did not work — name the step —
+    and fall through to the four things below. Never report success the re-probe did not confirm: a
+    half-done install reported as done is worse than no install, because the next skill run then
+    fails somewhere less legible than here.
 - **No**: say the four things below, unchanged. That path is the fallback and stays exactly what it
   was.
 

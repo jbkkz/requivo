@@ -17,7 +17,7 @@ plugin-skills-mirror-a-pinned-cli-commit`). Read `${CLAUDE_PLUGIN_ROOT}/REASONIN
 ## 0. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`, checking
 whether the command ran *at all* rather than what it reported. If it could not run, the `requivo` CLI
-is not installed — say the four things REASONING.md lists and stop. Nothing has been saved at this
+is not installed — follow REASONING.md's missing-CLI flow. Nothing has been saved at this
 point, so there is no half-written checklist to find.
 
 ## 1. Load the model
