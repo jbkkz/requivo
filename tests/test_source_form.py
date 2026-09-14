@@ -385,6 +385,7 @@ def test_the_process_guard_allows_what_core_legitimately_does(tmp_path):
 CLI = REPO_ROOT / "src" / "requivo" / "cli.py"
 CLI_PACKAGE = "requivo"
 HTTP = REPO_ROOT / "src" / "requivo" / "http.py"
+CLI_SUPPORT = REPO_ROOT / "src" / "requivo" / "cli_support.py"  # split out of cli.py by #550
 RENDER = REPO_ROOT / "src" / "requivo" / "render"
 RENDER_PACKAGE = "requivo.render"
 
@@ -416,11 +417,12 @@ PROVIDER_TREES = (
 
 
 def provider_subjects() -> list[tuple[Path, str, str]]:
-    """Every surface the provider guard watches, as (path, package, label) -- the allowlist key. `cli.py` and `http.py` are named individually (the latter is not itself a surface by this guard's own "touches argv/stdout/HTTP" test, but the one module outside the trees below that legitimately reaches a provider
-    name); the rest are walked, so a module added later arrives inside the scan set rather than beside it."""
+    """Every surface the provider guard watches, as (path, package, label) -- the allowlist key. `cli.py`, `cli_support.py` and `http.py` are named individually (the last is not itself a surface by this guard's own "touches argv/stdout/HTTP" test, but the one module outside the trees below that legitimately reaches a provider
+    name; `cli_support.py` is here because a set keyed by filename does not follow the #550 split, #587); the rest are walked, so a module added later arrives inside the scan set rather than beside it."""
     src = REPO_ROOT / "src" / "requivo"
     subjects = [
         (subject_module(CLI), CLI_PACKAGE, "cli.py"),
+        (subject_module(CLI_SUPPORT), CLI_PACKAGE, "cli_support.py"),
         (subject_module(HTTP), CLI_PACKAGE, "http.py"),
     ]
     for root, package in PROVIDER_TREES:

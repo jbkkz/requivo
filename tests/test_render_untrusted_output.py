@@ -515,20 +515,20 @@ def _question_prose_leaks(root: Path) -> list:
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "requivo"
-_TERMINAL_SURFACE_TREES = ("render", "cli.py", "deterministic", "web")
+_TERMINAL_SURFACE_TREES = ("render", "cli.py", "cli_support.py", "deterministic", "web")
 
 
 def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_surface_tree():
-    """The real scan, over the real tree: `render/`, `cli.py`, `deterministic/` and `web/` are every
-    `src/requivo/` subtree that can touch a terminal (`core/`, `providers/` and `services/` are
-    guarded elsewhere never to print or prompt). Passing this does not prove there is no leak
-    anywhere -- see the file-level docstring for what the scan cannot see -- only that there is none
-    of *this* shape, in *this* tree, today."""
+    """The real scan, over the real tree: every `src/requivo/` subtree that can touch a terminal
+    (`core/`, `providers/` and `services/` are guarded elsewhere never to print or prompt).
+    `cli_support.py` is named because a set keyed by filename does not follow a split (#587, #550).
+    Passing proves there is no leak of *this* shape in *this* tree today -- see the file-level
+    docstring for what the scan cannot see."""
     violations: list = []
     for entry in _TERMINAL_SURFACE_TREES:
         target = SRC_ROOT / entry
-        # `cli.py` is a single file, not a directory -- `_question_prose_leaks_in_file` works on
-        # either, so both branches of `_TERMINAL_SURFACE_TREES` reach the same one function.
+        # `cli.py`/`cli_support.py` are single files, not directories -- `_question_prose_leaks_in_file`
+        # works on either, so both branches of `_TERMINAL_SURFACE_TREES` reach the same one function.
         violations += (_question_prose_leaks(target) if target.is_dir()
                        else _question_prose_leaks_in_file(target))
     assert not violations, "\n".join(violations)
