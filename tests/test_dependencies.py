@@ -24,7 +24,6 @@ from requivo.core.contracts import Challenge, DesignDecision, EngineOutput, sche
 from requivo.core.dependencies import (
     _ARTIFACT_SLOTS_RAW,
     ARTIFACT_FILENAMES,
-    ARTIFACT_FILES,
     artifact_slots,
     diff_models,
     propagate,
@@ -393,13 +392,22 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
 # ── Tier 3: the artifact-type vocabulary agrees with itself (#270) ────────────
 # One concept -- "the artifact types" -- is keyed into _GENERATORS, _OP_PROMPTS
 # (providers/anthropic/generators.py), _WRITERS, GENERATABLE (services/discovery.py),
-# _ARTIFACT_SLOTS_RAW, ARTIFACT_FILES, ARTIFACT_FILENAMES, REASONING_CONSUMERS
-# (core/dependencies.py), and ARTIFACT_LABELS (web/viewmodels/labels.py). Nothing asserted they
-# agree, and the dangerous drift is silent: a type present in ARTIFACT_FILENAMES/_GENERATORS/
-# _WRITERS but missing from _ARTIFACT_SLOTS_RAW is never flagged stale, because
-# services/artifacts.py's _stale_since reads REASONING_CONSUMERS and propagate() off that one map
-# alone -- exactly invariant 1's "a stale document reports itself as up to date" failure, and the
-# most routine change this vocabulary will ever see (a new generator) is exactly what triggers it.
+# _ARTIFACT_SLOTS_RAW, ARTIFACT_FILENAMES, REASONING_CONSUMERS (core/dependencies.py), and
+# ARTIFACT_LABELS (web/viewmodels/labels.py). Nothing asserted they agree, and the dangerous drift
+# is silent: a type present in ARTIFACT_FILENAMES/_GENERATORS/_WRITERS but missing from
+# _ARTIFACT_SLOTS_RAW is never flagged stale, because services/artifacts.py's _stale_since reads
+# REASONING_CONSUMERS and propagate() off that one map alone -- exactly invariant 1's "a stale
+# document reports itself as up to date" failure, and the most routine change this vocabulary will
+# ever see (a new generator) is exactly what triggers it.
+#
+# Until #556 there were two near-identical filename tables here, ARTIFACT_FILENAMES and
+# ARTIFACT_FILES, and a second guard pinned them merely *agreeing* -- which proved nothing once
+# #519 made every type saveable through both paths and the two tables became structurally
+# identical. #556 removed the second table; `services/sessions.py`'s `_resolve_stale` (which used
+# to iterate the second table by key membership) now reads this one directly, so the drift that
+# guard caught -- a type reaching ARTIFACT_FILENAMES while the *other* table stayed behind -- is no
+# longer representable. What is still representable, and still dangerous, is a type missing from
+# ARTIFACT_FILENAMES entirely; that is what the checks below catch.
 #
 # **The shape of the guard, decided rather than defaulted.** Not a registry-of-registries (a ninth
 # table that can itself drift) and not N^2 pairwise assertions (the relationship count grows with
@@ -407,12 +415,12 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
 # *named* canonical source, and every other table is asserted against it rather than against each
 # other: `REASONING_CONSUMERS` is already mechanically derived from it, and it is the map
 # `_stale_since` actually reads -- it is the table whose omission is the dangerous one to begin
-# with. Adding a ninth table costs one more relationship in `_artifact_vocabulary_mismatches`
-# rather than a new pairwise matrix.
+# with. Adding a table costs one more relationship in `_artifact_vocabulary_mismatches` rather than
+# a new pairwise matrix.
 
 
 def _artifact_vocabulary_mismatches(*, slots_raw, generators, op_prompts, writers, generatable,
-                                    artifact_filenames, artifact_files, artifact_labels) -> list[str]:
+                                    artifact_filenames, artifact_labels) -> list[str]:
     """Every relationship the real tables must satisfy, checked through the same argument names
     whether the tables are the real module-level ones or a deliberately broken fixture copy -- the
     *same* function has to fail on the fixture below, or the passing test above is untested (the
@@ -441,24 +449,13 @@ def _artifact_vocabulary_mismatches(*, slots_raw, generators, op_prompts, writer
     if not set(generatable) <= set(artifact_filenames):
         problems.append(
             f"GENERATABLE {sorted(set(generatable) - set(artifact_filenames))} has no "
-            "ARTIFACT_FILENAMES entry -- generate() would produce it with nowhere to save it")
+            "ARTIFACT_FILENAMES entry -- generate() would produce it with nowhere to save it, and "
+            "services/sessions.py's _resolve_stale (which reads ARTIFACT_FILENAMES directly since "
+            "#556) would never auto-flag it stale either")
     if not set(artifact_filenames) <= set(artifact_labels):
         problems.append(
             f"ARTIFACT_FILENAMES {sorted(set(artifact_filenames) - set(artifact_labels))} has no "
             "ARTIFACT_LABELS entry -- the Web would show the raw type string instead of a label")
-    if not set(artifact_files) <= canonical:
-        problems.append(
-            f"ARTIFACT_FILES {sorted(set(artifact_files) - canonical)} not in _ARTIFACT_SLOTS_RAW")
-    if not set(artifact_filenames) <= set(artifact_files):
-        problems.append(
-            f"ARTIFACT_FILENAMES {sorted(set(artifact_filenames) - set(artifact_files))} has no "
-            "ARTIFACT_FILES entry -- this is the second dangerous one, found in review (#270): "
-            "services/sessions.py's _resolve_stale iterates `for t in ARTIFACT_FILES` (key "
-            "membership, not the value) to decide which already-saved artifacts an ordinary apply "
-            "eagerly re-flags stale, so a type absent from ARTIFACT_FILES entirely is never "
-            "auto-flagged by that path even though _stale_since (the save-time path, checked above "
-            "via _ARTIFACT_SLOTS_RAW) still catches it correctly -- the two staleness paths read two "
-            "different tables and previously only one of them was guarded")
     return problems
 
 
@@ -470,7 +467,7 @@ def test_the_real_artifact_registries_agree_on_their_key_sets():
     problems = _artifact_vocabulary_mismatches(
         slots_raw=_ARTIFACT_SLOTS_RAW, generators=_GENERATORS, op_prompts=_OP_PROMPTS,
         writers=_WRITERS, generatable=GENERATABLE, artifact_filenames=ARTIFACT_FILENAMES,
-        artifact_files=ARTIFACT_FILES, artifact_labels=ARTIFACT_LABELS)
+        artifact_labels=ARTIFACT_LABELS)
     joined = chr(10).join(problems)
     assert not problems, joined
 
@@ -480,7 +477,7 @@ def _real_tables() -> dict:
         "slots_raw": dict(_ARTIFACT_SLOTS_RAW), "generators": dict(_GENERATORS),
         "op_prompts": dict(_OP_PROMPTS), "writers": dict(_WRITERS),
         "generatable": tuple(GENERATABLE), "artifact_filenames": dict(ARTIFACT_FILENAMES),
-        "artifact_files": dict(ARTIFACT_FILES), "artifact_labels": dict(ARTIFACT_LABELS),
+        "artifact_labels": dict(ARTIFACT_LABELS),
     }
 
 
@@ -489,7 +486,7 @@ def _run_mismatches(tables: dict) -> list[str]:
         slots_raw=tables["slots_raw"], generators=tables["generators"],
         op_prompts=tables["op_prompts"], writers=tables["writers"],
         generatable=tables["generatable"], artifact_filenames=tables["artifact_filenames"],
-        artifact_files=tables["artifact_files"], artifact_labels=tables["artifact_labels"])
+        artifact_labels=tables["artifact_labels"])
 
 
 @pytest.mark.parametrize("table_name", ["generators", "writers", "artifact_filenames"])
@@ -510,54 +507,3 @@ def test_a_type_missing_its__ARTIFACT_SLOTS_RAW_entry_is_caught(table_name):
     problems = _run_mismatches(tables)
     assert any("dummy" in p for p in problems), (
         f"a 'dummy' type added to {table_name} with no _ARTIFACT_SLOTS_RAW entry must be caught: {problems}")
-
-
-def test_a_type_missing_from_ARTIFACT_FILES_is_caught():
-    """The second dangerous drift found in review (#270), one table over from the first: a type can
-    have a real _ARTIFACT_SLOTS_RAW entry AND a real ARTIFACT_FILENAMES entry and still be silently
-    never auto-flagged stale, because `services/sessions.py`'s `_resolve_stale` -- run on every
-    apply, not only at save time -- iterates `for t in ARTIFACT_FILES`, a *third* table the original
-    version of this guard never checked. Adding a type to both `_ARTIFACT_SLOTS_RAW` and
-    `ARTIFACT_FILENAMES` (as a real generator addition would) while leaving `ARTIFACT_FILES` behind
-    must be caught."""
-    tables = _real_tables()
-    tables["slots_raw"]["dummy"] = {"workflow"}
-    tables["artifact_filenames"]["dummy"] = "dummy.md"
-    # ARTIFACT_FILES deliberately NOT updated -- this is the omission itself.
-
-    problems = _run_mismatches(tables)
-    assert any("ARTIFACT_FILES" in p and "dummy" in p for p in problems), (
-        f"a type in ARTIFACT_FILENAMES with no ARTIFACT_FILES entry must be caught: {problems}")
-
-
-def test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file():
-    """Two near-identical tables (#270's own open question). Not merged: when this was written
-    ARTIFACT_FILES answered for `stories`/`estimate` with `None` ("the provider-path generator does
-    not persist this itself"), where ARTIFACT_FILENAMES omitted `estimate` entirely and gave
-    `stories` a real filename -- Claude Code could save one even though the provider path never did.
-    A merge needs a three-state marker per type and would touch core/persistence/,
-    render/terminal.py and services/sessions.py, none of which that issue's own Scope section
-    named. Pinned instead, per the acceptance criteria's own stated alternative: wherever both
-    tables name a type, the filename must agree.
-    `test_a_filename_disagreement_between_the_two_tables_is_caught` is the must-fire control.
-
-    Since #519 (`decision: the-estimate-graduates`) both types name a file in both tables, so the
-    two agree on every key and the `is not None` filter below excludes nothing. It stays because
-    the value type still admits `None`, and comparing a `None` against a real string was never the
-    disagreement this test exists to catch -- the first run of this test found that out the hard
-    way, on `stories`, when the two tables were legitimately answering two different questions
-    about the same type."""
-    shared = {t for t in set(ARTIFACT_FILES) & set(ARTIFACT_FILENAMES) if ARTIFACT_FILES[t] is not None}
-    assert shared, "the two tables share no comparable keys -- this test asserts nothing until they do"
-    disagreements = {t: (ARTIFACT_FILES[t], ARTIFACT_FILENAMES[t]) for t in shared
-                     if ARTIFACT_FILES[t] != ARTIFACT_FILENAMES[t]}
-    assert not disagreements, disagreements
-
-
-def test_a_filename_disagreement_between_the_two_tables_is_caught():
-    """Must-fire control for the test above, over the same comparison (a `None` in ARTIFACT_FILES
-    would be a legitimate different answer, not a disagreement -- see above)."""
-    broken = dict(ARTIFACT_FILENAMES, brief="wrong.md")
-    shared = {t for t in set(ARTIFACT_FILES) & set(broken) if ARTIFACT_FILES[t] is not None}
-    disagreements = {t: (ARTIFACT_FILES[t], broken[t]) for t in shared if ARTIFACT_FILES[t] != broken[t]}
-    assert disagreements == {"brief": (ARTIFACT_FILES["brief"], "wrong.md")}

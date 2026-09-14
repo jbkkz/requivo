@@ -55,24 +55,19 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "release": {"problem", "success_metrics", "workflow", "risks"},
 }
 
-# The persisted file for each artifact. Used by change-detection to flag *existing* stale files on
-# disk. `None` meant "rendered to the terminal only", which `stories` and `estimate` were until #519
-# (`decision: the-estimate-graduates`); every type names a file now. The `str | None` type and the
-# two arms that read a `None` (`render_impact`, `migrate_legacy`) are left as they are: folding this
-# table into ARTIFACT_FILENAMES below is the merge #270 deferred, and it is a separate change.
-ARTIFACT_FILES: dict[str, str | None] = {
-    "brief": "solution-assessment.md", "prd": "prd.md", "stories": "stories.md",
-    "estimate": "estimate.md", "criteria": "acceptance-criteria.md", "epic": "epic.md",
-    "release": "release-notes.md",
-}
-
 # type → filename under <session>/artifacts/, for everything that can be *persisted*. Core holds it
 # because three layers ask the same question — the service that saves, the CLI that offers `--type`,
 # and the integrity checker that verifies what a session claims to hold — and a vocabulary that
-# exists in two places drifts. It used to differ from ARTIFACT_FILES above in `stories` (saveable by
-# Claude Code, unwritten by the provider path) and `estimate` (terminal-only on both counts); since
-# #519 the two agree on every type, and `test_ARTIFACT_FILES_and_ARTIFACT_FILENAMES_agree_wherever_both_name_a_file`
-# holds them there.
+# exists in two places drifts. Until #519 this table and a second one (`ARTIFACT_FILES`) answered two
+# different questions — `stories` was saveable by Claude Code but unwritten by the provider path, and
+# `estimate` was terminal-only on both counts — so the two carried genuinely different values. #519
+# (`decision: the-estimate-graduates`) made every type saveable through both paths, which made the
+# two tables identical; #556 removes the second one rather than let an identical pair keep drifting
+# in step by luck. Every reader (`core/persistence/store.py`'s `migrate_legacy`,
+# `render/terminal.py`'s `render_impact`, `services/sessions.py`'s `_resolve_stale`) now reads this
+# one map. Cost of a second table: `test_dependencies.py` used to pin the two *agreeing*, which
+# proves nothing once there is only one to agree with itself; a real drift would instead have been a
+# type missing here entirely, caught by `test_the_real_artifact_registries_agree_on_their_key_sets`.
 ARTIFACT_FILENAMES: dict[str, str] = {
     "brief": "solution-assessment.md",
     "prd": "prd.md",

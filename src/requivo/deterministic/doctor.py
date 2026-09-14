@@ -6,13 +6,15 @@ context cards that impact estimation is read against. None of them needs a sessi
 job, and all three read the same bundled assets, which is why a change to one is usually a change to
 its neighbours.
 
-Two things here are deliberately *not* integrity checks, and the distinction is load-bearing.
-`core/integrity.py` answers whether a session directory tells the truth about itself, and its
-evidence is the directory and only the directory. A context card lives in the installed package or
-in `user_context_dir()`, so a lost card is an environment finding rather than a broken session. That
-is why `_card_health` and the two remedy hints live here and are imported from this module by
-`session verify`, which asks the same environment question from the other side. They are stated once
-so that the two surfaces cannot print different advice for the same finding.
+Two things this module reads are deliberately *not* integrity checks, and the distinction is
+load-bearing. `core/integrity.py` answers whether a session directory tells the truth about itself,
+and its evidence is the directory and only the directory. A context card lives in the installed
+package or in `user_context_dir()`, so a lost card is an environment finding rather than a broken
+session. That is why `_card_health` and its two remedy hints live in `deterministic/remedies.py`
+rather than here: `session verify` asks the same environment question from the other side, and until
+#556 it imported them straight out of this module -- a verb module reaching into a sibling verb
+module's private names, which is the one cross-import CLAUDE.md's module map says must not happen
+between them. `remedies.py` is neither verb: it is the shared finding both read.
 
 Part of the deterministic surface, so no LLM and no API key. `register_doctor(sub)` is composed into
 the package's single `register()` by `deterministic/__init__.py`.
@@ -24,11 +26,12 @@ import os
 import platform
 
 from requivo.core import persistence as store
-from requivo.core.context import available_cards, check_selection
+from requivo.core.context import available_cards
 from requivo.core.errors import InvalidModelError, SessionLockedError
 from requivo.core.integrity import SEVERITY_NOTE, IntegrityProblem, blocking, inspect_session
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import _NO_DETAIL, _resolve_cards, print_json
+from requivo.deterministic.remedies import _REPAIR_HINT, _RESTORABLE_CARD_CODES, _RESTORE_HINT, _card_health
 from requivo.paths import ASSETS, CONTEXT, lock_root, session_root, user_context_dir, workspace_root
 from requivo.providers.anthropic import credential_diagnosis, current_model_name
 from requivo.services.sessions import SessionService
@@ -166,59 +169,6 @@ def doctor_report() -> dict:
         # there, in three states, never a conclusion the directory alone cannot support.
         "locks": _lock_health(),
     }
-
-
-# Which card findings are repaired by *restoring a file*, and which by *fixing the stored selection*.
-# Two different remedies, and printing the first under the second is the quiet-wrong-answer form of
-# the bug #40 is about: the verb names a real problem and then tells you to do something that cannot
-# fix it. Stated once and read by both surfaces, because `doctor` and `session verify` printing
-# different advice for the same finding is how they drift.
-#
-# `context_unreadable` is deliberately NOT a member, for the same reason `_SELECTION_REFUSALS` in
-# `core/context.py` deliberately excludes it: `check_selection` lets it propagate rather than
-# returning it, so `_card_health` reports it as `{"checked": False, "problem": None}` and it can
-# never arrive here as a `problem["code"]` at all. Listing it would be a branch that cannot run,
-# which reads to the next person as coverage this does not have. The pair is pinned by
-# `test_the_two_card_code_tables_agree`, so adding it to the refusals tuple later fails loudly here
-# instead of silently routing a permissions fault to the wrong remedy.
-_RESTORABLE_CARD_CODES = frozenset({"unknown_context_card", "no_context_cards"})
-
-_RESTORE_HINT = ("Put the card back, or point REQUIVO_CONTEXT_DIR at where it now lives — until "
-                 "then these sessions refuse their next reasoning turn.")
-_REPAIR_HINT = ("Repair the `context_cards` list in the session's session.json — the selection "
-                "itself is malformed, so no card you install will resolve it.")
-
-
-def _card_health(slug: str) -> dict:
-    """Does this session's persisted context-card selection still load *here*? Three states, because
-    a checker that could not look must not answer like one that looked and found nothing:
-
-    - `{"checked": True,  "problem": None}`  — it loads;
-    - `{"checked": True,  "problem": {…}}`   — it does not, and the envelope names the cards;
-    - `{"checked": False, "error": "…"}`     — neither the session's metadata nor the card directory
-      could be read, so this session's context is simply unknown.
-
-    **Why this lives here and not in `core/integrity.py`.** That module answers one question — does
-    a session directory tell the truth *about itself* — and a context card is not in the directory;
-    it is in the installed package or in `user_context_dir()`. Reporting a lost card as an integrity
-    problem would make the same directory coherent on one machine and broken on another, which is
-    not a property an integrity check can have. It would also break `session import`, which refuses
-    an archive on exactly those problems: a colleague's perfectly good session would become
-    unimportable because you happen not to have one of their cards. So it is an *environment*
-    finding, reported by the two verbs that ask about the environment — `doctor` and
-    `session verify` — over `core.context.check_selection`, which is the guard `load_context`
-    itself applies rather than a second implementation of it.
-    """
-    try:
-        # `SessionService.meta`, not `repo.context_cards`: the two differ on the case that matters
-        # here. `context_cards` answers None for a session it cannot find, and None means *all
-        # cards* — so an unreadable session would be reported as healthy. `meta` raises, the
-        # `except` below turns that into `checked: False`, and "could not look" stays distinct from
-        # "looked and found nothing" (#80, #86).
-        problem = check_selection(SessionService().meta(slug).context_cards)
-    except Exception as e:  # noqa: BLE001 - a health check reports that it could not look; it never raises
-        return {"checked": False, "problem": None, "error": str(e)}
-    return {"checked": True, "problem": problem.to_dict() if problem else None, "error": None}
 
 
 def _session_health(*, cards_readable: bool = True) -> dict:

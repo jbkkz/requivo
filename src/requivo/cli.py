@@ -5,8 +5,9 @@ import os
 import re
 import sys
 import textwrap
+from functools import partial
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 from dotenv import load_dotenv
 
@@ -65,6 +66,7 @@ from requivo.render.terminal import (
 )
 from requivo.services.artifacts import ARTIFACT_FILENAMES
 from requivo.services.discovery import DiscoveryService
+from requivo.services.example import read_demo_asset
 from requivo.services.sessions import SessionService
 from requivo.streams import configure_streams, safe_write
 from requivo.usage import track_usage
@@ -735,13 +737,15 @@ def _cmd_demo(a, client) -> None:
 
     A visitor shouldn't need a key, a clone, and a venv before feeling what the product does. This
     renders the understanding + questions LIVE from the saved model (pure Python, proving the engine
-    runs offline) and shows the assessment it produced — the differentiator — from disk. No network."""
-    # Read from the frozen payload bundled in the package (so `requivo demo` works from a wheel, no clone),
-    # but point the visitor at the browsable copy under examples/ at the repo root.
-    demo = DEMO
-    request = (demo / "request.md").read_text(encoding="utf-8").strip()
-    out = load_model(demo / "model.json")
-    assessment = _fenced_text((demo / "solution-assessment.md").read_text(encoding="utf-8"))
+    runs offline) and shows the assessment it produced — the differentiator — from disk. No network.
+
+    Reads through `services.example.read_demo_asset` (#556), the one thing this shares with
+    `web/example.py`'s `seed_example` -- nothing else: it prints the fully narrated `request.md`,
+    never the unquoted email `seed_example` saves, and creates no session."""
+    # Point the visitor at the browsable copy under examples/ at the repo root, for the closing URL below.
+    request = read_demo_asset("request.md").strip()
+    out = load_model(DEMO / "model.json")
+    assessment = _fenced_text(read_demo_asset("solution-assessment.md"))
 
     bar = "═" * 72
     print(bar)
@@ -777,7 +781,7 @@ def _cmd_demo(a, client) -> None:
     print("  ⑤ EVERYTHING ELSE IS A VIEW OF THE SAME MODEL")
     print("     Regenerated from this one model.json, no re-discovery:")
     for name in ("epic.md", "acceptance-criteria.md"):
-        if (demo / name).exists():
+        if (DEMO / name).exists():
             print(f"       • {name}")
     # **A URL, because the README's own recommended installs are uvx and pipx** (#225). This block
     # used to prove its point with two `examples/<slug>/…` paths, which exist in a clone and nowhere
@@ -840,91 +844,96 @@ def _cmd_impact(a, client) -> None:
 # actually happen — so a document asked for from the terminal is produced, saved and tracked exactly as
 # the same document asked for from the browser or from Claude Code. The CLI's job here is to resolve
 # the session, choose the terminal view, and say where the file went.
+#
+# One `_cmd_generate` over three per-type tables (#556), not seven near-identical bodies that had
+# drifted unevenly under a shared fix before (`display_document`'s tab-preserving guard, #449). The
+# seven `add_parser` calls below stay: they are the public verbs, each still with its own help text
+# and flags (`epic`'s three export flags, `release`'s version positional).
 
 
+def _generator_verb(type_: str) -> Callable[[argparse.Namespace, object], None]:
+    """Bind `_cmd_generate` to one type, named `_cmd_<type>` so `args.func.__name__` still reads as
+    the verb -- `test_pc_parser_binds_every_subcommand` asserts exactly that name, and a bare
+    `functools.partial` has none."""
+    verb = partial(_cmd_generate, type_=type_)
+    verb.__name__ = f"_cmd_{type_}"
+    return verb
 
-def _cmd_brief(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    # The assessment's reasoning is absorbed back into the model as a new revision inside `generate`,
-    # so downstream generators inherit the decisions and challenges, not just the facts.
-    result = disco.generate(slug, "brief", surface="cli-brief")
+
+# type → extra keyword arguments for `disco.generate(slug, type, surface=..., **here)`. Absent for
+# the other five, which pass none.
+_GENERATE_KWARGS: dict[str, Callable[[argparse.Namespace], dict]] = {
+    # Two calls, one snapshot, two files against one revision, inside `generate()` since #519: the
+    # estimate is read against the stories saved beside it (#135, invariant 6). `on_stories` prints
+    # them the moment they're saved, before the second call is paid for. Pinned by
+    # `test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot` and
+    # `test_the_estimate_verb_writes_both_files_and_still_prints_both_views`.
+    "estimate": lambda a: {"on_stories": render_stories},
+    "release": lambda a: {"version": a.version},
+}
+
+
+def _render_brief(slug: str, result) -> None:
     render_brief(result.model, result.artifact)
-    # The caption is "decision brief" everywhere a person reads it; the type, the verb and the file
-    # on disk are all still `brief`/`solution-assessment.md` (#166).
-    _wrote(slug, result, "decision brief")
 
 
-def _cmd_prd(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    result = disco.generate(slug, "prd", surface="cli-prd")
-    # `display_document`, not `display_text`, on the path that fires on every generation rather than
-    # only on a later `artifact show`: `prd_markdown` returns a full multi-paragraph document --
-    # headings, bullet lists, a requirements table -- whose newlines and tabs are its layout. At
-    # print time only, the same way `_cmd_artifact_show` guards a saved artifact's content: the
-    # string written to disk two lines below, via `_wrote`, is untouched, so the byte-identical-on-
-    # disk promise `core/integrity.py`'s hashing rests on stays intact. Pinned by
+def _render_prd(slug: str, result) -> None:
+    # `display_document`, not `display_text` (#449): a multi-paragraph document -- headings, lists, a
+    # table -- whose newlines and tabs are its layout. Print time only; the string `_wrote` saves to
+    # disk below is untouched, so the byte-identical-on-disk promise `core/integrity.py`'s hashing
+    # rests on stays intact. Pinned by
     # `test_the_same_document_renders_identically_through_generation_and_read_back`.
     print(display_document(prd_markdown(result.artifact)))
-    _wrote(slug, result, "PRD")
 
 
-def _cmd_stories(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    # Saved like every other generator since #519 (`decision: the-estimate-graduates`); it was a
-    # terminal-only analysis with a filename nothing in the repository could write to.
-    result = disco.generate(slug, "stories", surface="cli-stories")
+def _render_stories(slug: str, result) -> None:
     render_stories(result.artifact)
-    _wrote(slug, result, "user stories")
 
 
-def _cmd_estimate(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    # Two calls, one snapshot, two files against one revision — all inside `generate()` since #519,
-    # because the estimate is read against the stories and the file it is saved beside has to be
-    # those stories (#135, invariant 6). The stories still arrive on the terminal while the estimate
-    # runs: `on_stories` is called the moment they are saved, before the second call is paid for.
-    # Pinned by `test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot` (the snapshot
-    # count) and `test_the_estimate_verb_writes_both_files_and_still_prints_both_views`.
-    result = disco.generate(slug, "estimate", surface="cli-estimate", on_stories=render_stories)
+def _render_estimate(slug: str, result) -> None:
     est = result.artifact
     render_estimate(est.draft, est.soft, est.confidence)
     _wrote_file(slug, est.stories_status, "user stories")
-    _wrote(slug, result, "estimate")
 
 
-def _cmd_criteria(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    result = disco.generate(slug, "criteria", surface="cli-criteria")
-    # `display_document`, same reason as `_cmd_prd` just above (#449): `criteria_markdown` is a
-    # multi-scenario Given/When/Then document, not a handful of single-line fields, and only the
-    # terminal print is guarded -- the saved artifact stays byte-identical.
-    print(display_document(criteria_markdown(result.artifact)))
-    _wrote(slug, result, "acceptance criteria")
+def _render_criteria(slug: str, result) -> None:
+    print(display_document(criteria_markdown(result.artifact)))  # #449, see `_render_prd`
 
 
-def _cmd_epic(a, client) -> None:
-    slug, disco = _generator_service(a, client)
-    result = disco.generate(slug, "epic", surface="cli-epic")  # one model call; every view renders from it
+def _render_epic(slug: str, result) -> None:
+    print(display_document(epic_markdown(result.artifact)))  # #449, see `_render_prd`
+
+
+def _render_release(slug: str, result) -> None:
+    print(display_document(release_markdown(result.artifact)))  # #449, see `_render_prd`
+
+
+# type → the terminal rendering for a freshly generated result, called before `_wrote` prints where
+# the file went; `estimate` also writes the stories file it saved alongside itself, the same order
+# the seven bodies this replaces used.
+_RENDER: dict[str, Callable[[str, object], None]] = {
+    "brief": _render_brief, "prd": _render_prd, "stories": _render_stories,
+    "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic,
+    "release": _render_release,
+}
+
+# type → the label `_wrote` prints. "Decision brief" is the caption a reader sees everywhere; the
+# type, the verb and the file on disk stay `brief`/`solution-assessment.md` (#166) -- only the label
+# lookup moved here.
+_LABEL: dict[str, str] = {
+    "brief": "decision brief", "prd": "PRD", "stories": "user stories", "estimate": "estimate",
+    "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
+}
+
+
+def _post_epic(a: argparse.Namespace, slug: str, result) -> None:
+    # `write_artifact_file`, not `repo.save_artifact`: three extra, deliberately untracked *views* of
+    # the one already-saved artifact -- no ArtifactService staleness row. `result.status.revision` is
+    # the same stamp `epic.md` just saved against (invariant 12), so a reader can compare it to
+    # `requivo status --json`'s `artifacts.epic.stale` for a freshness verdict. Pinned by
+    # `test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_against`.
     epic = result.artifact
-    # `display_document`, same reason as `_cmd_prd` above (#449): a milestone/goal preamble, scope
-    # bullets, and a per-issue section with its own description -- a document, not a field list.
-    # The three `if a.export_json`/`a.github`/`a.gitlab` prints below are untouched by this: each
-    # prints a validated artifact *path* off `write_artifact_file`'s return, the same chokepoint
-    # `_wrote` goes through, never the epic's own generated content -- out of #449's scope, not an
-    # oversight.
-    print(display_document(epic_markdown(epic)))
-    _wrote(slug, result, "epic")
     if a.export_json:
-        # `write_artifact_file`, not `repo.save_artifact`: these three are extra *views* of one
-        # already-saved artifact and are deliberately untracked — no type, no ArtifactService
-        # staleness row. Giving them full artifact status would put three rows in `artifact list`
-        # that no generator can refresh. Direct, and it stays direct until a second surface writes
-        # them. They are not provenance-free, though: `result.status.revision` is the same
-        # `Generated.status.revision` the paired `epic.md` save just used above — one snapshot, per
-        # invariant 12 — so a reader can compare the stamp against `requivo status --json`'s
-        # `artifacts.epic.stale` for a freshness verdict; the stamp identifies the basis and does not
-        # itself judge staleness (invariant 1). Pinned by
-        # `test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_against`.
         print(f"Wrote neutral epic export → "
               f"{store.write_artifact_file(slug, 'epic.json', epic_export_json(epic, slug, result.status.revision))}")
     if a.github:
@@ -935,22 +944,23 @@ def _cmd_epic(a, client) -> None:
               f"{store.write_artifact_file(slug, 'epic.gitlab.json', to_gitlab_json(epic, slug, result.status.revision))}")
 
 
-def _cmd_release(a, client) -> None:
+# type → extra work after `_wrote`. Only `epic` has any (its three optional tracker-plan exports).
+_POST: dict[str, Callable[[argparse.Namespace, str, object], None]] = {"epic": _post_epic}
+
+
+def _cmd_generate(a: argparse.Namespace, client, type_: str) -> None:
+    """The one body behind all seven generator verbs (#556)."""
     slug, disco = _generator_service(a, client)
-    result = disco.generate(slug, "release", surface="cli-release", version=a.version)
-    # `display_document`, same reason as `_cmd_prd` above (#449): a heading, a summary paragraph and
-    # three bulleted sections -- a short document, still one whose blank lines and structure are its
-    # layout, not incidental whitespace a single-line guard could collapse without loss.
-    print(display_document(release_markdown(result.artifact)))
-    _wrote(slug, result, "release notes")
+    kwargs = _GENERATE_KWARGS.get(type_, lambda a: {})(a)
+    result = disco.generate(slug, type_, surface=f"cli-{type_}", **kwargs)
+    _RENDER[type_](slug, result)
+    _wrote(slug, result, _LABEL[type_])
+    _POST.get(type_, lambda a, slug, result: None)(a, slug, result)
 
 
 # `docs` (#544): one verb over the seven generators above, never a second generation path -- every
-# type it can produce loops through the same `_cmd_*` body `requivo <type> <slug>` already calls.
-_DOC_GENERATORS = {
-    "brief": _cmd_brief, "prd": _cmd_prd, "stories": _cmd_stories, "estimate": _cmd_estimate,
-    "criteria": _cmd_criteria, "epic": _cmd_epic, "release": _cmd_release,
-}
+# type it can produce loops through the same dispatch `requivo <type> <slug>` already calls.
+_DOC_GENERATORS = {name: _generator_verb(name) for name in _LABEL}
 
 _DOC_SELECTION_RE = re.compile(r"[,\s]+")
 
@@ -1373,11 +1383,14 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
               _cmd_impact, lambda sp: sp.add_argument("slots", nargs="*",
               help="slot ids or label words (e.g. permissions workflow); omit for the full map"),
               accepts_path=True, session_required=False)
-    model_cmd("brief", "generate the decision brief — what to review before estimating (API)", _cmd_brief)
-    model_cmd("prd", "generate the PRD (API)", _cmd_prd)
-    model_cmd("stories", "derive user stories (API)", _cmd_stories)
-    model_cmd("estimate", "derive stories and estimate them, in day ranges (API)", _cmd_estimate)
-    model_cmd("criteria", "generate Given/When/Then acceptance criteria (API)", _cmd_criteria)
+    model_cmd("brief", "generate the decision brief — what to review before estimating (API)",
+              _generator_verb("brief"))
+    model_cmd("prd", "generate the PRD (API)", _generator_verb("prd"))
+    model_cmd("stories", "derive user stories (API)", _generator_verb("stories"))
+    model_cmd("estimate", "derive stories and estimate them, in day ranges (API)",
+              _generator_verb("estimate"))
+    model_cmd("criteria", "generate Given/When/Then acceptance criteria (API)",
+              _generator_verb("criteria"))
 
     def epic_flags(sp):
         # Three sibling flags of one kind: each writes an export file. `--export-json` was spelled
@@ -1393,9 +1406,9 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
         sp.add_argument("--github", action="store_true", help="also write a GitHub issue-creation plan")
         sp.add_argument("--gitlab", action="store_true", help="also write a GitLab issue-creation plan")
 
-    model_cmd("epic", "generate the delivery epic, plus optional tracker plans (API)", _cmd_epic,
-              epic_flags)
-    model_cmd("release", "generate client-facing release notes (API)", _cmd_release,
+    model_cmd("epic", "generate the delivery epic, plus optional tracker plans (API)",
+              _generator_verb("epic"), epic_flags)
+    model_cmd("release", "generate client-facing release notes (API)", _generator_verb("release"),
               lambda sp: sp.add_argument("version", nargs="?", default="", help="optional version label to stamp"))
 
     docs = sub.add_parser(

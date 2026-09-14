@@ -22,7 +22,7 @@ import pytest
 from _fakes import FakeClient, _model_in_out, _run_app, out, slot
 
 from requivo.core.contracts import EstimateDraft, EstimateItem, Stories, Story
-from requivo.core.dependencies import ARTIFACT_FILENAMES, ARTIFACT_FILES
+from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.render.markdown import estimate_markdown, stories_markdown
 from requivo.services.artifacts import ArtifactService
 from requivo.services.discovery import GENERATABLE, DiscoveryService
@@ -117,12 +117,13 @@ def test_estimate_markdown_says_when_nothing_widens_the_range():
 
 def test_both_analyses_are_registered_everywhere_a_saveable_type_is():
     """The seven-registry table from the decision, collapsed to what this change owes: both types
-    generatable, both with a filename, and the two filename tables agreeing on both.
+    generatable and both with a filename in the one table ARTIFACT_FILENAMES now is (#556 removed
+    the second, identical ARTIFACT_FILES table this test used to also pin).
     `test_the_real_artifact_registries_agree_on_their_key_sets` is the cross-table guard (#270);
     this pins the two rows it was written around."""
     assert "stories" in GENERATABLE and "estimate" in GENERATABLE
+    assert ARTIFACT_FILENAMES["stories"] == "stories.md"
     assert ARTIFACT_FILENAMES["estimate"] == "estimate.md"
-    assert ARTIFACT_FILES["stories"] == "stories.md" and ARTIFACT_FILES["estimate"] == "estimate.md"
 
 
 # ── the service: one snapshot, two files, one revision ──────────────────────────

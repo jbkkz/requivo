@@ -530,7 +530,7 @@ class Store(_ScanMixin, _LockMixin):
         Everything after the claim runs under one `session_lock` (invariant 9), so the metadata patch,
         the revision and the artifact writes are a single unit, and `expected_revision=0` holds the
         session to the state the claim left it in."""
-        from requivo.core.dependencies import ARTIFACT_FILES  # local import avoids a load-time cycle
+        from requivo.core.dependencies import ARTIFACT_FILENAMES  # local import avoids a load-time cycle
 
         src = self.legacy_dir(slug)
         if not (src / "model.json").exists():
@@ -579,7 +579,7 @@ class Store(_ScanMixin, _LockMixin):
 
             rev, _ = self.save_revision(slug, model, expected_revision=0)  # existing model → revision 1
 
-            filename_to_type = {fn: t for t, fn in ARTIFACT_FILES.items() if fn}
+            filename_to_type = {fn: t for t, fn in ARTIFACT_FILENAMES.items()}
             for fn, atype in filename_to_type.items():
                 legacy_file = src / fn
                 if legacy_file.exists():
