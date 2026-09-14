@@ -127,13 +127,11 @@ def test_an_unpriced_call_says_so_rather_than_guessing(client, with_provider, mo
 
 
 def test_a_failed_paid_call_still_records_what_it_spent(client, with_provider, caplog):
-    """A call that failed is still billed, and the reader still gets the error page (#253).
-
-    The same contract as `test_a_failed_call_is_still_recorded_on_every_exit` one layer up. On this
+    """A call that failed is still billed, and the reader still gets the error page (#253) -- the
+    same contract as `test_a_failed_call_is_still_recorded_on_every_exit` one layer up. On this
     path the fragment is replaced by the app's error rendering, so the spend cannot ride the
-    response — it goes to the `requivo.web` logger, which is the terminal the operator started the
-    server in. Silence there would mean a paid, failed turn left no trace anywhere.
-    """
+    response -- it goes to the `requivo.web` logger, the terminal the operator started the server
+    in. Silence there would mean a paid, failed turn left no trace anywhere."""
     # Three malformed replies: the JSON retry loop makes three attempts and spends on every one, then
     # gives up as a clean `EngineError`. A failure the provider itself does not handle would prove
     # nothing here, because it would never reach the recording exit this test is about.
@@ -192,13 +190,9 @@ def test_a_deferred_discovery_lands_on_a_page_showing_what_it_spent(client, with
 def test_a_failed_first_analysis_still_shows_the_spend_it_recorded(client, with_provider, monkeypatch):
     """A call that fails after spending tokens still surfaces its recorded spend -- the same
     contract `test_a_failed_paid_call_still_records_what_it_spent` pins for the answers turn, now
-    for the path that lands the reader back on the pending page rather than an error fragment.
-
-    Three malformed replies: the JSON retry loop spends on every attempt before giving up as a
-    `ProviderOutputError`, so this reaches the recording exit rather than a call that never spent
-    anything -- and usage accumulates across every attempt, so the total is 3x `PAID_TOKENS`
-    (9000+400+3000 per attempt x 3 = 37,200), not `PAID_TOKENS` itself.
-    """
+    for the pending-page path rather than an error fragment. Three malformed replies: the JSON
+    retry loop spends on every attempt before giving up, so usage accumulates across all three
+    (9000+400+3000 x 3 = 37,200), not `PAID_TOKENS` itself."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     with_provider("not json", "not json", "not json", spend=PAID)
 

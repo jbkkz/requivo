@@ -59,14 +59,11 @@ def pristine_web_logger():
 
 
 def test_building_the_app_configures_no_logging(pristine_web_logger):
-    """The half that protects somebody else's process. Importing this package, and building the app
-    the way an ASGI host does, must leave the logger exactly as it was found — no handler, no level,
-    still propagating to whatever the host configured.
-
-    The must-fire control is at the end: the same call that is supposed to change nothing here has to
-    demonstrably change something when it is *asked* to, or this test passes against a
-    `configure_web_logging` that does nothing at all.
-    """
+    """The half that protects somebody else's process: importing this package and building the
+    app the way an ASGI host does must leave the logger exactly as found -- no handler, no level,
+    still propagating to whatever the host configured. Must-fire control at the end: the same call
+    has to demonstrably change something when asked to, or this passes against a
+    `configure_web_logging` that does nothing at all."""
     create_app()
 
     assert pristine_web_logger.handlers == [], (
@@ -99,13 +96,10 @@ def test_the_root_logger_and_uvicorns_are_never_touched(pristine_web_logger):
 
 def test_a_configured_web_log_line_carries_a_timestamp_a_level_and_the_logger_name():
     """What the operator gets once the entry point has configured it, for both records this app
-    writes.
-
-    The `INFO` row is not decoration: `logging.lastResort` is fixed at WARNING, so the spend line
-    `web/spend.py` writes for the operator is today dropped entirely rather than merely printed
-    plainly — the case where "no handler" and "nothing happened" are indistinguishable, which is the
-    absence this whole fix is about.
-    """
+    writes. The `INFO` row is not decoration: `logging.lastResort` is fixed at WARNING, so the
+    spend line `web/spend.py` writes is today dropped entirely rather than merely printed plainly
+    -- the case where "no handler" and "nothing happened" are indistinguishable, which is the
+    absence this whole fix is about."""
     stream = io.StringIO()
     logger = configure_web_logging(stream=stream)
 
@@ -127,15 +121,11 @@ def test_a_configured_web_log_line_carries_a_timestamp_a_level_and_the_logger_na
 
 
 def test_the_web_verb_configures_the_logger_before_it_serves(pristine_web_logger, monkeypatch):
-    """The other end of the split: the entry point that owns the process has to actually make the
-    call, or every guard above is about a function nobody runs.
-
-    `uvicorn` is stubbed with a module that records its `run` rather than binding a port — the same
-    seam `test_the_missing_web_extra_keeps_its_published_error_code` uses, one step further along, so
-    `_cmd_web` runs to the end instead of raising at the import. Asserting that `run` was reached is
-    what makes the ordering assertable: a handler configured *after* the server started would satisfy
-    a bare "is there a handler" check and still leave every startup record unformatted.
-    """
+    """The other end of the split: the entry point that owns the process has to actually make
+    the call, or every guard above is about a function nobody runs. `uvicorn` is stubbed with a
+    module recording its `run` rather than binding a port. Asserting `run` was reached makes the
+    ordering assertable: a handler configured after the server started would pass a bare
+    "is there a handler" check and still leave every startup record unformatted."""
     served = []
     fake_uvicorn = types.ModuleType("uvicorn")
     fake_uvicorn.run = lambda *args, **kwargs: served.append((args, kwargs))
@@ -156,20 +146,11 @@ def test_the_web_verb_configures_the_logger_before_it_serves(pristine_web_logger
 
 
 def test_a_character_the_console_cannot_encode_is_escaped_rather_than_dropped(monkeypatch):
-    """Invariant 16, on the one stream this change newly writes to.
-
-    `web/spend.py` logs an em dash, and until #291 that record reached no handler at all — so this is
-    the first release in which a `requivo.web` record is actually encoded to a console. On Windows
-    that console is typically cp1252, and the failure mode is not a crash: `StreamHandler.emit` routes
-    an encoding failure to `handleError`, so the process survives and the **record is silently lost**,
-    which is the same hole `streams.py` rejects `errors="replace"` for.
-
-    What makes it safe is an ordering, not the handler: `cli.app()` calls `configure_streams()` before
-    dispatching to `_cmd_web`, so `sys.stderr` already carries `errors="backslashreplace"` by the time
-    the handler resolves it. This drives both sides of that ordering against a real cp1252 encoder on
-    every platform rather than reasoning about a Windows leg — the same trick `tests/test_encoding.py`
-    uses to exercise a codec question on Linux.
-    """
+    """Invariant 16, on the one stream this change newly writes to. Until #291 a `requivo.web`
+    record reached no handler at all; on a cp1252 console `StreamHandler.emit` routes an encoding
+    failure to `handleError`, silently losing the record -- the same hole `streams.py` rejects
+    `errors="replace"` for. Safety comes from ordering: `cli.app()` configures streams before
+    `_cmd_web`, driven against a real cp1252 encoder as `tests/test_encoding.py` does."""
     # `handleError` writes to the real stderr when this is on; the strict half below deliberately
     # triggers it. monkeypatch restores it even if an assertion fails.
     monkeypatch.setattr(logging, "raiseExceptions", False)
@@ -214,14 +195,11 @@ def test_configuring_twice_leaves_one_handler(pristine_web_logger):
 
 
 def test_a_logger_somebody_else_configured_is_left_alone(pristine_web_logger):
-    """The third state, and the reason this is not simply `addHandler`. A host that has already
-    configured `requivo.web` has said what they want; taking it over would be the import-time hijack
-    this module exists to avoid, arriving one function later.
-
-    What is asserted is the *logger*, not the return value. `configure_web_logging` returns the same
-    `getLogger(WEB_LOGGER)` object in all three states by design — its docstring says so, and the one
-    caller discards it — so there is nothing in the return to read, and a test claiming otherwise
-    would be describing an API this does not have."""
+    """The third state, and the reason this is not simply `addHandler`: a host that has already
+    configured `requivo.web` has said what it wants, and taking over would be the import-time
+    hijack this module exists to avoid. Asserted on the logger, not the return value --
+    `configure_web_logging` returns the same `getLogger(WEB_LOGGER)` object in all three states by
+    design, discarded by its one caller, so there is nothing meaningful in the return to read."""
     theirs = logging.StreamHandler(io.StringIO())
     pristine_web_logger.addHandler(theirs)
 

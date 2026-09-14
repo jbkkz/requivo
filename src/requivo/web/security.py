@@ -64,11 +64,13 @@ from requivo.host_policy import (
 
 # Re-exported under the names this module has always published them under, so every existing caller
 # and test reads unchanged after #508 moved the host axis out and #425 (slice 4) moved the origin
-# axis after it. `_hostname`, `_LOOPBACK_HOSTS` and `_same_trust_domain` keep their underscore here
-# because that is how this module's tests (`tests/web/test_security_parser.py`,
-# `tests/web/test_web_security.py`) spell them; in `host_policy` they are public, because a module two
-# surfaces import from has no private half. Nothing in this file calls them any more -- the `noqa` is
-# the re-export, not an oversight.
+# axis after it. `_hostname` keeps its underscore because `tests/web/test_security_parser.py` imports
+# it under that name; `_same_trust_domain` keeps its because that file and
+# `tests/web/test_web_request_guard.py` both do. `_LOOPBACK_HOSTS` keeps its underscore too, but no
+# test has ever imported it under that name -- kept for symmetry with the other two re-exports, not
+# for a caller. In `host_policy` all three are public, because a module two surfaces import from has
+# no private half. Nothing in this file calls any of the three any more -- the `noqa` is the
+# re-export, not an oversight.
 from requivo.host_policy import LOOPBACK_HOSTS as _LOOPBACK_HOSTS  # noqa: F401
 from requivo.host_policy import hostname as _hostname  # noqa: F401
 from requivo.host_policy import same_trust_domain as _same_trust_domain  # noqa: F401
