@@ -384,7 +384,7 @@ replacement here. From 1.0.0 it is removed only in a major; below 1.0 the floor 
 - **Terminal output layout.** Parse `--json`, never the rendered view.
 - **Requivo Web's response bodies**, except `GET /health` and `GET /sessions/{slug}/export` — see [the routes table](#requivo-webs-http-routes--paths-stable-bodies-not).
 - **The `code` on Requivo Web's error banner.** Four presentational literals (`empty_request`, `invalid_request`, `not_found`, `internal_error`) outside the `RequivoError` vocabulary. Branch on the HTTP status instead.
-- **CI's Python-version matrix beyond `requires-python`.** A leg (`3.14`, added #298) is not a floor change and not automatically a required check — `test_the_new_3_14_leg_is_declared_consistently` and `test_the_floor_is_read_from_pyproject_and_matches_what_ci_runs` pin the two separately.
+- **CI's Python-version matrix beyond `requires-python`.** A leg (`3.14`, added #298) is not a floor change and not automatically a required check — `test_the_floor_is_read_from_pyproject_and_matches_what_ci_runs` pins the floor half; the leg-declared-consistently half that #298 also added was retired by #551 (one incident, never recurred, cited nowhere else).
 
 Everything not on this page and not promised above is in neither column — a bug in this page, not a
 licence to assume. File it.

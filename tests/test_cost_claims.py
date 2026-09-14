@@ -1,36 +1,9 @@
 """Every dollar figure in the docs is recomputed from the rate table (#252).
 
-An OSS user pastes their own key and pays with their own money, and nothing they could read
-beforehand said what to expect: the README never mentioned cost, and `docs/providers.md` explained
-the caching mechanics without naming a figure. The CLI prints the real number, but only *after* the
-spend, which is the wrong side of the decision.
+An OSS user pays with their own key before the CLI ever prints a real number, and this repo already shipped a stale price past its own expiry once (#254) -- so a dollar figure in prose is **derived** here or it does not ship.
 
-Publishing a number is cheap; publishing one that silently dates itself is not, and this repository
-has already paid for that once -- the rate table carried Sonnet 4.6's price for a release behind an
-expiry nobody could falsify (#254). So the rule here is that a dollar figure in prose is a
-**derived** value or it does not ship, and this file is the derivation.
-
-Four things are checked, and each fails independently so a red names its own cause.
-
-* **The rate and its date** come from `providers/anthropic/pricing.py`. Edit that table and the docs
-  go red, which is the whole point: the alternative is a doc that agrees with the code on the day it
-  is written and disagrees quietly on the day the price moves.
-* **The token ranges bracket what this repository actually assembles and actually received.** Input
-  is `build_prompt`'s system prompt plus, for every operation but the first discovery turn, a real
-  resolved model a call sends as its own user message -- taken from every captured discovery reply in
-  `fixtures/golden/` (both the single-pass `runs` and the per-turn `turns`), not guessed, and split by
-  whether the assessment has absorbed its reasoning into the model yet (`_model_dump_tokens`). Output
-  is the captured replies in `fixtures/golden/`. Edit a prompt, change what a generator sends, or
-  re-capture a baseline far enough and the published range stops being true.
-* **Every dollar figure is arithmetic over the two above**, so a hand-typed number cannot survive.
-* **The call counts are stated in the table itself** and multiplied here, so a row claiming a total
-  that does not follow from its own call count goes red.
-
-What this cannot check, said here rather than left to be assumed: the **token counts are estimated
-at four characters per token**, because no real ledger output is committed to this repository and
-this suite makes no API calls. The docs label them as estimates for that reason. A future change
-that commits a real `UsageLedger` capture should replace the estimator here and tighten the ranges.
-"""
+Four checks, each failing independently: the rate/date come from `pricing.py`; the token ranges bracket what `fixtures/golden/` actually assembles and receives; every dollar figure is arithmetic over those two; and each row's total must follow from its own call count. Token counts are estimated at four
+characters per token, since no real `UsageLedger` capture is committed here."""
 from __future__ import annotations
 
 import json
@@ -60,25 +33,8 @@ def _tokens(text: str) -> int:
 
 
 def _model_dump_tokens(*, absorbed: bool) -> list:
-    """The size, in tokens, of a real resolved model exactly as a generator or a refinement turn
-    sends it -- `out.model_dump_json()` in `generators.py`. Built from the same captured discovery
-    replies `measured_output_tokens()` reads (`runs` **and** `turns`; an interactive capture like
-    `training-budget.runs.json` carries only `turns`, and skipping it would silently drop the
-    deepest, largest models a real refinement turn ever sends -- exactly the state this measurement
-    exists to price), validated as the real `EngineOutput` contract rather than hand-assembled.
-
-    Two populations, because a model looks different depending on when a call sees it:
-
-    `absorbed=False` -- the model as every discovery turn but the first sees it, and as `advise`
-    (the `brief` generator) sees it too: the reasoning layer is still empty, because the assessment
-    that fills it (`absorb_reasoning`, services/discovery.py) has not run yet.
-
-    `absorbed=True` -- the model as every OTHER generator sees it: `finalize_discovery` calls
-    `absorb_reasoning(out, brief)` before any of them run, copying `advise()`'s own
-    decisions/challenges/opportunities onto the model every later generator serializes. Built by
-    applying that same copy to each captured `run`/`brief` pair -- there is no captured brief for a
-    `turns` sequence (the golden harness runs no assessment mid-interactive-capture), so only `runs`
-    contributes here."""
+    """Token size of a real resolved model exactly as a generator or refinement turn sends it -- built from `fixtures/golden/` (`runs` and `turns`), validated as `EngineOutput`. `absorbed=False` is the model before `absorb_reasoning` runs (every non-first discovery turn, plus `brief`); `absorbed=True` is after,
+    applying the same decisions/challenges/opportunities copy `finalize_discovery` does, so each population matches what a real call actually sends."""
     sizes = []
     for path in sorted((ROOT / "fixtures" / "golden").glob("*.runs.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -106,15 +62,8 @@ def _model_dump_tokens(*, absorbed: bool) -> list:
 
 
 def measured_input_tokens() -> tuple:
-    """Every operation's assembled system prompt, plus what a real call actually adds on top of it as
-    its own user message. Exactly one call has nothing to add -- the very first discovery turn --
-    which is `analyze`'s bare system-prompt entry below. Every other call this system makes attaches
-    a resolved model (or, for `estimate`, the stories the model was just decomposed into -- accepted
-    as the same order of magnitude rather than measured separately, since no `Stories` reply is
-    captured in `fixtures/golden/`). `advise` (`brief`) and a refinement turn (`analyze`, turn 2
-    onward) both see the model before its reasoning layer is filled; every other generator sees it
-    after. See `_model_dump_tokens` for exactly which captured replies back each of those two
-    states."""
+    """Every operation's assembled system prompt plus what a real call adds as its own user message. Only the first discovery turn adds nothing; every other call attaches a resolved model (`estimate` uses the stories size as the same order of magnitude, since no `Stories` reply is captured). `brief` and a
+    refinement turn (`analyze`, turn 2+) see the model before its reasoning layer fills; every other generator sees it after -- see `_model_dump_tokens` for which captures back each state."""
     bare = _model_dump_tokens(absorbed=False)
     absorbed = _model_dump_tokens(absorbed=True)
     sizes = []
@@ -134,8 +83,7 @@ def measured_input_tokens() -> tuple:
 
 
 def measured_output_tokens() -> tuple:
-    """Every reply this repository has actually captured -- the golden baselines are real API
-    output, which is the closest thing to a ledger the offline suite can reach."""
+    """Every reply this repository has actually captured -- the golden baselines are real API output, which is the closest thing to a ledger the offline suite can reach."""
     sizes = []
     for path in sorted((ROOT / "fixtures" / "golden").glob("*.runs.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -167,9 +115,7 @@ def test_the_documented_rate_and_its_date_are_the_rate_table():
 
 
 def test_the_documented_token_ranges_bracket_what_this_repository_measures():
-    """A published range must be true of the prompts and replies actually in the tree. Bracketing
-    rather than equality on purpose: the docs round to a readable figure, and rounding *outwards* is
-    the only direction that keeps the claim honest."""
+    """A published range must be true of the prompts and replies actually in the tree. Bracketing rather than equality on purpose: the docs round to a readable figure, and rounding *outwards* is the only direction that keeps the claim honest."""
     row = _rows()["One provider call"]
     doc_in, doc_out = _range(row.group("input")), _range(row.group("output"))
     real_in, real_out = measured_input_tokens(), measured_output_tokens()
@@ -189,9 +135,7 @@ def _expected(calls: int) -> tuple:
 
 
 def test_every_documented_dollar_figure_is_arithmetic_over_the_rate_table():
-    """The rule this file exists for: a dollar figure is derived or it does not ship. Each row is
-    checked against *its own* stated call count, so a row whose total does not follow from its own
-    arithmetic is red -- which is what a hand-typed number looks like."""
+    """The rule this file exists for: a dollar figure is derived or it does not ship. Each row is checked against *its own* stated call count, so a row whose total does not follow from its own arithmetic is red -- which is what a hand-typed number looks like."""
     rows = _rows()
     assert len(rows) >= 4, f"the cost table lost rows -- found only {sorted(rows)}"
     for label, match in rows.items():
@@ -203,15 +147,7 @@ def test_every_documented_dollar_figure_is_arithmetic_over_the_rate_table():
 
 
 def test_the_readme_states_a_cost_before_the_first_paid_command():
-    """The figure has to be where the decision is made. `docs/providers.md` is the reference; the
-    README is the page somebody reads before they set a key at all, so it carries the per-call
-    number and the full-session range -- both derived, neither typed.
-
-    The README used to assert a flat "under $1" ceiling instead of the derived range. That is a
-    hand-typed claim wearing a derived number's clothes -- true only as long as nobody widens the
-    table's own input range, and #404 is exactly a change that did. State the real figure instead, the
-    same way the per-call range already is, so a future widening moves this text with it rather than
-    quietly outdating it."""
+    """The README is read before a key is set, so it carries the per-call and full-session cost too, both derived. It used to assert a flat "under $1" ceiling -- a hand-typed claim that broke once the table's own input range widened (#404) -- so state the real derived figure instead."""
     text = README.read_text(encoding="utf-8")
     per_call = _expected(1)
     assert f"${per_call[0]:.2f}" in text and f"${per_call[1]:.2f}" in text, (
