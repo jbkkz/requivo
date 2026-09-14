@@ -91,15 +91,7 @@ def test_every_registered_verb_appears_in_exactly_one_help_group():
 
 @pytest.mark.parametrize("columns", ["60", "100", "200"])
 def test_every_verb_help_is_byte_identical_regardless_of_the_root_formatter(monkeypatch, columns):
-    """The other acceptance criterion: `requivo <verb> --help` unchanged for every top-level verb.
-
-    A committed fixture broke across a Python version (3.9 prints "optional arguments:", 3.10+
-    prints "options:") and a terminal width (argparse wraps to `COLUMNS`) -- neither of which this
-    mechanism depends on, since a verb's own subparser is never given `_JourneyHelpFormatter`
-    (`add_parser` does not inherit `formatter_class` from its parent). So this builds the parser
-    twice in the *same* interpreter, at the *same* pinned `COLUMNS` -- once as shipped, once with
-    plain `argparse.HelpFormatter` swapped in via `_build_parser`'s `formatter_class` parameter --
-    and compares every verb's rendered help directly, which is free of both failure modes."""
+    """The other acceptance criterion: `requivo <verb> --help` unchanged for every top-level verb."""
     monkeypatch.setenv("COLUMNS", columns)
     grouped = _build_parser()
     plain = _build_parser(formatter_class=argparse.HelpFormatter)
@@ -145,10 +137,8 @@ def test_the_plumbing_verbs_come_after_the_journey_verbs_in_registration_order()
 def test_every_paid_verb_is_marked_and_no_free_verb_is():
     """Both directions. The negative half is what makes the marker mean something -- marking every
     verb would satisfy the positive half and tell a reader nothing. Read off each verb's own `help`
-    text (`_subcommands()`), which `--help` still shows in full for the "Start here" group and which
-    stays authored correctly for the other two even though their rendered row is now a bare name
-    (#546) -- the data is still there for a reader who runs `requivo --help` before it grows a
-    fourth tier, or one who reads `docs/cli.md`."""
+    text (`_subcommands()`), which stays authored correctly even where the rendered row is now a
+    bare name (#546) -- the data is still there for `requivo --help` or `docs/cli.md`."""
     helps = dict(_subcommands())
     marked = {name for name, text in helps.items() if MARKER in text}
     assert marked == API_VERBS, (

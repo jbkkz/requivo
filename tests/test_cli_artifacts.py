@@ -3,7 +3,7 @@
 Split out of `test_cli_deterministic.py` by #141; the shared harness is `tests/_cli_harness.py`.
 
 The forgery case over `artifact list`'s two untrusted fields is deliberately not here. It lives in
-`test_cli_untrusted_output.py` beside the `session show` case it was swept from, because the two
+`test_cli_untrusted_metadata.py` beside the `session show` case it was swept from, because the two
 share `_SHOW_FORGERIES` and the argument for that constant is written once, above it.
 
 That is a statement about which *test* lives where, not a claim that nothing here reads an untrusted
@@ -27,26 +27,9 @@ from _cli_harness import _forge_meta, _full_model, _run, _run_json, _slot
 from requivo.cli import _build_parser, app
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def test_artifact_list_json_has_a_top_level_that_is_not_data(workspace):
     """`artifact list --json` printed `ArtifactService.list` straight out, so its top level was a map
-    keyed by artifact *type* — every key in the payload a value the session happened to hold (#107).
-
-    This is #87's argument one shape along. That issue moved `session list --json` off a bare array
-    because "an array has no top level, so no field could ever be added to it"; a top-level map keyed
-    by data has the same property in practice: the consumer read is `for t, info in payload.items()`,
-    so any metadata key added later is both ambiguous with a future artifact type and breaks that
-    loop. Holding the argument for an array and not for a map is not defensible.
-
-    The envelope is `{"slug": ..., "artifacts": {...}}` and nothing else — a top level nobody needs
-    yet is worth having, filling it speculatively is not.
-    """
+    keyed by artifact *type* — every key in the payload a value the session happened to hold (#107)."""
     _run(["session", "init", "Something.", "--slug", "aj"])
     _forge_meta("aj", {"artifact_status": {"prd": {"revision": 1, "filename": "prd.md",
                                                    "updated_at": "2026-01-01T00:00:00Z",
@@ -140,22 +123,7 @@ def test_the_revision_flag_does_not_advertise_a_default_it_no_longer_has():
     behaviour #6 was filed to remove: `(default: the session's current revision)`. There is no default
     — an omitted `--revision` is refused — so the text was telling a user to rely on exactly the
     fabricated provenance the refusal exists to stop. Two reviewers found it independently on the #6
-    branch, which is how it reached #57 instead of being fixed there.
-
-    Both halves are asserted. That the flag says it is required is the weaker claim; that no option
-    this subcommand *owns* advertises a default is the one that catches the next instance. The two
-    forms this repository writes a default in are checked — `(default: …)` and "defaults to" —
-    rather than the bare word, which the corrected text itself uses to deny having one.
-
-    The sweep reads each action's own `help` rather than searching the rendered blob, and skips the
-    flags the *root* parser binds (#249). `--workspace` is now re-declared on every subparser so its
-    position stops mattering, and it genuinely has a default — the current directory — which it is
-    right to state; a substring search over the whole help text cannot tell that from `--revision`
-    growing one back. Excluding it by *provenance* rather than by name is what keeps this a guard:
-    the only things it can skip are the two flags declared on the root parser, every option and
-    positional this subcommand actually owns is still read, and the failure now names the offending
-    flag instead of printing a page.
-    """
+    branch, which is how it reached #57 instead of being fixed there."""
     buf = io.StringIO()
     with redirect_stdout(buf), pytest.raises(SystemExit) as ei:
         _build_parser().parse_args(["artifact", "save", "--help"])

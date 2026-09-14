@@ -1,6 +1,6 @@
 """LLM-authored prose cannot write a line of the terminal render path (#213).
 
-The sibling of `tests/test_cli_untrusted_output.py`, and the gap it left. That file sweeps the
+The sibling of `tests/test_cli_untrusted_metadata.py`, and the gap it left. That file sweeps the
 *diagnostic* verbs -- doctor, session verify, session show, artifact list, impact -- where the
 untrusted string is a value read off disk. This one sweeps the **primary** render path, where the
 untrusted string is the model's own reply: the questions, the challenges, the opportunities and the
