@@ -22,10 +22,8 @@
 # `src/requivo/cli.py` is the largest module in `src/`, and the suite still runs at roughly 2.7x
 # the product's code even after the CLI tranche of #555 (#582) landed. Measure; do not assume.
 #
-# Measured 2026-09-14 with #553's own branch merged onto main at 81c909d (#582, the CLI tranche
-# of #555, landed after this branch was first opened and before this measurement -- an earlier
-# cut of this file measured against a tree missing that commit and every number below was
-# re-derived once it was included).
+# Measured 2026-09-14 on main at 1a83bb2, after all four tranches of #555 landed. The [tests]
+# ceilings were lowered here in that same pass -- a reduction landed, the ceiling followed it down.
 
 [src]
 # src/requivo, .py files, untouched by #553/#582: 44.7% prose (8,340 of 18,666 lines),
@@ -40,28 +38,30 @@ prose_share_max = 0.469
 largest_module_max_lines = 1672
 
 [tests]
-# tests/, .py files. 2.71x test code per line of product code (22,237 test code lines against
-# 8,201) -- #582 (the CLI tranche of #555) removed ~530 tests/ lines and the ratio barely moved,
-# which is the whole reason this key exists rather than a one-off claim in an issue body.
-# Docstring maxima are over every module/class/function docstring found in tests/: 76 lines
-# (tests/test_public_payload_shapes.py's module docstring, unmoved by #582) and 26 lines (now a
-# function docstring in tests/test_discovery_paid_call_guard_209.py -- #582 deleted the file that
-# previously held this key's example, tests/test_cli_untrusted_output.py, and a different
-# function of the same length set it instead). #555's remaining tranche (tests/web/) is still in
-# flight and will likely lower some of these further -- expected, and the one-line-PR case above.
+# tests/, .py files. 2.72x test code per line of product code (22,303 test code lines against
+# 8,201). #555's four tranches removed ~3,500 tests/ lines in total and the ratio barely moved,
+# which is the whole reason this key exists rather than a one-off claim in an issue body -- the
+# issue's original 1.2x target was removed once measurement showed it unreachable, because ~40% of
+# test names are pinned in place by citations #554 requires to keep resolving.
+#
+# Docstring maxima are over every module/class/function docstring in tests/: 75 lines
+# (tests/test_public_payload_shapes.py's module docstring) and 20 lines (a function docstring in
+# tests/test_plugin_cli_drift_forgery_guards.py).
 #
 # `largest_module_max_lines` deliberately EXCLUDES the meta-guard estate (see [estate] below):
 # tests/test_source_form.py, the estate's own largest file at 2,167 lines, would otherwise pin
 # this key nearly 3x over #555's separate 800-line rule for an ordinary test module. Excluding the
 # twelve files `ESTATE_FILES` names (tests/test_source_form.py's own lean-budget section owns that
-# list), the largest test module is tests/test_plugin_cli_drift.py at 1,153 lines, with
-# tests/test_provider.py (1,131), tests/web/test_web_discovery.py (1,015) and
-# tests/web/test_web_security.py (843) behind it -- the last two are being split by #555's web
-# tranche as this lands, so expect this ceiling to be lowerable again shortly.
+# list), the largest test module is now tests/test_golden_lib.py at 767 lines.
+#
+# That key is set to 800 rather than the 805 a 5% rounding would give, and the tighter value is
+# the point: 800 is #555's own rule for an ordinary test module, which until now no test enforced
+# and every reviewer had to check by eye. At 800 the ratchet enforces it mechanically, and the two
+# rules stop being able to disagree.
 ratio_max = 2.84
-largest_module_max_lines = 1210
-module_docstring_max_lines = 79
-function_docstring_max_lines = 27
+largest_module_max_lines = 800
+module_docstring_max_lines = 78
+function_docstring_max_lines = 21
 
 [estate]
 # The meta-guard estate: the tests that guard the repo's own self-description rather than its
