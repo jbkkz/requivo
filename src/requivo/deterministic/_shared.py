@@ -10,11 +10,15 @@ it has two halves that both have to hold:
 2. **It is about the surface, not about a domain.** Reading input the user named, printing JSON, and
    the exit code for an answer that is neither complete nor absent are surface concerns. Card health
    is used by `doctor` and by `sessions` and is deliberately *not* here, because it is a domain fact
-   rather than a surface one: it lives in `doctor`, and `sessions` imports it from there, which is
-   what makes the reuse visible instead of anonymous.
+   rather than a surface one. Until #556 it lived in `doctor.py`, and `sessions` imported it from
+   there -- a verb module reaching into a sibling verb module's private names. It now lives in
+   `deterministic/remedies.py`, imported by both, for the identical domain-not-surface reason this
+   paragraph already gave: it still does not belong here, and now neither verb module reaches into
+   the other to get it.
 
 A helper that fails either half goes back to the module that owns it. Nothing here imports from a
-sibling module, which is what keeps this package's import graph a DAG.
+sibling module, which is what keeps this package's import graph a DAG — `remedies.py` holds the one
+domain fact more than one verb module needed and keeps that same property for the modules around it.
 """
 
 from __future__ import annotations

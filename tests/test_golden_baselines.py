@@ -44,7 +44,7 @@ from golden_lib import GOLDEN, REQUESTS, parse_requests  # noqa: E402
 # A baseline whose stored request/answers are known to disagree with requests.md, kept on disk on
 # purpose until the paid re-capture lands (K x GOLDEN_TURNS API calls for an interactive request --
 # not spent by this suite, which makes no network call of its own). Every entry names the issue that
-# owns the re-capture. The same idiom `tests/test_encoding.py` and `tests/test_persistence_guards.py`
+# owns the re-capture. The same idiom `tests/test_encoding.py` and `tests/test_persistence.py`
 # already use for a by-design allowlist: an entry whose files have since come back into agreement is
 # stale and goes red in `test_a_stale_declared_exception_that_now_agrees_is_flagged` below.
 # Empty, and that is the healthy state: every baseline currently agrees with requests.md. The
@@ -189,7 +189,7 @@ def test_every_committed_baseline_agrees_with_requests_md_or_is_a_declared_excep
 
 def test_declared_drift_exceptions_name_a_real_slug_with_a_real_baseline():
     """The mirror of the by-design exemption tables in `tests/test_encoding.py` and
-    `tests/test_persistence_guards.py`: an exception naming a slug `requests.md` no longer carries,
+    `tests/test_persistence.py`: an exception naming a slug `requests.md` no longer carries,
     or one with no committed baseline at all, is unchecked prose suppressing nothing."""
     requests = {r["slug"] for r in parse_requests(REQUESTS)}
     baselines = _all_committed_baselines()

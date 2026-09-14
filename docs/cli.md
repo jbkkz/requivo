@@ -741,7 +741,7 @@ two paths.
 
 CLAUDE.md's rule for narrative in this codebase is: back it with a test, or move it to
 `docs/decisions/`. Every paragraph above is backed by a test — `test_cli_doctor` exercises the
-non-session state and `test_unexaminable_entries` the could-not-examine state, and the
+non-session state and `test_persistence_scan` the could-not-examine state, and the
 control-character escaping is pinned by
 `test_session_show_json_escapes_a_control_character_before_it_reaches_a_line` and its siblings — so
 none of it is the archaeology that rule sends to `docs/decisions/`. It moved here, to the foot of

@@ -86,7 +86,7 @@ def test_a_reserved_slug_already_on_disk_is_readable_by_list_show_and_verify(wor
     # a file this lane does not own this round; `core/persistence/`'s own
     # `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it`
     # covers the lock `session export` takes. Built by hand, not through `session init`, which must
-    # keep refusing to *create* one — that half is pinned in `test_persistence_guards.py`.
+    # keep refusing to *create* one — that half is pinned in `test_persistence.py`.
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -247,9 +247,12 @@ def test_session_verify_reports_a_broken_history_and_exits_non_zero(workspace, t
 
 def _cards_unreadable(monkeypatch) -> None:
     """The card layer itself cannot be enumerated, so `check_selection` propagates rather than
-    returning a verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look*."""
+    returning a verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look*.
+    Patched on `deterministic.remedies`, not `deterministic.doctor`: `_card_health` and the
+    `check_selection` call inside it moved there in #556, so that is the module whose global
+    `check_selection` binding `_card_health` actually reads."""
     from requivo.core.errors import ContextUnreadableError
-    from requivo.deterministic import doctor as det
+    from requivo.deterministic import remedies as det
 
     def _boom(only):
         raise ContextUnreadableError(

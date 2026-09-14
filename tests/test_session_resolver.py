@@ -13,13 +13,6 @@ from requivo.core.persistence import SESSION_FORMAT_VERSION, canonical_dir
 from requivo.services.sessions import SessionService
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _seed(slug: str) -> None:
     SessionService().create_session(f"a request about {slug}", slug=slug)
 

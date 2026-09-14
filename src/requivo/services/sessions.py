@@ -20,7 +20,7 @@ from requivo.core.analysis import model_status, readiness_blockers
 from requivo.core.context import resolve_cards
 from requivo.core.contracts import EngineOutput
 from requivo.core.dependencies import (
-    ARTIFACT_FILES,
+    ARTIFACT_FILENAMES,
     REASONING_CONSUMERS,
     EvidenceReport,
     EvidenceUnknown,
@@ -792,7 +792,7 @@ class SessionService:
             # REASONING_CONSUMERS, which is every generator, since each is prompted with the full
             # model. The saved assessment needs no special case in either: it rests on every slot.
             hit = set(report.artifacts) | (REASONING_CONSUMERS if reasoning.changed else set())
-            return [t for t in ARTIFACT_FILES if t in hit and t in generated]
+            return [t for t in ARTIFACT_FILENAMES if t in hit and t in generated]
 
         if apply:
             try:

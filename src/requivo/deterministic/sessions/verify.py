@@ -14,7 +14,7 @@ from requivo.core.errors import RequivoError, SessionLockedError, SessionUnreada
 from requivo.core.integrity import SEVERITY_NOTE, blocking, inspect_session, newest_readable_revision
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import EXIT_DEGRADED, print_json
-from requivo.deterministic.doctor import _REPAIR_HINT, _RESTORABLE_CARD_CODES, _RESTORE_HINT, _card_health
+from requivo.deterministic.remedies import _REPAIR_HINT, _RESTORABLE_CARD_CODES, _RESTORE_HINT, _card_health
 from requivo.services.sessions import SessionService
 
 # Problem codes `session restore` (#210) can actually repair -- model.json disagreeing with, or
@@ -22,7 +22,7 @@ from requivo.services.sessions import SessionService
 # something restore does not touch: a broken revision log, a corrupt session.json, a revision file
 # gone -- copying a revision over model.json does nothing about any of those. `session verify`'s
 # remedy line below is scoped to exactly this set on purpose: naming a fix that would not fix the
-# problem is worse than naming none, the same reasoning `_RESTORABLE_CARD_CODES` in `doctor.py`
+# problem is worse than naming none, the same reasoning `_RESTORABLE_CARD_CODES` in `deterministic/remedies.py`
 # already applies one finding-family over.
 _RESTORABLE_MODEL_CODES = frozenset({"invalid_model", "model_is_not_the_last_revision", "missing_model"})
 
