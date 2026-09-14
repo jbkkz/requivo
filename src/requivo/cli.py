@@ -14,6 +14,7 @@ from requivo import __version__
 from requivo.cli_support import (
     _announce_bind,
     _generator_service,
+    _missing_extra_message,
     _print_session_candidates,
     _render_usage_safely,
     _resolve_optional_session,
@@ -1081,16 +1082,12 @@ def _cmd_web(a, client) -> None:
         from requivo.web.app import create_app
         from requivo.web.logging_setup import configure_web_logging
     except ImportError as e:
-        # `EngineError` for a missing optional dependency is a decision about a published payload, not
-        # a leftover: its `code` is `provider_unavailable`, that code travels in the `--json` envelope,
-        # and `docs/compatibility.md` makes moving a condition from one code to another a breaking
-        # change — a major version from 1.0.0 onward (#135). It is also the vocabulary's existing
-        # answer for "an optional install is absent": `new_client()` says the same thing about
-        # `[anthropic]`. Pinned by `test_the_missing_web_extra_keeps_its_published_error_code`.
-        raise EngineError(
-            "The web interface is not installed. Install it with `pip install 'requivo[web]'` "
-            f"(or `uv tool install 'requivo[web]'`). You do NOT need it for the CLI or Claude Code. "
-            f"(import error: {e})") from e
+        # `EngineError` (code `provider_unavailable`) is a decision about a published payload, not a
+        # leftover -- see `_missing_extra_message`'s docstring and the `cli.py` entry in
+        # `tests/test_boundaries.py`'s surface-provider allowlist for why it stays here rather than
+        # moving with the message template. Pinned by
+        # `test_the_missing_web_extra_keeps_its_published_error_code`.
+        raise EngineError(_missing_extra_message("web", e)) from e
     # The process is ours from here, so this is where `requivo.web` gets its handler (#291) — the
     # same placement, and the same reason, as `configure_streams()` in `app()` above: importing the
     # package must not reconfigure logging for a program that merely imported it, and `create_app()`
@@ -1138,14 +1135,10 @@ def _cmd_api_serve(a, client) -> None:
         from requivo.api.app import create_api
         from requivo.web.logging_setup import API_LOGGER, configure_surface_logging
     except ImportError as e:
-        # The same decision, and the same published code, as `_cmd_web`'s arm above: a missing
-        # optional install is `provider_unavailable`. `create_api()` raises the identical message
-        # for a missing fastapi; this arm is for uvicorn, which `[api]` also declares but the
-        # factory never imports. Pinned by `test_the_missing_api_extra_keeps_its_published_error_code`.
-        raise EngineError(
-            "The HTTP API is not installed. Install it with `pip install 'requivo[api]'` "
-            f"(or `uv tool install 'requivo[api]'`). You do NOT need it for the CLI, Requivo Web, or "
-            f"Claude Code. (import error: {e})") from e
+        # The same decision as `_cmd_web`'s arm above, sharing its `_missing_extra_message` template.
+        # This arm is for uvicorn specifically; `create_api()` raises the identical message for a
+        # missing fastapi. Pinned by `test_the_missing_api_extra_keeps_its_published_error_code`.
+        raise EngineError(_missing_extra_message("api", e)) from e
     # Built before the bind warning, the logger and the banner: a refusal to bind should be the only
     # thing this verb prints when it refuses. Pinned by
     # `test_the_serve_verb_refuses_a_non_loopback_bind_with_no_token_before_binding`.

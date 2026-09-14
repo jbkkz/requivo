@@ -7,6 +7,10 @@ Split out of `cli.py` by #550 (the lean pass, #548), as the mechanical first ste
 beyond loopback), and `_render_usage_safely` (`app()`'s own usage-line safety wrapper). The verb
 bodies themselves -- `_cmd_discover`, `_cmd_brief`, `_cmd_web`, `app()` and the rest -- stay in
 `cli.py`, byte-identical; only these helpers moved.
+
+#556 finished that extraction's last piece: `_missing_extra_message`, the one
+message `web` and `api serve` each wrote out by hand for their own optional install --
+`_OPTIONAL_EXTRA_HINTS` is the table entry each names, keyed by the extra's own pip/uv name.
 """
 from __future__ import annotations
 
@@ -174,3 +178,30 @@ def _announce_bind(host: str, *, verb: str, exposure: str) -> None:
         # default. Unlike the wildcard case above, `host` here IS a real address a browser could
         # send as `Host`, so auto-allowlisting it is not the bug #217 found.
         os.environ.setdefault("REQUIVO_WEB_ALLOWED_HOSTS", host)
+
+
+# What `web` and `api serve` each say when their own optional extra is not installed -- one entry
+# per surface (#556 finishes #535's extraction): the human label and what still works without it.
+# The extra's own pip/uv name is the table's key, since both install commands and the message are
+# built from it.
+_OPTIONAL_EXTRA_HINTS: dict[str, tuple[str, str]] = {
+    "web": ("web interface", "the CLI or Claude Code"),
+    "api": ("HTTP API", "the CLI, Requivo Web, or Claude Code"),
+}
+
+
+def _missing_extra_message(surface: str, e: ImportError) -> str:
+    """The one message every optional local surface raises for a missing install, shared by
+    `requivo web` and `requivo api serve` rather than each writing out its own copy of the same
+    template with a different name substituted three times.
+
+    Returns the message text, not the `EngineError` itself: `cli.py` is the one place
+    `tests/test_boundaries.py`'s surface-provider allowlist names as reaching `EngineError` directly,
+    so the raise -- and the import -- stay at each call site; this only removes the copy-pasted
+    template around it. Pinned by `test_the_missing_web_extra_keeps_its_published_error_code` and
+    `test_the_missing_api_extra_keeps_its_published_error_code`."""
+    label, also_free_for = _OPTIONAL_EXTRA_HINTS[surface]
+    return (
+        f"The {label} is not installed. Install it with `pip install 'requivo[{surface}]'` "
+        f"(or `uv tool install 'requivo[{surface}]'`). You do NOT need it for {also_free_for}. "
+        f"(import error: {e})")
