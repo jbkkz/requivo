@@ -52,17 +52,28 @@ No Anthropic key needed — reasoning happens in your own Claude session; `requi
 terminal confirms both halves are found. Full skill list and detail:
 [plugin README][claude-code].
 
-## Why Requivo
+## Why Requivo, and how it works
 
 An LLM will happily turn a half-understood request into a polished PRD. Clean documentation is not the
 same as a correct understanding — and the expensive mistakes come from the question nobody thought to
 ask, the one that turns a "small feature" into a three-month build.
 
-Requivo asks a question only when the answer would **materially change the solution**. The rest, it
-infers and marks as an assumption to confirm. You spend discovery time where it moves the needle.
+The rule that follows is **information value = uncertainty × impact**: Requivo asks a question only
+when the answer would materially change the solution, and leaves the rest as an explicit assumption to
+confirm. Impact is estimated from the product context you give it, so better context means sharper
+questions.
 
-And because it keeps the understanding rather than just the answer, it can tell you what a *changed*
-answer costs:
+1. **Bring a request** — a sentence or a rambling email; a symptom, not a spec.
+2. **Clarify high-impact unknowns** — the gaps the rule above flags as worth asking about; everything
+   else stays an assumption to confirm.
+3. **Build and validate the understanding** — a versioned, typed model that is the durable product.
+4. **Write the decision brief, and see what a changed answer costs** — a computed answer to "what does
+   this invalidate?", read off the dependency graph rather than re-reasoned from scratch — and, once
+   an assumption has been confirmed, which decisions on record were made before that evidence arrived
+   and are worth re-reading.
+
+Because it keeps the understanding rather than just the answer, step 4 is more than a document — it
+can tell you what a *changed* answer costs:
 
 ```text
 You change one answer:
@@ -75,26 +86,6 @@ Requivo:
 
 That is the part a chat transcript cannot do.
 
-**The canonical example is [`examples/leave-approval/`][leave-approval]** — one line of
-request, taken through the questions, the brief, and a changed answer that moves the scope. A harder,
-messy multi-feature one lives in
-[`examples/event-checkin-reconciliation/`][event-checkin-reconciliation], and is what
-`requivo demo` replays.
-
-## How it works
-
-1. **Bring a request** — a sentence or a rambling email; a symptom, not a spec.
-2. **Clarify high-impact unknowns** — Requivo asks only what would change the solution, and infers the
-   rest as assumptions to confirm.
-3. **Build and validate the understanding** — a versioned, typed model that is the durable product.
-4. **Write the decision brief, and see what a changed answer costs** — a computed answer to "what does
-   this invalidate?", read off the dependency graph rather than re-reasoned from scratch — and, once
-   an assumption has been confirmed, which decisions on record were made before that evidence arrived
-   and are worth re-reading.
-
-The decision rule is **information value = uncertainty × impact**. Impact is estimated from the product
-context you give it, so better context means sharper questions.
-
 The **decision brief** is the smallest document a scope review can be run from: what is confirmed,
 what is assumed, the decisions on record, the premises worth contesting, and what is still open. It is
 not a PRD; it is what you read *before* writing one. And every downstream document — a PRD, user
@@ -102,23 +93,12 @@ stories, acceptance criteria, an uncertainty-aware estimate — generates from t
 without redoing the discovery. A delivery epic — with GitHub/GitLab issue plans — and release notes
 follow the same rule once scoping is settled.
 
-The vocabulary — what we know, what we are assuming, open question, needs updating, are we ready — and
-the model underneath it: [`docs/requirements-model.md`][requirements-model].
-
-## Architecture, data and privacy
-
-```text
-       Web          Claude Code        CLI / API
-   (the product)   (an integration)  (infrastructure)
-         \               |                /
-                    Requivo Core
-            validated, versioned understanding
-```
-Every interface uses the same session format and the same validated apply path — no fork, no
-interface holding business logic of its own; the package also ships a stable import surface for
-building on Requivo as a library. **Local by default**, no telemetry: nothing leaves your machine
-except what a provider call sends to Anthropic. More, and the erasure primitive:
-[`docs/architecture.md`][architecture] · [SECURITY.md][security].
+**The canonical example is [`examples/leave-approval/`][leave-approval]** — one line of
+request, taken through the questions, the brief, and a changed answer that moves the scope. A harder,
+messy multi-feature one lives in
+[`examples/event-checkin-reconciliation/`][event-checkin-reconciliation], and is what
+`requivo demo` replays. The vocabulary — what we know, what we are assuming, open question, needs
+updating, are we ready — and the model underneath it: [`docs/requirements-model.md`][requirements-model].
 
 ## Documentation
 
@@ -128,14 +108,13 @@ except what a provider call sends to Anthropic. More, and the erasure primitive:
 | [Web][web] | The primary interface — the local browser workspace |
 | [CLI reference][cli] | Every command and flag |
 | [Requirements model][requirements-model] | The vocabulary, readiness, dependencies |
-| [Everything else][docs-index] | Session format, providers, context cards, evaluations, roadmap |
+| [Architecture][architecture] | Core, providers, services, interfaces — how the pieces fit |
+| [Roadmap][roadmap] | What's stable, what's next, the compatibility promise |
+| [Everything else][docs-index] | Session format, providers, context cards, evaluations |
 
-## Status
-
-Actively developed; what is stable is stated, not inferred — see the [roadmap][roadmap] and the
-[compatibility promise][compatibility]. **Ran it on a real request? [Tell us how it did][discovery-feedback]**
-— say whether the questions were useful, useless or redundant, and what a senior PM/BA would have
-asked instead. Anonymise anything client-confidential first.
+**Ran it on a real request? [Tell us how it did][discovery-feedback]** — say whether the questions
+were useful, useless or redundant, and what a senior PM/BA would have asked instead (anonymise
+anything client-confidential first).
 
 ## Contributing and license
 
@@ -159,9 +138,7 @@ Requivo **name and identity** are separate from the code license — see [TRADEM
 [event-checkin-reconciliation]: https://github.com/jbkkz/requivo/tree/main/examples/event-checkin-reconciliation/
 [requirements-model]: https://github.com/jbkkz/requivo/blob/main/docs/requirements-model.md
 [architecture]: https://github.com/jbkkz/requivo/blob/main/docs/architecture.md
-[security]: https://github.com/jbkkz/requivo/blob/main/SECURITY.md
 [docs-index]: https://github.com/jbkkz/requivo/blob/main/docs/README.md
-[compatibility]: https://github.com/jbkkz/requivo/blob/main/docs/compatibility.md
 [roadmap]: https://github.com/jbkkz/requivo/blob/main/docs/roadmap.md
 [discovery-feedback]: https://github.com/jbkkz/requivo/issues/new?template=discovery-feedback.md
 [contributing]: https://github.com/jbkkz/requivo/blob/main/CONTRIBUTING.md

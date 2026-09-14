@@ -7,11 +7,16 @@ Requivo is a provider-independent **Core** with interchangeable interfaces on to
 single LLM call per turn, and that call lives in a **provider**, never in the Core.
 
 ```text
-   Claude Code        Web        CLI / API
-         \             |             /
-                  Requivo Core
-          validated, versioned model
+       Web          Claude Code        CLI / API
+   (the product)   (an integration)  (infrastructure)
+         \               |                /
+                    Requivo Core
+            validated, versioned understanding
 ```
+
+Every interface reads and writes the **same session format** and goes through the **same validated
+apply path** — no fork, no interface holding business logic of its own. See "Building on Requivo as a
+library" below for the package's stable import surface.
 
 ## Layers
 
