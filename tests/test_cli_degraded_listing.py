@@ -404,9 +404,11 @@ def test_json_never_lets_session_json_forge_a_line(workspace):
 
 
 def test_a_multi_line_error_stays_one_row(workspace):
-    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is a
-    string raises a pydantic `ValidationError` whose message is four lines long — printed raw, one
-    session becomes four rows of listing and the reader cannot tell where the row ends."""
+    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is
+    a string raises a pydantic `ValidationError` whose message is four lines long -- printed raw,
+    one session becomes four rows and the reader cannot tell where the row ends. The healthy
+    sibling is the must-fire half: the listing is *its* header, *its* row and this one, and
+    nothing else."""
     _seed(HEALTHY)
     _seed(BROKEN_META, analysed=False)
     p = canonical_dir(BROKEN_META) / "session.json"

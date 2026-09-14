@@ -190,7 +190,16 @@ def test_a_symlink_at_a_lock_name_is_reported_and_not_followed(workspace, suffix
 
 
 def test_a_reserved_name_sessions_own_lock_and_guard_files_are_not_reported_as_residue(workspace):
-    """#401, the third instance of #372's sweep gap and #391's defect one predicate over."""
+    """#401, the third instance of #372's sweep gap and #391's defect one predicate over. Two
+    must-not-fire controls share this fixture -- a stray file and a malformed stem must still show
+    as `unexpected`. `nul.lock` is the must-fire half: #409 corrected the earlier assumption that
+    a reserved stem with no session was still-unexpected, so it now asserts as an ordinary
+    orphaned lock instead."""
+    # No skipif here, deliberately: this exact fixture (mkdir("con"), "con.lock"/"con.discovering"/
+    # "nul.lock") was OBSERVED to materialise for real on GitHub's windows-latest runners (#582's CI
+    # log), contradicting the "Windows refuses this at the OS level" reasoning the removed skip
+    # carried -- see that PR's body for the evidence. The sibling tests below keep their skips: each
+    # rests on its own, separately-reasoned fixture shape and none of them has been observed either way.
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -258,8 +267,9 @@ def test_a_lock_file_for_a_reserved_name_with_no_session_on_disk_is_recognised_n
                      "session can never exist to be deleted in the first place.")
 def test_a_reserved_lock_stems_classification_survives_the_session_being_deleted(workspace):
     """#409's own mechanism, reproduced end to end: a lock file's provenance is a fact about the
-    past, fixed the moment `session_lock` writes it, and its classification must not move when the
-    directory that fact refers to is deleted afterwards."""
+    past, fixed when `session_lock` writes it, and its classification must not move when the
+    directory it names is deleted afterwards. The must-fire control is the `before` snapshot,
+    taken while the session still exists."""
     d = store.session_root() / "nul"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -295,7 +305,9 @@ def test_a_reserved_lock_stems_classification_survives_the_session_being_deleted
                     "itself is classified.")
 def test_a_symlink_at_the_lock_name_does_not_sink_the_guard_file_beside_it(workspace):
     """A verdict about one entry must not be decided by a sibling entry's state (#401, found in
-    review before the fix shipped)."""
+    review before the fix shipped). `b.discovering` is the must-fire pair: an identical guard file
+    with no sibling at all, which must be recognised in the same scan, so this cannot pass by
+    classifying nothing."""
     store.lock_root().mkdir(parents=True)
     outside = workspace / "elsewhere.txt"
     outside.write_text("not a lock", encoding="utf-8")

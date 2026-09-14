@@ -170,9 +170,9 @@ def test_a_symlink_is_reported_as_one_and_its_target_is_not_read(workspace, tmp_
 def test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken(workspace):
     """`slug_shaped` asked `_SLUG_RE` alone, and validity is the pattern **and** the length: an
     81-character kebab-case directory matched the pattern and was marked `[name taken]`, under a
-    sentence promising a silent hash-suffixed substitution. `canonical_dir` refuses that name outright
-    and loudly instead, so the promise was false in the one direction that matters — it told a reader
-    to expect silence from a call that raises. Found by review."""
+    sentence promising a silent hash-suffixed substitution, and `canonical_dir` refuses that name
+    outright instead. Found by review. The 80-character sibling beside it is the must-fire
+    control: same shape, one character shorter, and it *is* reachable."""
     over = "a" * (store.MAX_SLUG_LENGTH + 1)
     at_limit = "b" * store.MAX_SLUG_LENGTH
     for name in (over, at_limit):

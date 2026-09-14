@@ -361,8 +361,10 @@ def test_pc_estimate_renders():
 
 
 def test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot(monkeypatch):
-    """`estimate` makes two provider calls and the second is read against the first's output, so both
-    reason from one `SessionSnapshot` (#135)."""
+    """`estimate` makes two provider calls and the second is read against the first's output, so
+    both reason from one `SessionSnapshot` (invariant 12, #135) -- otherwise a write landing
+    between them estimates one model's stories against a different model. The call count is the
+    must-fire half: "one snapshot" is also true of a verb that never ran."""
     from requivo.services.sessions import SessionService
 
     taken = []

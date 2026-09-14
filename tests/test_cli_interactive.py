@@ -122,7 +122,8 @@ def _converse(disco, request, answers=(), only=None):
 def test_the_stub_satisfies_the_provider_protocol():
     """The control for every test in this file. A stub that had drifted from `ReasoningProvider`
     would let the loop pass against a seam the real provider does not offer -- the failure this
-    fixture exists to catch, wearing a green tick."""
+    fixture exists to catch, wearing a green tick. The `Drifted` class is the must-fire control
+    for the control: it passes `isinstance` and fails the signature comparison."""
     assert isinstance(StubProvider(), ReasoningProvider)
     for name in ("analyze", "generate"):
         declared = set(inspect.signature(getattr(ReasoningProvider, name)).parameters)
@@ -172,9 +173,10 @@ def test_the_loop_reasons_through_the_service_and_carries_the_model_not_a_transc
 
 def test_the_loop_declares_its_repeated_prompt_at_the_seam():
     """A drafting loop sends one system prompt several times, so the breakpoint is genuinely read
-    back and is worth its write. It used to be `converse()` passing `reuse_system=True` to `run()`
-    directly; it has to survive the move to the seam or the interactive path silently pays full
-    price on every turn after the first (#9, #58)."""
+    back and is worth its write -- it has to survive the move from `converse()` passing
+    `reuse_system=True` to `run()` directly, or the interactive path silently pays full price on
+    every turn after the first (#9, #58). MUST-FIRE control in the same fixture: a single-call
+    operation must still say the opposite."""
     provider = StubProvider(_model(objective="done"), _model(objective="done"))
     disco = _service(provider)
 
