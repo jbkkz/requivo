@@ -1,12 +1,17 @@
-"""`requivo api serve` (#425 slice 4): the verb that binds the `[api]` extra, driven at `_cmd_api_serve`
-the same way `tests/test_cli.py` drives `_cmd_web` -- `uvicorn` stubbed out of `sys.modules` so the
-function raises before it would ever bind a port, and every decision under test made before that.
+"""What `requivo web` and `requivo api serve` say and do when asked to bind beyond loopback.
 
-The refuse-to-start rule is pinned here at the verb as well as at the factory (`tests/api/`): the
-factory is the implementation, the verb is the path an operator actually takes, and #133's lesson is
-that a gate the documenting path takes and the used path does not is not enforced.
+Split out of `test_cli.py` -- the `_cmd_web` bind-warning tests sat beside the rest of the journey-verb
+surface, one subject among many others there. Split out of `test_cli_api_serve.py` too, folded in
+whole rather than kept as a sibling file: both verbs answer through the identical shared helper,
+`_announce_bind` (`cli_support.py`, #425 slice 4) -- one host-allowlist policy, one wildcard-detection
+rule, one set of words about what binding wide exposes -- so the two verbs' tests living apart from
+each other hid how parallel their guards already are. #133's lesson still applies at the seam between
+them: the *verb* is the path an operator actually takes, not only the shared helper, so both entry
+points keep their own tests rather than collapsing onto one call through `_announce_bind` directly.
+
+`api serve` alone adds the token-gate tests (`ApiTokenRequiredError`) -- `web` has no such gate, so
+those stay specific to the one verb that has it.
 """
-
 from __future__ import annotations
 
 import argparse
@@ -17,10 +22,85 @@ import sys
 import pytest
 
 from requivo.api.auth import API_TOKEN_ENV, ApiTokenRequiredError
-from requivo.cli import _build_parser, _cmd_api_serve, app
+from requivo.cli import _build_parser, _cmd_api_serve, _cmd_web, app
 from requivo.core.errors import RequivoError
 from requivo.providers.errors import EngineError
 
+# ── requivo web ──────────────────────────────────────────────────────────────────
+
+def test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var(monkeypatch, capsys):
+    """#217: `--host 0.0.0.0` used to auto-allowlist the literal string `"0.0.0.0"`, which no browser's
+    `Host` header is ever going to equal -- so the flag appeared to bind wide and then 403'd every LAN
+    request with no clue why. A wildcard bind is not a valid `Host` value and must not be
+    auto-allowlisted; the warning has to name what to do instead, with a copy-pasteable example."""
+    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setitem(sys.modules, "uvicorn", None)
+    args = argparse.Namespace(host="0.0.0.0", port=8000, no_open=True, reload=False)
+
+    with pytest.raises(RequivoError):
+        _cmd_web(args, None)
+
+    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ, (
+        "the literal wildcard address must not be allowlisted -- no Host header will ever equal it")
+    warning = capsys.readouterr().err
+    assert "REQUIVO_WEB_ALLOWED_HOSTS" in warning, "the warning has to name the env var, not just hint at it"
+    assert "0.0.0.0" in warning              # the copy-pasteable example names the flag that was passed
+
+    # must-fire control, same fixture: a real (non-wildcard) LAN address IS a legitimate Host value, so
+    # it keeps being auto-allowlisted exactly as before -- this is not a tightening of that path.
+    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
+    args_lan = argparse.Namespace(host="192.168.1.50", port=8000, no_open=True, reload=False)
+    with pytest.raises(RequivoError):
+        _cmd_web(args_lan, None)
+    assert os.environ["REQUIVO_WEB_ALLOWED_HOSTS"] == "192.168.1.50"
+    capsys.readouterr()  # drain this leg's own warning before the next assertion reads stderr
+
+    # and the loopback default is untouched: no warning, no env var written.
+    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
+    args_default = argparse.Namespace(host="127.0.0.1", port=8000, no_open=True, reload=False)
+    with pytest.raises(RequivoError):
+        _cmd_web(args_default, None)
+    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("spelling", ["::0", "0000:0000:0000:0000:0000:0000:0000:0000", "0:0:0:0:0:0:0:0"])
+def test_an_equivalent_spelling_of_the_wildcard_address_is_caught_too(monkeypatch, capsys, spelling):
+    """A string-literal check for `"::"` alone recognises exactly one spelling of the IPv6 unspecified
+    address and none of its equivalents -- `::0`, the fully-expanded all-zeros form, and so on all
+    mean the identical bind address (`ipaddress.ip_address(...).is_unspecified` agrees). `--host ::0`
+    would otherwise reproduce #217's exact symptom under a spelling the literal-string guard does not
+    recognise."""
+    monkeypatch.delenv("REQUIVO_WEB_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setitem(sys.modules, "uvicorn", None)
+    args = argparse.Namespace(host=spelling, port=8000, no_open=True, reload=False)
+
+    with pytest.raises(RequivoError):
+        _cmd_web(args, None)
+
+    assert "REQUIVO_WEB_ALLOWED_HOSTS" not in os.environ, (
+        f"{spelling!r} is the same address as '::' and must not be allowlisted verbatim either")
+    warning = capsys.readouterr().err
+    assert "REQUIVO_WEB_ALLOWED_HOSTS" in warning
+
+
+def test_the_missing_web_extra_keeps_its_published_error_code(monkeypatch):
+    """A missing `[web]` extra reports `provider_unavailable`, and that is a decision, not an oversight
+    (#135)."""
+    # `None` in sys.modules is what makes `import uvicorn` raise without uninstalling anything —
+    # the extra really is installed in the dev environment this runs in.
+    monkeypatch.setitem(sys.modules, "uvicorn", None)
+    args = argparse.Namespace(host="127.0.0.1", port=8000, no_open=True, reload=False)
+
+    with pytest.raises(RequivoError) as e:
+        _cmd_web(args, None)
+
+    assert e.value.code == "provider_unavailable"
+    assert "requivo[web]" in str(e.value), "the remedy is the message's whole job"
+    assert e.value.to_dict()["code"] == "provider_unavailable", "the envelope is what a caller reads"
+
+
+# ── requivo api serve ───────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
 def _clean_bind_environment(monkeypatch):
