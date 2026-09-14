@@ -105,6 +105,18 @@ written from.
   validates and applies it. No API key. Lives in `plugins/claude-code/` (not shipped in the wheel).
 - **Web** — `requivo web`, a local single-user UI over the services. See [web.md](web.md).
 
+## Building on Requivo as a library
+
+The package ships a [PEP 561 marker](https://peps.python.org/pep-0561/) (`py.typed`) and declares a
+small, deliberately stable import surface — the services, the `SessionRepository` and
+`ReasoningProvider` protocols, the boundary contracts, the error vocabulary, `requivo.usage` — priced
+like every other promise on the [compatibility page](compatibility.md). Pin exactly (`requivo==X.Y.Z`);
+everything not on that list, including `providers.anthropic` internals, can move in a minor. Building
+a non-file `SessionRepository` (a Postgres backing, most concretely)? `pip install 'requivo[testing]'`
+and subclass `requivo.testing.repository_conformance.SessionRepositoryConformance` in your own pytest
+suite — the same behavioural proof `FileSessionRepository` and this repo's in-memory fake both run
+against, extracted so an external implementation can hold itself to it too.
+
 ## Bundled assets
 
 Prompts, the framework schema, context cards and the demo payload live inside the package at

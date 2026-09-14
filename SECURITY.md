@@ -19,6 +19,15 @@ will be sent to the model provider.
 Your `ANTHROPIC_API_KEY` is read from the environment / `.env` and used only to authenticate those
 API calls. Keep `.env` out of version control (it is gitignored).
 
+In **Claude Code** mode Requivo makes no provider call of its own and needs no `ANTHROPIC_API_KEY`:
+the reasoning happens in your Claude Code session. The same content — your request, your answers,
+the model and the context cards — still reaches that session's model provider, under Claude Code's
+configuration and data policy rather than Requivo's. Treat it as prompt content either way.
+
+**`requivo session delete <session>`** (or the same control on a session's own page in Requivo Web)
+is the erasure primitive: it removes a session's directory and everything under it, irreversibly —
+export it first if you might want it again.
+
 ## The local Web interface
 
 `requivo web` is a **local, single-user** interface. It has **no authentication** and binds to

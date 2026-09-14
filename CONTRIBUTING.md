@@ -6,6 +6,24 @@ questions a good PM/BA would ask?* (see the **Real-world discovery feedback** is
 
 Before a large change, please open an issue to discuss it first — it saves everyone a wasted PR.
 
+## Written by AI, under review
+
+Requivo is written by AI coding agents under maintainer direction and review. Most commits carry an
+agent co-author trailer, and the maintainer decides what gets built, reviews every change and merges
+it.
+
+The controls around that are the interesting part, and they are not incidental to it. Nothing reaches
+`main` except through a squash-merged pull request that passed every required check, on the platform
+matrix in [docs/getting-started.md](docs/getting-started.md#supported-platforms). The test suite is
+hermetic — no API calls, no network, no build step — and a large share of it guards the codebase
+against its own authors rather than against users: a boundary test that fails when the engine imports
+a provider, an encoding test that walks every file read in the repository, a test that fails when a
+comment cites a test that does not exist. Each of those exists because a plausible change broke
+something quietly, and the fix was to make the next such change loud.
+
+That is the honest account of who wrote this. Judge it on the guards and the record, not on the
+authorship.
+
 ## Project layout in one line
 
 Requivo is one engine behind three interfaces (CLI, Claude Code plugin, local Web). The layers form a
