@@ -13,8 +13,8 @@ Claude; just run the command and translate the result.
 This is often the first Requivo command a new user runs, and the `requivo` CLI is a **separate
 install** from the plugin. So start with the shared **preflight** in
 `${CLAUDE_PLUGIN_ROOT}/REASONING.md`: run `requivo doctor --json` and check whether the command ran
-*at all* — not what it reported. If it could not run, the CLI is not installed; say the four things
-REASONING.md lists and stop. This skill reads and writes nothing, so there is nothing to undo.
+*at all* — not what it reported. If it could not run, the CLI is not installed; follow
+REASONING.md's missing-CLI flow. This skill reads and writes nothing, so there is nothing to undo.
 
 ## Resolve the session
 `$ARGUMENTS` may already be a session slug. If it is empty, or you are not sure, resolve one the
