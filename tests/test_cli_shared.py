@@ -21,13 +21,6 @@ from requivo.cli import _build_parser
 from requivo.core import persistence as store
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def test_new_verbs_are_bound_in_the_parser():
     cases = [
         (["doctor"], "_cmd_doctor"),

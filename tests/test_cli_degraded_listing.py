@@ -43,13 +43,6 @@ BROKEN_REQUEST = "broken-request"
 BROKEN_MODEL = "broken-model"
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _run(argv):
     """`app()` with stdout captured, returning `(text, exit_code)`.
 
@@ -202,11 +195,7 @@ def test_an_empty_workspace_still_says_so(workspace):
 @pytest.mark.parametrize("slug", sorted(BELOW_METADATA))
 def test_a_break_below_the_metadata_does_not_reach_this_listing(workspace, slug):
     """The correction to the issue, pinned. `request.md` and `model.json` are not read by this row,
-    so these two sessions list normally and the command is a clean success.
-
-    When a future row starts reading either, this test fails — and the fix is then the per-row
-    `except Exception` the web viewmodel carries, not a change to this assertion.
-    """
+    so these two sessions list normally and the command is a clean success."""
     _seed(HEALTHY)
     _seed(slug)
     BELOW_METADATA[slug](slug)
@@ -258,22 +247,7 @@ def test_json_is_still_a_complete_census(workspace):
 
 
 def test_json_is_an_object_so_it_can_ever_gain_a_top_level_field(workspace):
-    """#87. The payload is `{"sessions": [...], "degraded": n, "session_root": "..."}`.
-
-    It was a bare array, alone among the CLI's `--json` outputs, and an array has no top level: no
-    field can be added to it, ever, without the type change this test pins. The rows themselves are
-    unchanged — the wrap is the whole difference — so a consumer's `jq '.[] | .slug'` becomes
-    `jq '.sessions[] | .slug'` and nothing else moves.
-
-    `degraded` is **not** here to recover a fact stdout was missing: `_session_list_row` already
-    gives every row `readable` and `error`, so the count has always been derivable. It is here so
-    exit 4 is *readable* on stdout rather than only signalled, which is the same argument that makes
-    a degraded row name its session instead of disappearing.
-
-    Both halves are asserted on the same fixture, because `degraded: 0` on a clean workspace is what
-    tells a reader that `degraded: 1` means something — an assertion that the count is present would
-    pass against a field hardcoded to any number.
-    """
+    """#87. The payload is `{"sessions": [...], "degraded": n, "session_root": "..."}`."""
     _seed(HEALTHY)
 
     out, code = _run(["session", "list", "--json"])
@@ -309,23 +283,10 @@ def test_json_on_an_empty_workspace_is_the_same_object(workspace):
 # ── the exit code says which of the three happened ───────────────────────────
 
 def test_the_three_outcomes_have_three_exit_codes(workspace):
-    """`0`, `4` and `1` — listed cleanly, listed with a hole, could not list.
-
-    Collapsing the middle one into either neighbour is invariant 15's own defect in the one channel a
-    script that does not parse stdout can read: `0` says nothing is wrong, `1` says nothing was
-    listed, and both are false about a listing that degraded a row.
-
-    The code names a shape of answer, not a verb (#86). It was `EXIT_DEGRADED_LISTING` and read as
-    belonging to one command; `session verify` then reached the same state from the other side — it
-    could not read a session's product context, which is *not an answer* — and exited 1 beside a
-    session that really is inconsistent. Both are 4 now
-    (`test_verify_says_it_could_not_look_and_exits_4_not_1`); a new code per verb rebuilds the
-    collapse 4 exists to undo. Where a verb can produce both at once, the firm negative wins: a
-    session that is inconsistent **and** whose cards were unreadable exits 1, because a complete
-    answer outranks a partial one
-    (`test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken`). Moved here from
-    CLAUDE.md by #286.
-    """
+    """`0`, `4` and `1` — listed cleanly, listed with a hole, could not list (#86, moved here from
+    CLAUDE.md by #286). Collapsing the middle into either neighbour understates a degraded listing;
+    where a session is both inconsistent and unreadable, the firm negative wins and exits 1
+    (`test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken`)."""
     _seed(HEALTHY)
     assert _run(["session", "list"])[1] == 0
 
@@ -348,24 +309,10 @@ def test_the_degraded_code_collides_with_nothing():
 
 
 def test_the_degraded_exit_code_is_published_as_a_value_not_as_a_name():
-    """What `docs/compatibility.md` promises is the number 4. It has never promised the symbol (#145).
-
-    `deterministic/__init__.py` used to say the page published `EXIT_DEGRADED` "under this name", and
-    it does not: the page carries a `4` row in its exit-code table, and it lists `requivo.deterministic`
-    among the Python internals that are explicitly *not* stable — which #144 added on the argument that
-    the module is internal plumbing for the offline verbs rather than an interface. (#144 put that as
-    the module's whole public job being the `register(sub)` the CLI binds through, which undercounted
-    its `__all__` by two; #148 corrected the page and this sentence with it.)
-
-    **Publishing the name was refused, not merely left unchosen.** A promised import costs a major
-    version to move, and it would buy a consumer nothing the documented exit code does not already
-    give them: a script gating on a degraded listing reads the process's status, not this package's
-    namespace. The comment claiming otherwise invited exactly the two mistakes worth avoiding —
-    importing it from outside, and treating a rename as a breaking change.
-
-    This is what makes the corrected comment checkable rather than a second unguarded claim: promote
-    the module to stable, or renumber the code without the page, and this goes red.
-    """
+    """What `docs/compatibility.md` promises is the number 4, never the symbol (#145):
+    `requivo.deterministic` is explicitly *not* stable Python surface (#144), so promoting the module
+    or renumbering the code without the page both have to go red here. #148 corrected the page's own
+    undercount that #144 left."""
     page = (Path(__file__).resolve().parents[1] / "docs" / "compatibility.md").read_text(encoding="utf-8")
     assert EXIT_DEGRADED == 4
     assert re.search(r"^\| 4 \| ", page, re.MULTILINE), (
@@ -384,11 +331,7 @@ def test_the_degraded_exit_code_is_published_as_a_value_not_as_a_name():
 def test_a_slug_carrying_a_control_character_cannot_forge_a_line(workspace):
     """A session directory is created by whoever holds the workspace, and `list_session_slugs` returns
     its name verbatim. A name carrying a newline would otherwise write what reads as a second,
-    authoritative line of Requivo's own output at column 0 — the shape #40 found in `doctor`.
-
-    `display_token` is the render-side guard for exactly this, and the degraded row is a new site for
-    it: `session.json` is unreadable there, so the name being printed is the raw directory name.
-    """
+    authoritative line of Requivo's own output at column 0 — the shape #40 found in `doctor`."""
     # No path separator in it: a `/` would nest the directory rather than name it, and the fixture
     # would then test nothing at all — which it did on the first run of this test.
     hostile = "evil\nTOTAL: 0 sessions, nothing to see"
@@ -422,16 +365,10 @@ FORGEABLE_META_FIELDS = ("slug", "provider", "updated_at")
 
 @pytest.mark.parametrize("field", FORGEABLE_META_FIELDS)
 def test_a_readable_row_cannot_forge_a_line_from_session_json(workspace, field):
-    """Every text field the readable row prints is untrusted, not just the degraded row's.
-
-    `session.json` is untrusted input every time it is read back — invariant 14's second door, the
-    same argument that made a stored `context_cards` name a refusal rather than something to echo
-    (#40). A hand-edited or imported file can put a newline in `slug`, `provider` or `updated_at`,
-    and the row would then write what reads as a second, authoritative row of Requivo's own listing
-    at column 0. The forged row can claim any revision and any provider it likes.
-
-    `current_revision` is not in the set: it is an `int`, so `read_meta` already refuses a string.
-    """
+    """Every text field the readable row prints is untrusted, not just the degraded row's (invariant
+    14, #40) -- a hand-edited or imported `session.json` can put a newline in `slug`, `provider` or
+    `updated_at`, forging what reads as a second, authoritative listing row at column 0.
+    `current_revision` is not in the set: it is an `int`, so `read_meta` already refuses a string."""
     _seed(HEALTHY)
     _seed("tampered", analysed=False)
     p = canonical_dir("tampered") / "session.json"
@@ -467,13 +404,11 @@ def test_json_never_lets_session_json_forge_a_line(workspace):
 
 
 def test_a_multi_line_error_stays_one_row(workspace):
-    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is a
-    string raises a pydantic `ValidationError` whose message is four lines long — printed raw, one
-    session becomes four rows of listing and the reader cannot tell where the row ends.
-
-    The healthy sibling is the must-fire half: the listing is *its* header, *its* row and this one,
-    and nothing else. Asserting only "no extra lines" would pass on a listing that rendered nothing.
-    """
+    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is
+    a string raises a pydantic `ValidationError` whose message is four lines long -- printed raw,
+    one session becomes four rows and the reader cannot tell where the row ends. The healthy
+    sibling is the must-fire half: the listing is *its* header, *its* row and this one, and
+    nothing else."""
     _seed(HEALTHY)
     _seed(BROKEN_META, analysed=False)
     p = canonical_dir(BROKEN_META) / "session.json"
