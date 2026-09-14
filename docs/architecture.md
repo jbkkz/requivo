@@ -11,7 +11,7 @@ single LLM call per turn, and that call lives in a **provider**, never in the Co
    (the product)   (an integration)  (infrastructure)
          \               |                /
                     Requivo Core
-            validated, versioned understanding
+            validated, versioned model
 ```
 
 Every interface reads and writes the **same session format** and goes through the **same validated
