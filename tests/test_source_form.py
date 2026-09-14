@@ -382,10 +382,18 @@ def test_the_process_guard_allows_what_core_legitimately_does(tmp_path):
 
 # ---- the other end of the same arrow: a surface reaches the provider through the services ----
 
-CLI = REPO_ROOT / "src" / "requivo" / "cli.py"
 CLI_PACKAGE = "requivo"
-HTTP = REPO_ROOT / "src" / "requivo" / "http.py"
-CLI_SUPPORT = REPO_ROOT / "src" / "requivo" / "cli_support.py"  # split out of cli.py by #550
+
+
+def top_level_modules() -> list[Path]:
+    """Every module directly under `src/requivo/`, derived rather than listed, and read by both scan
+    sets below so they cannot drift apart again: #550 split `cli.py` into two files and only one of
+    the two hand-written lists followed it (#587). An empty result is 'could not look', not 'none'."""
+    found = sorted((REPO_ROOT / "src" / "requivo").glob("*.py"))
+    if not found:
+        raise AssertionError("scan of src/requivo found no top-level modules -- fix the path")
+    return found
+
 RENDER = REPO_ROOT / "src" / "requivo" / "render"
 RENDER_PACKAGE = "requivo.render"
 
@@ -399,7 +407,7 @@ _SURFACE_PROVIDER_ALLOWLIST = {
     ("api/app.py", "EngineError"): "the identical shape one surface over (#425): create_api() raises it when the [api] extra's fastapi import fails.",
     ("web/config.py", "Anthropic"): "the SDK handle, probed in a try/except to answer one boolean -- is it installed? -- never built into a client.",
     ("web/config.py", "credential_present"): "answers is a credential visible?, via the SDK's own resolution chain since #334 (a transient client, built and discarded, #374) rather than re-deriving env-var names, which drifted at #332.",
-    ("http.py", "EngineError"): "the same exception-type shape as cli.py's entry, moved out of web/app.py by #422; touches none of argv/stdout/HTTP, so it is scanned by name.",
+    ("http.py", "EngineError"): "the same exception-type shape as cli.py's entry, moved out of web/app.py by #422; touches none of argv/stdout/HTTP, so it is a top-level module the scan sweeps rather than a surface.",
     ("web/routes/sessions.py", "EngineError"): "caught for a routing decision the HTTP boundary can't make: session page rather than a bare 500 (#207); paired with ProviderOutputError since #253.",
     ("deterministic/doctor.py", "current_model_name"): "reads the provider's own model id for the row `requivo doctor` prints (#247); no client is built, no call is made. Drifted once already (#364, #268).",
     ("deterministic/doctor.py", "credential_diagnosis"): "same reasoning as current_model_name, for api_key_present/credential_problem (#365, the drift #332 found one function along); also builds a transient client since #334 (#374).",
@@ -417,14 +425,10 @@ PROVIDER_TREES = (
 
 
 def provider_subjects() -> list[tuple[Path, str, str]]:
-    """Every surface the provider guard watches, as (path, package, label) -- the allowlist key. `cli.py`, `cli_support.py` and `http.py` are named individually (the last is not itself a surface by this guard's own "touches argv/stdout/HTTP" test, but the one module outside the trees below that legitimately reaches a provider
-    name; `cli_support.py` is here because a set keyed by filename does not follow the #550 split, #587); the rest are walked, so a module added later arrives inside the scan set rather than beside it."""
+    """Every surface the provider guard watches, as (path, package, label) -- the allowlist key. The top-level modules are walked rather than named (`http.py` is not itself a surface by this guard's own "touches argv/stdout/HTTP" test, but it is the one module outside the trees below that legitimately reaches a provider
+    name, and it is allowlisted as such); the trees are walked too, so a module added later arrives inside the scan set rather than beside it."""
     src = REPO_ROOT / "src" / "requivo"
-    subjects = [
-        (subject_module(CLI), CLI_PACKAGE, "cli.py"),
-        (subject_module(CLI_SUPPORT), CLI_PACKAGE, "cli_support.py"),
-        (subject_module(HTTP), CLI_PACKAGE, "http.py"),
-    ]
+    subjects = [(subject_module(m), CLI_PACKAGE, m.name) for m in top_level_modules()]
     for root, package in PROVIDER_TREES:
         subjects.extend((p, pkg, p.relative_to(src).as_posix()) for p, pkg in scan(root, package))
     return subjects
@@ -568,8 +572,6 @@ def test_the_surface_guard_refuses_a_subject_it_could_not_read():
 # on the surfaces. The target is zero *unjustified* direct calls, not zero -- `session migrate`,
 # `export`, `init` are legitimately about files -- and this table is where each is argued for.
 
-SURFACE_MODULE = REPO_ROOT / "src" / "requivo" / "cli.py"
-SURFACE_SUPPORT_MODULE = REPO_ROOT / "src" / "requivo" / "cli_support.py"  # split out by #550
 SURFACE_TREES = (
     (REPO_ROOT / "src" / "requivo" / "deterministic", "requivo.deterministic"),
     (REPO_ROOT / "src" / "requivo" / "web", "requivo.web"),
@@ -608,12 +610,9 @@ _SURFACE_STORAGE_ALLOWLIST = {
 
 
 def surface_subjects() -> list[tuple[Path, str, str]]:
-    """Every surface file, as (path, package, label) -- the allowlist key. `cli.py`/`cli_support.py` are named individually and the rest walked, so a module added later (`deterministic/` became a package at #73) arrives inside the scan set rather than beside it."""
+    """Every surface file, as (path, package, label) -- the allowlist key. The top-level modules come from `top_level_modules()` and the rest are walked, so a module added later (`deterministic/` became a package at #73, `cli_support.py` split out of `cli.py` at #550) arrives inside the scan set rather than beside it."""
     src = REPO_ROOT / "src" / "requivo"
-    subjects = [
-        (subject_module(SURFACE_MODULE), "requivo", "cli.py"),
-        (subject_module(SURFACE_SUPPORT_MODULE), "requivo", "cli_support.py"),
-    ]
+    subjects = [(subject_module(m), "requivo", m.name) for m in top_level_modules()]
     for root, package in SURFACE_TREES:
         subjects.extend((p, pkg, p.relative_to(src).as_posix()) for p, pkg in scan(root, package))
     return subjects
