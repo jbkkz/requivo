@@ -437,11 +437,11 @@ def test_doctor_and_verify_flag_a_session_whose_context_card_is_gone(workspace, 
 
 
 def test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken(workspace, monkeypatch):
-    """#263/#265, caught by review before this shipped: a first draft of the `SessionLockedError`
-    handler in `_session_health` still built a default-severity `IntegrityProblem`, so `blocking()`
-    kept it and it landed straight in `inconsistent` -- driving the identical ❌ glyph a genuinely
-    broken session gets, which is exactly the accusation shape this whole issue family exists to
-    remove. A lock timeout must land in its own bucket and the warning glyph, never the failure one."""
+    """#263/#265: a first draft of `SessionLockedError` handling in `_session_health` still built a
+    default-severity `IntegrityProblem`, driving the same ❌ glyph a genuinely broken session gets --
+    exactly the accusation shape this issue family exists to remove. A lock timeout must land in
+    its own bucket and the warning glyph, never the failure one. Must-fire control: the same
+    session, unpatched, still reports ✅ with an empty `inconsistent`."""
     from requivo.core.errors import SessionLockedError
     from requivo.deterministic import doctor as doctor_mod
 
