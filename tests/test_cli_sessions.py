@@ -247,9 +247,12 @@ def test_session_verify_reports_a_broken_history_and_exits_non_zero(workspace, t
 
 def _cards_unreadable(monkeypatch) -> None:
     """The card layer itself cannot be enumerated, so `check_selection` propagates rather than
-    returning a verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look*."""
+    returning a verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look*.
+    Patched on `deterministic.remedies`, not `deterministic.doctor`: `_card_health` and the
+    `check_selection` call inside it moved there in #556, so that is the module whose global
+    `check_selection` binding `_card_health` actually reads."""
     from requivo.core.errors import ContextUnreadableError
-    from requivo.deterministic import doctor as det
+    from requivo.deterministic import remedies as det
 
     def _boom(only):
         raise ContextUnreadableError(

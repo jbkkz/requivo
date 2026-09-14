@@ -512,7 +512,6 @@ def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str) -> N
 
 def render_impact(report) -> None:
     """Focused propagation view: name slots, see what rests on them go stale."""
-    from requivo.core.dependencies import ARTIFACT_FILES
     print("\n" + "═" * 64)
     print("IMPACT — what rests on: " + ", ".join(report.changed))
     print("═" * 64)
@@ -535,7 +534,7 @@ def render_impact(report) -> None:
     if report.artifacts:
         print("\nARTIFACTS THAT GO STALE")
         for name in report.artifacts:
-            f = ARTIFACT_FILES.get(name)
+            f = ARTIFACT_FILENAMES.get(name)
             where = f" ({f})" if f else " (regenerate on demand)"
             print(f"  • {name}{where}")
         print("\n  → Regenerate these after confirming the change.")

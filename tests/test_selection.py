@@ -41,7 +41,7 @@ from requivo.core.errors import (
     UnsafeSelectorTokenError,
 )
 from requivo.core.selectors import display_token, normalize_tokens
-from requivo.deterministic.doctor import _RESTORABLE_CARD_CODES
+from requivo.deterministic.remedies import _RESTORABLE_CARD_CODES
 
 A_CARD = "b2b-platform"          # a bundled card, committed to the repo
 ANOTHER_CARD = "financial-reporting"
@@ -603,7 +603,7 @@ def test_check_selection_reports_a_hostile_persisted_card_rather_than_raising():
 
 
 def test_the_two_card_code_tables_agree():
-    """`deterministic.doctor._RESTORABLE_CARD_CODES` decides which remedy `doctor` and `session verify`
+    """`deterministic.remedies._RESTORABLE_CARD_CODES` decides which remedy `doctor` and `session verify`
     print, by matching `problem["code"]`. It can only ever see codes `check_selection` **returns**,
     which is exactly `_SELECTION_REFUSALS` — so a member outside that set is a branch that cannot
     run, and a returned code outside both tables silently gets the repair hint.
