@@ -40,6 +40,35 @@ requivo demo
 Drop `[anthropic]` from any of these to install without the provider SDK: the interface still opens,
 reads existing sessions and replays the demo — it just cannot analyse or generate.
 
+## Supported platforms
+
+| Platform | Python | Tested in CI |
+|---|---|---|
+| Linux | 3.9 – 3.14 | every version, every push |
+| macOS | 3.9 – 3.13 | 3.9 and 3.13 |
+| Windows | 3.9 – 3.13 | 3.9 and 3.13 |
+
+An untested platform and a supported platform look identical from outside, so this table says which
+is which. The ends of the version range are tested on macOS and Windows rather than every minor
+version, and the ends are the point: a platform's own standard library can behave differently at each
+one. Windows on 3.9 cannot resolve a symlink whose target is missing, where Windows on 3.13 can —
+which once left a path-containment guard holding on twelve of thirteen CI legs and not on the
+thirteenth. Differences in the language itself show on the Linux axis, which runs all six (a `3.14`
+leg landed in #298; the macOS/Windows ends and the `3.9` floor itself are a separate, not yet
+decided, question — see [compatibility.md](compatibility.md)).
+
+Those legs test the `requivo` **package**. Nothing in CI exercises the Claude Code plugin, which runs
+inside Claude Code rather than inside Python, and on native Windows that plugin carries a prerequisite
+of its own: [Git for Windows](https://git-scm.com/downloads/win), for the reason the
+[plugin README](../plugins/claude-code/) gives.
+
+Requivo reads and writes **UTF-8 everywhere**, regardless of the machine's locale or the console's
+codepage. A session written on one machine reads back byte-identically on another. Where a console
+cannot represent a character Requivo prints, the character is escaped rather than dropped and never
+crashes the command — `requivo doctor` reports your console's encoding when there is something worth
+saying about it. A file you pass in (`requivo run ./brief.md`) must be UTF-8; one that is not is
+refused by name rather than silently decoded into something that reads like prose and is wrong.
+
 ## Try it with no key, no setup
 
 `requivo demo` replays a real run from bundled output — no API key, no network. It ships inside the

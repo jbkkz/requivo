@@ -22,6 +22,16 @@
 - **Tool-neutral epic export** (`epic.json`) and **tracker adapters** — idempotent, n8n-ready
   issue-creation plans for GitHub and GitLab
 
+## Stability
+
+Requivo is actively developed. What is stable is stated rather than inferred from the release number:
+Requivo is versioned with SemVer, and the **session format is a published contract** — versioned,
+forward-compatible, and shared by every interface. What is guaranteed and what is deprecated is
+written down in [compatibility.md](compatibility.md).
+
+Output is non-deterministic — treat the decision brief as a senior colleague's read, not an oracle,
+and get expert review for any legal/tax/compliance flag it raises.
+
 ## Next
 
 - An HTTP API / MCP façade — another thin layer over the same Core (for automation and integrations)

@@ -21,7 +21,7 @@ import pytest
 # The one control in this repo that can actually move the ambient default encoding, measured rather
 # than assumed. Borrowed rather than restated: two copies of a probe like this drift, and the copy
 # that drifts is the one that silently stops firing.
-from test_boundaries import _force_default_encoding
+from test_source_form import _force_default_encoding
 
 from conftest import full_model as _full_model
 from conftest import slot as _slot
@@ -540,7 +540,7 @@ engine writes is full of them."""
             # assertion can catch it. Passing `encoding=` here would bypass the forced locale
             # entirely and the `raises` could never fire -- which is exactly what a mechanical sweep
             # did to it, invisibly on 3.10+ (where the force does not take and the test skips) and
-            # fatally on the 3.9 leg. Registered in `_LOCALE_DEFAULT_BY_DESIGN` in test_encoding.py.
+            # fatally on the 3.9 leg. Registered in `_LOCALE_DEFAULT_BY_DESIGN` in test_source_form.py.
             p.read_text()   # what the repository's own line did, meeting the locale it would meet
         assert repo.load_artifact("read-utf8", ARTIFACT_FILENAMES["brief"]) == body
 

@@ -41,6 +41,77 @@ Requivo talking, so it belongs in the second row, not the first. And a `doctor` 
 `provider_anthropic.api_key_present: false` is not a failure at all: that is a healthy install, and
 this plugin does not use a key.
 
+### If the CLI is not installed: offer to install it, then act on the answer
+
+**Additive to the detection above, not a replacement for it.** The probe and the shape-not-wording
+rule stay exactly as written; this is the branch that runs once you have already concluded, from
+that probe, that the CLI is not installed.
+
+A tool that advertises itself as local, no-telemetry and no-accounts does not write a binary onto
+someone's machine without asking. So the exchange is one question and one answer, here, in this
+session — never a silent install. And it stops at installing **Requivo**: fetching a third party's
+installer script over the network and running it unreviewed is a different, larger thing to ask for,
+and offering that is not this preflight's call to make.
+
+**Route by what is actually present, never by preference.** Before naming anything, check cheaply
+and without side effects:
+
+1. `command -v uv` resolves → the route is `uv tool install requivo`.
+2. No `uv`, but `command -v pipx` resolves → the route is `pipx install requivo`.
+3. **Neither resolves.** There is no package manager already on this machine to hand `requivo` off
+   to, so there is nothing this session can install on the user's behalf — see *route 3* below.
+
+**Never offer or run `pip install --user`** on any route — it succeeds while leaving `requivo` off
+the PATH, which is this same failure one step later, exactly as the four-things message below
+already says.
+
+**Windows** reaches this preflight the same way every other call in this file does — through the
+Bash tool, which on native Windows is Git Bash (the plugin's README states this as a prerequisite).
+Nothing about routes 1 and 2 is Windows-specific: the same `command -v` checks and the same
+commands run there unchanged.
+
+**Routes 1 and 2 — ask once, naming the exact command before running it:**
+
+> Requivo isn't installed. Install it now with `uv tool install requivo`? (yes/no)
+
+(substituting `pipx install requivo` on route 2).
+
+- **Yes**: run that one command, and only that command, through Bash. Then re-run the probe —
+  `requivo doctor --json` — rather than trusting the installer's exit code; the CLI is not there
+  until the probe says so.
+  - **Probe now succeeds**: say in one line that the install worked and which command you ran, then
+    continue the skill this preflight interrupted, from the request or answer that was already in
+    hand. The user should not have to re-issue anything.
+  - **The install command exits non-zero, or the probe still fails after it exits zero**: say
+    plainly that the install did not work — name what failed — and fall through to the four things
+    below. Never report success the re-probe did not confirm: a half-done install reported as done
+    is worse than no install, because the next skill run then fails somewhere less legible than
+    here.
+- **No**: say the four things below, unchanged. That path is the fallback and stays exactly what it
+  was.
+
+**Route 3 — no package manager present: state the sequence, run nothing.** There is no offer and no
+yes/no question here, because there is nothing this session can do on the user's behalf: it takes a
+package manager to install `requivo` with, and none is on this machine yet. Getting `uv` means
+running a script fetched from `astral.sh`, and that is not this preflight's decision to make for the
+user — only the user's own terminal runs it. Say the complete sequence, not just the first line of
+it, and name the shell-restart step up front rather than letting the user discover it on their own:
+
+> Requivo isn't installed, and neither `uv` nor `pipx` was found to install it with. Get one, then
+> come back:
+>
+>     curl -LsSf https://astral.sh/uv/install.sh | sh
+>     uv tool install requivo
+>
+> `uv`'s installer writes to your shell profile, so open a new terminal (or re-source the one you're
+> in) before the second line — it won't resolve otherwise. Then run this request again and the
+> preflight will pick up from a CLI that's actually there.
+
+Then stop, the same way the four things below do: nothing has been mutated, so there is nothing to
+undo, and this is a variant of that fallback rather than a fourth outcome — the reason it is spelled
+out here rather than folded into the four things is that *those* are generic to every missing-CLI
+case, while this sequence is specific to having no package manager at all.
+
 ### If the CLI is not installed: say these four things, then stop
 
 Do not retry. Do not fall back to reading `.requivo/` by hand, and do not offer to write the model or

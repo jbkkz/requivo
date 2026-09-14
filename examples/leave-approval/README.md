@@ -33,7 +33,7 @@ around.
 **1 — Analyse the request.**
 
 ```bash
-requivo discover "We'd like to set up a leave approval system."
+requivo run "We'd like to set up a leave approval system."
 ```
 
 Among the questions it raises is one about the existing HR tool: whether the new system reads from it,
@@ -42,9 +42,13 @@ replaces it, or lives beside it.
 **2 — Answer it one way.**
 
 ```bash
-requivo answer <slug> "During the pilot both systems stay in sync — the legacy HR tool
-                       keeps being written to, and balances have to match on both sides."
+requivo run <slug>
 ```
+
+When it asks about the existing HR tool, answer:
+
+> During the pilot both systems stay in sync — the legacy HR tool keeps being written to, and balances
+> have to match on both sides.
 
 Two-way synchronization is now part of the understanding, and the next questions follow it rather than
 the original request: which system owns a balance, what happens when the two disagree, and whether a
