@@ -2149,5 +2149,19 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
 
     assert len(breaches) == 8, breaches
     joined = "\n".join(breaches)
-    for expected in ("src/", "cli.py", "code ratio", "docstring", "meta-guard estate", "compatibility.md"):
+
+    # The largest src/ and non-estate tests/ module names are measured here, not hardcoded: a
+    # split (the ratchet's own goal, and exactly what #550 already did once to src/requivo/cli.py)
+    # must not turn a passing guard red merely by moving which file holds the title.
+    src = prose_measure.measure_group(prose_measure.GROUPS["src"])
+    tests = prose_measure.measure_group(prose_measure.GROUPS["tests"])
+    largest_src_file = src.largest
+    largest_tests_file = _largest_non_estate_module(tests)
+    assert largest_src_file is not None and largest_tests_file is not None
+    largest_src = str(largest_src_file.path.relative_to(REPO_ROOT))
+    largest_tests = str(largest_tests_file.path.relative_to(REPO_ROOT))
+
+    for expected in (
+        "src/", largest_src, "code ratio", largest_tests, "docstring", "meta-guard estate", "compatibility.md",
+    ):
         assert expected in joined, f"a zeroed ceiling should have named {expected!r}: {joined}"

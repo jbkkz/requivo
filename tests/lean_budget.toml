@@ -40,7 +40,7 @@ prose_share_max = 0.469
 largest_module_max_lines = 1672
 
 [tests]
-# tests/, .py files. 2.71x test code per line of product code (22,228 test code lines against
+# tests/, .py files. 2.71x test code per line of product code (22,237 test code lines against
 # 8,201) -- #582 (the CLI tranche of #555) removed ~530 tests/ lines and the ratio barely moved,
 # which is the whole reason this key exists rather than a one-off claim in an issue body.
 # Docstring maxima are over every module/class/function docstring found in tests/: 76 lines
@@ -51,7 +51,7 @@ largest_module_max_lines = 1672
 # flight and will likely lower some of these further -- expected, and the one-line-PR case above.
 #
 # `largest_module_max_lines` deliberately EXCLUDES the meta-guard estate (see [estate] below):
-# tests/test_source_form.py, the estate's own largest file at 2,153 lines, would otherwise pin
+# tests/test_source_form.py, the estate's own largest file at 2,167 lines, would otherwise pin
 # this key nearly 3x over #555's separate 800-line rule for an ordinary test module. Excluding the
 # twelve files `ESTATE_FILES` names (tests/test_source_form.py's own lean-budget section owns that
 # list), the largest test module is tests/test_plugin_cli_drift.py at 1,153 lines, with
@@ -67,11 +67,12 @@ function_docstring_max_lines = 27
 # The meta-guard estate: the tests that guard the repo's own self-description rather than its
 # runtime. The file list lives in tests/test_source_form.py, not here (#553 asks for the ceiling
 # value here and the membership there, so a file joining or leaving the estate is a test diff, not
-# a silent change of what this number means). 4,524 lines across the twelve files named there
-# (4,382 on main before #553's own guard section landed; +142 for that section, including the
-# [tests] estate-exclusion helper this file's own review round added; #582 did not touch any
-# estate file).
-total_max_lines = 4750
+# a silent change of what this number means). 4,538 lines across the twelve files named there
+# (4,382 on main before #553's own guard section landed; +156 for that section across three review
+# rounds -- the estate-exclusion helper and, in the round beside this comment, deriving the
+# must-fire test's expected file names from the same measurement instead of hardcoding them; #582
+# did not touch any estate file).
+total_max_lines = 4764
 
 [docs]
 # docs/compatibility.md, untouched by #553 or #582: 399 lines -- already under #552's target of
