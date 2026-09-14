@@ -2057,6 +2057,17 @@ def _load_budget(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+def _largest_non_estate_module(tests):
+    """The fattest ordinary test module, excluding the meta-guard estate (#551's merged
+    source-scanning tier, which already has its own `[estate]` ceiling). Without this exclusion
+    `tests.largest_module_max_lines` is pinned by `test_source_form.py` -- the file this exclusion
+    is named for -- which would license a module nearly 3x #555's own 800-line rule for an
+    ordinary test module."""
+    estate_paths = {REPO_ROOT / rel for rel in ESTATE_FILES}
+    candidates = [f for f in tests.files if f.path not in estate_paths]
+    return max(candidates, key=lambda f: f.total, default=None)
+
+
 def _lean_budget_breaches(budget: dict) -> list[str]:
     """Every ceiling `budget` names that the real tree currently exceeds, one string per breach
     naming the file (or group), the measured number and the ceiling -- see this section's own
@@ -2082,10 +2093,11 @@ def _lean_budget_breaches(budget: dict) -> list[str]:
         breaches.append(
             f"tests:src code ratio is {ratio:.2f}x, over the {budget['tests']['ratio_max']:.2f}x ceiling"
         )
-    largest_tests = tests.largest
+    largest_tests = _largest_non_estate_module(tests)
     if largest_tests is not None and largest_tests.total > budget["tests"]["largest_module_max_lines"]:
         breaches.append(
-            f"{largest_tests.path.relative_to(REPO_ROOT)} is {largest_tests.total} lines, over the "
+            f"{largest_tests.path.relative_to(REPO_ROOT)} is {largest_tests.total} lines (excluding "
+            f"the meta-guard estate, which has its own [estate] ceiling), over the "
             f"{budget['tests']['largest_module_max_lines']} ceiling"
         )
     mod_len, mod_where = tests.docstring_max("module")
@@ -2137,5 +2149,5 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
 
     assert len(breaches) == 8, breaches
     joined = "\n".join(breaches)
-    for expected in ("src/", "cli.py", "code ratio", "test_source_form.py", "docstring", "meta-guard estate", "compatibility.md"):
+    for expected in ("src/", "cli.py", "code ratio", "docstring", "meta-guard estate", "compatibility.md"):
         assert expected in joined, f"a zeroed ceiling should have named {expected!r}: {joined}"

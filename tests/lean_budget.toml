@@ -20,27 +20,46 @@
 # No key here was met by rounding to what looked tidy: `src.largest_module_max_lines` and
 # `tests.ratio_max` in particular are far from any figure a reader might assume going in --
 # `src/requivo/cli.py` is the largest module in `src/`, and the suite still runs at roughly 2.7x
-# the product's code even after the first tranche of #555. Measure; do not assume.
+# the product's code even after the CLI tranche of #555 (#582) landed. Measure; do not assume.
+#
+# Measured 2026-09-14 with #553's own branch merged onto main at 81c909d (#582, the CLI tranche
+# of #555, landed after this branch was first opened and before this measurement -- an earlier
+# cut of this file measured against a tree missing that commit and every number below was
+# re-derived once it was included).
 
 [src]
-# src/requivo, .py files. Measured 2026-09-14, branch 553-lean-ratchet off main (6a83ebf), which
-# this PR does not touch: 44.7% prose (8,340 of 18,666 lines), src/requivo/cli.py the largest
-# module at 1,593 lines.
+# src/requivo, .py files, untouched by #553/#582: 44.7% prose (8,340 of 18,666 lines),
+# src/requivo/cli.py the largest module at 1,593 lines.
+#
+# `prose_share_max` starts at exactly the figure the lean pass (#548) set out to reduce -- the
+# 2026-08-29 audit found 45%, this tree still measures 44.7%. That is deliberate, not an
+# oversight: a ratchet has to start at what the tree *is*, and #549's src/ compression is a
+# separate, already-closed lane. Lowering this ceiling once src/ actually shrinks further is the
+# one-line PR the header above describes.
 prose_share_max = 0.469
 largest_module_max_lines = 1672
 
 [tests]
-# tests/, .py files. Measured 2026-09-14 on this PR's own branch, so it already carries
-# scripts/prose_measure.py's own section in tests/test_source_form.py (+130 lines) and
-# tests/lean_budget.toml's read: 2.71x test code per line of product code (22,215 test code lines
-# against 8,201), tests/test_source_form.py the largest module at 2,141 lines -- the guard's own
-# host file, now the biggest thing it measures. Docstring maxima are over every module/class/
-# function docstring found in tests/: 76 lines (tests/test_public_payload_shapes.py's module
-# docstring) and 26 lines (a function docstring in tests/test_cli_untrusted_output.py) -- neither
-# moved by this PR. #555's remaining tranche (tests/web/) is still in flight and will likely lower
-# some of these further -- expected, and the one-line-PR case above.
+# tests/, .py files. 2.71x test code per line of product code (22,228 test code lines against
+# 8,201) -- #582 (the CLI tranche of #555) removed ~530 tests/ lines and the ratio barely moved,
+# which is the whole reason this key exists rather than a one-off claim in an issue body.
+# Docstring maxima are over every module/class/function docstring found in tests/: 76 lines
+# (tests/test_public_payload_shapes.py's module docstring, unmoved by #582) and 26 lines (now a
+# function docstring in tests/test_discovery_paid_call_guard_209.py -- #582 deleted the file that
+# previously held this key's example, tests/test_cli_untrusted_output.py, and a different
+# function of the same length set it instead). #555's remaining tranche (tests/web/) is still in
+# flight and will likely lower some of these further -- expected, and the one-line-PR case above.
+#
+# `largest_module_max_lines` deliberately EXCLUDES the meta-guard estate (see [estate] below):
+# tests/test_source_form.py, the estate's own largest file at 2,153 lines, would otherwise pin
+# this key nearly 3x over #555's separate 800-line rule for an ordinary test module. Excluding the
+# twelve files `ESTATE_FILES` names (tests/test_source_form.py's own lean-budget section owns that
+# list), the largest test module is tests/test_plugin_cli_drift.py at 1,153 lines, with
+# tests/test_provider.py (1,131), tests/web/test_web_discovery.py (1,015) and
+# tests/web/test_web_security.py (843) behind it -- the last two are being split by #555's web
+# tranche as this lands, so expect this ceiling to be lowerable again shortly.
 ratio_max = 2.84
-largest_module_max_lines = 2248
+largest_module_max_lines = 1210
 module_docstring_max_lines = 79
 function_docstring_max_lines = 27
 
@@ -48,12 +67,13 @@ function_docstring_max_lines = 27
 # The meta-guard estate: the tests that guard the repo's own self-description rather than its
 # runtime. The file list lives in tests/test_source_form.py, not here (#553 asks for the ceiling
 # value here and the membership there, so a file joining or leaving the estate is a test diff, not
-# a silent change of what this number means). Measured 2026-09-14 on this PR's own branch: 4,512
-# lines across the twelve files named there (4,382 on main, +130 for this PR's own guard section).
-total_max_lines = 4737
+# a silent change of what this number means). 4,524 lines across the twelve files named there
+# (4,382 on main before #553's own guard section landed; +142 for that section, including the
+# [tests] estate-exclusion helper this file's own review round added; #582 did not touch any
+# estate file).
+total_max_lines = 4750
 
 [docs]
-# docs/compatibility.md, untouched by this PR. Measured 2026-09-14: 399 lines -- already under
-# #552's target of <=400, so this ceiling mostly guards against silent regrowth rather than
-# driving a cut.
+# docs/compatibility.md, untouched by #553 or #582: 399 lines -- already under #552's target of
+# <=400, so this ceiling mostly guards against silent regrowth rather than driving a cut.
 compatibility_max_lines = 418
