@@ -149,23 +149,11 @@ def test_skills_reference_only_real_cli_commands():
 
 
 def test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path():
-    """discover/answer change the model — they MUST go through the CLI on stdin, never by editing
-    `model.json`, and they must say what to do when the CLI refuses.
-
-    This used to also assert `"model validate" in text`, i.e. that the dry run was mandatory. That is
-    stronger than the rule it was written for, and it cost a second full emission of the model on the
-    way to every revision — the largest block of context a plugin turn spends (#511). `model apply`
-    runs the identical validation before it writes and a refusal leaves the session untouched, so the
-    dry run buys nothing on the happy path and costs one extra emission on the unhappy one;
-    `test_a_refused_apply_writes_nothing_and_answers_like_validate` is what holds that up.
-
-    What is load-bearing is pinned instead: apply through the CLI, on stdin, under the optimistic-lock
-    precondition, with a stated route out of a refusal. A skill that emits a proposal and says nothing
-    about `code`/`details` sends the reasoning session into a retry loop with no error to read.
-
-    `run` is the one mutating skill since #545 (it absorbed `discover` and `answer`): it makes both
-    applies, a fresh model and then a refinement, and each needs its own recovery path stated in the
-    loop rather than inherited by reference."""
+    """discover/answer change the model — they MUST go through the CLI on stdin, never by
+    editing `model.json`, and must say what to do when the CLI refuses. `model apply` runs the
+    same validation the dry run did, so a separate `model validate` call is no longer pinned
+    here (#511) -- what's pinned is apply-through-CLI, on stdin, under the optimistic-lock
+    precondition, with a stated recovery path. `run` is the one mutating skill since #545."""
     for name in ("run",):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "model apply" in text, f"{name}: must apply via the CLI"
@@ -207,12 +195,11 @@ def test_no_skill_stages_content_through_a_temp_file():
 
 
 def test_session_scoped_skills_read_the_session_s_context_cards():
-    """A session's card selection is held constant across its turns — it is what the impact estimates
-    were made against. A later turn calling bare `requivo context` reads every card and reasons from a
-    wider context than the model was built on, which the golden harness has measured as a real cost.
-
-    `run` joined this set in #539 and is the only refining skill since #545, so the wider-context
-    risk lands on it and on `brief`."""
+    """A session's card selection is held constant across its turns — it is what the impact
+    estimates were made against. A later turn calling bare `requivo context` reads every card
+    and reasons from a wider context than the model was built on, which the golden harness has
+    measured as a real cost. `run` joined this set in #539 and is the only refining skill since
+    #545, so the wider-context risk lands on it and on `brief`."""
     for name in ("brief", "run"):
         text = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
         assert "context --session" in text, f"{name}: must read context scoped to the session"
@@ -225,14 +212,11 @@ def test_artifact_saving_skills_use_the_cli():
 
 
 def test_artifact_saving_skills_state_the_revision_they_reasoned_from():
-    """`--revision` is the one fact only the skill holds, and since #6 a save without it is refused
-    rather than filled in with the session's current revision.
-
-    Both skills already pass it — this is here so they cannot stop. A skill is prose, so nothing else
-    would notice: the drift would land on a user as a refused save several turns after the edit, and
-    the composition (a service that refuses, a skill that does not state it) is invisible to a review
-    of either one on its own.
-    """
+    """`--revision` is the one fact only the skill holds, and since #6 a save without it is
+    refused rather than filled in with the session's current revision. Both skills already pass
+    it — this is here so they cannot stop: a skill is prose, so nothing else would notice a
+    drift, and it would land on a user as a refused save several turns later, with the
+    composition (a service that refuses, a skill that doesn't say so) invisible to either review."""
     for name in ("brief", "prd"):
         lines = [ln for ln in (SKILLS / name / "SKILL.md").read_text(encoding="utf-8").splitlines()
                  if "artifact save" in ln]
@@ -243,21 +227,11 @@ def test_artifact_saving_skills_state_the_revision_they_reasoned_from():
 
 
 def test_every_skill_has_an_answer_for_an_unavailable_requivo():
-    """The plugin ships skills; the `requivo` CLI is a separate PyPI install. So the first Bash call of
-    any skill can meet a shell that has never heard of the command, and five of the six skills used to
-    say nothing about it — `status` and `impact` among them, which are the read-only ones a new user
-    tries first (#93).
-
-    Held structurally rather than by wording, because the prose next to it is rewritten often and a
-    test that pins sentences makes documentation expensive to write (#96). What is pinned is the
-    shape: the shared statement exists in REASONING.md, it names the probe and exactly one preferred
-    install command, every skill points at it, and every skill is *able* to read it. The last two are
-    what stop the next skill added from dropping the preflight silently.
-
-    The install command is asserted to live in REASONING.md and **nowhere else** in the plugin's
-    skills. Six copies of an install line is how one of them ends up naming a command that has been
-    superseded, and `discover` already carried a second copy that had drifted to `pip install`.
-    """
+    """The plugin ships skills; the `requivo` CLI is a separate PyPI install, so the first Bash
+    call of any skill can meet a shell that has never heard of the command -- `status` and
+    `impact` used to say nothing about it, and those are the read-only ones a new user tries
+    first (#93). Held structurally rather than by wording (#96): the shared statement lives in
+    REASONING.md, names the probe and one preferred install command, and every skill points at and can read it."""
     reasoning = (PLUGIN / "REASONING.md").read_text(encoding="utf-8")
     head = re.search(r"^##\s+.*preflight.*$", reasoning, re.IGNORECASE | re.MULTILINE)
     assert head, "REASONING.md must carry the shared preflight section"
@@ -306,23 +280,11 @@ def test_every_skill_has_an_answer_for_an_unavailable_requivo():
 
 
 def test_every_skill_body_points_at_another_skill():
-    """The seven skills are one arc — run, discover, answer, brief, prd, with status and impact
-    alongside — and a user only walks it if each step says where the next one is. Three bodies
-    carried a forward pointer and three did not, and the three that did not included `status`, which
-    is what a returning user reaches for first: the worst place for the chain to break (`run` is
-    checked the same way since it joined the set in #539).
-
-    Checked on the **body**, deliberately not on the frontmatter. A `description` naming another skill
-    would satisfy a whole-file scan while doing nothing for the reader, and the descriptions are the
-    routing signal a model matches on when choosing between skills — seven of them each reciting the
-    same seven-verb arc makes them more similar to one another, which spends the most valuable text in
-    the plugin on the least discriminating content. So the pointer belongs in the body and the
-    assertion has to look there.
-
-    Its own H1 does not count. That is the trap this would otherwise fall into: every SKILL.md opens
-    with `# /requivo:<name>`, so a naive scan for the invocation form passes on all seven whatever the
-    bodies say — a guard that cannot fail, on the exact convention it claims to hold.
-    """
+    """The seven skills are one arc, and a user only walks it if each step says where the next
+    one is. Three bodies carried a forward pointer and three did not, including `status` -- the
+    worst place for the chain to break (`run` checked the same way since it joined the set in
+    #539). Checked on the **body**, never the frontmatter (a `description` naming another skill
+    would pass trivially), and a skill's own `# /requivo:<name>` H1 does not count as a pointer."""
     files = _skill_files()
     assert files, "no skills found — this test would otherwise pass by having nothing to check"
     for p in files:
@@ -335,24 +297,11 @@ def test_every_skill_body_points_at_another_skill():
 
 
 def test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of():
-    """A page that asks Claude to emit `questions` must spell out the fields one is made of — `q`
-    above all, because `question` is the natural guess and nothing in the prose said otherwise.
-
-    Sibling of the enum test below, and the same defect class approached from the other side: that
-    one is a placeholder offering values the contract rejects, this one is a *required field the
-    prose never names at all*, which leaves the reader to guess. `Question` is `extra="forbid"`, so
-    the guess costs a whole validate cycle -- two errors per question (`questions.N.q Field
-    required`, `questions.N.question Extra inputs are not permitted`), 12 for a six-question turn.
-    Reproduced against the real CLI, and spent for real on a plugin session reported by an external
-    contributor (#489). Recoverable, since the first error of each pair names `q`; avoidable
-    entirely by writing the field down.
-
-    Scoped to the pages that actually build a proposal -- the ones naming `model validate` or `model
-    apply` -- rather than to every mention of the word, because `status` merely *reports* open
-    questions and owes the reader nothing about their shape. Held as a property and not as a
-    sentence, per #96: it asserts the field names are somewhere on the page a reader is following,
-    never where or in what words, so these pages stay cheap to rewrite.
-    """
+    """A page that asks Claude to emit `questions` must spell out the fields one is made of --
+    `q` above all, since `question` is the natural but wrong guess and `Question` is
+    `extra="forbid"`, so the guess costs a whole validate cycle: reproduced for real on a plugin
+    session reported by an external contributor (#489). Scoped to pages that actually build a
+    proposal (`model validate`/`model apply`), held as a property per #96 rather than one wording."""
     from requivo.core.contracts import Question
 
     required = sorted(n for n, f in Question.model_fields.items() if f.is_required())
@@ -377,14 +326,11 @@ def test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of(
 
 
 def test_skill_enum_placeholders_name_values_the_contracts_accept():
-    """A skill's JSON template is a prompt: Claude fills it in and the deterministic CLI validates the
-    result. So a wrong alternative in a `"field": "a|b|c"` placeholder is not a typo in a comment — it
-    is an instruction to produce output the contract rejects, and the failure lands one step later, on
-    an apply, as a schema error the reader has no reason to connect to the skill.
-
-    The brief skill offered `"leverage": "low|medium|high"`; `Leverage` is high|medium|future. The
-    provider's own prompt was right, which is exactly why this drifted unnoticed — the second surface
-    had no test holding it to the same vocabulary."""
+    """A skill's JSON template is a prompt: Claude fills it in and the deterministic CLI
+    validates the result, so a wrong alternative in a `"field": "a|b|c"` placeholder is not a
+    typo -- it is an instruction to produce output the contract rejects, surfacing one step
+    later as a schema error the reader can't connect to the skill. The brief skill once offered
+    `"leverage": "low|medium|high"` where `Leverage` is high|medium|future, undetected because the second surface had no test holding it to the same vocabulary."""
     from requivo.core.contracts import Complexity, Confidence, Impact, Level, Leverage, Priority, ScenarioKind
 
     # A field name can be backed by more than one enum across the contracts (`complexity` is S/M/L on
@@ -404,20 +350,11 @@ def test_skill_enum_placeholders_name_values_the_contracts_accept():
 
 
 def test_every_skill_reaches_the_cli_through_the_bash_tool():
-    """The plugin README states a native-Windows prerequisite — Git for Windows — because Claude
-    Code's Bash tool on that platform is Git Bash, and every skill drives the deterministic CLI
-    through it (#121).
-
-    That claim is true because of a property of these seven files, and nothing was holding it true.
-    A skill added tomorrow that declares no Bash grant makes the prerequisite over-broad; a skill that
-    reached a shell some other way makes it incomplete. Either way the README goes wrong in silence,
-    because prose has no failing build.
-
-    Pinned as the property, never the wording. #96 is explicit that the Markdown must not be
-    asserted verbatim: a test that quotes a sentence makes the page expensive to rewrite, and this
-    page is rewritten often. So neither assertion below reads the README at all — they read what the
-    README is *about*, and each message names the sentence that has to move if it fires.
-    """
+    """The plugin README states a native-Windows prerequisite -- Git for Windows -- because
+    Claude Code's Bash tool there is Git Bash, and every skill drives the CLI through it (#121).
+    That claim holds only because of a property of these seven files: a skill with no Bash grant
+    makes it over-broad, one reaching a shell another way makes it incomplete, and prose has no
+    failing build. Pinned as the property, never the wording, per #96."""
     files = _skill_files()
     assert files, "no skills found — this test would otherwise pass by having nothing to check"
     for p in files:
@@ -474,19 +411,10 @@ def test_generator_skills_name_the_prompt_they_mirror_and_at_which_commit():
 
 def test_run_pins_its_three_stop_conditions_and_never_asks_mid_loop():
     """`/requivo:run` (#539) replaces a per-turn `/requivo:answer <slug>` with one continuous
-    conversation, so the two things a reader needs to be able to check — how it decides to stop, and
-    that it never falls back to asking for the mechanics it already holds — live in prose with no
-    apply to fail on if they drift. Pinned as a property rather than as a sentence, per #96: this
-    reads for the three stop conditions and the anti-mid-loop rule wherever they are stated, not for
-    one fixed wording, so the page stays cheap to rewrite.
-
-    Scoped to the section that actually *defines* the three conditions, not the whole file — a
-    self-review of this test (#539) found `readiness.ready` and `questions` named again, in passing,
-    in step 4's dispatch, and "say which"/"user says stop" echoed in the frontmatter and the intro
-    paragraph. An unscoped scan stayed green after deleting the defining section entirely, because
-    those echoes alone satisfied it; scoping to the "Stop, and say which" heading is what makes the
-    assertions fail if that section — not merely the words — goes missing.
-    """
+    conversation, so how it decides to stop and that it never falls back mid-loop live in prose
+    with no apply to fail on if they drift. Pinned as a property per #96, not one wording, and
+    scoped to the section that actually *defines* the three conditions -- a self-review (#539)
+    found an unscoped scan stayed green even after that section was deleted, satisfied by echoes."""
     text = (SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8")
 
     head = re.search(r"^##\s*8\.\s*Stop.*$", text, re.MULTILINE)

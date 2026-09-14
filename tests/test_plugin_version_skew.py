@@ -80,23 +80,23 @@ def test_behind_never_recommends_refusing():
 # -- the could-not-look arm: never the same as in-step ----------------------------------------
 
 
-def test_doctor_call_that_failed_outright_is_could_not_look():
-    result = check(None, "the `requivo` command was not found on PATH")
-    assert result.state == COULD_NOT_LOOK
-
-
-def test_empty_doctor_output_is_could_not_look():
-    result = check("", None)
-    assert result.state == COULD_NOT_LOOK
-
-
-def test_unparseable_doctor_json_is_could_not_look():
-    result = check("not json at all {{{", None)
-    assert result.state == COULD_NOT_LOOK
-
-
-def test_doctor_json_missing_requivo_version_is_could_not_look():
-    result = check(json.dumps({"python_version": "3.12.0"}), None)
+@pytest.mark.parametrize(
+    ("stdout", "error"),
+    [
+        (None, "the `requivo` command was not found on PATH"),
+        ("", None),
+        ("not json at all {{{", None),
+        (json.dumps({"python_version": "3.12.0"}), None),
+    ],
+    ids=[
+        "doctor-call-failed-outright",
+        "empty-doctor-output",
+        "unparseable-doctor-json",
+        "doctor-json-missing-requivo-version",
+    ],
+)
+def test_doctor_input_that_cannot_be_read_is_could_not_look(stdout, error):
+    result = check(stdout, error)
     assert result.state == COULD_NOT_LOOK
 
 
@@ -146,12 +146,11 @@ def test_check_reads_the_manifest_end_to_end(monkeypatch):
 
 
 def test_a_non_version_shaped_manifest_value_is_could_not_look_not_in_step(tmp_path):
-    """Found in self-review. `_parse_version` is deliberately tolerant (a non-numeric TRAILING
-    component parses as 0 rather than raising -- `.dev0`, `-rc1`), and that tolerance used to reach
-    all the way to a manifest `version` that is not a version at all: "unreleased" parsed to `(0,)`,
-    which compared as <= every real CLI version and rendered IN_STEP -- the exact collapse the
-    module's own docstring calls the trap this file exists to avoid. A shape that does not even
-    start with a digit is not "an unusual version", it is an unreadable one."""
+    """Found in self-review. `_parse_version` tolerates a non-numeric TRAILING component (`.dev0`,
+    `-rc1`), and that tolerance used to reach a manifest `version` that is not a version at all:
+    "unreleased" parsed to `(0,)`, which compared as <= every real CLI version and rendered
+    IN_STEP -- the exact collapse the module's own docstring calls the trap this file exists to
+    avoid."""
     bad = tmp_path / "plugin.json"
     bad.write_text(json.dumps({"version": "unreleased"}), encoding="utf-8")
     result = check(_doctor_json("1.3.0"), None, manifest_path=bad)

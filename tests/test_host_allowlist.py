@@ -59,9 +59,7 @@ def test_a_refused_host_names_its_code_rather_than_only_its_status(surface):
     *assert on the code, never the message*). The two arms are distinct codes for distinct facts
     (#52), and a surface that collapsed them back into one would pass a status-only assertion.
 
-    Read off the response where the surface serializes one (the API) and off the raised error where
-    it renders HTML (the web), because the property under test is the guard's verdict, not the
-    rendering -- `tests/web/test_security_parser.py` owns the web payload shapes."""
+    Read off the response (API) or the raised error (web) -- the guard's verdict, not the rendering."""
     client = surface.client()
     unrecognised = client.get(surface.ok_path, headers={"Host": "evil.example.com"})
     unreadable = client.get(surface.ok_path, headers={"Host": ""})

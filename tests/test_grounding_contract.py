@@ -48,9 +48,10 @@ SLUG = "grounded"
 
 
 @pytest.fixture(autouse=True)
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    return tmp_path
+def _workspace(workspace):
+    """Every test here needs an isolated `.requivo/` root; `workspace` (conftest.py, #555)
+    provides it -- this just makes it apply to the whole module without each test asking for it."""
+    return workspace
 
 
 @pytest.fixture(autouse=True)
@@ -173,14 +174,10 @@ _ENUMERATING_SURFACES = [s for s in SURFACES if s[0] != "terminal session show"]
 def test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb(
         surface, render, _proposal, monkeypatch):
     """The third state, found in review of #518. `available_cards()` enumerates a directory and
-    raises `ContextUnreadableError` when it cannot -- an install-level fact with nothing to do with
-    the session being read, and a state nothing on either of these two paths touched before this
-    line existed.
-
-    Uncaught it would have been worse than a crash on the Web: `session_page`'s broad handler
-    renders *Requivo found this session on disk and could not open it*, with `session verify` and
-    `revisions/` as the remedies. Every word of that is wrong for a permissions problem next door,
-    and a reader could not tell the two apart. So the line degrades and the page does not."""
+    raises `ContextUnreadableError` when it cannot -- an install-level fact with nothing to do
+    with the session being read. Uncaught, the Web's broad handler would render *Requivo found
+    this session on disk and could not open it*, pointing at `session verify` -- wrong for a
+    permissions problem next door. So the line degrades and the page does not."""
     from requivo.core import context as context_module
     from requivo.core.errors import ContextUnreadableError
 

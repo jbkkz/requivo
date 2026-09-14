@@ -40,9 +40,9 @@ from requivo.web.viewmodels.status import evidence_view
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+def _isolate_workspace(workspace):
+    """Every test here writes through `SessionService`; autouse folds conftest's `workspace` setup
+    in so no test needs to request it by name."""
 
 
 DECISION = "Cut the CI matrix to four legs"
@@ -66,19 +66,18 @@ def _decision(*derived_from):
 # -- the pure comparison --------------------------------------------------------------------------
 
 
-def test_a_decision_derived_from_an_empty_slot_that_is_now_explicit_is_flagged():
-    then = _model(_decision("current_process"), current_process=slot(0, "empty", "high"))
+@pytest.mark.parametrize(
+    ("completeness", "start_confidence"),
+    [(0, "empty"), (40, "inferred")],
+    ids=["empty-to-explicit", "inferred-to-explicit"],
+)
+def test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged(completeness, start_confidence):
+    then = _model(_decision("current_process"), current_process=slot(completeness, start_confidence, "high"))
     now = _model(_decision("current_process"), current_process=slot(90, "explicit", "high"))
     report = thinner_evidence(then, now)
     assert [f.decision for f in report.flagged] == [DECISION]
     assert report.flagged[0].thickened == [CURRENT_PROCESS]
     assert report.could_not_tell == [] and report.reviewed == 1
-
-
-def test_a_decision_derived_from_an_inferred_slot_that_is_now_explicit_is_flagged():
-    then = _model(_decision("current_process"), current_process=slot(40, "inferred", "high"))
-    now = _model(_decision("current_process"), current_process=slot(90, "explicit", "high"))
-    assert [f.decision for f in thinner_evidence(then, now).flagged] == [DECISION]
 
 
 def test_a_decision_whose_slot_was_already_explicit_is_not_flagged():

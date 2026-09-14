@@ -26,14 +26,13 @@ from requivo.core.contracts import (
 # ── Contract validation ──────────────────────────────────────────────────────
 
 
-def test_output_rejects_out_of_range_completeness():
+@pytest.mark.parametrize("completeness, confidence", [
+    (150, "explicit"),
+    (10, "maybe"),
+], ids=["out-of-range-completeness", "unknown-confidence"])
+def test_output_rejects_a_slot_with_an_invalid_field(completeness, confidence):
     with pytest.raises(ValidationError):
-        out({"problem": slot(150, "explicit", "high")})
-
-
-def test_output_rejects_unknown_confidence():
-    with pytest.raises(ValidationError):
-        out({"problem": slot(10, "maybe", "high")})
+        out({"problem": slot(completeness, confidence, "high")})
 
 
 def test_output_requires_model():
@@ -74,44 +73,27 @@ def test_output_caps_questions_at_six():
         EngineOutput.model_validate({**base, "questions": [_q("workflow", i) for i in range(7)]})
 
 
-def test_output_rejects_a_question_targeting_an_unknown_slot():
-    # A question must point at a slot the schema defines — a question about a non-existent slot is as
-    # malformed as an unknown slot in the model.
+@pytest.mark.parametrize("extra_key, extra_value", [
+    ("questions", [_q("not_a_slot")]),
+    ("decisions", [{"decision": "X", "derived_from": ["not_a_slot"]}]),
+    ("challenges", [{"headline": "h", "premise": "p", "alternative": "a", "consequence": "c",
+                     "recommendation": "r", "contests": ["not_a_slot"]}]),
+], ids=["question", "decision", "challenge"])
+def test_output_rejects_a_pointer_to_an_unknown_slot(extra_key, extra_value):
+    # A question/decision/challenge must point at a slot the schema defines — a dangling pointer would
+    # make the dependency graph look rigorous while pointing at nothing.
+    base = {"model": {"workflow": slot(60, "inferred", "high")}, "questions": [], "summary": {}}
+    base[extra_key] = extra_value
     with pytest.raises(ValidationError):
-        EngineOutput.model_validate({
-            "model": {"workflow": slot(60, "inferred", "high")},
-            "questions": [_q("not_a_slot")], "summary": {},
-        })
-
-
-def test_output_rejects_a_decision_derived_from_an_unknown_slot():
-    # A DAG edge into a slot the schema doesn't define would make the dependency graph look rigorous
-    # while pointing at nothing — rejected at the contract, same as an unknown slot in the model.
-    with pytest.raises(ValidationError):
-        EngineOutput.model_validate({
-            "model": {"workflow": slot(60, "inferred", "high")},
-            "questions": [], "summary": {},
-            "decisions": [{"decision": "X", "derived_from": ["not_a_slot"]}],
-        })
-
-
-def test_output_rejects_a_challenge_contesting_an_unknown_slot():
-    with pytest.raises(ValidationError):
-        EngineOutput.model_validate({
-            "model": {"workflow": slot(60, "inferred", "high")},
-            "questions": [], "summary": {},
-            "challenges": [{"headline": "h", "premise": "p", "alternative": "a", "consequence": "c",
-                            "recommendation": "r", "contests": ["not_a_slot"]}],
-        })
+        EngineOutput.model_validate(base)
 
 
 def test_contracts_reject_a_field_the_schema_does_not_define():
-    """Invariant 4: boundary contracts are strict. Everything an LLM fills inherits `StrictModel`
-    (`extra="forbid"`); a field the model invented must fail loudly and ride the retry loop, not
-    be silently discarded. *Completeness* rules (the full required slot set, a non-empty objective)
-    live at the discovery boundary instead, because a partial `EngineOutput` is a legitimate
-    internal object — `test_output_allows_a_partial_but_known_model` is that half (moved here from
-    CLAUDE.md by #286)."""
+    """Invariant 4: boundary contracts are strict — everything an LLM fills inherits `StrictModel`;
+    an invented field must fail loudly and ride the retry loop, not be silently discarded.
+    Completeness lives at the discovery boundary instead, since a partial `EngineOutput` is legitimate
+    (`test_output_allows_a_partial_but_known_model` is that half; moved here from CLAUDE.md by
+    #286)."""
     # Pydantic's default is to drop unknown keys. For an LLM boundary that is the wrong default: the
     # output reads as conformant while carrying less than the model produced, and a prompt that has
     # drifted from its contract looks like a clean success. Rejecting also lets the retry loop tell the

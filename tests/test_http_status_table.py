@@ -84,11 +84,9 @@ _NOT_STATUS_MAPPED = {
 def test_every_error_code_has_an_explicit_http_status():
     """The compounding half of #34: a new code is a red leg here, not a wrong answer to a user.
 
-    The table's default was 400, so the only thing standing between a newly added code and "your
-    request was bad" was somebody remembering a file in another lane. Four codes were sitting on that
-    default when this was written — `context_unreadable`, `session_exists`, `session_locked` and
-    `provider_output_invalid` — and only the first had been filed.
-    """
+    The table's default was 400 for anything unlisted. Four codes were sitting on that default
+    when this was written -- `context_unreadable`, `session_exists`, `session_locked` and
+    `provider_output_invalid` -- and only the first had been filed."""
     from requivo.http import STATUS_BY_CODE
 
     codes = _all_error_codes()

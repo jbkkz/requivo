@@ -33,6 +33,7 @@ import re
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import pytest
 from _fakes import full_slots, out, slot
 
 from requivo.cli import converse
@@ -189,16 +190,11 @@ def test_a_challenge_cannot_forge_a_line_of_the_decision_brief():
 
 
 def test_a_persisted_usage_priced_as_of_cannot_forge_a_line_of_the_session_cost_view():
-    """`render_session_cost`'s `usage_priced_as_of` is not model prose -- it is a persisted
-    `RevisionRecord` field, read back off `session.json` on every `requivo status`. Invariant 14
-    frames `context_cards` this same way: untrusted every time it is read back, regardless of what
-    wrote it, and `session import` is the documented channel through which someone else's archive
-    -- and its `usage_priced_as_of` -- arrives (#388).
-
-    Two revisions in one fixture, not one: a clean one whose date must actually appear (the
-    must-fire half -- without it, the assertions below would pass against a harness that rendered
-    the "no price on file" branch and never touched `usage_priced_as_of` at all), and a forged one
-    whose date must not open a line of its own at column 0."""
+    """`render_session_cost`'s `usage_priced_as_of` is a persisted `RevisionRecord` field, read back
+    off `session.json` on every `requivo status` -- the same untrusted-every-time-it-is-read-back
+    class invariant 14 names for `context_cards`, arriving via `session import` (#388). Two revisions:
+    a clean one whose date must appear (the must-fire half), a forged one that must not open a line
+    of its own at column 0."""
     clean = RevisionRecord(
         revision=1, created_at="2026-01-01T00:00:00Z",
         usage_input_tokens=1000, usage_output_tokens=200,
@@ -236,18 +232,10 @@ def test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu():
 
 def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout():
     """`render_grounding`'s input is a persisted `context_cards` entry, which invariant 14 names as
-    untrusted **every time it is read back**, whatever wrote it -- and #40 is the reproduced
-    instance: a stored card name forged a line at column 0 of `doctor`'s own output, on the surface
-    whose job is to answer whether an install is sound.
-
-    That is why this renderer is swept rather than exempt even though it prints no model prose.
-    `session import` is the documented channel through which someone else's archive, and its
-    `context_cards`, arrives; the service layer resolves cards at *creation* and makes no promise
-    about the value on disk (invariant 14 again, in its own words).
-
-    Two calls, not one, and the second is the must-fire half: the unnarrowed branch reads the
-    install's real card names, so it proves the renderer printed something at all -- without it the
-    assertions below would pass against a branch that emitted nothing."""
+    untrusted every time it is read back, whatever wrote it -- and #40 is the reproduced instance: a
+    stored card name forged a line at column 0 of `doctor`'s own output, arriving via `session
+    import`. Two calls: the second is the must-fire half, proving the unnarrowed branch printed the
+    install's real card names rather than nothing."""
     text = _render(render_grounding, [FORGED])
     assert not _forged_lines(text), text
     assert _raw_controls(text) == ""
@@ -374,12 +362,11 @@ def _with_unreviewable(model: EngineOutput) -> EngineOutput:
 
 
 def test_the_forged_sweep_covers_every_prose_renderer_in_the_module():
-    """Derived, not enumerated (#331). The scan set the sweep above runs against used to be a fixed
-    tuple of six imported names -- real for those six, and silent about a seventh. This introspects
-    `render/terminal.py` itself for every `render_*` function and requires each one to be named
-    either in `_SWEPT_RENDERERS` (covered by the forged sweep) or in `_NON_PROSE_RENDERERS` (exempt,
-    with a reason) -- so a renderer that starts touching model text and is added to neither fails
-    here, by name, before it ships unguarded the way `cli.py`'s own prompt did."""
+    """Derived, not enumerated (#331): the scan set used to be a fixed tuple of six imported names --
+    real for those six, and silent about a seventh. This introspects `render/terminal.py` for every
+    `render_*` function and requires each to be named either in `_SWEPT_RENDERERS` (covered by the
+    forged sweep) or `_NON_PROSE_RENDERERS` (exempt, with a reason), so a new renderer that starts
+    touching model text fails here, by name, before it ships unguarded like `cli.py`'s own prompt did."""
     from requivo.render import terminal as terminal_module
 
     declared = {
@@ -532,12 +519,11 @@ _TERMINAL_SURFACE_TREES = ("render", "cli.py", "deterministic", "web")
 
 
 def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_surface_tree():
-    """The real scan, over the real tree. `render/`, `cli.py`, `deterministic/` and `web/` are every
+    """The real scan, over the real tree: `render/`, `cli.py`, `deterministic/` and `web/` are every
     `src/requivo/` subtree that can touch a terminal (`core/`, `providers/` and `services/` are
-    excluded because they are guarded elsewhere never to print or prompt -- `tests/test_boundaries.py`
-    for `core/`; `providers/` and `services/` call neither, checked at the time this test was written).
-    Passing this does not prove there is no leak anywhere -- see the file-level docstring above for
-    what the scan cannot see -- it proves there is none of *this* shape, in *this* tree, today."""
+    guarded elsewhere never to print or prompt). Passing this does not prove there is no leak
+    anywhere -- see the file-level docstring for what the scan cannot see -- only that there is none
+    of *this* shape, in *this* tree, today."""
     violations: list = []
     for entry in _TERMINAL_SURFACE_TREES:
         target = SRC_ROOT / entry
@@ -548,67 +534,51 @@ def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_sur
     assert not violations, "\n".join(violations)
 
 
-def test_a_new_surface_module_leaking_a_question_field_is_caught_without_being_named(tmp_path):
-    """Must-fire: the point of the scan. A brand-new file the guard above has never heard of, in a
-    module this test invents on the spot, printing `q.q` raw. If this test could pass against the
-    un-fixed code, the scan would not be a scan."""
+@pytest.mark.parametrize(
+    "tui_body, expect_violation",
+    [
+        pytest.param(
+            'def show(out):\n'
+            '    for i, q in enumerate(out.questions, 1):\n'
+            '        print(f"{i}. {q.q}")\n',
+            True,
+            id="direct-raw-read-must-fire",
+        ),
+        pytest.param(
+            'from requivo.core.selectors import display_text\n\n\n'
+            'def show(out):\n'
+            '    for i, q in enumerate(out.questions, 1):\n'
+            '        safe_q = display_text(q.q)\n'
+            '        print(f"{i}. {safe_q}")\n',
+            False,
+            id="escaped-through-display-text-must-not-fire",
+        ),
+        pytest.param(
+            'def show(out):\n'
+            '    for i, q in enumerate(out.questions, 1):\n'
+            '        msg = q.q\n'
+            '        print(f"{i}. {msg}")\n',
+            True,
+            id="local-variable-indirection-must-fire",
+        ),
+    ],
+)
+def test_the_question_scan_tells_a_raw_read_from_an_escaped_one(tmp_path, tui_body, expect_violation):
+    """Three defining shapes of the scan, by id: a direct raw `q.q` read must-fire -- the point of
+    the scan; the same field escaped through `display_text` must-not-fire -- the fix idiom must not
+    itself trip the guard; and a local-variable indirection (`msg = q.q`, printed later) must still
+    fire -- the review finding that the scan checks every *read* of the field, since a call-site-gated
+    scan cannot see the raw access sitting in the assignment rather than the print call."""
     pkg = tmp_path / "requivo"
     pkg.mkdir()
-    (pkg / "tui.py").write_text(
-        """def show(out):
-    for i, q in enumerate(out.questions, 1):
-        print(f"{i}. {q.q}")
-""",
-        encoding="utf-8",
-    )
+    (pkg / "tui.py").write_text(tui_body, encoding="utf-8")
     violations = _question_prose_leaks(pkg)
-    assert len(violations) == 1
-    assert "tui.py" in violations[0]
-    assert ".q" in violations[0]
-
-
-def test_the_same_new_module_escaped_through_a_local_variable_does_not_fire(tmp_path):
-    """Must-not-fire, in the same fixture as the test above. The fix this scan exists to require
-    (`safe_q = display_text(q.q)`, then use `safe_q`) must not itself trip the guard -- a scan that
-    flagged the fix would be deleted by the next person to touch this file."""
-    pkg = tmp_path / "requivo"
-    pkg.mkdir()
-    (pkg / "tui.py").write_text(
-        """from requivo.core.selectors import display_text
-
-
-def show(out):
-    for i, q in enumerate(out.questions, 1):
-        safe_q = display_text(q.q)
-        print(f"{i}. {safe_q}")
-""",
-        encoding="utf-8",
-    )
-    assert _question_prose_leaks(pkg) == []
-
-
-def test_a_local_variable_indirection_that_never_calls_display_text_is_still_caught(tmp_path):
-    """Must-fire, and the reason the scan checks every *read* of the field rather than only what
-    sits inside a `print()`/`input()` call (review finding on the first version of this scan): a
-    field assigned to a plain local first, `msg = q.q`, then printed several lines and several
-    statements later, `print(f"{i}. {msg}")`. The raw attribute access is in the *assignment*, not
-    in the print call's own AST subtree -- a scan gated on the call site cannot see it, however far
-    `msg` travels afterward, and this is exactly the shape a contributor gets by copying the fix's
-    own `safe_q = ...` idiom and forgetting the `display_text()` call inside it."""
-    pkg = tmp_path / "requivo"
-    pkg.mkdir()
-    (pkg / "tui.py").write_text(
-        """def show(out):
-    for i, q in enumerate(out.questions, 1):
-        msg = q.q
-        print(f"{i}. {msg}")
-""",
-        encoding="utf-8",
-    )
-    violations = _question_prose_leaks(pkg)
-    assert len(violations) == 1
-    assert "tui.py" in violations[0]
-    assert ".q" in violations[0]
+    if expect_violation:
+        assert len(violations) == 1
+        assert "tui.py" in violations[0]
+        assert ".q" in violations[0]
+    else:
+        assert violations == []
 
 
 def test_the_question_scan_refuses_an_empty_or_missing_root(tmp_path):

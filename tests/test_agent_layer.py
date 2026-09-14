@@ -301,11 +301,9 @@ def test_the_script_detector_fires_on_the_shapes_a_hook_could_point_at():
 def test_the_command_detector_fires_on_every_shape_that_names_something_to_run():
     """The must-fire half of `test_no_tracked_settings_document_names_anything_to_execute`.
 
-    The instance that got through was a `statusLine`, so it leads -- but a control that only replays
-    the instance leaves the class as unguarded as it was, which is the whole of #215. The nested
-    case is the one that earns the second net: it names no key from `COMMAND_KEYS` at any level and
-    is caught by the `{"type": "command"}` value shape alone.
-    """
+    The instance that got through was a `statusLine` -- but a control that only replays it leaves
+    the class unguarded, which is the whole of #215. The nested case earns the second net: it names
+    no key from `COMMAND_KEYS` at any level and is caught by the `{"type": "command"}` shape alone."""
     status_line = {"statusLine": {"type": "command", "command": "python3 x.py"}}
     assert "statusLine" in _command_surface(status_line), "a statusLine command is executable surface"
     hooks = {"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash x.sh"}]}]}}
@@ -332,12 +330,9 @@ def test_the_plugin_enablement_detector_fires_on_a_settings_file_that_switches_o
 
 def test_the_documentation_matcher_refuses_a_key_hiding_inside_a_longer_word():
     """The must-fire half of `test_every_tracked_project_settings_key_is_described_to_contributors`.
-
-    `env` is the real case, not a fabricated one: it is a Claude Code settings key and a substring
-    of `environment`, a word CONTRIBUTING.md already uses. A `key in prose` check would have called
-    an undocumented `env` block documented, which is the same shape the sibling baseline guard
-    rejected for `.claude/` by requiring a second token.
-    """
+    `env` is the real case: a Claude Code settings key and a substring of `environment`, a word
+    CONTRIBUTING.md already uses. A bare `key in prose` check would call an undocumented `env` block
+    documented -- the same shape the sibling guard rejected by requiring a full token."""
     assert _documented_in("env", "the `env` block sets environment variables for the session")
     assert not _documented_in("env", "run it in a clean environment before opening a pull request")
     assert not _documented_in("statusLine", "a statusLine, written in prose with no code span")
@@ -345,13 +340,10 @@ def test_the_documentation_matcher_refuses_a_key_hiding_inside_a_longer_word():
 
 
 def test_the_empty_scan_refusal_fires_when_there_is_nothing_to_scan():
-    """The must-fire half of the `assert documents` inside `_tracked_settings_documents`.
-
-    That helper carries the empty-scan rule for every guard below it, and the rule is that an
-    absence-assertion without a control passes just as happily broken as clean. Removing the assert,
-    or refactoring the loop so one path returns before reaching it, would turn every guard that
-    reads the helper back into a loop over nothing -- green, and having looked at no file at all.
-    """
+    """The must-fire half of the `assert documents` inside `_tracked_settings_documents`. That helper
+    carries the empty-scan rule for every guard below it -- an absence-assertion passes just as
+    happily broken as clean. Removing the assert would turn every guard that reads it into a loop
+    over nothing -- green, having looked at no file at all."""
     with pytest.raises(AssertionError, match="scanned no tracked JSON"):
         _tracked_settings_documents([])
     with pytest.raises(AssertionError, match="scanned no tracked JSON"):
@@ -359,19 +351,10 @@ def test_the_empty_scan_refusal_fires_when_there_is_nothing_to_scan():
 
 
 def test_a_settings_key_cannot_forge_a_line_in_this_file_s_own_failure_output():
-    """A key in a settings document is text a contributor wrote, and it lands in a CI job log.
-
-    The failure message interpolates the offending dotted paths, which are built from those keys --
-    so a key carrying a newline could open a line at column 0 of output that a person, a workflow
-    command parser, or one of this project's triage agents then reads. That is the class invariant
-    14 names, where a stored context-card name spent a release able to forge a line at column 0 of
-    `doctor`'s own output.
-
-    It does not happen, because the paths are interpolated as a *container* and `repr` escapes the
-    newline. That is a property of how the message happens to be written rather than a decision
-    anybody recorded, and one edit -- joining the paths into a plain string -- removes it silently.
-    This is the test that makes it a decision.
-    """
+    """A key in a settings document is text a contributor wrote, and it lands in a CI job log. The
+    failure message interpolates the offending dotted paths built from those keys -- a key carrying a
+    newline could open a line at column 0 of output a triage agent then reads (invariant 14's class).
+    It happens not to, only because the paths go in as a *container* and `repr` escapes the newline."""
     forged = {"a\n::error::forged": {"type": "command", "command": "x"}}
     surface = _command_surface(forged)
     assert surface, "control: the detector must fire here, or the message below never renders"
@@ -450,13 +433,11 @@ def test_the_contributor_baseline_is_written_down():
 
 
 def test_the_tracked_project_settings_carry_only_allowlisted_keys():
-    """`.claude/settings.json` may carry only keys this file names, and today it names none.
-
-    This is the class guard the two detectors below cannot be. They know what a command and a plugin
-    enablement look like *today*, and Claude Code's settings vocabulary is not this repository's to
-    freeze -- a key nobody here has heard of fails this one, which is the right default for a file
-    that configures every contributor's editor before they have read a line of it (#215).
-    """
+    """`.claude/settings.json` may carry only keys this file names, and today it names none. This is the
+    class guard the two detectors below cannot be: they know what a command and a plugin enablement
+    look like *today*, and Claude Code's settings vocabulary is not this repository's to freeze -- a
+    key nobody here has heard of fails this one, the right default for a file that configures every
+    contributor's editor before they have read it (#215)."""
     tracked = _tracked_under_dot_claude()
     assert tracked, "scanned no tracked files under .claude/ -- this guard would pass vacuously"
     assert PROJECT_SETTINGS in tracked, (
@@ -478,13 +459,11 @@ def test_the_tracked_project_settings_carry_only_allowlisted_keys():
 
 
 def test_no_tracked_settings_document_names_anything_to_execute():
-    """No tracked JSON under `.claude/` may name a command, at any depth, under any key.
-
-    This is the guard `test_the_repository_registers_no_hooks` should have been. That one reads
-    `hooks` and only `hooks`, so #186's `statusLine` -- pointing at an 88KB maintainer script
-    *outside* `.claude/`, which puts it beyond the tracked-script scan as well -- reached every
-    contributor once per assistant message with the suite green (#215).
-    """
+    """No tracked JSON under `.claude/` may name a command, at any depth, under any key. This is the
+    guard `test_the_repository_registers_no_hooks` should have been. That one reads `hooks` and only
+    `hooks`, so #186's `statusLine` -- pointing at an 88KB maintainer script *outside* `.claude/`,
+    beyond the tracked-script scan too -- reached every contributor once per assistant message with
+    the suite green (#215)."""
     offenders = {}
     for rel, data in _tracked_settings_documents():
         found = _command_surface(data)
@@ -499,13 +478,11 @@ def test_no_tracked_settings_document_names_anything_to_execute():
 
 
 def test_no_tracked_settings_document_enables_a_plugin():
-    """Nothing this repository tracks may switch a Claude Code plugin on.
-
-    A plugin registers hooks from its own manifest, so committing the switch commits the hooks --
-    the barrier #2 reported, one remove further out than the guards above look. It also decides for
-    a contributor which third-party marketplace entries their editor turns on, which is not a
-    decision a checkout gets to make (#215).
-    """
+    """Nothing this repository tracks may switch a Claude Code plugin on. A plugin registers hooks from
+    its own manifest, so committing the switch commits the hooks -- the barrier #2 reported, one
+    remove further out than the guards above look. It also decides for a contributor which
+    third-party marketplace entries their editor turns on, which is not a decision a checkout gets to
+    make (#215)."""
     offenders = [rel for rel, data in _tracked_settings_documents() if _enables_plugins(data)]
     assert not offenders, (
         f"tracked settings enable plugins: {offenders}. Maintainer plugins belong in the user's own "
@@ -516,12 +493,10 @@ def test_no_tracked_settings_document_enables_a_plugin():
 
 def test_the_untracked_local_settings_file_stays_untracked():
     """`.claude/settings.local.json` is where the personal half goes, so it must never be committed.
-
-    `.gitignore` excludes it and an exclusion is not a guarantee: it can be overridden on the
-    command line, and this very path was un-excluded here for a release while merely *looking*
-    excluded, because the maintainer's machine carries a global ignore entry no contributor has.
-    This is the assertion that does not depend on the exclusion being right.
-    """
+    `.gitignore` excludes it and an exclusion is not a guarantee: it can be overridden on the command
+    line, and this very path was un-excluded here for a release while merely *looking* excluded (the
+    maintainer's machine carries a global ignore entry no contributor has) -- this is the assertion
+    that does not depend on the exclusion being right."""
     tracked = _tracked_under_dot_claude()
     assert tracked, "scanned no tracked files under .claude/ -- this guard would pass vacuously"
     assert PROJECT_SETTINGS_LOCAL not in tracked, (
@@ -533,15 +508,11 @@ def test_the_untracked_local_settings_file_stays_untracked():
 
 
 def test_every_tracked_project_settings_key_is_described_to_contributors():
-    """A key that ships to a cloner must be a key the cloner can read about.
-
-    Vacuous while the tracked settings are empty, and that is not a hidden all-clear: the set it
-    iterates is the same set `test_the_tracked_project_settings_carry_only_allowlisted_keys` pins to
-    empty, so the two cannot both be quietly wrong -- the moment one key returns, this one has work
-    to do. It exists because CONTRIBUTING.md's description of this file went stale in exactly that
-    way: it said `an enabledPlugins list and nothing else` for the whole time a `statusLine`
-    was sitting beside it (#215).
-    """
+    """A key that ships to a cloner must be a key the cloner can read about. Vacuous while the tracked
+    settings are empty -- but the set it iterates is the same set
+    `test_the_tracked_project_settings_carry_only_allowlisted_keys` pins to empty, so the two cannot
+    both be quietly wrong. It exists because CONTRIBUTING.md's own description went stale exactly
+    that way, once, while a `statusLine` sat undocumented beside it (#215)."""
     data = json.loads(_tracked_content(PROJECT_SETTINGS))
     contributing = (REPO / "CONTRIBUTING.md").read_text(encoding="utf-8")
     undocumented = sorted(key for key in data if not _documented_in(key, contributing))

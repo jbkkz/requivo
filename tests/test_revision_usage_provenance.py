@@ -44,18 +44,11 @@ class _SpendingProvider:
 
 
 def test_a_provider_backed_apply_stamps_token_and_rate_provenance_onto_its_revision():
-    """The span `_usage_since` measures is "however many calls this operation made", not "one call".
-
-    More than one can land in one span if a caller opens one around several, and such a span sums
-    the tokens, because the revision it produced would embody all of them. Every call site today
-    closes its span around exactly one provider call -- #467 split `start(..., finalize=True)`'s
-    `analyze` and its brief's own `generate` into two applies with two spans, and was the last
-    caller that spanned more than one.
-
-    The rate is stamped only when every call in the span agrees on it. The ordinary case is one
-    provider, one model, one price table for the whole span; a genuine disagreement is refused
-    rather than averaged, which is the same argument `UsageLedger`'s own docstring makes for cost.
-    """
+    """The span `_usage_since` measures is "however many calls this operation made", not "one call"
+    -- more than one can land in one span, and such a span sums the tokens (#467 split one operation
+    into two spans and was the last caller that spanned more than one). The rate is stamped only
+    when every call in the span agrees on it; a genuine disagreement is refused rather than
+    averaged, the same argument `UsageLedger`'s own docstring makes for cost."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     provider = _SpendingProvider(CallRecord(
@@ -159,19 +152,11 @@ def test_render_session_cost_sums_priced_revisions():
 
 
 def test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else(capsys):
-    """#389: `render_session_cost` used to re-implement `UsageLedger.cost_usd()` locally -- the
-    same 0.1x cache-read and 1.25x cache-write multipliers, copied rather than called -- while
-    `usage.py`'s own module docstring says cost is "arithmetic here and nowhere else". A mutation
-    control proved the copy was unguarded: changing the cache-read multiplier in
-    `render_session_cost` alone, leaving `usage.py` untouched, produced zero added failures across
-    the full suite (`1 failed, 1392 passed` before and after -- the one failure a pre-existing,
-    unrelated artifact of running outside a git checkout).
-
-    This is the guard that closes that gap. It exercises every rate tier at once -- plain input,
-    a cache read, a cache write, output -- and asserts the exact printed dollar figure, computed
-    independently here, so a multiplier drifting in only one of the two places shows up as a wrong
-    number rather than as a missing test. Round token counts (1,000,000 each) keep the arithmetic
-    exact rather than merely close, so `.3f` rounding cannot paper over a divergence."""
+    """#389: `render_session_cost` used to re-implement `UsageLedger.cost_usd()` locally, and a
+    mutation control proved the copy unguarded -- changing one multiplier there left the full suite
+    green. This guard exercises every rate tier at once (input, cache read, cache write, output) and
+    asserts the exact printed dollar figure, computed independently, with round token counts so
+    `.3f` rounding cannot paper over a divergence."""
     from requivo.core.persistence import RevisionRecord
     from requivo.render.terminal import render_session_cost
 
@@ -193,16 +178,11 @@ def test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else
 
 
 def test_render_session_cost_does_not_stamp_a_dangling_separator_for_an_empty_priced_as_of(capsys):
-    """Found in review (#388/#389): the old code built its `as_of` list with a *truthy* filter --
-    `if r.usage_priced_as_of and ...` -- which silently dropped an empty-string date. Routing the
-    same field through `UsageLedger.priced_as_of` (#389's fix) filters on `is not None` instead,
-    which is the right rule for `usage.py`'s own contract (`None` means "unpriced", not "priced with
-    an empty date") but is a different rule than the one this renderer used to apply -- so a revision
-    whose `usage_priced_as_of` is `""` (never written by any real provider path, but not excluded by
-    `RevisionRecord`'s schema either, and reachable through `session import`) used to be silently
-    skipped and now leaves a dangling `" · "` with nothing after it: `rates as of 2026-01-01 · `.
-    Normalizing an empty string to `None` on the way into the scratch `CallRecord` restores the old
-    renderer's behaviour without reintroducing local arithmetic."""
+    """Found in review (#388/#389): the old code filtered `as_of` on truthiness, silently dropping
+    an empty-string date. Routing the field through `UsageLedger.priced_as_of` (#389) filters on
+    `is not None` instead, so a revision whose `usage_priced_as_of` is `""` (unreachable from any
+    real provider path, but not excluded by the schema, and reachable through `session import`) now
+    leaves a dangling `" · "` unless normalized to `None` first."""
     from requivo.core.persistence import RevisionRecord
     from requivo.render.terminal import render_session_cost
 

@@ -83,10 +83,9 @@ def _install_a_card(user_dir, stem="acme-crm", body="ACME CRM - the product cont
 def test_harness_can_see_both_vocabularies():
     """The silence half of every test below is only meaningful if the fixture can see something.
 
-    If the bundled cards or the slot schema were unreachable, "an unknown card raises" would pass
-    because *every* card is unknown, and "an empty token does not return all 15 slots" would pass
-    because there are no slots to return. This fails loudly in that case rather than letting the
-    other tests report a coverage they do not have."""
+    If the bundled cards or the slot schema were unreachable, every negative assertion here would
+    pass for the wrong reason -- no card is ever "unknown" if none can be read. This fails loudly
+    in that case rather than letting the other tests report a coverage they do not have."""
     cards = available_cards()
     assert A_CARD in cards and ANOTHER_CARD in cards, f"fixture is blind: cards={cards}"
     assert len(_all_slot_ids()) > 1, "fixture is blind: the slot schema resolved to fewer than 2 slots"
@@ -294,13 +293,10 @@ def test_normalize_tokens_passes_real_tokens_through_stripped_and_lowercased():
 
 
 def test_check_selection_answers_exactly_what_load_context_would_do():
-    """`load_context` refuses a selection that no longer resolves — correct, and discovered at the
-    next provider call, which costs money and happens minutes into a session. `check_selection` is
-    that same guard asked as a question: it reports rather than raises, so `doctor` and
-    `session verify` can answer it for free and in advance.
-
-    The two must never drift, which is why `check_selection` runs the guard rather than
-    reimplementing the rule. Both halves are asserted here: the selections that pass, and the ones
+    """`load_context` refuses a selection that no longer resolves; `check_selection` is that same
+    guard asked as a question, so `doctor` and `session verify` can answer it for free and in
+    advance. The two must never drift, so `check_selection` runs the guard rather than
+    reimplementing it — both halves are asserted here: the selections that pass, and the ones
     that do not."""
     # must not fire — these are the selections that still load
     assert check_selection(None) is None            # None is the "every card" sentinel, not a selection
@@ -395,15 +391,10 @@ def test_build_prompt_never_sends_an_empty_context_to_a_paid_call(zero_cards):
 
 
 def test_a_selection_on_a_zero_card_install_names_the_install_not_the_card(zero_cards):
-    """With no cards at all, every named card is 'unknown' — technically true and the wrong remedy.
-    The reader is told to check the name they typed when the actual fault is that the install has
-    no cards to match against. The wider condition is diagnosed first.
-
-    The precedence is asserted rather than left implicit: `_require_any_card` runs *before*
-    `_selection_keys`, so on an empty install even `load_context([])` — which would otherwise be
-    `empty_selection` — reports the install. Which of the two guards wins is a decision, and a
-    decision only a passing parametrized case covers is one nobody can find later.
-    """
+    """With no cards at all, every named card is 'unknown' -- technically true and the wrong remedy;
+    the wider condition (no cards to match against) is diagnosed first. `_require_any_card` runs
+    before `_selection_keys`, so even `load_context([])` reports the install instead of
+    `empty_selection`. Which guard wins is a decision, asserted here rather than left implicit."""
     with pytest.raises(NoContextCardsError):
         load_context(["acme-crm"])
     with pytest.raises(NoContextCardsError):
@@ -418,14 +409,11 @@ def test_a_selection_on_a_zero_card_install_names_the_install_not_the_card(zero_
 
 @pytest.mark.parametrize("selection", [None, ["acme-crm"], ["no-such-card"], []])
 def test_check_selection_agrees_with_load_context_on_a_zero_card_install(zero_cards, selection):
-    """The drift guard, run against the fixture that used to be missing.
-
-    `check_selection` documents itself as returning 'the exact `RequivoError` `load_context` would
-    raise'. It used to short-circuit `None` to `None` on the grounds that the every-card sentinel
-    'cannot fail' — true until #33, false after it. A checker that says a session is fine while the
-    call it predicts refuses is this issue's own defect class one level up, and it is what `doctor`
-    and `session verify` report from.
-    """
+    """The drift guard, run against the fixture that used to be missing. `check_selection` used to
+    short-circuit `None` to `None` on the grounds that the every-card sentinel 'cannot fail' --
+    true until #33, false after it. A checker that says a session is fine while the call it
+    predicts refuses is this issue's own defect class one level up -- what `doctor` and `session
+    verify` report from."""
     problem = check_selection(selection)
     try:
         load_context(selection)
@@ -444,19 +432,11 @@ def test_check_selection_still_passes_a_healthy_install(zero_cards):
 
 
 def test_the_prompt_assembly_path_never_decodes_an_asset_with_the_locale_encoding():
-    """`Path.read_text()` with no `encoding` decodes with the *locale's* encoding, not the file's.
-
-    Every bundled card carries an em dash or an arrow, so on a cp1252 Windows console they decoded to
-    mojibake and were sent to the provider that way — silently, since mojibake is still a string.
-    Reproduced portably as a crash rather than a corruption: under `LC_ALL=C` (US-ASCII),
-    `load_context(["b2b-platform"])` raised `UnicodeDecodeError: 'ascii' codec can't decode byte
-    0xe2`.
-
-    Asserted against the source rather than by forcing an encoding at runtime, because the mechanism
-    is a *missing argument* and because the runtime reproduction is not available on every platform:
-    `LC_ALL` does not move `getpreferredencoding` on Windows, so a functional test would pass there
-    by not exercising anything — coverage claimed and not held, on the one leg that has the bug.
-    """
+    """`Path.read_text()` with no `encoding` decodes with the locale's encoding, not the file's.
+    Every bundled card carries an em dash or arrow, so on a cp1252 Windows console they decoded
+    to mojibake and were sent to the provider silently -- mojibake is still a valid string.
+    Asserted against the source: `LC_ALL` does not move `getpreferredencoding` on Windows, so a
+    runtime reproduction would pass there without exercising anything."""
     import ast
     from pathlib import Path
 
@@ -476,14 +456,11 @@ def test_the_prompt_assembly_path_never_decodes_an_asset_with_the_locale_encodin
 
 
 def test_an_empty_token_and_an_empty_selection_are_two_codes():
-    """`empty_selector_token` used to carry two different facts with two different `details` shapes:
-    `{selector, position}` from `normalize_tokens`, and `{selector, tokens: 0}` from
-    `_selection_keys` seventy lines later in the same pull request.
-
-    `docs/compatibility.md` tells consumers to assert on the code, which is the right advice and is
-    what makes this a contract defect: a consumer matching `empty_selector_token` and reading
-    `details["position"]` got a `KeyError` from a payload that correctly carried the code it matched.
-    """
+    """`empty_selector_token` used to carry two different `details` shapes: `{selector, position}`
+    from `normalize_tokens`, and `{selector, tokens: 0}` from `_selection_keys`.
+    `docs/compatibility.md` tells consumers to assert on the code -- the right advice, and what
+    makes this a contract defect: a consumer matching the code and reading `details["position"]`
+    got a `KeyError` from a payload that correctly carried the code it matched."""
     # an empty token *inside* a selection — the position is the actionable fact
     with pytest.raises(EmptySelectorTokenError) as token:
         normalize_tokens(["ok", " "], what="context card")
@@ -543,22 +520,11 @@ def test_both_refusals_still_ride_the_structured_envelope():
 
 
 def test_a_control_character_in_a_selector_token_is_refused_not_echoed():
-    """#40. A selector token is caller text, and `.strip()` — all that ever touched one — removes
-    surrounding whitespace and *not* interior newlines. Echoed into a diagnostic line, such a token
-    writes its own lines into the receipt.
-
-    A card name additionally *persists*: `session.json` stores the selection, `session import`
-    passes it through intact, and `doctor` and `session verify` render it into a receipt. A newline
-    inside such a name does not look odd, it ends the line — a session could write `doctor`'s own
-    `sessions` row and answer *all clear* underneath the row reporting it, while `session verify`,
-    the anti-tampering verb, still exited 1. Escaping at the print sites would have closed the two
-    that existed and said nothing about the third.
-
-    The guard is here, in the one function all three selectors go through, rather than at the print
-    sites: a render-site fix is per-site and per-site is how the second one gets forgotten. This is
-    the same shape as `validate_slug` and `validate_filename` — refuse, and name the refused value
-    in the escaped form so the refusal cannot forge the line reporting it.
-    """
+    """#40. A selector token is caller text; `.strip()` removes surrounding whitespace, not interior
+    newlines, so echoed into a diagnostic line such a token writes its own lines into it. A card
+    name also persists (`session.json`, `session import`, doctor/verify receipts), so a newline
+    inside one ends the line rather than looking odd -- forging the receipt reporting it. The
+    guard sits in the one function all three selectors go through, not at each print site."""
     # must fire: a well-formed token is untouched, on every selector
     assert normalize_tokens([A_CARD], what="context card") == [A_CARD]
     assert resolve_cards([A_CARD]) == [A_CARD]
@@ -584,17 +550,11 @@ def test_a_control_character_in_a_selector_token_is_refused_not_echoed():
 
 
 def test_check_selection_reports_a_hostile_persisted_card_rather_than_raising():
-    """`check_selection` is what `doctor` and `session verify` ask, and its contract is *reported,
-    never raised* — a health check that raises takes the whole listing down with it (invariant 15).
-    A stored selection is exactly where a hostile card name arrives, so the new refusal has to join
-    the reported set rather than escape it.
-
-    A hostile name can only ever arrive *persisted*: `create_session` resolves the selection against
-    the installed cards (invariant 14), so the doors are `session import` and a hand-edited
-    `session.json`, and the first code to look at one is therefore a health check. Escaping from here
-    would mean `doctor` answering nothing at all about a workspace holding one tampered session,
-    rather than degrading that one row. This is why `UnsafeSelectorTokenError` is a member of
-    `context._SELECTION_REFUSALS` (#40)."""
+    """`check_selection` is what `doctor`/`session verify` ask; its contract is reported, never
+    raised -- a health check that raises takes the whole listing down with it (invariant 15). A
+    hostile name can only arrive persisted (`session import`, a hand-edited `session.json`), so
+    escaping here would take down `doctor` for a whole workspace over one tampered session. This
+    is why `UnsafeSelectorTokenError` is a member of `_SELECTION_REFUSALS` (#40)."""
     assert check_selection([A_CARD]) is None            # must fire: a good selection is still clean
 
     problem = check_selection(["ok-card\nAll clear."])
@@ -603,16 +563,11 @@ def test_check_selection_reports_a_hostile_persisted_card_rather_than_raising():
 
 
 def test_the_two_card_code_tables_agree():
-    """`deterministic.remedies._RESTORABLE_CARD_CODES` decides which remedy `doctor` and `session verify`
-    print, by matching `problem["code"]`. It can only ever see codes `check_selection` **returns**,
-    which is exactly `_SELECTION_REFUSALS` — so a member outside that set is a branch that cannot
-    run, and a returned code outside both tables silently gets the repair hint.
-
-    Pinned structurally rather than by making a card directory unreadable: that needs a chmod, which
-    does nothing when the test runs as root and behaves differently on Windows, so the assertion
-    would be vacuous on exactly the legs nobody re-reads. This asks the same question of the two
-    tables directly and answers it identically everywhere.
-    """
+    """`_RESTORABLE_CARD_CODES` decides which remedy `doctor`/`session verify` print, matched
+    against `check_selection`'s own `_SELECTION_REFUSALS` -- a member outside that set is a
+    branch that cannot run, and a code outside both tables silently gets the repair hint. Pinned
+    structurally rather than via an unreadable directory (a chmod vacuous as root, different on
+    Windows): this asks the two tables the same question directly."""
     returnable = {e.code for e in _SELECTION_REFUSALS}
     assert returnable, "must fire: the refusal tuple is not empty"
     assert _RESTORABLE_CARD_CODES <= returnable, (
@@ -649,15 +604,11 @@ def test_load_context_includes_real_cards_and_skips_underscore():
 
 
 def test_load_context_refuses_when_only_underscore_files_are_present(tmp_path, monkeypatch):
-    """A directory holding nothing but `_`-prefixed files has **no cards**, and since #33 that is a
-    refusal rather than an empty string.
-
-    This test used to assert `load_context() == ""`, which is the defect #33 reports written down as
-    the intended contract: an empty `{{CONTEXT}}` reached `build_prompt` and was sent to a paid call
-    with the product context silently missing. What it is still here to pin is the other half — that
-    an underscore-prefixed file does not count as a card — so the refusal below is the *right*
-    refusal and not an accident of an empty directory.
-    """
+    """A directory holding nothing but `_`-prefixed files has no cards, and since #33 that is a
+    refusal rather than an empty string. This used to assert `load_context() == ""`, the defect
+    #33 reports written down as the intended contract: an empty `{{CONTEXT}}` reached
+    `build_prompt` and was sent to a paid call with the product context silently missing. Pinned
+    here: an underscore-prefixed file is not a card."""
     from requivo.core import context as llm
     from requivo.core.errors import NoContextCardsError
 

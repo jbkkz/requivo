@@ -159,14 +159,11 @@ def test_every_vendored_file_has_a_recorded_digest_and_every_digest_a_file():
 
 
 def test_the_membership_check_notices_each_direction_it_claims_to():
-    """Must-fire control for the row above, the way `test_a_single_changed_byte_fails_the_digest` is
-    for the byte-content row -- and it was missing until the review of this change asked for it.
-
-    The two sets agree in the tree, so the live row asserts two emptinesses that are already empty:
-    it is green whether the comparison works or has been narrowed to one direction, to one tree, or
-    to nothing at all. Feeding it disagreeing inputs is what pins that it would go red -- separately
-    per direction, since a check that collapsed them into one would still pass a single mixed
-    case."""
+    """Must-fire control for the row above (`test_a_single_changed_byte_fails_the_digest` is its
+    byte-content sibling): the two sets agree in the tree, so the live row asserts two emptinesses
+    that are already empty -- green whether the comparison works or is silently broken. Feeding it
+    disagreeing inputs proves it goes red, separately per direction, since a merged check would
+    still pass a single mixed case."""
     assert _membership_gap(["a"], {"a": "x"}) == ([], [])
     assert _membership_gap(["a", "b"], {"a": "x"}) == (["b"], []), "a file with no digest"
     assert _membership_gap(["a"], {"a": "x", "b": "y"}) == ([], ["b"]), "a digest with no file"
@@ -203,23 +200,20 @@ def test_a_single_changed_byte_fails_the_digest(tmp_path):
 # -- #504: nothing normalizes their line endings -------------------------------------------------
 
 
-def test_every_vendored_bundle_is_exempt_from_line_ending_normalization():
-    for rel in _VENDORED_BUNDLES:
-        assert (REPO_ROOT / rel).is_file(), f"{rel} does not exist -- this row asserts nothing"
-        assert _text_attr(rel) == "unset", (
-            f"{rel} is a vendored, byte-exact third-party bundle and must be exempt (-text) from "
-            f"git's line-ending normalization, or a Windows checkout can silently rewrite what it "
-            f"actually contains")
-
-
-def test_an_ordinary_first_party_file_is_not_swept_into_the_exemption():
-    """Must-fire control: `.gitattributes` scopes `-text` to `*/static/vendor/**` specifically, and
-    this is the row that would catch a future edit widening that pattern by accident -- a first-party
-    file this project's own encoding/line-ending guards (`test_encoding.py`,
-    `test_the_digest_is_the_same_whatever_the_line_endings`) still need to reason about as ordinary
-    text must not read as "unset" here."""
-    for rel in _NOT_VENDORED:
-        assert (REPO_ROOT / rel).is_file(), f"{rel} does not exist -- this row asserts nothing"
-        assert _text_attr(rel) == "unspecified", (
-            f"{rel} is not a vendored bundle and must be left to git's own default, not swept into "
-            f"the vendor exemption")
+# Two classes merged into one table (#555): every vendored bundle must be exempt (-text) from
+# line-ending normalization, and -- the must-fire control -- an ordinary first-party file must
+# NOT be swept into that exemption. `.gitattributes` scopes `-text` to `*/static/vendor/**`
+# specifically, and the second half is what would catch a future edit widening that pattern by
+# accident; a first-party file this project's own encoding/line-ending guards (`test_encoding.py`,
+# `test_the_digest_is_the_same_whatever_the_line_endings`) still reason about as ordinary text
+# must not read as "unset" here.
+@pytest.mark.parametrize("rel, expected", (
+    [(rel, "unset") for rel in _VENDORED_BUNDLES]
+    + [(rel, "unspecified") for rel in _NOT_VENDORED]
+), ids=[f"vendored:{rel}" for rel in _VENDORED_BUNDLES] + [f"not-vendored:{rel}" for rel in _NOT_VENDORED])
+def test_a_vendored_bundle_is_exempt_and_an_ordinary_file_is_not(rel, expected):
+    assert (REPO_ROOT / rel).is_file(), f"{rel} does not exist -- this row asserts nothing"
+    assert _text_attr(rel) == expected, (
+        f"{rel} should have text={expected!r} per .gitattributes -- a vendored, byte-exact "
+        f"third-party bundle must be exempt from line-ending normalization, and an ordinary "
+        f"first-party file must be left to git's own default, not swept into the exemption")

@@ -11,7 +11,7 @@ bottom of this file is a must-fire/must-not-fire pair on exactly that mechanism,
 review rule that a negative assertion needs a positive control.
 
 Driven directly against the services with a stub `ReasoningProvider` -- no CLI, no web, no network
--- the same shape `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467.py` uses.
+-- the same shape `test_finalize_discovery_keeps_a_paid_analyze_call.py` uses.
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ from requivo.services.sessions import SessionService
 
 
 @pytest.fixture(autouse=True)
-def _isolate_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+def _isolate_workspace(workspace):
+    """conftest's `workspace` fixture, applied automatically to every test in this module."""
 
 
 class _StubProvider:
@@ -142,10 +142,9 @@ def test_a_write_conflict_is_logged_as_refused(_attached):
 def test_a_rescope_that_mints_a_revision_is_logged_too(_attached):
     """`rescope()` is `sessions.py`'s *second* `save_revision(...)` call site (#168's own revision-
     per-selection-switch, distinct from `_plan`'s) -- it mints a real revision on disk when a model
-    already exists, and the "model applied" seam this module documents must not silently exclude it
-    just because it went through a different method. A handler watching this logger for "a revision
-    landed" would otherwise see every `update_model` and miss every re-scope, with nothing from
-    outside the process able to tell the two situations apart."""
+    already exists, and the "model applied" seam this module documents must not silently exclude
+    it. A handler watching this logger for "a revision landed" would otherwise see every
+    `update_model` and miss every re-scope entirely."""
     handler = _attached("requivo.services.sessions")
     sessions = SessionService()
     meta = sessions.create_session("a leave approval system")
@@ -232,11 +231,10 @@ def test_default_run_leaves_the_conflict_refused_warning_off_every_stream():
 
 def test_removing_the_null_handler_reproduces_the_leak_the_test_above_guards_against():
     """Must-fire control. Strips `requivo/__init__.py`'s own `NullHandler` (and the root logger's
-    handlers, for the same reason as above) and proves the *identical* seam, with nothing
-    configured anywhere in the process, DOES reach `logging.lastResort` and print to stderr. Without
-    this, the test above would pass exactly as written against a `requivo/__init__.py` that had
-    never added the `NullHandler` at all -- "nothing printed" and "a broken harness printed nothing"
-    look the same from inside a single assertion.
+    handlers) and proves the *identical* seam, with nothing configured anywhere in the process,
+    DOES reach `logging.lastResort` and print to stderr. Without this, the test above would pass
+    exactly as written against a `requivo/__init__.py` that never added the `NullHandler` at all --
+    "nothing printed" and "a broken harness printed nothing" look identical from inside one assertion.
     """
     root = logging.getLogger()
     requivo_logger = logging.getLogger("requivo")

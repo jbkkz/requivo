@@ -85,6 +85,7 @@ from typing import Any
 
 import pytest
 
+from conftest import slot as _slot
 from requivo.cli import _build_parser, app
 from requivo.core.adapters import EPIC_EXPORT_FORMAT, EPIC_EXPORT_VERSION, epic_export
 from requivo.core.contracts import Epic, _schema_order, schema_slot_ids
@@ -325,10 +326,6 @@ def _compare(label: str, payload: dict, recorded: dict[str, str]) -> tuple[list[
     return breaking, additive
 
 
-def _slot() -> dict:
-    return {"completeness": 0, "confidence": "empty", "impact": "low", "value": ""}
-
-
 @pytest.fixture
 def workspace(tmp_path, monkeypatch) -> dict[str, str]:
     """A workspace and the documents the recorded invocations need. Returns the substitutions for
@@ -413,10 +410,9 @@ def _observe(case: _Case, paths: dict[str, str]) -> dict:
 def test_every_json_verb_has_a_recorded_payload_shape():
     """Both directions, so neither a new verb nor a dead record can pass quietly.
 
-    A verb that gains `--json` and no recorded shape is a public output nobody pinned -- exactly the
-    state #84 walked into, where a breaking change landed before anyone noticed there was a promise
-    to break. A record for a verb the parser no longer offers is the mirror: it reads as coverage
-    that cannot fire.
+    A verb that gains `--json` and no recorded shape is a public output nobody pinned -- the state
+    #84 walked into. A record for a verb the parser no longer offers is the mirror: coverage that
+    cannot fire.
     """
     verbs = sorted(_json_verbs(_build_parser()))
     # must fire: the walk really found the surface. An empty list would make both assertions below
@@ -438,11 +434,10 @@ def test_every_json_verb_has_a_recorded_payload_shape():
 
 def test_every_public_json_payload_keeps_its_recorded_top_level_shape(workspace):
     """The guard invariant 8 never had. Runs every recorded invocation against one workspace and
-    compares the top level of what it printed with what is recorded above.
+    compares it with what is recorded above.
 
-    The two failure directions are reported separately because they are not the same event. A key
-    that vanished or changed type is a breaking change to a documented public payload. A key that
-    appeared is additive, allowed, and needs one line here.
+    A key that vanished or changed type is breaking; a key that appeared is additive, allowed, and
+    needs one line here.
     """
     cases = [case for verb in _PAYLOAD_SHAPES for case in _PAYLOAD_SHAPES[verb]]
     # must fire: an emptied table would make the loop below iterate over nothing and pass.
@@ -489,13 +484,11 @@ def _epic() -> Epic:
 
 
 def test_the_epic_export_skeleton_is_pinned_to_its_version():
-    """`EPIC_EXPORT_VERSION` was asserted only against itself: `payload["version"] == 1` beside
-    `EPIC_EXPORT_VERSION = 1`, in `test_epic_export_is_neutral_and_maps_issues`, which stays true
-    whatever the envelope keys are. So the export carried a version number nothing forced to move,
-    and the stated consumer is an out-of-repo n8n flow that cannot be grepped for breakage.
+    """`EPIC_EXPORT_VERSION` was asserted only against itself before, so the export carried a version
+    number nothing forced to move -- the stated consumer is an out-of-repo n8n flow that cannot be
+    grepped for breakage.
 
-    The skeleton is recorded per version here, so a key change is red until either the version moves
-    or the change is undone.
+    The skeleton is recorded per version here, so a key change is red until the version moves.
     """
     assert EPIC_EXPORT_VERSION in _EPIC_EXPORT_SKELETONS, (
         f"EPIC_EXPORT_VERSION is {EPIC_EXPORT_VERSION} and no skeleton is recorded for it. A bump "

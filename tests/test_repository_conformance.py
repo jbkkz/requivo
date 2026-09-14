@@ -59,7 +59,7 @@ def test_the_suite_ships_in_the_built_wheel():
     # `build_wheel`'s own floor is one release higher than `build_sdist`'s (#453): below setuptools
     # 70.1.0, `bdist_wheel` is not a setuptools command at all without a separately-installed `wheel`
     # package, which this project declares nowhere -- see pyproject.toml's `dev`-extra comment and
-    # test_sdist_contents_431.py's own `_setuptools_build_backend_reason`, reused here rather than
+    # test_sdist_contents.py's own `_setuptools_build_backend_reason`, reused here rather than
     # duplicated since it is a plain version comparison with no sdist-specific behaviour.
     #
     # No `pytest.importorskip("setuptools", ...)` here, deliberately (#453, reviewer finding): that
@@ -67,7 +67,7 @@ def test_the_suite_ships_in_the_built_wheel():
     # under Python 3.12 -- before any check could run. `_setuptools_build_backend_reason` reads the
     # version through `importlib.metadata` instead, which cannot trigger that crash, and covers
     # "not installed" as one of its own named cases.
-    from test_sdist_contents_431 import _setuptools_build_backend_reason
+    from test_sdist_contents import _setuptools_build_backend_reason
 
     # 77.0.1, not 70.1.0, since #337: the licence is a PEP 639 SPDX string now, and a setuptools
     # below 77 fails to *parse* pyproject.toml before `bdist_wheel`'s own availability is reachable.

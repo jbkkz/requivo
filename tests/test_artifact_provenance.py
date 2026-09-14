@@ -17,22 +17,12 @@ import json
 
 import pytest
 
+from conftest import full_model as _full_model
+from conftest import slot as _slot
 from requivo.core import persistence as store
-from requivo.core.contracts import _schema_order, schema_slot_ids
 from requivo.core.errors import InvalidSessionError, RequivoError
 from requivo.services.artifacts import ArtifactService, UnstatedSourceRevisionError
 from requivo.services.sessions import SessionService
-
-
-def _slot(completeness=0, confidence="empty", impact="low", value=""):
-    return {"completeness": completeness, "confidence": confidence, "impact": impact, "value": value}
-
-
-def _full_model(**overrides) -> dict:
-    _, required = schema_slot_ids()
-    model = {sid: _slot() for sid in _schema_order() if sid in required}
-    model.update(overrides)
-    return {"model": model, "questions": [], "summary": {"objective": "A leave approval system"}}
 
 
 @pytest.fixture
@@ -147,27 +137,11 @@ def test_a_missing_revision_file_is_still_refused_the_way_it_always_was(moved):
 
 
 def test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape(moved):
-    """Two facts, two codes — and the shape they share is a decision now, not a debt.
-
-    This service refuses on two grounds: provenance the caller never stated, and provenance it stated
-    that cannot be read. They rode one code, `invalid_session`, until #57 — not because they are one
-    fact but because a new code needs a row in `requivo/http.py::STATUS_BY_CODE`
-    (`web/app.py::_STATUS_BY_CODE` at the time -- moved by #422), which
-    `test_every_error_code_has_an_explicit_http_status` requires of every code in the vocabulary, and
-    the file it lived in was held by another lane in the round #6 landed. The precision
-    lived in the *type* meanwhile, which is invisible to a caller reading a serialized envelope.
-
-    The `details` shape stays shared anyway, and the reason changed with the code. It was owed while
-    the code was shared — a key on one payload and not the other is the failure #35 measured, where a
-    consumer follows the documented advice (match the code, read the key) and gets a `KeyError` from a
-    payload that correctly carried the code it matched. With the codes split that obligation is
-    discharged, and narrowing this payload to four keys would be a second breaking change nobody asked
-    for. #52 settled the same question the other way round: `opaque_origin` and `origin_mismatch`
-    share a shape and are still two codes, because a shared shape is not a shared meaning.
-
-    So both halves are asserted, and the key sets on the *sets* rather than either alone — adding a
-    field to one raise site and not its sibling still fails here rather than in somebody's consumer.
-    """
+    """Two refusals share one `details` shape but ride two codes now — split from one shared
+    `invalid_session` by #57 (a new code needs a row in `requivo/http.py::STATUS_BY_CODE`, moved by
+    #422; the file it lived in was held by another lane in the round #6 landed). The `details` keys
+    are asserted as sets because a key on one payload and not the other was the failure #35 measured;
+    #52 is the reverse precedent — two codes can share a shape without sharing a meaning."""
     svc = ArtifactService()
     with pytest.raises(UnstatedSourceRevisionError) as unstated:
         svc.save(moved, "prd", "# PRD")

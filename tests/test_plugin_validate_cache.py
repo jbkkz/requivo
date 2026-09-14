@@ -98,14 +98,10 @@ def _without_comments(text: str) -> str:
 
 def test_a_cache_hit_and_a_cache_miss_are_distinguishable_in_the_log():
     """Second, smaller judgment call from the issue: a leg that silently fell back to a full
-    install and one that restored must not look the same in the run log.
-
-    Found tautological in self-review: a bare `"cache-hit" in gate` substring check also matches
-    the explanatory COMMENT a few lines above the step that reads it back -- that comment has to
-    say "cache-hit" in prose to explain the step below it, so the assertion passed even against a
-    version of this file where the step's `run:` block no longer read `outputs.cache-hit` at all.
-    Comments are stripped first, and the check is for the FUNCTIONAL reference
-    (`steps.<id>.outputs.cache-hit`), not the bare word, so only an actual readback satisfies it."""
+    install and one that restored must not look the same in the run log. Found tautological in
+    self-review: a bare `"cache-hit" in gate` substring check also matched an explanatory
+    COMMENT, not just a functional readback -- comments are stripped first, and the check is for
+    the FUNCTIONAL reference (`steps.<id>.outputs.cache-hit`), not the bare word."""
     gate = _without_comments(_gate_job())
     assert "steps.cache-claude-cli-npm.outputs.cache-hit" in gate, (
         "nothing in the gate job's step BODIES (comments excluded) reads back "

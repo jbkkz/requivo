@@ -91,12 +91,9 @@ def test_resolve_cards_on_a_zero_card_install_names_the_install_not_the_card(zer
 def test_every_card_selector_reports_the_same_code_for_the_same_install(zero_cards, selector):
     """The structural half, and the reason this is worth a test rather than a line.
 
-    Three functions resolve a caller-supplied card name against the installed vocabulary. They are
-    read side by side — a session is created through one and refined through another — so a
-    condition that earns `no_context_cards` from two of them and `unknown_context_card` from the
-    third is a surface being lenient where its siblings are strict. Stated over the set, a fourth
-    selector is a new parameter here rather than a silent gap.
-    """
+    Three functions resolve a caller-supplied card name against the installed vocabulary and are read
+    side by side, so a condition earning `no_context_cards` from two and `unknown_context_card` from
+    the third is one surface being lenient where its siblings are strict."""
     with pytest.raises(NoContextCardsError):
         selector([A_NAME])
 
@@ -118,16 +115,11 @@ def _raise(problem: RequivoError | None) -> None:
 
 
 def test_the_install_is_diagnosed_ahead_of_a_malformed_token_too(zero_cards):
-    """Which of the two guards wins is a decision, so it is asserted rather than left implicit.
-
-    A stray comma (`--context "a,,b"`) earns `empty_selector_token`, and a name carrying a control
-    character earns `unsafe_selector_token` — both from `normalize_tokens`, which `resolve_cards`
-    used to reach before it looked at the card table at all. On a card-less install the install is
-    now reported first, and that precedence is not this function's invention: `load_context` has
-    diagnosed the install ahead of `_selection_keys` since #33, with a test on it, and the two are
-    read side by side. Telling somebody about their stray comma while the install has no cards to
-    select from is the same misdirection as telling them about their spelling.
-    """
+    """Which guard wins is a decision, asserted rather than left implicit. A stray comma earns
+    `empty_selector_token` and a control character earns `unsafe_selector_token`, both from
+    `normalize_tokens` -- but on a card-less install the install is reported first, the same
+    precedence `load_context` has held ahead of `_selection_keys` since #33. Telling somebody
+    about a stray comma with no cards to select from is the same misdirection as their spelling."""
     for malformed in ([""], ["  "], ["ok-card\nAll clear."]):
         with pytest.raises(NoContextCardsError):
             resolve_cards(malformed)
@@ -144,12 +136,10 @@ def test_the_install_is_diagnosed_ahead_of_a_malformed_token_too(zero_cards):
 def test_creating_a_session_on_a_zero_card_install_refuses_at_creation(zero_cards, tmp_path,
                                                                       monkeypatch):
     """Invariant 14: the service layer is the integrity boundary, not the interfaces.
-
-    `create_session` resolves the selection itself rather than trusting the caller, so this is the
-    line every surface arrives at. The session it used to create was one that could never be
-    analysed: the first provider turn reads the same roots and refuses. Refusing here says the
-    actionable thing at the first moment a new install is touched.
-    """
+    `create_session` resolves the selection itself rather than trusting the caller. The session
+    it used to create was one that could never be analysed: the first provider turn reads the
+    same roots and refuses. Refusing here says the actionable thing at the first moment a new
+    install is touched."""
     from requivo.services.sessions import SessionService
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path / "workspace"))
@@ -164,15 +154,11 @@ def test_creating_a_session_on_a_zero_card_install_refuses_at_creation(zero_card
 
 
 def test_no_selection_at_all_is_still_no_selection(zero_cards):
-    """The deliberate non-change, pinned so that it reads as a decision rather than an oversight.
-
-    An empty *list* is not an empty token: `normalize_tokens` documents it as "no selection was made
-    at all", and `resolve_cards` answers `None` for it — the every-card sentinel. The guard is not
-    applied to that answer, and the reason is uniformity rather than leniency: `SessionService`,
-    the CLI and the deterministic verbs all skip `resolve_cards` entirely when no cards were named,
-    so refusing here would make the Web — the one caller that passes `[]` through — the only surface
-    that refuses. The install is still caught, by `load_context`, at the point the cards are read.
-    """
+    """The deliberate non-change, pinned so it reads as a decision rather than an oversight. An
+    empty list is not an empty token: `resolve_cards` answers `None` for it, the every-card
+    sentinel, and the guard is not applied there -- not leniency but uniformity, since
+    `SessionService`, the CLI and the deterministic verbs all skip `resolve_cards` when no cards
+    were named. The install is still caught by `load_context`, at the point the cards are read."""
     assert resolve_cards([]) is None
     with pytest.raises(NoContextCardsError):
         load_context(None)          # …and the same install is refused where the cards are needed

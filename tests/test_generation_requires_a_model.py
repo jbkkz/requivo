@@ -17,7 +17,7 @@ well as in the control flow. That is what stops a future call site reintroducing
 forgetting the guard: without it, eight pyright errors come back.
 
 Driven directly against the services with a stub `ReasoningProvider` — no CLI, no web, no network —
-the same shape `test_paid_call_safety_208.py` uses.
+the same shape `test_paid_call_safety.py` uses.
 """
 
 from __future__ import annotations

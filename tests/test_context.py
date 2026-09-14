@@ -67,12 +67,10 @@ def test_average_card_byte_size_matches_an_independent_computation():
 
 def test_a_card_weighs_the_same_whatever_its_line_endings(tmp_path):
     """The Windows leg, reproduced on any platform. A card checked out with CRLF is one byte per
-    line larger on disk, and `load_context()` never sees those bytes: it reads in text mode, so the
-    decoder collapses CRLF to LF before anything reaches `{{CONTEXT}}`. Measuring `st_size` made the
-    #257 disclosure over-report on exactly one platform, and made this module's own byte-total and
-    percentage assertions red there and green everywhere else.
-
-    Goes red against `p.stat().st_size`: the two files below differ on disk by their line count."""
+    line larger on disk, and `load_context()` never sees those bytes -- it reads in text mode, so
+    CRLF collapses to LF before anything reaches `{{CONTEXT}}`. Measuring `st_size` made the #257
+    disclosure over-report on exactly one platform. Goes red against `p.stat().st_size`: the two
+    files below differ on disk by their line count."""
     body = "# card\n\nline one\nline two\n"
     lf = tmp_path / "lf.md"
     crlf = tmp_path / "crlf.md"
@@ -96,11 +94,10 @@ def test_average_card_byte_size_is_none_on_an_empty_install(monkeypatch):
 
 def test_the_docs_stated_prompt_weight_range_matches_a_live_measurement():
     """The percentage claim ("65-78% of every call's system prompt") was unguarded -- found in
-    review: only the byte-total sentence one line above it was pinned. Every generator prompt is
-    pure offline asset assembly (`build_prompt`, no API call), so the real min/max across all eight
-    is measured here and checked against the documented range -- the next prompt-asset edit that
-    moves these percentages (a routine change under this repo's own golden-harness workflow) now
-    goes red instead of leaving a stale-but-plausible number in the doc."""
+    review, where only the byte-total sentence above it was pinned. Every generator prompt is
+    pure offline asset assembly (no API call), so the real min/max across all eight is measured
+    here and checked against the documented range -- the next prompt-asset edit that moves these
+    percentages now goes red instead of a stale number left in the doc."""
     from requivo.core.context import build_prompt
 
     sizes = _bundled_card_sizes()

@@ -167,14 +167,11 @@ _SLOTS_WITH_NO_SPECIFIC_ARTIFACT = {
 
 
 def test_every_required_slot_is_consumed_by_a_specific_artifact_or_is_exempted():
-    """#269. `schema_slot_ids()` is the single source of the required set (it already excludes
-    `optional: true` slots -- `config_vs_custom` is a platform edge some products never populate, and
-    requiring it in some artifact's set the way a normal slot is required would assert a fact the
-    schema itself does not claim).
-
-    A required slot must appear in some `artifact_slots()` value that is not `brief`'s `*` entry
-    (every slot is trivially in that one), or be named in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a
-    reason. A slot in neither is the silent gap #269 found."""
+    """#269. `schema_slot_ids()` is the single source of the required set (already excluding
+    `optional: true` slots, which requiring here would assert a fact the schema itself does not
+    claim). A required slot must appear in some `artifact_slots()` value that is not `brief`'s `*`
+    entry, or be named in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a reason -- a slot in neither is
+    the silent gap #269 found."""
     _, required = schema_slot_ids()
     amap = artifact_slots()
     specific = set().union(*(slots for name, slots in amap.items() if name != "brief"))
@@ -216,36 +213,24 @@ def test_pc_impact_no_slots_prints_the_full_map():
 # ── Tier 2 (B): change-detection — stale artifacts on disk ────────────────────
 
 
-def test_unrelated_slot_change_keeps_artifact_fresh():
-    # The freshness fix: an artifact goes stale only when the change reaches a slot it consumes — not
-    # on every revision bump. criteria consumes {workflow, business_rules, permissions, edge_cases,
-    # acceptance}; success_metrics is outside that set, so a material change to it leaves criteria fresh.
+@pytest.mark.parametrize("slug, slot_name, before, after", [
+    ("clitest-fresh-unrelated", "success_metrics",
+     slot(40, "inferred", "high"), slot(90, "explicit", "high")),
+    ("clitest-fresh-completeness", "workflow",
+     slot(50, "explicit", "high"), slot(95, "explicit", "high")),
+], ids=["unrelated-slot", "completeness-only-on-consumed-slot"])
+def test_a_non_material_change_keeps_the_artifact_fresh(slug, slot_name, before, after):
+    # criteria consumes {workflow, business_rules, permissions, edge_cases, acceptance}. A change to
+    # success_metrics is outside that set, so it is non-material for criteria; a completeness-only
+    # move on a slot criteria DOES consume is non-material too (diff_models ignores completeness) --
+    # both leave criteria fresh despite a real revision bump.
     from requivo.services.sessions import SessionService
     svc = SessionService()
-    slug = "clitest-fresh-unrelated"
     store.create_session(slug, "req")
-    svc.update_model(slug, out({"success_metrics": slot(40, "inferred", "high")}).model_dump())
-    ArtifactService().save(slug, "criteria", "# criteria", source_revision=1)  # generated at revision 1
+    svc.update_model(slug, out({slot_name: before}).model_dump())
+    ArtifactService().save(slug, "criteria", "# criteria", source_revision=1)
     try:
-        # confidence moves inferred → explicit on an UNRELATED slot: a real change, new revision.
-        svc.update_model(slug, out({"success_metrics": slot(90, "explicit", "high")}).model_dump())
-        items = ArtifactService().list(slug)
-        assert items["criteria"]["stale"] is False        # revision advanced, but criteria is untouched
-    finally:
-        shutil.rmtree(store.canonical_dir(slug), ignore_errors=True)
-
-
-def test_completeness_only_change_keeps_artifact_fresh():
-    # A completeness-only bump on a CONSUMED slot is not a material change (diff_models ignores
-    # completeness), so it must not invalidate the artifact — completeness is progress noise, not signal.
-    from requivo.services.sessions import SessionService
-    svc = SessionService()
-    slug = "clitest-fresh-completeness"
-    store.create_session(slug, "req")
-    svc.update_model(slug, out({"workflow": slot(50, "explicit", "high")}).model_dump())
-    ArtifactService().save(slug, "criteria", "# criteria", source_revision=1)  # criteria consumes workflow
-    try:
-        svc.update_model(slug, out({"workflow": slot(95, "explicit", "high")}).model_dump())  # only %
+        svc.update_model(slug, out({slot_name: after}).model_dump())
         items = ArtifactService().list(slug)
         assert items["criteria"]["stale"] is False
     finally:
@@ -253,15 +238,11 @@ def test_completeness_only_change_keeps_artifact_fresh():
 
 
 def test_related_slot_change_marks_artifact_stale():
-    """Invariant 1: an artifact is stale when something it rests on changed — never because the
-    session moved past its source revision, which is *provenance*. Two edge sets feed the verdict:
-    the slots an artifact consumes (`ARTIFACT_SLOTS`) and the reasoning layer
-    (`REASONING_CONSUMERS` — every generator, since each is prompted with the full model, so
-    `diff_reasoning` invalidates on its own; see
-    `test_reasoning_that_changes_without_a_slot_moving_still_invalidates`). Report
-    `ArtifactStatus.stale`; never infer staleness by comparing revisions — the control for that half
-    is `test_an_older_revision_that_missed_the_artifact_leaves_it_fresh` (moved here from
-    CLAUDE.md by #286)."""
+    """Invariant 1: an artifact is stale when something it rests on changed, never because the
+    session moved past its source revision (which is *provenance*) — verdict from two edge sets:
+    the slots an artifact consumes (`ARTIFACT_SLOTS`) and the reasoning layer (`REASONING_CONSUMERS`,
+    see `test_reasoning_that_changes_without_a_slot_moving_still_invalidates`). The revision-comparison
+    control is `test_an_older_revision_that_missed_the_artifact_leaves_it_fresh` (moved here by #286)."""
     # The other side: a material change to a slot the artifact DOES consume flags it stale.
     from requivo.services.sessions import SessionService
     svc = SessionService()

@@ -55,32 +55,11 @@ class _CountingProvider:
                     "here, and the msvcrt branch takes the same non-blocking path. "
                     "REASONED, NOT OBSERVED on Windows -- see #209.")
 def test_a_concurrent_first_discovery_is_refused_before_any_provider_call():
-    """The finding, and the three shape decisions behind the guard that this test is what goes red
-    for.
-
-    **A different file from `session_lock`, deliberately.** That lock covers a compound write and is
-    released *before* a provider call starts -- a call runs seconds to minutes and cannot hold a
-    write lock open that long, by that lock's own docstring. That released window is exactly what two
-    concurrent first-discovery requests both walk into: both read revision 0, both pass
-    `_require_revision_zero`, and both are free to pay. This guard serialises *that* window without
-    touching the write lock at all.
-
-    **Non-blocking, unlike `session_lock`.** A second caller does not wait its turn, because there is
-    no turn: a first discovery is one operation that either lands the session's very first revision
-    or does not, and telling the loser immediately -- before it has spent anything -- beats making it
-    wait out `session_lock`'s 30-second deadline for a write that was never going to be its own. The
-    `assert provider.calls == 0` below is what states that as a fact rather than a hope.
-
-    **Not re-entrant, unlike `session_lock`.** Nothing here legitimately nests this guard around
-    itself, and the plain non-reentrant shape is what keeps "a losing caller makes zero provider
-    calls" a fact about the lock file rather than about a depth counter a nested call could quietly
-    increment past.
-
-    `flock` is taken on the *open file description*, so a crashed holder -- a killed CLI, a restarted
-    web worker -- releases it the instant the process dies, with no mtime heuristic needed to tell a
-    stuck holder from a dead one. The refusal is `SessionLockedError` (`session_locked`, already
-    mapped to 503): nothing about the loser's request was wrong, and resubmitting once the winner
-    finishes is the correct next step rather than a different one."""
+    """Two concurrent first-discovery requests must not both pay. Unlike `session_lock` (released
+    before a provider call, and re-entrant), this guard is a non-blocking, non-reentrant `flock`
+    scoped to the *open file description*, so a crashed holder releases it on process death. The
+    loser gets `SessionLockedError` (`session_locked`, 503) before spending anything --
+    `assert provider.calls == 0` below is the fact, not a hope. See #209."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
 
@@ -122,14 +101,10 @@ def test_run_discovery_still_succeeds_once_the_guard_is_free():
 
 def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
     """Found in review: the guard alone is not the whole guarantee if the revision is checked only
-    *before* it, against a snapshot that can be stale by the time the guard is actually won. A caller
-    whose own outer check genuinely read revision 0, but who is merely slow to reach the guard, must
-    not walk into an uncontended, already-released guard and pay for a call it was always going to
-    lose. The revision has to be re-read *inside* the guard, right before the provider is called.
-
-    Reproduced by monkeypatching `snapshot()` so the late caller's outer (pre-guard) read is frozen
-    at revision 0 -- as if taken before the winner ever wrote -- while its inner (post-guard) read
-    is the real, current one."""
+    *before* it, against a snapshot that can go stale before the guard is actually won -- it must be
+    re-read *inside* the guard, right before the provider is called. Reproduced by monkeypatching
+    `snapshot()` so the late caller's outer (pre-guard) read is frozen at revision 0 while its inner
+    (post-guard) read is the real, current one."""
     from requivo.services.sessions import SessionSnapshot
 
     sessions = SessionService()
@@ -163,10 +138,9 @@ def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
 def test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
     """The same race `test_a_late_caller_with_a_stale_outer_check_still_pays_nothing` pins for
     `run_discovery`, one entry point over. `start()`'s outer check reads the revision off the meta
-    `claim_session` returns rather than a fresh snapshot, so a late caller whose own `create_session`
-    call genuinely raced a winner's write has to be caught by the *inner* re-read inside the guard
-    (`self.sessions.repo.read_meta(...)`), taken immediately before the provider is ever built --
-    not by the outer check, which by construction cannot see the winner's write."""
+    `claim_session` returns rather than a fresh snapshot, so a late caller has to be caught by the
+    *inner* re-read inside the guard (`self.sessions.repo.read_meta(...)`), not by the outer check,
+    which by construction cannot see the winner's write."""
     from requivo.core.persistence import SessionMeta
 
     sessions = SessionService()
@@ -232,23 +206,11 @@ def test_start_is_guarded_the_same_way_as_run_discovery():
                     "platform that never enforced the restriction can reach. REASONED, NOT "
                     "OBSERVED: the same platform limit the sibling #372 fixtures carry.")
 def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery_guard():
-    """#390, and the shape is a two-commit join no single diff could show.
-
-    `e03aa47` added `_discovery_guard_path` calling `validate_slug` unconditionally. `3fa1423`, the
-    very next commit, swept `_child_of` and `lock_path` off `validate_slug` and onto #372's
-    conditional pair (`_slug_shape` + `_refuse_new_reserved_slug`) -- a sweep written against the
-    call sites that existed when it was written, and this one had existed for one commit. Both
-    commits are individually correct; the defect lives only in their composition, which is why it
-    reached review twice and neither diff carried it.
-
-    The measurable cost: a session already on disk under a Windows reserved name (created before
-    #221 shipped, or on a platform that never refused it) is readable, listable and lockable, and
-    `run_discovery` alone refuses it with `InvalidSlugError` -- the guard that exists to stop a
-    *second* paid call becoming the one thing standing between that session and its first.
-
-    Driven through `run_discovery` rather than `_discovery_guard_path` alone: the path helper is
-    where the bug is, but the verb is where a user meets it, and asserting the provider was actually
-    reached is what stops this passing against a guard that merely refuses more quietly."""
+    """#390: a two-commit join no single diff showed. `e03aa47` added `_discovery_guard_path`
+    calling `validate_slug` unconditionally; `3fa1423` swept the other call sites onto #372's
+    conditional pair and missed this one. Cost: a session on disk under a Windows reserved name
+    (pre-#221) is readable and lockable, and only `run_discovery`'s guard still refused it with
+    `InvalidSlugError`. Driven through `run_discovery`, asserting the provider was actually reached."""
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()

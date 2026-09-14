@@ -323,7 +323,7 @@ Requivo reads a session carrying either row as a note, and format_version stays 
 ## The Python import surface — the declared seam (#423)
 
 The whole package tree used to be disclaimed as "not a published API" while `requivo-cloud` already
-imported nine names across four modules. `tests/test_public_seam_423.py` pins that the names below
+imported nine names across four modules. `tests/test_public_import_seam.py` pins that the names below
 still resolve; moving, renaming or changing the signature of one costs a major version, priced
 exactly like the CLI and the `--json` envelopes above.
 
