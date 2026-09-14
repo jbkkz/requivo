@@ -2,9 +2,14 @@
 diagnostics tier is frozen".
 
 Split out of `core/persistence.py` by #550 (the lean pass, #548): moving is the only thing that
-happens to it. `NonSessionEntry`, `UnexaminableEntry` and `_describe_non_session` describe what a
-scan finds; `_ScanMixin` is the `Store` methods that run one (`Store` in `store.py` inherits it,
-unchanged method bodies, moved class only).
+happened to it there. #556 (same lean pass) then collapsed its two report dataclasses --
+`NonSessionEntry` (what a session-root scan found under a name that is not a session) and
+`UnexaminableEntry` (a name whose examination itself raised, on either root) -- into one
+`kind`-discriminated `UnexaminableEntry`, since `NonSessionEntry` was never part of the declared
+Python seam (`docs/compatibility.md`) and `UnexaminableEntry` was: keeping the declared name and
+folding the undeclared one into it costs nothing public. `_describe_non_session` is still the one
+describer that builds it; `_ScanMixin` is the `Store` methods that run a scan (`Store` in `store.py`
+inherits it, unchanged method bodies, moved class only).
 """
 from __future__ import annotations
 
@@ -18,68 +23,63 @@ _NON_SESSION_SAMPLE = 5
 
 
 @dataclass(frozen=True)
-class NonSessionEntry:
-    """Something under the session root that is **not** a session, described and not interpreted.
+class UnexaminableEntry:
+    """One report entry from either scan in this module, discriminated by `kind`.
 
-    A directory holding only `.lock` is almost certainly what `session_lock` left behind before #22,
-    and *almost certainly* is not a licence to say so: a half-extracted archive, an interrupted copy
-    and a hand-made directory are the same shape from here, and `integrity.py`'s rule is that the
-    evidence is the directory and only the directory. So every field is an observation and there is
-    deliberately no field spelling a conclusion — a reader acts on the name of the field, not on the
-    paragraph beside it. `test_a_symlink_is_reported_as_one_and_its_target_is_not_read`.
+    Two shapes collapsed here by #556, and `to_dict()` still writes each as it always did --
+    **the `--json` payload is byte-identical**, this is a change to the implementation only.
 
-    `slug_shaped` is the one derived value, and it is about the *name*: whether `create_session`'s
-    rename would reach this directory and collide with it, which is what decides whether the entry
-    costs anybody anything. It is `_shape_only` — pattern *and* length, since the pattern alone once
-    marked an 81-character name as one a session would silently lose (`test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken`)
-    — and deliberately not `is_slug`, whose unconditional creation-time refusal read a *taken*
-    reserved name as unreachable and left `doctor`'s `[name taken]` hint silent about the one
-    directory it exists to name (#408,
-    `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken`).
+    - `kind == "unexaminable"` (the default) is the original, and still the *only* shape a name
+      whose own examination raised can carry: we do not know what it is, only that a probe of it
+      failed, and `to_dict()` renders just `{name, error}` for it, as `UnexaminableEntry` always
+      has. This is the shape `docs/compatibility.md` declares stable.
+    - Every other `kind` (`"symlink"`, `"directory"`, `"file"`, `"other"`, `"unknown"`) is what
+      `NonSessionEntry` used to carry alone: something under the session root that is **not** a
+      session, described and not interpreted. A directory holding only `.lock` is almost certainly
+      what `session_lock` left behind before #22, and *almost certainly* is not a licence to say so
+      -- a half-extracted archive, an interrupted copy and a hand-made directory are the same shape
+      from here, and `integrity.py`'s rule is that the evidence is the directory and only the
+      directory. So every field beyond `kind` is an observation and there is deliberately no field
+      spelling a conclusion -- a reader acts on the name of the field, not on the paragraph beside
+      it. `test_a_symlink_is_reported_as_one_and_its_target_is_not_read`.
 
-    `entries` is capped at `_NON_SESSION_SAMPLE` and `entry_count` is the true total. Three states,
-    as everywhere: populated with `error` None (we looked inside); None with an `error` (we could
-    not, which must not render like an empty directory —
-    `test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty`); and None with no
-    `error` on a `file` or `other`, where there was nothing to look inside. Telling *empty* from
-    *could not look* matters because an empty directory costs nothing on POSIX, where `rename(2)`
-    replaces it, and everything on Windows, where `MoveFileEx` refuses any existing destination —
-    which is also why `slug_shaped` does not exempt an empty one.
+      `slug_shaped` is the one derived value, and it is about the *name*: whether `create_session`'s
+      rename would reach this directory and collide with it, which is what decides whether the entry
+      costs anybody anything. It is `_shape_only` -- pattern *and* length, since the pattern alone
+      once marked an 81-character name as one a session would silently lose
+      (`test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken`) -- and deliberately not `is_slug`,
+      whose unconditional creation-time refusal read a *taken* reserved name as unreachable and left
+      `doctor`'s `[name taken]` hint silent about the one directory it exists to name (#408,
+      `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken`).
+
+      `entries` is capped at `_NON_SESSION_SAMPLE` and `entry_count` is the true total. Three
+      states, as everywhere: populated with `error` None (we looked inside); None with an `error`
+      (we could not, which must not render like an empty directory --
+      `test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty`); and None with no
+      `error` on a `file` or `other`, where there was nothing to look inside. Telling *empty* from
+      *could not look* matters because an empty directory costs nothing on POSIX, where `rename(2)`
+      replaces it, and everything on Windows, where `MoveFileEx` refuses any existing destination --
+      which is also why `slug_shaped` does not exempt an empty one.
     """
     name: str
-    kind: str
-    entries: list[str] | None
-    entry_count: int | None
-    error: str | None
-    slug_shaped: bool
+    error: str | None = None
+    kind: str = "unexaminable"
+    entries: list[str] | None = None
+    entry_count: int | None = None
+    slug_shaped: bool = False
 
     def to_dict(self) -> dict:
+        if self.kind == "unexaminable":
+            return {"name": self.name, "error": self.error}
         return {"name": self.name, "kind": self.kind, "entries": self.entries,
                 "entry_count": self.entry_count, "error": self.error,
                 "slug_shaped": self.slug_shaped}
 
 
-@dataclass(frozen=True)
-class UnexaminableEntry:
-    """A name under the session root whose examination **raised** — the partition's third outcome.
-
-    Not a session, and not *not* a session: unknown. The probe that decides which one it is failed,
-    so both of the other answers would be claims nobody established.
-
-    `error` is the exception's own text rather than a code, for the reason every other third state
-    in this codebase keeps it: *permission denied on this path* is a remedy and `unexaminable` is
-    not. It carries the path, which is the part a user acts on."""
-    name: str
-    error: str
-
-    def to_dict(self) -> dict:
-        return {"name": self.name, "error": self.error}
 
 
-
-
-def _describe_non_session(p: Path) -> NonSessionEntry:
-    """Describe one entry, and **never raise**.
+def _describe_non_session(p: Path) -> UnexaminableEntry:
+    """Describe one entry that is not a session, and **never raise**.
 
     Totality is the point, not politeness. This runs inside the one `try` in `_session_health` that
     also holds the session listing, so an exception escaping here discards a session report that had
@@ -96,9 +96,14 @@ def _describe_non_session(p: Path) -> NonSessionEntry:
     `p` came out of `iterdir()` under `session_root()`, so it already occupies the one path
     `_refuse_new_reserved_slug` would be asked to probe -- that probe could only ever answer "does
     not refuse", so calling it would be a filesystem read this "never raise" function would then have
-    to guard, for an answer `p`'s existence already implies. `NonSessionEntry`'s own docstring carries
-    what `is_slug` broke here; pinned by
-    `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken`."""
+    to guard, for an answer `p`'s existence already implies. `UnexaminableEntry`'s own docstring
+    carries what `is_slug` broke here; pinned by
+    `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken`.
+
+    Every return here names a `kind` other than `"unexaminable"` -- this function describes
+    something, it never reports that description itself failed; `_scan_session_root` and
+    `scan_lock_root` are what raise `UnexaminableEntry`'s default shape, for a probe this one never
+    runs."""
     slug_shaped = _shape_only(p.name)
     try:
         # `is_symlink` first, and it does not follow. `is_dir()` does: a symlink at a slug name
@@ -107,20 +112,21 @@ def _describe_non_session(p: Path) -> NonSessionEntry:
         # a directory, and this file already treats one as the single case a containment guard has to
         # answer for (invariant 17). Found by review.
         if p.is_symlink():
-            return NonSessionEntry(p.name, "symlink", None, None, None, slug_shaped)
+            return UnexaminableEntry(p.name, kind="symlink", slug_shaped=slug_shaped)
         kind = "directory" if p.is_dir() else ("file" if p.is_file() else "other")
     except Exception as e:  # noqa: BLE001 - a describe that raises blanks a report that succeeded
         # `Path.is_dir()` swallows only what `_ignore_error` covers — ENOENT, ENOTDIR, ELOOP — and
         # re-raises the rest, EACCES among them. A stat we are not allowed to make lands here, and
         # what this is is then genuinely unknown: answering `other` would be a claim we cannot make.
-        return NonSessionEntry(p.name, "unknown", None, None, str(e), slug_shaped)
+        return UnexaminableEntry(p.name, error=str(e), kind="unknown", slug_shaped=slug_shaped)
     if kind != "directory":
-        return NonSessionEntry(p.name, kind, None, None, None, slug_shaped)
+        return UnexaminableEntry(p.name, kind=kind, slug_shaped=slug_shaped)
     try:
         names = sorted(c.name for c in p.iterdir())
     except Exception as e:  # noqa: BLE001 - same reason; the kind is known, the contents are not
-        return NonSessionEntry(p.name, kind, None, None, str(e), slug_shaped)
-    return NonSessionEntry(p.name, kind, names[:_NON_SESSION_SAMPLE], len(names), None, slug_shaped)
+        return UnexaminableEntry(p.name, error=str(e), kind=kind, slug_shaped=slug_shaped)
+    return UnexaminableEntry(p.name, kind=kind, entries=names[:_NON_SESSION_SAMPLE],
+                              entry_count=len(names), slug_shaped=slug_shaped)
 
 
 
@@ -189,7 +195,7 @@ class _ScanMixin:
         return self._scan_session_root()[0]
 
 
-    def scan_session_root(self) -> tuple[list[str], list[NonSessionEntry], list[UnexaminableEntry]]:
+    def scan_session_root(self) -> tuple[list[str], list[UnexaminableEntry], list[UnexaminableEntry]]:
         """All three parts of the session root from **one** listing — and the only way to reach the
         second one, since #300 (see below).
 
@@ -295,4 +301,3 @@ class _ScanMixin:
                 continue
             unexpected.append(p.name)
         return lock_slugs, unexpected, unexaminable
-

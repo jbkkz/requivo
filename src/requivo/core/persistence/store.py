@@ -42,7 +42,7 @@ from requivo.core.persistence.models import (
     content_hash,
     migrate_session,
 )
-from requivo.core.persistence.scan import NonSessionEntry, UnexaminableEntry, _ScanMixin
+from requivo.core.persistence.scan import UnexaminableEntry, _ScanMixin
 from requivo.core.selectors import display_token
 from requivo.paths import output_root as _ambient_output_root
 from requivo.paths import workspace_root
@@ -813,7 +813,7 @@ def list_session_slugs() -> list[str]:
 
 
 
-def scan_session_root() -> tuple[list[str], list[NonSessionEntry], list[UnexaminableEntry]]:
+def scan_session_root() -> tuple[list[str], list[UnexaminableEntry], list[UnexaminableEntry]]:
     """Ambient-default wrapper (#272) -- see `Store.scan_session_root`."""
     return _default_store().scan_session_root()
 

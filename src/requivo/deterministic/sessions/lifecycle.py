@@ -508,9 +508,14 @@ def _cmd_session_migrate(a, client) -> None:
             # Neither field is a slug: this entry was never established to be a legacy session at
             # all, only a name the scan could not stat into (#411) -- untrusted the same way, and
             # through the same escape, for the same reason (invariant 14).
+            #
+            # `e.error` is `str | None` on `UnexaminableEntry` (#556: one dataclass now carries both
+            # the "examination raised" shape, always populated, and the "described, no error" shape,
+            # never populated) -- every entry `_scan_legacy_root` builds is the first shape, so
+            # `or ""` is never live, it only states that for the checker.
             print("  could not examine (skipped, not counted as a session):")
             for e in unreadable:
-                print(f"    {display_token(e.name)}: {display_token(e.error)}")
+                print(f"    {display_token(e.name)}: {display_token(e.error or '')}")
         print("  Legacy files were preserved (read-only).")
     # Raised after the receipt is printed, never instead of it, for the same reason `session list`
     # raises after its rows: nothing on stdout is withheld, and a script that reads the exit code

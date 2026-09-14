@@ -102,7 +102,7 @@ from requivo.core.persistence.models import (
     load_model,
     migrate_session,
 )
-from requivo.core.persistence.scan import _NON_SESSION_SAMPLE, NonSessionEntry, UnexaminableEntry, _describe_non_session
+from requivo.core.persistence.scan import _NON_SESSION_SAMPLE, UnexaminableEntry, _describe_non_session
 from requivo.core.persistence.store import (
     _STORE_GITIGNORE,
     Store,
@@ -146,7 +146,7 @@ from requivo.paths import workspace_root
 
 __all__ = [
     "ArtifactRevisionOutOfRangeError", "ArtifactStatus", "InvalidFilenameError", "InvalidSlugError",
-    "MAX_FILENAME_LENGTH", "MAX_SLUG_LENGTH", "ModelUnreadableError", "NonSessionEntry",
+    "MAX_FILENAME_LENGTH", "MAX_SLUG_LENGTH", "ModelUnreadableError",
     "PersistedEngineOutput", "RevisionConflictError", "RevisionRecord", "SCHEMA_VERSION",
     "SESSION_FORMAT_VERSION", "SessionExistsError", "SessionLockedError", "SessionMeta",
     "SessionNotFoundError", "SessionUnreadableError", "Store", "UnexaminableEntry",
