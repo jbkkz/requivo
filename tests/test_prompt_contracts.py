@@ -32,6 +32,7 @@ _PLACEHOLDERS = ("<slot_id>",)
 _HEADING = re.compile(r"^# Output format[ \t]*$", re.M)
 _FENCE = re.compile(r"^```json[^\n]*\n(.*?)^```", re.S | re.M)
 
+
 def scan_prompts() -> list[Path]:
     """Every prompt asset, sorted. An empty result is an error rather than an answer (#10)."""
     if not PROMPTS.is_dir():
@@ -45,9 +46,11 @@ def scan_prompts() -> list[Path]:
         )
     return found
 
+
 def generator_for(op: str):
     """The function that issues `op`'s one provider call."""
     return ANALYZE_ENTRY if op == ANALYZE_OP else _GENERATORS[op]
+
 
 def contract_for(op: str) -> type[BaseModel]:
     """`op`'s contract, read from the generator's own source -- never a hand-synced table (drift risk)."""
@@ -73,6 +76,7 @@ def contract_for(op: str) -> type[BaseModel]:
         )
     return contract
 
+
 def output_format_example(op: str, text: str) -> str:
     """Three distinct refusals, not one -- each names a different repair; the must-fire control #266 asks for."""
     heading = _HEADING.search(text)
@@ -86,6 +90,7 @@ def output_format_example(op: str, text: str) -> str:
             f"{_OP_PROMPTS[op]} has an `# Output format` section with no ```json fence under it. The example is what " f"this guard validates; prose alone cannot be parsed."
         )
     return fence.group(1)
+
 
 def substitute_placeholders(value: Any, slot_id: str) -> Any:
     """Replace every placeholder token in keys and string values, recursively."""
@@ -102,10 +107,12 @@ def substitute_placeholders(value: Any, slot_id: str) -> Any:
         return value
     return value
 
+
 def sample_slot_id() -> str:
     """A real, required slot id -- deterministic so a failure message is reproducible."""
     _, required = schema_slot_ids()
     return sorted(required)[0]
+
 
 def example_for(op: str, *, normalised: bool = True) -> Any:
     """`op`'s Output-format example, parsed, with placeholders resolved unless asked otherwise."""
@@ -123,6 +130,7 @@ def example_for(op: str, *, normalised: bool = True) -> Any:
 # The scan set itself: "could not look" must never render as "looked and found nothing".
 # --------------------------------------------------------------------------------------------------
 
+
 def test_the_guard_scans_the_real_prompt_assets():
     """Name what was scanned. Everything below this line rests on the assets actually being here."""
     names = sorted(p.name for p in scan_prompts())
@@ -130,6 +138,7 @@ def test_the_guard_scans_the_real_prompt_assets():
     assert not missing, (
         f"the prompt-contract guard scanned {PROMPTS} and did not find {missing}; it is not looking at Requivo's " f"prompt assets. Scanned: {names}"
     )
+
 
 def test_the_guard_refuses_a_scan_it_could_not_make(monkeypatch, tmp_path):
     """Positive control for #10: an absent directory must error, not read as clean -- `glob` returns [] there."""
@@ -139,6 +148,7 @@ def test_the_guard_refuses_a_scan_it_could_not_make(monkeypatch, tmp_path):
     with pytest.raises(AssertionError, match="no such directory"):
         scan_prompts()
 
+
 def test_the_guard_refuses_an_empty_prompt_directory(monkeypatch, tmp_path):
     """The other shape of the same hole: the directory resolves, and holds nothing."""
     empty = tmp_path / "prompts"
@@ -147,11 +157,13 @@ def test_the_guard_refuses_an_empty_prompt_directory(monkeypatch, tmp_path):
     with pytest.raises(AssertionError, match="no prompt assets"):
         scan_prompts()
 
+
 def test_every_reachable_operation_is_covered_by_this_guard():
     """`_OP_PROMPTS` and `_GENERATORS`+analyze must name the same op set, or one side goes unscanned."""
     assert set(_OP_PROMPTS) == {ANALYZE_OP} | set(_GENERATORS), (
         f"_OP_PROMPTS covers {sorted(_OP_PROMPTS)} while the generators (plus {ANALYZE_OP!r}) cover " f"{sorted({ANALYZE_OP} | set(_GENERATORS))}. An operation in only one of them is unscanned."
     )
+
 
 def test_every_prompt_asset_belongs_to_an_operation():
     """The scan set and `_OP_PROMPTS` must account for each other: a file is dead weight, or a call fails at runtime."""
@@ -160,6 +172,7 @@ def test_every_prompt_asset_belongs_to_an_operation():
     assert on_disk == registered, (
         f"prompt assets on disk {sorted(on_disk)} and prompts named by _OP_PROMPTS {sorted(registered)} disagree; " f"unclaimed: {sorted(on_disk - registered)}, missing: {sorted(registered - on_disk)}"
     )
+
 
 def test_every_declared_placeholder_still_appears_in_a_prompt():
     """A placeholder no prompt writes is dead weight nobody can tell is live."""
@@ -173,6 +186,7 @@ def test_every_declared_placeholder_still_appears_in_a_prompt():
 # The guard itself: every example, against the contract its own generator parses with.
 # --------------------------------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("op", sorted(_OP_PROMPTS))
 def test_the_output_format_example_validates_against_its_contract(op):
     """The whole point: a drift here costs three paid calls and an `EngineError`, invisible elsewhere in the suite."""
@@ -184,6 +198,7 @@ def test_the_output_format_example_validates_against_its_contract(op):
             f"{_OP_PROMPTS[op]}'s Output-format example is refused by {contract.__name__}, the contract {op!r} replies " f"are parsed with. A model obeying this example produces a reply `_complete()` retries twice and then "
             f"fails on -- three paid calls per invocation. Fix whichever of the two moved; a prompt edit also owes a " f"golden-harness capture.\n{exc}"
         ) from exc
+
 
 def test_every_operation_resolves_to_a_contract_an_llm_may_fill():
     """Invariant 4: an LLM-filled contract is a StrictModel; extra="forbid" turns a drift into a refusal, not a trim."""
@@ -198,6 +213,7 @@ def test_every_operation_resolves_to_a_contract_an_llm_may_fill():
 # Positive controls. "No drift" also passes when the check could not fire.
 # --------------------------------------------------------------------------------------------------
 
+
 def test_a_renamed_key_in_an_example_is_refused():
     """#266's positive control: renaming `headline` in the brief example must go red, not pass silently."""
     example = example_for("brief")
@@ -205,6 +221,7 @@ def test_a_renamed_key_in_an_example_is_refused():
     challenge["header"] = challenge.pop("headline")
     with pytest.raises(ValidationError):
         contract_for("brief").model_validate(example)
+
 
 def test_a_required_contract_field_the_example_never_fills_is_refused():
     """Reverse drift: a required field the prompt never mentions -- a subclass, not an edit to contracts.py."""
@@ -216,6 +233,7 @@ def test_a_required_contract_field_the_example_never_fills_is_refused():
     with pytest.raises(ValidationError):
         extended.model_validate(example_for("release"))
 
+
 def test_the_placeholder_substitution_is_load_bearing():
     """`<slot_id>` isn't a real slot id: the raw example must be refused, the substituted one accepted."""
     contract = contract_for(ANALYZE_OP)
@@ -223,15 +241,18 @@ def test_the_placeholder_substitution_is_load_bearing():
         contract.model_validate(example_for(ANALYZE_OP, normalised=False))
     contract.model_validate(example_for(ANALYZE_OP))
 
+
 def test_the_extractor_refuses_a_prompt_with_no_output_format_section():
     """A prompt restructured so its example moves must go red rather than stop being checked."""
     with pytest.raises(AssertionError, match="no `# Output format` section"):
         output_format_example("brief", "# Role\n\nAdvise on the model.\n")
 
+
 def test_the_extractor_refuses_an_output_format_section_with_no_json_fence():
     """Prose under the heading is not an example; a different repair from a missing heading, so a separate test."""
     with pytest.raises(AssertionError, match="no ```json fence"):
         output_format_example("brief", "# Output format\n\nReply with a JSON object.\n")
+
 
 def test_the_extractor_reads_the_fence_under_the_heading_not_the_first_in_the_file():
     """Anchored on the heading, not a whole-file search, so an illustrative fence can't be mistaken for the example."""
@@ -241,12 +262,14 @@ def test_the_extractor_reads_the_fence_under_the_heading_not_the_first_in_the_fi
     )
     assert json.loads(output_format_example("release", text)) == {"title": "x"}
 
+
 def test_the_strictness_check_fires_on_a_permissive_contract(monkeypatch):
     """Positive control: a contract that dropped `StrictModel` must fail this assertion, not pass unnoticed."""
     permissive = create_model("PermissiveBrief", __base__=BaseModel, problem=(str, ""))
     monkeypatch.setattr(generators, "Brief", permissive)
     with pytest.raises(AssertionError, match="not a StrictModel"):
         test_every_operation_resolves_to_a_contract_an_llm_may_fill()
+
 
 def test_the_derivation_refuses_a_generator_it_cannot_read(monkeypatch):
     """`contract_for` must fail loudly, not guess, when a generator stops passing its contract positionally."""

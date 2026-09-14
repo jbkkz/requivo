@@ -2,7 +2,7 @@
 1. **Boundaries** (#10, #77, #76, #167, #183, #355, #422, #425) -- core stays provider- and process-free, and a surface reaches the provider or the store only through the seam named for it.
 2. **Encoding** (#11, #29, #464, #469, #298) -- every text read/write names its codec, and a console that cannot encode a glyph degrades rather than crashing after the work it reports is done.
 3. **Narrative references** (#75, #137, #156, #190, #286, #384, #504) -- a named test or decision record has to resolve and be findable by grep, not merely look like one.
-`tests/test_boundaries.py` and `tests/test_narrative_references.py` stay on disk as near-empty stubs (see each) so the ~49 places outside this file -- `src/`, `CLAUDE.md`, `docs/` -- that cite either module by its bare name keep resolving without a src/ diff; `test_encoding` never needed one (its name is one character short of this guard's own reference floor).
+`tests/test_boundaries.py`, `tests/test_encoding.py` and `tests/test_narrative_references.py` all stay on disk as near-empty stubs (see each) so the places outside this file -- `src/`, `CLAUDE.md`, `docs/` -- that cite any of the three by bare module name keep resolving without a src/ diff. `test_encoding`'s own name sits one character under this guard's ten-character reference floor, which let thirteen such citations (five under `src/`) go unnoticed until caught by inspection rather than by the guard itself -- a real gap in the floor, not fixed here; see the PR body.
 """
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # nothing" -- _scan.py's own refusal, exercised once here rather than once per section as it was
 # through each section's own scan()/list_files() wrapper before this merge.
 # ════════════════════════════════════════════════════════════════════════════════════════════════
+
 
 def test_the_scan_helpers_refuse_a_root_they_could_not_look_at(tmp_path):
     """The positive control for #10, for both helpers every section below is built on. Each section keeps its own real-tree control (naming what it actually scanned); this is the mechanism."""
@@ -86,10 +87,12 @@ _FORBIDDEN_ATTRIBUTES = {
     ("os", "putenv"): "writes ambient process state -- see os.environ",
 }
 
+
 def _package_for(path: Path, root: Path, root_package: str) -> str:
     """The dotted package a file lives in, so its relative imports can be resolved."""
     parts = path.relative_to(root).parts[:-1]
     return ".".join((root_package, *parts))
+
 
 def _resolve_relative(package: str, level: int) -> str:
     """The dotted base a relative import of depth `level` is measured from. Level 0 is absolute."""
@@ -98,10 +101,12 @@ def _resolve_relative(package: str, level: int) -> str:
     parts = package.split(".")
     return ".".join(parts[: max(0, len(parts) - (level - 1))])
 
+
 def scan(root: Path, package: str) -> list[tuple[Path, str]]:
     """Every Python file under `root`, paired with the dotted package its relative imports resolve against. The walk and the empty/missing-root refusal are `_scan.py`'s now (#288)."""
     found = list_python_files(root, label="boundary guard")
     return [(p, _package_for(p, root, package)) for p in found]
+
 
 def imported_modules(path: Path, package: str) -> set[str]:
     """Every module `path` imports, as a dotted absolute name -- relative imports resolved against `package`, since `from .anthropic import Client` is the shortest way to write the violation."""
@@ -118,6 +123,7 @@ def imported_modules(path: Path, package: str) -> set[str]:
                 names.update(f"{base}.{alias.name}" if base else alias.name for alias in node.names)
     return names
 
+
 def import_hits(modules: set[str], table: dict) -> dict:
     """The subset of `modules` whose dotted path crosses a forbidden name, mapped to the reason."""
     hits = {}
@@ -127,6 +133,7 @@ def import_hits(modules: set[str], table: dict) -> dict:
                 hits[module] = table[part]
                 break
     return hits
+
 
 def process_violations(path: Path, package: str) -> list[str]:
     """Every place `path` talks to the process rather than to its caller, one string per violation."""
@@ -151,6 +158,7 @@ def process_violations(path: Path, package: str) -> list[str]:
         out.append(f"imports {module} -- {reason}")
     return sorted(out)
 
+
 def _core_offenders(table: dict) -> dict:
     """Real-scan helper: forbidden imports across the actual core package, keyed by module."""
     offenders: dict = {}
@@ -162,6 +170,7 @@ def _core_offenders(table: dict) -> dict:
 
 # ---- the scan set itself ----
 
+
 def test_the_guard_scans_the_real_core_package():
     """Name what was scanned -- everything below is a negative assertion over this set."""
     scanned = scan(CORE, CORE_PACKAGE)
@@ -171,6 +180,7 @@ def test_the_guard_scans_the_real_core_package():
         f"the boundary guard scanned {CORE} and did not find {missing}; it is not looking at " f"Requivo's core. Scanned: {names}"
     )
 
+
 def test_the_guard_refuses_a_scan_it_could_not_make():
     """#10's own regression: `src/product_copilot/core` is this package's *previous* name, and before #10 both boundary tests passed green against it -- `Path.glob` on a missing directory returns `[]`, and `assert not set()` holds."""
     renamed_away = REPO_ROOT / "src" / "product_copilot" / "core"
@@ -178,6 +188,7 @@ def test_the_guard_refuses_a_scan_it_could_not_make():
     assert list(renamed_away.glob("*.py")) == [], "the shape being guarded against: glob returns [], not an error"
     with pytest.raises(AssertionError, match="no such directory"):
         scan(renamed_away, CORE_PACKAGE)
+
 
 def test_the_scan_is_recursive(tmp_path):
     """A future `core/<subpackage>/` must not be silently unscanned -- the old glob was `*.py`."""
@@ -194,6 +205,7 @@ def test_the_scan_is_recursive(tmp_path):
     assert import_hits(imported_modules(buried, found["sub/buried.py"]), _PROVIDER_IMPORTS), (
         "a provider import buried one directory down went unflagged"
     )
+
 
 def _force_default_encoding(monkeypatch, tmp_path: Path, encoding: str) -> bool:
     """Force what an encoding-less `open()` falls back to, and report whether the force took.
@@ -218,6 +230,7 @@ def _force_default_encoding(monkeypatch, tmp_path: Path, encoding: str) -> bool:
         return True
     return False
 
+
 def test_the_guard_reads_source_as_utf8(tmp_path, monkeypatch):
     """Every module in core carries an em dash, and `read_text()` with no encoding decodes with the *locale* codepage -- so under `LC_ALL=C` the pre-#10 guard died with `UnicodeDecodeError` before it could run. Forces the ambient default first (asserting only that `_parse` succeeds would prove nothing on a UTF-8
     locale) and skips loudly where the force cannot take."""
@@ -234,10 +247,12 @@ def test_the_guard_reads_source_as_utf8(tmp_path, monkeypatch):
 
 # ---- no provider, in either direction ----
 
+
 def test_core_never_imports_anthropic():
     """requivo.core is provider-free by construction: no module may import the SDK, so the deterministic engine works with no API key and no `anthropic` installed."""
     offenders = _core_offenders({"anthropic": _PROVIDER_IMPORTS["anthropic"]})
     assert not offenders, f"requivo.core must not import anthropic; offenders: {offenders}"
+
 
 def test_core_never_imports_a_provider():
     """Core must not import the provider package either -- the dependency arrow points provider -> core, never the reverse."""
@@ -253,6 +268,7 @@ _IMPORT_VIOLATIONS = {
     "relative_bare.py": "from .. import providers\n",
     "relative_aliased.py": "from ..providers.anthropic import AnthropicProvider as P\n",
 }
+
 
 def test_the_import_guard_sees_every_way_of_writing_the_violation(tmp_path):
     """Positive control: "no offenders" also passes when the scan found nothing, so each forbidden shape gets a fixture the guard must flag -- including the three relative forms a previous version skipped outright on `node.level != 0`."""
@@ -279,6 +295,7 @@ _LEGITIMATE_IMPORTS = """
     from . import errors
 """
 
+
 def test_the_import_guard_does_not_fire_on_what_core_legitimately_imports(tmp_path):
     """The must-fire cases above only mean something next to a must-not-fire case: a detector that flags everything is as useless as one that flags nothing."""
     root = tmp_path / "core"
@@ -287,6 +304,7 @@ def test_the_import_guard_does_not_fire_on_what_core_legitimately_imports(tmp_pa
     assert not import_hits(imported_modules(path, package), _PROVIDER_IMPORTS)
 
 # ---- no argv, no standard streams, no environment, no exit ----
+
 
 def test_core_never_touches_the_process():
     """The half of invariant 7 nothing enforced before #10 -- core was clean by luck, not by guard."""
@@ -315,6 +333,7 @@ _PROCESS_VIOLATIONS = {
     "parses_args.py": "import argparse\n\ndef parser():\n    return argparse.ArgumentParser()\n",
     "buried/deeper.py": "import sys\n\ndef slug():\n    return sys.argv[1]\n",
 }
+
 
 def test_the_process_guard_sees_each_forbidden_construct(tmp_path):
     """Positive control, one fixture per construct, so a construct that stops being detected shows up as itself rather than as a quiet narrowing of the guard."""
@@ -352,6 +371,7 @@ _LEGITIMATE_CORE = """
         printed = input.strip()
         return printed
 """
+
 
 def test_the_process_guard_allows_what_core_legitimately_does(tmp_path):
     """Where the line sits, pinned. A guard that fails on correct code is deleted by the next person, so file IO, `logging`, `sys.version_info` and a local named like a builtin must all pass."""
@@ -394,6 +414,7 @@ PROVIDER_TREES = (
     (REPO_ROOT / "src" / "requivo" / "api", "requivo.api"),  # #425, the second HTTP surface
 )
 
+
 def provider_subjects() -> list[tuple[Path, str, str]]:
     """Every surface the provider guard watches, as (path, package, label) -- the allowlist key. `cli.py` and `http.py` are named individually (the latter is not itself a surface by this guard's own "touches argv/stdout/HTTP" test, but the one module outside the trees below that legitimately reaches a provider
     name); the rest are walked, so a module added later arrives inside the scan set rather than beside it."""
@@ -411,6 +432,7 @@ def provider_subjects() -> list[tuple[Path, str, str]]:
 # access to the module behind a three-entry table.
 _WHOLE_MODULE = "(the whole module)"
 
+
 def subject_module(path: Path) -> Path:
     """`scan`, for a guard whose subject is one named module. Same #10 rule: `cli.py` has been renamed along with its package once already, and a guard reading a missing file as an empty import set would have gone green straight through it."""
     if not path.is_file():
@@ -419,9 +441,11 @@ def subject_module(path: Path) -> Path:
         )
     return path
 
+
 def _crosses_providers(module: str) -> bool:
     """True if a dotted module name passes through `providers`, at any depth and under any prefix."""
     return "providers" in module.split(".")
+
 
 def provider_names(path: Path, package: str) -> set[str]:
     """Every name `path` can reach inside `requivo.providers`. A *module* import contributes the `_WHOLE_MODULE` marker instead of a bare name, since `import requivo.providers.anthropic` leaves every function in it one attribute away. Relative imports resolved against `package`."""
@@ -446,6 +470,7 @@ def provider_names(path: Path, package: str) -> set[str]:
                     names.add(f"{module}.{alias.name} {_WHOLE_MODULE}" if submodules else alias.name)
     return names
 
+
 def test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns():
     """#77, #167: every interface is a thin layer over the services, with no second orchestration. False on `cli.py` (imported `run`/`advise`/`estimate`) and on `render/terminal.py` (imported `PRICING_AS_OF`/`UsageLedger` to print a cost line) -- the purest view layer named a vendor. Both directions asserted: an
     allowlist entry naming an import no longer made fails too, so a surface emptied or renamed away goes red rather than reading as one that reaches nothing."""
@@ -461,6 +486,7 @@ def test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns
     assert not stale, (
         f"_SURFACE_PROVIDER_ALLOWLIST still names {stale}, which no surface imports any more. " f"Either the guard is reading the wrong files, or the entry is stale prose -- delete it."
     )
+
 
 def test_the_provider_guard_names_what_it_scanned():
     """#10, for this scan set: `render/`, `web/`, `deterministic/` and `api/` are packages, and a walk that silently found nothing under one would be an all-clear over exactly the layer #167 (render/), #183 (web/, deterministic/) and #425 (api/) each found unguarded."""
@@ -480,12 +506,14 @@ _SURFACE_PROVIDER_IMPORTS = {
     "relative_bare.py": "from . import providers\n",
 }
 
+
 def test_the_surface_guard_sees_every_way_of_reaching_the_provider(tmp_path):
     """Positive control: each shape of the violation gets a fixture the guard must see, module forms included, since those are the ones that would otherwise look like one tidy name."""
     root = tmp_path / "requivo"
     _write_tree(root, _SURFACE_PROVIDER_IMPORTS)
     missed = [path.name for path, package in scan(root, CLI_PACKAGE) if not provider_names(path, package)]
     assert not missed, f"the surface guard is blind to these: {missed}"
+
 
 def test_a_whole_module_import_cannot_pass_as_a_named_surface_concern(tmp_path):
     """`import requivo.providers.anthropic` leaves `advise` one attribute away, so it must not reduce to a name a bare allowlist could hold."""
@@ -516,12 +544,14 @@ _LEGITIMATE_SURFACE = """
         return sorted(providers)
 """
 
+
 def test_the_surface_guard_does_not_fire_on_what_an_interface_legitimately_imports(tmp_path):
     """The must-not-fire half: an interface is *supposed* to import the services, the renderers and the core error types."""
     root = tmp_path / "requivo"
     _write_tree(root, {"ordinary.py": _LEGITIMATE_SURFACE})
     path, package = scan(root, CLI_PACKAGE)[0]
     assert provider_names(path, package) == set()
+
 
 def test_the_surface_guard_refuses_a_subject_it_could_not_read():
     """The #10 control, one file down: `src/product_copilot/cli.py` is the pre-rename path, and reading a missing file as "imports nothing" is the same all-clear nobody earned."""
@@ -574,6 +604,7 @@ _SURFACE_STORAGE_ALLOWLIST = {
     ("deterministic/sessions/lifecycle.py", "UnexaminableEntry"): "a plain dataclass, not a call -- reused vocabulary for the legacy out/ root's own scan (#411), which has no repository method of its own.",
 }
 
+
 def surface_subjects() -> list[tuple[Path, str, str]]:
     """Every surface file, as (path, package, label) -- the allowlist key. `cli.py`/`cli_support.py` are named individually and the rest walked, so a module added later (`deterministic/` became a package at #73) arrives inside the scan set rather than beside it."""
     src = REPO_ROOT / "src" / "requivo"
@@ -585,6 +616,7 @@ def surface_subjects() -> list[tuple[Path, str, str]]:
         subjects.extend((p, pkg, p.relative_to(src).as_posix()) for p, pkg in scan(root, package))
     return subjects
 
+
 def _dotted(node: ast.AST) -> str | None:
     """`a.b.c` as a string, for an Attribute chain rooted in a plain Name. None if it is not one."""
     parts: list[str] = []
@@ -595,6 +627,7 @@ def _dotted(node: ast.AST) -> str | None:
         return None
     parts.append(node.id)
     return ".".join(reversed(parts))
+
 
 def persistence_names(path: Path, package: str) -> set[str]:
     """Every name `path` can reach inside `core.persistence`. Every surface writes `from requivo.core import persistence as store`, so the import set alone is one entry for a file making eighteen calls -- module aliases are resolved first, then every attribute taken off one is collected, which is what makes the
@@ -625,6 +658,7 @@ def persistence_names(path: Path, package: str) -> set[str]:
                 names.add(attr)
     return names
 
+
 def test_the_surfaces_reach_the_store_only_through_the_named_filesystem_concerns():
     """#76. Both directions asserted: an allowlist entry naming a call no longer made fails too, so a surface emptied, renamed or split into a package goes red rather than reading as clean."""
     reached = {(label, name)
@@ -649,6 +683,7 @@ _SURFACE_STORAGE_IMPORTS = {
     "relative_symbol.py": "from .core.persistence import canonical_dir\n",
 }
 
+
 def test_the_storage_guard_sees_every_way_of_reaching_the_store(tmp_path):
     """Positive control: the extractor has to resolve an alias before it can see anything, so a blind version returns empty for every file here and the real test above passes over nothing."""
     root = tmp_path / "requivo"
@@ -656,6 +691,7 @@ def test_the_storage_guard_sees_every_way_of_reaching_the_store(tmp_path):
     missed = [path.name for path, package in scan(root, "requivo")
               if "canonical_dir" not in persistence_names(path, package)]
     assert not missed, f"the storage guard is blind to these: {missed}"
+
 
 def test_the_storage_guard_separates_two_calls_behind_one_import(tmp_path):
     """One import, two functions, two allowlist keys -- otherwise one reviewed entry stands in for every call the module makes."""
@@ -682,12 +718,14 @@ _LEGITIMATE_STORAGE_SURFACE = """
         return f"{meta.slug} {store.name} {store.parent}"
 """
 
+
 def test_the_storage_guard_does_not_fire_on_what_a_surface_legitimately_does(tmp_path):
     """The must-not-fire half: a local variable called `store` is not an import of the module."""
     root = tmp_path / "requivo"
     _write_tree(root, {"ordinary.py": _LEGITIMATE_STORAGE_SURFACE})
     path, package = scan(root, "requivo")[0]
     assert persistence_names(path, package) == set()
+
 
 def test_the_storage_guard_names_what_it_scanned():
     """#10, for this scan set. `providers/anthropic/completion.py` joined at #355 and `api/dependencies.py` at #425 -- each is what would have gone unscanned the moment it dropped out of `SURFACE_TREES`."""
@@ -730,12 +768,15 @@ _EXEMPT_RECEIVERS = {
     "subprocess": "subprocess streams take their codec from the Popen call, not from open()",
 }
 
+
 def encoding_scan(root: Path) -> list[Path]:
     """`_scan.py`'s `list_python_files` now, shared with the boundary guard above (#288)."""
     return list_python_files(root, label="the encoding guard")
 
+
 def _has_keyword(node: ast.Call, name: str) -> bool:
     return any(kw.arg == name for kw in node.keywords)
+
 
 def _mode_of(node: ast.Call, positional_index: int) -> tuple[str | None, bool]:
     """The literal `mode` of an open() call, and whether it could be determined at all. A mode assembled at runtime is `(None, False)`, reported as a finding rather than waved through."""
@@ -754,6 +795,7 @@ def _mode_of(node: ast.Call, positional_index: int) -> tuple[str | None, bool]:
 _UNKNOWN_MODE = (
     "whose mode is not a literal -- this guard cannot tell text from binary here, so pass " "encoding= explicitly or read bytes"
 )
+
 
 def encoding_violations(path: Path) -> list[str]:
     """Every text read or write in `path` that takes whatever codec the locale happens to offer."""
@@ -787,11 +829,13 @@ def encoding_violations(path: Path) -> list[str]:
         out.append(f"line {node.lineno}: .{node.func.attr}() -- {_TEXT_METHODS[node.func.attr]}")
     return sorted(out)
 
+
 def _nonascii_literals(node: ast.AST) -> list:
     """Every string constant reachable from `node` that is not pure ASCII."""
     return [n.value for n in ast.walk(node)
             if isinstance(n, ast.Constant) and isinstance(n.value, str)
             and any(ord(c) > 127 for c in n.value)]
+
 
 def fixture_violations(path: Path) -> list:
     """Encoding-less text IO in a *test* whose content is not ASCII -- narrower than `encoding_violations` on purpose: ~90 of this suite's bare reads/writes move pure ASCII between a fixture and an assertion in one process, where the locale's codec agrees with itself. Only a fixture carrying a non-ASCII
@@ -831,6 +875,7 @@ _LOCALE_DEFAULT_BY_DESIGN = {
     },
 }
 
+
 def _enclosing_function_names(tree: ast.Module) -> dict:
     """Map each AST node's id() to the name of the function it sits in. Outermost wins."""
     out: dict = {}
@@ -839,6 +884,7 @@ def _enclosing_function_names(tree: ast.Module) -> dict:
             for node in ast.walk(fn):
                 out.setdefault(id(node), fn.name)
     return out
+
 
 def read_violations_in_test(path: Path) -> list:
     """Encoding-less *reads* in a test, minus the two deliberately measuring the default. Reads and writes are asymmetric here on purpose: a write's hazard is a literal `fixture_violations` can see; a read's hazard is in the file being read, which the source never mentions -- the first Windows leg this branch
@@ -865,6 +911,7 @@ def read_violations_in_test(path: Path) -> list:
         )
     return sorted(out)
 
+
 def test_every_read_in_the_suite_declares_its_encoding():
     """The gap the first Windows leg found: the old guard walked src/ and scripts/, and the 30th bare-read site was in the one directory it did not."""
     offenders: dict = {}
@@ -876,6 +923,7 @@ def test_every_read_in_the_suite_declares_its_encoding():
         "a test that reads text without naming its codec decodes with whatever the platform offers, " "so it passes on Linux and fails on Windows about a file the product reads correctly: "
         + repr(offenders)
     )
+
 
 def test_the_by_design_exemptions_still_exist():
     """An exemption for a renamed/deleted function covers nothing, or worse, covers the wrong one reusing that name. Pin it, and prove the table is not dead weight suppressing nothing."""
@@ -899,6 +947,7 @@ def test_the_by_design_exemptions_still_exist():
             f"{filename} exempts {len(functions)} function(s) but only {len(without)} bare "
             f"read(s) exist without the table: {without}")
 
+
 def test_the_read_rule_fires_and_spares_correctly(tmp_path):
     """Both edges. A rule with an exemption table is the one that quietly stops firing."""
     root = tmp_path / "tests"
@@ -914,6 +963,7 @@ def test_the_read_rule_fires_and_spares_correctly(tmp_path):
     path = encoding_scan(root)[0]
     found = read_violations_in_test(path)
     assert len(found) == 1 and "line 5" in found[0], found
+
 
 def test_no_test_fixture_writes_non_ascii_with_the_locale_codec():
     """The harness half of #3, kept honest by the same walk that keeps the product honest."""
@@ -948,6 +998,7 @@ _FIXTURE_CASES = {
     """,
 }
 
+
 def test_the_fixture_rule_fires_exactly_where_it_should(tmp_path):
     """Both edges of the narrow rule, because a rule this narrow is the easy one to get backwards."""
     root = tmp_path / "tests"
@@ -959,6 +1010,7 @@ def test_the_fixture_rule_fires_exactly_where_it_should(tmp_path):
         "must_not_fire_explicit.py": False,
     }, verdicts
 
+
 @pytest.mark.parametrize("relative", sorted(SCAN_ROOTS))
 def test_the_guard_scans_the_real_trees(relative):
     """Name what was scanned -- everything below is a negative assertion over this set."""
@@ -968,6 +1020,7 @@ def test_the_guard_scans_the_real_trees(relative):
     assert not missing, (
         f"the encoding guard scanned {root} and did not find {missing}; it is not looking at " f"{SCAN_ROOTS[relative]}. Scanned: {names}"
     )
+
 
 def test_every_text_read_declares_its_encoding():
     """#11 itself: every text read/write in the shipped trees names its codec, so a session written as UTF-8 reads back as what was written, on every platform Requivo installs on. A class, not 29 instances: a bare `read_text()` has already reappeared once after a fix (three lines from #33's own) and once in the
@@ -993,6 +1046,7 @@ _ENCODING_VIOLATIONS = {
     "chained_read.py": 'import json\nfrom pathlib import Path\n\ndef load(p: Path) -> dict:\n    return json.loads((p / "session.json").read_text())\n',
     "buried/deeper.py": "from pathlib import Path\n\ndef load(p: Path) -> str:\n    return p.read_text()\n",
 }
+
 
 def test_the_guard_sees_each_way_of_writing_the_violation(tmp_path):
     """Positive control, one fixture per shape -- the buried one proves the walk is recursive."""
@@ -1037,6 +1091,7 @@ _LEGITIMATE_IO = """
         webbrowser.open(url)
 """
 
+
 def test_the_guard_does_not_fire_on_correct_io(tmp_path):
     """The must-not-fire half: a detector that flags everything is deleted the first time it reddens correct code."""
     root = tmp_path / "src"
@@ -1053,6 +1108,7 @@ _KEYWORDS_YOUNGER_THAN_THE_FLOOR = {
     ("read_text", "newline"): (3, 13),
 }
 
+
 def _declared_floor() -> tuple:
     """The `requires-python` floor, read out of pyproject rather than restated here -- a version written into this file would be a number in prose that nothing can falsify."""
     text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -1061,6 +1117,7 @@ def _declared_floor() -> tuple:
         "could not read requires-python out of pyproject.toml -- this guard derives the floor from "
         "it, and a floor it cannot read is not a floor it may guess at")
     return (int(m.group(1)), int(m.group(2)))
+
 
 def floor_violations(path: Path, floor: tuple) -> list:
     """Every text call in `path` passing a keyword the declared floor's interpreter does not accept. Attribute calls only, by method name -- the shape the defect actually took."""
@@ -1082,6 +1139,7 @@ def floor_violations(path: Path, floor: tuple) -> list:
                 )
     return sorted(out)
 
+
 def test_no_text_call_passes_a_keyword_the_declared_floor_rejects():
     """#469: `_atomic_write` wrote `tmp.write_text(content, encoding="utf-8", newline="")`, a TypeError on the three 3.9 legs -- 518 failures each, from one keyword on the one function every persistence path goes through."""
     floor = _declared_floor()
@@ -1096,6 +1154,7 @@ def test_no_text_call_passes_a_keyword_the_declared_floor_rejects():
         f"Types leg too, since typeshed does not version-gate these. Offenders: " + repr(offenders)
     )
 
+
 def test_the_floor_guard_fires_on_the_exact_call_that_shipped_red(tmp_path):
     """The must-fire control, written as the line #469 actually shipped."""
     root = tmp_path / "src"
@@ -1107,6 +1166,7 @@ def test_the_floor_guard_fires_on_the_exact_call_that_shipped_red(tmp_path):
     """})
     found = floor_violations(encoding_scan(root)[0], (3, 9))
     assert len(found) == 1 and "write_text(newline=...)" in found[0], found
+
 
 def test_the_floor_guard_spares_the_fix_and_the_read_side_twin(tmp_path):
     """Two must-not-fire cases: `.open(..., newline="")` is the fix, and a floor that has caught up (3.10) must relax the rule rather than keep reporting the identical call."""
@@ -1135,6 +1195,7 @@ def test_the_floor_guard_spares_the_fix_and_the_read_side_twin(tmp_path):
 # from nowhere else in the tree. `test_the_floor_is_read_from_pyproject_and_matches_what_ci_runs`
 # below still guards the load-bearing half: a floor CI does not actually run.
 
+
 def test_the_floor_is_read_from_pyproject_and_matches_what_ci_runs():
     """The lever control: a floor this guard could not read makes every case above vacuous, and a floor disagreeing with the CI matrix would guard a version nothing runs."""
     floor = _declared_floor()
@@ -1145,12 +1206,14 @@ def test_the_floor_is_read_from_pyproject_and_matches_what_ci_runs():
 
 # ---- the runtime half (#29): nothing in-process can reach the console encoder, so a subprocess ----
 
+
 def _clean_env(extra: dict) -> dict:
     env = dict(os.environ)
     for name in ("PYTHONUTF8", "PYTHONIOENCODING", "PYTHONWARNDEFAULTENCODING"):
         env.pop(name, None)  # any inherited would override the levers below silently
     env.update(extra)
     return env
+
 
 def _cli(args: list, extra_env: dict, cwd: Path, python_args: list = None):
     env = _clean_env(extra_env)
@@ -1165,6 +1228,7 @@ _ASCII_CONSOLE = {"PYTHONIOENCODING": "ascii"}
 _CHECK_MARK = chr(0x2705)
 _WARNING_SIGN = chr(0x26A0)
 
+
 def test_the_ascii_console_lever_actually_bites():
     """Positive control for the console tests below: `PYTHONIOENCODING=ascii` is narrower than Windows cp1252, so a process that survives it survives cp1252 too -- but only if the lever actually took, which is measured rather than assumed."""
     probe = subprocess.run(
@@ -1175,6 +1239,7 @@ def test_the_ascii_console_lever_actually_bites():
         "PYTHONIOENCODING=ascii did not take on this interpreter; the console controls below cannot " "fire and must not be read as evidence."
     )
     assert "UnicodeEncodeError" in probe.stderr, probe.stderr
+
 
 @pytest.mark.parametrize("verb", [["doctor"], ["schema"], ["demo"]])
 def test_the_cli_survives_a_console_that_cannot_encode_its_glyphs(verb, tmp_path):
@@ -1187,6 +1252,7 @@ def test_the_cli_survives_a_console_that_cannot_encode_its_glyphs(verb, tmp_path
     assert r.returncode == 0, detail
     assert r.stdout.strip(), "the command exited 0 and printed nothing at all"
 
+
 def test_the_console_chokepoint_degrades_rather_than_dropping_the_glyph(tmp_path):
     """Survival must not mean silently printing nothing where a glyph was -- an escape is ugly and honest, a hole in the line is neither."""
     r = _cli(["doctor"], _ASCII_CONSOLE, tmp_path)
@@ -1197,6 +1263,7 @@ def test_the_console_chokepoint_degrades_rather_than_dropping_the_glyph(tmp_path
         "the glyphs were dropped rather than escaped; a reader cannot tell a missing character from "
         "a character that was never there. Expected one of " + repr(escaped) + " in: " + text
     )
+
 
 def _seed_a_usage_bearing_session(tmp_path, monkeypatch, *, priced_as_of):
     """A session with one revision carrying token/rate provenance (#292), written directly through `core.persistence`. `priced_as_of=None` leaves the revision unpriced (the em-dash branch); two dates make the "rates as of" stamp middle-dot-joined."""
@@ -1223,6 +1290,7 @@ def _seed_a_usage_bearing_session(tmp_path, monkeypatch, *, priced_as_of):
             })
     return slug
 
+
 @pytest.mark.parametrize("scenario,priced_as_of,glyph", [
     ("unpriced", None, "—"),                          # em dash: "n/a — no price on file"
     ("multi_dated", ["2026-01-01", "2026-06-01"], "·"),  # middle dot: "... as of X · Y"
@@ -1248,6 +1316,7 @@ def test_requivo_status_survives_a_console_that_cannot_encode_the_session_cost_l
         f"the {scenario} glyph was dropped rather than escaped, or the guarded path never reached " f"it. Expected {escaped!r} in: {text}"
     )
 
+
 def test_render_session_cost_alone_raises_on_a_stream_nothing_can_fix(tmp_path, monkeypatch):
     """The positive control the test above depends on: called directly, against a stream nothing can save, `render_session_cost`'s em dash really does raise -- without this, "no crash" above would be unfalsifiable."""
     slug = _seed_a_usage_bearing_session(tmp_path, monkeypatch, priced_as_of=None)
@@ -1262,8 +1331,10 @@ def test_render_session_cost_alone_raises_on_a_stream_nothing_can_fix(tmp_path, 
 
 # ---- the chokepoint's own three states ----
 
+
 def _wrapper(encoding: str, errors: str):
     return io.TextIOWrapper(io.BytesIO(), encoding=encoding, errors=errors)
+
 
 def test_describe_stream_separates_safe_from_will_crash_from_unknown():
     """Three answers, not two: `will_crash` and `unknown` are different findings with different remedies, and both differ from `safe` -- conflating "I looked and it is fine" with "I could not look" would put an absence into doctor's own report."""
@@ -1280,6 +1351,7 @@ def test_describe_stream_separates_safe_from_will_crash_from_unknown():
 
     assert streams.describe_stream(None, "stdout")["state"] == "unknown"
 
+
 def test_the_published_stream_states_are_all_underscore_spelled():
     """`output.streams[].state` is a published --json enum, and every other one in this project is one word or underscore-joined. `will-crash` was the one hyphen, costing a consumer a special case (#88). Drives all four arms, the only coverage `lossy` has ever had."""
     observed = {
@@ -1291,6 +1363,7 @@ def test_the_published_stream_states_are_all_underscore_spelled():
     }
     assert observed == {"safe", "lossy", "will_crash", "unknown"}, observed
     assert all(re.fullmatch(r"[a-z][a-z0-9_]*", s) for s in observed), observed
+
 
 def test_configure_stream_reports_a_stream_it_could_not_reach():
     """The third state on the *configuring* side: an unconfigurable stream is exactly the one that can still kill the process later, so it has to be nameable rather than silent."""
@@ -1306,6 +1379,7 @@ def test_configure_stream_reports_a_stream_it_could_not_reach():
     closed.close()
     assert streams.configure_stream(closed, "stdout")["state"] == "could-not"
 
+
 def test_configure_stream_does_not_overrule_an_operator_who_named_a_codec(monkeypatch):
     """`PYTHONIOENCODING` is somebody's pipeline decision; this module guarantees their stream cannot crash, it does not get to decide what their stream is for."""
     monkeypatch.setenv("PYTHONIOENCODING", "ascii")
@@ -1314,6 +1388,7 @@ def test_configure_stream_does_not_overrule_an_operator_who_named_a_codec(monkey
     assert stream.encoding == "ascii", "the operator's codec was overruled"
     assert stream.errors == streams.ERRORS, "the no-crash guarantee was not applied"
     assert report["state"] == "unchanged" and "PYTHONIOENCODING" in report["reason"]
+
 
 def test_safe_write_never_raises_on_a_character_it_cannot_encode():
     """The message this writes is usually an error report, and one that dies on its own em dash is the whole failure this file exists to fix."""
@@ -1324,11 +1399,13 @@ def test_safe_write_never_raises_on_a_character_it_cannot_encode():
     assert "verdict" in written and "done" in written, written
     assert _CHECK_MARK.encode("ascii", "backslashreplace").decode("ascii") in written, written
 
+
 def test_safe_write_gives_up_quietly_on_a_stream_that_is_gone():
     """A closed stream is not a reason to raise from inside an error handler -- there is nowhere left to report to."""
     closed = _wrapper("utf-8", "strict")
     closed.close()
     streams.safe_write(closed, "anything")  # must not raise
+
 
 class _Unconfigurable(io.TextIOWrapper):
     """A stream `configure_streams` cannot fix: `reconfigure` refuses, so it stays strict/ascii -- a real `TextIOWrapper`, not a mock, so the `UnicodeEncodeError` below is the real encoder's."""
@@ -1336,8 +1413,10 @@ class _Unconfigurable(io.TextIOWrapper):
     def reconfigure(self, **kwargs):
         raise ValueError("underlying buffer has been detached")
 
+
 def _unconfigurable_stdout():
     return _Unconfigurable(io.BytesIO(), encoding="ascii", errors="strict", write_through=True)
+
 
 def test_configure_streams_reports_a_stream_it_could_not_fix(monkeypatch):
     """The precondition for everything below: this stream really is one Requivo cannot save."""
@@ -1348,6 +1427,7 @@ def test_configure_streams_reports_a_stream_it_could_not_fix(monkeypatch):
     assert streams.describe_stream(stream, "stdout")["state"] == "will_crash"
     with pytest.raises(UnicodeEncodeError):
         stream.write(_CHECK_MARK)          # the failure is the encoder's, not the test's
+
 
 def _run_app_on_an_unconfigurable_stdout(monkeypatch, argv, ledger_calls=()):
     """Drive `cli.app()` with a stdout that cannot be made safe, return (exit code, stderr)."""
@@ -1365,6 +1445,7 @@ def _run_app_on_an_unconfigurable_stdout(monkeypatch, argv, ledger_calls=()):
         cli.app(argv)
     return ei.value.code, err.getvalue()
 
+
 def test_a_glyph_that_cannot_be_encoded_exits_three_rather_than_a_traceback(monkeypatch, tmp_path):
     """#29's ordering rule at the last line of defence: the command has already done its work by the time anything prints, so a traceback here reports a failure that did not happen."""
     monkeypatch.chdir(tmp_path)
@@ -1373,6 +1454,7 @@ def test_a_glyph_that_cannot_be_encoded_exits_three_rather_than_a_traceback(monk
     assert "could not encode its output" in err, err
     assert "Traceback" not in err, err
     assert "requivo doctor" in err, "the message does not say how to find out which stream: " + err
+
 
 def test_the_render_failure_message_does_not_claim_a_call_was_billed_when_none_was(monkeypatch, tmp_path):
     """Several verbs print before they mutate, or never mutate at all -- a single message asserting a change HAS been applied would be false for those, so the arm reads the usage ledger instead of assuming."""
@@ -1383,12 +1465,14 @@ def test_the_render_failure_message_does_not_claim_a_call_was_billed_when_none_w
         "`doctor` makes no provider call, and telling the user one was billed is a false "
         "statement in the message that exists to stop a false statement: " + err)
 
+
 def test_the_render_failure_message_does_say_so_when_a_call_was_billed(monkeypatch, tmp_path):
     """The must-fire half: the warning that matters is the one on the verbs that cost money."""
     monkeypatch.chdir(tmp_path)
     _, err = _run_app_on_an_unconfigurable_stdout(monkeypatch, ["doctor"], ledger_calls=("one call",))
     assert "HAS completed and been billed" in err, err
     assert "Do not re-run" in err, err
+
 
 def test_the_usage_line_cannot_kill_a_run_that_already_paid_for_its_call(monkeypatch, tmp_path):
     """Found by audit: `render_usage` has two call sites outside the `UnicodeEncodeError` arm, including the one after a wholly successful command -- so a successful `requivo brief` on an unreachable stream still died at the usage line, after the provider call was billed."""
@@ -1417,6 +1501,7 @@ def test_the_usage_line_cannot_kill_a_run_that_already_paid_for_its_call(monkeyp
 
 # ---- a file the *user* named -- the one read whose bytes this project did not write ----
 
+
 def test_a_user_file_that_is_not_utf8_is_refused_by_name_not_by_traceback(tmp_path):
     """Refusing is right -- mojibake validates -- but a bare `UnicodeDecodeError` trades a silently wrong answer for an unexplained crash, the same trade one step along. The refusal must answer."""
     brief = tmp_path / "brief.md"
@@ -1434,12 +1519,14 @@ def test_a_user_file_that_is_not_utf8_is_refused_by_name_not_by_traceback(tmp_pa
     assert ei.value.details["expected_encoding"] == "utf-8"
     assert isinstance(ei.value.details["position"], int)
 
+
 def test_a_user_file_that_is_utf8_is_read_unchanged(tmp_path):
     """The must-not-fire half, and the case that matters most here: correctly encoded French prose."""
     brief = tmp_path / "brief.md"
     original = "Système de validation des congés — 5 000 salariés."
     brief.write_bytes(original.encode("utf-8"))
     assert read_user_text(brief) == original
+
 
 def test_the_refusal_does_not_let_a_path_forge_a_line_of_output(tmp_path):
     """The message interpolates a user-supplied path -- one carrying a newline must not forge a second, authoritative-looking line of Requivo's own output, the shape #40 found in `doctor`."""
@@ -1460,6 +1547,7 @@ _NO_LEVER_ON_39 = (
     "EncodingWarning and PYTHONWARNDEFAULTENCODING are 3.10+, so this lever cannot fire on 3.9. " "UNTESTED ON THIS INTERPRETER: that the CLI reads its bundled assets with an explicit codec " "rather than the locale's. The static guard above covers the same claim on every interpreter, "
     "and the 3.10-3.13 legs of the CI matrix do run this one."
 )
+
 
 def test_the_default_encoding_lever_actually_bites(tmp_path):
     """Positive control for the read-side test below, on the same reasoning as the console one."""
@@ -1482,6 +1570,7 @@ def test_the_default_encoding_lever_actually_bites(tmp_path):
         "the default-encoding lever did not take; the read-side control below cannot fire and must "
         "not be read as evidence: " + r.stderr
     )
+
 
 @pytest.mark.parametrize("verb", [["schema"], ["schema", "--framework"], ["context"], ["demo"], ["doctor"]])
 def test_the_cli_reads_its_assets_with_an_explicit_encoding(verb, tmp_path):
@@ -1558,27 +1647,33 @@ _WRAPPED = re.compile(r"\btest_[a-z0-9_]*_$", re.MULTILINE)
 # -- see `test_the_decision_wrap_detector_leaves_the_shape_that_still_resolves_alone`.
 _WRAPPED_DECISION = re.compile(r"`decision:[ \t]*[a-z0-9-]*[a-z0-9-](?=[^`\n]*$)", re.MULTILINE)
 
+
 def _scan_subjects(roots: tuple[Path, ...], extra: tuple[Path, ...] = ()) -> list[Path]:
     """`_scan.py`'s `list_files` now (#288), shared with the two guards above."""
     return list_files(roots, suffixes=SUBJECT_SUFFIXES, label="the narrative-reference guard",
                        extra=extra)
+
 
 def subjects() -> list[Path]:
     """Every file the *resolution* check reads -- `RESOLUTION_ROOTS` minus the two exemptions."""
     exempt = set(RESOLUTION_EXEMPT_FILES) | set(VENDORED_RESOLUTION_EXEMPT_FILES)
     return [p for p in _scan_subjects(RESOLUTION_ROOTS, EXTRA_SUBJECTS) if p.resolve() not in exempt]
 
+
 def wrap_subjects() -> list[Path]:
     """Every file the *wrap* check reads -- wider than `subjects()` on purpose."""
     return _scan_subjects(WRAP_ROOTS, EXTRA_SUBJECTS)
+
 
 def _referrers_among(paths: Iterable[Path], exempt_roots: tuple[Path, ...]) -> list[Path]:
     """The subset of `paths` that may vouch for a decision record's reachability."""
     return [p for p in paths if not any(root in p.parents for root in exempt_roots)]
 
+
 def referrer_subjects() -> list[Path]:
     """`subjects()` minus the decision records themselves. See `REFERRER_EXEMPT_ROOTS`."""
     return _referrers_among(subjects(), REFERRER_EXEMPT_ROOTS)
+
 
 def _orphan_slugs(declared: set[str], referrers: Iterable[Path]) -> list[str]:
     """The declared slugs nothing in `referrers` points at."""
@@ -1589,6 +1684,7 @@ def _orphan_slugs(declared: set[str], referrers: Iterable[Path]) -> list[str]:
 # `requivo.testing` (#424) is the one place under src/ that legitimately *defines* test methods --
 # `SessionRepositoryConformance`, a pytest mixin collected only through a tests/-side subclass.
 TESTING_PACKAGE = SRC / "testing"
+
 
 def declared_test_names() -> set[str]:
     """Every test callable the suite defines, plus every test module's stem -- both are used as references (`services/artifacts.py` names a whole file, since the claim is the file's subject)."""
@@ -1606,9 +1702,11 @@ def declared_test_names() -> set[str]:
         )
     return names
 
+
 def references(path: Path) -> set[str]:
     """Every test reference in one file, as a plain reader would see it -- historical mentions included. Resolution has a narrower view; see `resolvable_references()`."""
     return set(_REFERENCE.findall(path.read_text(encoding="utf-8")))
+
 
 def resolvable_references(path: Path) -> set[str]:
     """`references()` minus the name inside a recognized "Split out of `X.py`" idiom. Blanks the matched span rather than the name everywhere, so a file that also points at the same dead name the ordinary way still answers for that second occurrence."""
@@ -1617,6 +1715,7 @@ def resolvable_references(path: Path) -> set[str]:
         lambda m: m.group(0).replace(m.group(1), "x" * len(m.group(1))), text
     )
     return set(_REFERENCE.findall(stripped))
+
 
 def test_the_guard_reads_the_real_tree():
     """Name what was scanned -- everything below is a negative assertion over this set."""
@@ -1634,6 +1733,7 @@ def test_the_guard_reads_the_real_tree():
         "CHANGELOG.md is released history — its dead pointers are correct, not stale, and it must " "never be swept"
     )
     assert len(declared_test_names()) > 100
+
 
 def test_the_wrap_scan_still_reaches_one_file_further_than_the_resolution_scan():
     """#190's decision, pinned: `tests/` is now in *both* roots, and the only gap between them is this guard's own module plus, since #504, the one vendored bundle."""
@@ -1654,6 +1754,7 @@ def test_the_wrap_scan_still_reaches_one_file_further_than_the_resolution_scan()
         "CHANGELOG.md must never be swept, wrap check included"
     )
 
+
 def test_a_vendored_bundles_coincidental_identifier_is_not_a_dangling_reference():
     """Two must-fire halves: the raw file really does contain the `test_cookie_name`/ `test_cookie_value` collision, and the exemption keeps it out of *resolution* only, not out of scanning altogether."""
     vendored = VENDORED_RESOLUTION_EXEMPT_FILES[0]
@@ -1667,6 +1768,7 @@ def test_a_vendored_bundles_coincidental_identifier_is_not_a_dangling_reference(
     assert vendored in wrap_files, (
         "the vendored bundle dropped out of the wrap scan too -- the exemption is about resolution " "only, never about no longer looking at this file at all"
     )
+
 
 def test_every_named_test_reference_resolves():
     """A reference that names nothing spends a reader's trust and returns nothing."""
@@ -1682,6 +1784,7 @@ def test_every_named_test_reference_resolves():
         "\nEither the test was renamed (update the reference) or it was deleted (delete the " "reference, and ask what is guarding the line it was attached to)."
     )
 
+
 def test_no_reference_is_split_across_a_line():
     """The only way one of these is used is: select it, grep it. Two of sixteen were split when this was written (`contracts.py`, `deterministic/doctor.py`) -- both real tests, both invisible to a search. Reflow the comment; never hyphenate or wrap an identifier."""
     split = sorted(
@@ -1693,6 +1796,7 @@ def test_no_reference_is_split_across_a_line():
         "these references are split by a line wrap and cannot be found by grep:\n  " +
         "\n  ".join(split) + "\nReflow the surrounding text so the identifier is on one line."
     )
+
 
 def declared_slugs() -> set[str]:
     """Every slug a decision record declares, from its `**Slug:**` line -- never from its filename, which carries an ordering number that is deliberately not the reference."""
@@ -1707,6 +1811,7 @@ def declared_slugs() -> set[str]:
             )
         slugs.add(m.group(1))
     return slugs
+
 
 def test_every_decision_reference_resolves_to_a_record():
     """The slug half of the same rule: a `decision:` reference naming no record is a dangling pointer wearing a different prefix."""
@@ -1724,6 +1829,7 @@ def test_every_decision_reference_resolves_to_a_record():
         f"\nDeclared slugs: {sorted(known)}"
     )
 
+
 def test_the_decision_records_are_reachable_from_somewhere():
     """A record nothing points at is a document nobody opens -- the signal that a narrative moved out of the code and the pointer was never left behind. The referrer set is `referrer_subjects()`, never `subjects()`: a record is not a referrer for itself or a sibling (#384). `.github/` is included since it is
     where the first record's referrer actually lives."""
@@ -1736,6 +1842,7 @@ def test_the_decision_records_are_reachable_from_somewhere():
         f"these records are referenced from nowhere a reader enters through: {orphans}. Leave a " f"`decision: <slug>` line at whatever the record explains -- in CLAUDE.md, in docs/, or at " f"the call site -- or the move traded a paragraph for a file nobody opens. A pointer from "
         f"another decision record does not count: see REFERRER_EXEMPT_ROOTS."
     )
+
 
 def test_no_decision_reference_is_split_across_a_line():
     """The slug half of the wrap rule (#384). A wrap *inside* the slug is worse than the test-name case: `_DECISION_REF` needs the closing backtick after it and `[a-z0-9-]+` cannot cross a newline, so the reference matches nothing at all and `test_every_decision_reference_resolves_to_a_record` never sees it --
@@ -1753,6 +1860,7 @@ def test_no_decision_reference_is_split_across_a_line():
 
 # ---- controls: a guard that cannot fail is not a guard ----
 
+
 @pytest.mark.parametrize("source, expected", [
     ("# see `test_the_persisted_contract_is_permissive_all_the_way_down` for why",
      {"test_the_persisted_contract_is_permissive_all_the_way_down"}),
@@ -1764,6 +1872,7 @@ def test_the_extractor_sees_a_reference_and_only_a_reference(tmp_path, source, e
     p = tmp_path / "sample.py"
     p.write_text(source, encoding="utf-8")
     assert references(p) == expected
+
 
 @pytest.mark.parametrize("source, blanked_name", [
     ("Split out of `test_cli_deterministic.py` by #141; the shared harness is elsewhere.",
@@ -1778,6 +1887,7 @@ def test_the_historical_mention_idiom_is_excluded_from_resolvable_references(tmp
     assert blanked_name in references(p)
     assert blanked_name not in resolvable_references(p)
 
+
 def test_a_similarly_shaped_mention_that_is_not_the_idiom_still_dangles(tmp_path):
     """The must-fire complement: the exemption is the exact phrase, not any `.py`-suffixed name in a past-tense sentence -- a rename with no recognized idiom is as loud as any other broken link."""
     p = tmp_path / "sample.py"
@@ -1786,6 +1896,7 @@ def test_a_similarly_shaped_mention_that_is_not_the_idiom_still_dangles(tmp_path
         encoding="utf-8",
     )
     assert "test_cli_deterministic_and_then_some" in resolvable_references(p)
+
 
 def test_the_same_dangling_name_outside_the_idiom_still_dangles(tmp_path):
     """The exemption blanks the matched span, not every occurrence of the name in the file."""
@@ -1797,12 +1908,14 @@ def test_the_same_dangling_name_outside_the_idiom_still_dangles(tmp_path):
     )
     assert "test_cli_deterministic_once_more" in resolvable_references(p)
 
+
 def test_this_guards_own_file_is_wrap_checked_but_not_resolution_checked():
     """This module is excluded from `subjects()` by identity, not by pattern -- it necessarily contains broken-looking references by design and cannot trustworthily resolve its own examples. It stays in `wrap_subjects()`, which has no such hazard."""
     here = Path(__file__).resolve()
     assert here in RESOLUTION_EXEMPT_FILES
     assert here not in {p.resolve() for p in subjects()}
     assert here in {p.resolve() for p in wrap_subjects()}
+
 
 def test_the_wrap_detector_sees_the_shape_it_was_written_for(tmp_path):
     """The positive control, and the one that matters: two real references were in exactly this shape and every other check in the repository was blind to them."""
@@ -1811,6 +1924,7 @@ def test_the_wrap_detector_sees_the_shape_it_was_written_for(tmp_path):
                  "# constraint_it_restates` pins the general property.\n", encoding="utf-8")
     assert _WRAPPED.search(p.read_text(encoding="utf-8"))
 
+
 def test_the_wrap_detector_does_not_fire_on_an_intact_reference(tmp_path):
     """The must-not-fire half: a reference ending a line *complete* is fine."""
     p = tmp_path / "intact.py"
@@ -1818,9 +1932,11 @@ def test_the_wrap_detector_does_not_fire_on_an_intact_reference(tmp_path):
                  "# which is why it cannot drift.\n", encoding="utf-8")
     assert not _WRAPPED.search(p.read_text(encoding="utf-8"))
 
+
 def _record(path: Path, slug: str, body: str) -> None:
     """One decision record, in the only two respects this guard reads it."""
     path.write_text(f"**Slug:** `{slug}`\n\n{body}\n", encoding="utf-8")
+
 
 def test_a_record_that_only_quotes_its_own_slug_is_an_orphan(tmp_path):
     """#384's motivating instance, as a fixture: a record explaining where its own pointer belongs has to quote its own slug to say so, which makes this the *normal* shape of a record."""
@@ -1839,6 +1955,7 @@ def test_a_record_that_only_quotes_its_own_slug_is_an_orphan(tmp_path):
     entry.write_text("Kept by hand: `decision: only-itself` says why.\n", encoding="utf-8")
     assert _orphan_slugs({"only-itself"}, referrers) == []
 
+
 def test_a_record_reachable_only_from_a_sibling_record_is_an_orphan(tmp_path):
     """Why the whole directory comes out of the referrer set, not only self-reference (#384): excluding self alone still passes a cluster of records citing only each other, and that unreachable island is exactly the failure the guard is named for."""
     decisions = tmp_path / "decisions"
@@ -1851,6 +1968,7 @@ def test_a_record_reachable_only_from_a_sibling_record_is_an_orphan(tmp_path):
 
     referrers = _referrers_among([first, second, entry], (decisions,))
     assert _orphan_slugs({"slug-a", "slug-b"}, referrers) == ["slug-a", "slug-b"]
+
 
 def test_the_records_are_resolution_checked_but_are_not_their_own_referrers():
     """A record's own references still have to resolve (it stays a *subject*), and it still cannot vouch for anybody's reachability, its own included."""
@@ -1867,6 +1985,7 @@ def test_the_records_are_resolution_checked_but_are_not_their_own_referrers():
         )
     assert referrer_paths < subject_paths
 
+
 def test_the_decision_wrap_detector_sees_a_slug_split_across_the_break(tmp_path):
     """The positive control for `_WRAPPED_DECISION`: `_DECISION_REF` cannot see this reference at all (the closing backtick is past the newline), so nothing else in this module would notice."""
     p = tmp_path / "wrapped.md"
@@ -1877,6 +1996,7 @@ def test_the_decision_wrap_detector_sees_a_slug_split_across_the_break(tmp_path)
     assert _DECISION_REF.findall(text) == [], (
         "if this ever finds the slug, the resolution check covers the case and the wrap detector " "should be weighed again rather than kept out of habit"
     )
+
 
 def test_the_decision_wrap_detector_leaves_the_shape_that_still_resolves_alone(tmp_path):
     """The must-not-fire half: a break before the slug keeps it whole and still greppable."""

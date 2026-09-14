@@ -27,8 +27,10 @@ _ROW = re.compile(r"^\|\s*(?P<label>[^|]+?)\s*\|\s*(?P<calls>\d+)\s*\|"
                   r"\s*(?P<input>[\d,–—-]+|—)\s*\|\s*(?P<output>[\d,–—-]+|—)\s*\|"
                   r"\s*\*?\*?\$(?P<lo>[\d.]+)–\$(?P<hi>[\d.]+)\*?\*?\s*\|", re.M)
 
+
 def _tokens(text: str) -> int:
     return len(text) // CHARS_PER_TOKEN
+
 
 def _model_dump_tokens(*, absorbed: bool) -> list:
     """Token size of a real resolved model exactly as a generator or refinement turn sends it -- built from `fixtures/golden/` (`runs` and `turns`), validated as `EngineOutput`. `absorbed=False` is the model before `absorb_reasoning` runs (every non-first discovery turn, plus `brief`); `absorbed=True` is after,
@@ -58,6 +60,7 @@ def _model_dump_tokens(*, absorbed: bool) -> list:
     assert sizes, "no golden captures were read -- an empty scan cannot support a published range"
     return sizes
 
+
 def measured_input_tokens() -> tuple:
     """Every operation's assembled system prompt plus what a real call adds as its own user message. Only the first discovery turn adds nothing; every other call attaches a resolved model (`estimate` uses the stories size as the same order of magnitude, since no `Stories` reply is captured). `brief` and a
     refinement turn (`analyze`, turn 2+) see the model before its reasoning layer fills; every other generator sees it after -- see `_model_dump_tokens` for which captures back each state."""
@@ -78,6 +81,7 @@ def measured_input_tokens() -> tuple:
             sizes.append(system + max(absorbed))
     return min(sizes), max(sizes)
 
+
 def measured_output_tokens() -> tuple:
     """Every reply this repository has actually captured -- the golden baselines are real API output, which is the closest thing to a ledger the offline suite can reach."""
     sizes = []
@@ -90,12 +94,15 @@ def measured_output_tokens() -> tuple:
     assert sizes, "no golden captures were read -- an empty scan cannot support a published range"
     return min(sizes), max(sizes)
 
+
 def _rows() -> dict:
     return {m.group("label"): m for m in _ROW.finditer(PROVIDERS_DOC.read_text(encoding="utf-8"))}
+
 
 def _range(text: str) -> tuple:
     lo, hi = re.split(r"[–—-]", text.replace(",", ""))
     return int(lo), int(hi)
+
 
 def test_the_documented_rate_and_its_date_are_the_rate_table():
     """The half that dates itself. Anthropic's price is not this project's to remember twice."""
@@ -105,6 +112,7 @@ def test_the_documented_rate_and_its_date_are_the_rate_table():
     assert f"${rate[0]:.2f} / ${rate[1]:.2f} per million tokens" in doc, (
         f"the documented rate is not {rate} from pricing.py")
     assert PRICING_AS_OF in doc, f"the documented rate date is not PRICING_AS_OF ({PRICING_AS_OF})"
+
 
 def test_the_documented_token_ranges_bracket_what_this_repository_measures():
     """A published range must be true of the prompts and replies actually in the tree. Bracketing rather than equality on purpose: the docs round to a readable figure, and rounding *outwards* is the only direction that keeps the claim honest."""
@@ -116,6 +124,7 @@ def test_the_documented_token_ranges_bracket_what_this_repository_measures():
     assert doc_out[0] <= real_out[0] and doc_out[1] >= real_out[1], (
         f"documented output {doc_out} does not bracket the captured replies {real_out}")
 
+
 def _expected(calls: int) -> tuple:
     row = _rows()["One provider call"]
     (in_lo, in_hi), (out_lo, out_hi) = _range(row.group("input")), _range(row.group("output"))
@@ -123,6 +132,7 @@ def _expected(calls: int) -> tuple:
     lo = calls * (in_lo * in_rate + out_lo * out_rate) / 1_000_000
     hi = calls * (in_hi * in_rate + out_hi * out_rate) / 1_000_000
     return round(lo, 2), round(hi, 2)
+
 
 def test_every_documented_dollar_figure_is_arithmetic_over_the_rate_table():
     """The rule this file exists for: a dollar figure is derived or it does not ship. Each row is checked against *its own* stated call count, so a row whose total does not follow from its own arithmetic is red -- which is what a hand-typed number looks like."""
@@ -134,6 +144,7 @@ def test_every_documented_dollar_figure_is_arithmetic_over_the_rate_table():
         assert found == _expected(calls), (
             f"row {label!r} claims {found} for {calls} call(s); the rate table gives "
             f"{_expected(calls)}")
+
 
 def test_the_readme_states_a_cost_before_the_first_paid_command():
     """The README is read before a key is set, so it carries the per-call and full-session cost too, both derived. It used to assert a flat "under $1" ceiling -- a hand-typed claim that broke once the table's own input range widened (#404) -- so state the real derived figure instead."""

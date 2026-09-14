@@ -20,9 +20,11 @@ from check_dco import EXIT_COULD_NOT_LOOK, EXIT_UNSIGNED, main, unsigned_commits
 AUTHOR = "A Contributor <contributor@example.com>"
 SIGNOFF = "Signed-off-by: A Contributor <contributor@example.com>"
 
+
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=True)
     return result.stdout.decode("utf-8").strip()
+
 
 def _commit(repo: Path, message: str, *, author: str = AUTHOR) -> str:
     """One commit with `message` as its whole body, so a trailer in the fixture is a trailer in the commit. A module-level function rather than a fixture attribute: `Path` defines `__slots__`, so the helper cannot ride on the path object the tests already pass to `_git`."""
@@ -30,6 +32,7 @@ def _commit(repo: Path, message: str, *, author: str = AUTHOR) -> str:
     _git(repo, "add", "f.txt")
     _git(repo, "commit", "-q", "--author", author, "-m", message)
     return _git(repo, "rev-parse", "HEAD")
+
 
 @pytest.fixture
 def repo(tmp_path):
@@ -44,11 +47,13 @@ def repo(tmp_path):
     _commit(path, "base\n\n" + SIGNOFF)
     return path
 
+
 def test_a_signed_commit_passes(repo, monkeypatch):
     base = _git(repo, "rev-parse", "HEAD")
     head = _commit(repo, "a change\n\n" + SIGNOFF)
     monkeypatch.chdir(repo)
     assert unsigned_commits(base, head)[0] == []
+
 
 def test_an_unsigned_commit_is_caught_and_named(repo, monkeypatch):
     """The must-fire row. Without it every other assertion here is satisfied by a function that returns `[]` unconditionally, which is exactly what a provenance gate must not be."""
@@ -56,6 +61,7 @@ def test_an_unsigned_commit_is_caught_and_named(repo, monkeypatch):
     head = _commit(repo, "a change with no sign-off")
     monkeypatch.chdir(repo)
     assert unsigned_commits(base, head)[0] == [head]
+
 
 def test_only_the_unsigned_commit_is_named(repo, monkeypatch):
     """A branch is not all-or-nothing: the message has to point at the commits to fix, or the contributor rewrites history they did not need to."""
@@ -67,6 +73,7 @@ def test_only_the_unsigned_commit_is_named(repo, monkeypatch):
     assert unsigned_commits(base, head)[0] == [bad]
     assert head not in unsigned_commits(base, head)[0]
 
+
 def test_a_sign_off_by_somebody_else_does_not_sign_this_commit(repo, monkeypatch):
     """The DCO is a statement by the person who wrote the commit. A trailer naming anyone else is a sign-off on someone else's behalf, which is the one thing the certificate cannot be."""
     base = _git(repo, "rev-parse", "HEAD")
@@ -74,6 +81,7 @@ def test_a_sign_off_by_somebody_else_does_not_sign_this_commit(repo, monkeypatch
         "a change\n\nSigned-off-by: Someone Else <other@example.com>")
     monkeypatch.chdir(repo)
     assert unsigned_commits(base, head)[0] == [head]
+
 
 def test_the_email_comparison_ignores_case_but_not_identity(repo, monkeypatch):
     """Case-insensitive, because an email is case-insensitive in the part that matters and a contributor whose client upcased it has certified exactly the same thing. Not name-insensitive in the other direction: the row above is what stops this widening into "any trailer will do"."""
@@ -83,6 +91,7 @@ def test_the_email_comparison_ignores_case_but_not_identity(repo, monkeypatch):
     monkeypatch.chdir(repo)
     assert unsigned_commits(base, head)[0] == []
 
+
 def test_a_name_spelled_differently_still_signs(repo, monkeypatch):
     """Deliberate: the check keys on the email git itself keys on. Refusing a correct sign-off over a dropped accent or a middle initial would fail a contributor for a difference that certifies nothing."""
     base = _git(repo, "rev-parse", "HEAD")
@@ -91,12 +100,14 @@ def test_a_name_spelled_differently_still_signs(repo, monkeypatch):
     monkeypatch.chdir(repo)
     assert unsigned_commits(base, head)[0] == []
 
+
 def test_an_empty_range_is_refused_rather_than_read_as_a_pass(repo, monkeypatch):
     """The third state. A range with no commits is not "every commit is signed" -- it is a check that could not look, and folding it into a pass is the all-clear nobody earned that `tests/test_boundaries.py` refuses for its own scan set."""
     head = _git(repo, "rev-parse", "HEAD")
     monkeypatch.chdir(repo)
     with pytest.raises(LookupError):
         unsigned_commits(head, head)
+
 
 def test_a_range_git_cannot_read_exits_could_not_look_rather_than_unsigned(repo, monkeypatch):
     """`git refused` and `a commit is unsigned` are different facts, and a contributor told the second about the first has nothing to fix."""
@@ -105,11 +116,13 @@ def test_a_range_git_cannot_read_exits_could_not_look_rather_than_unsigned(repo,
     monkeypatch.setenv("HEAD_SHA", "HEAD")
     assert main([]) == EXIT_COULD_NOT_LOOK
 
+
 def test_no_range_at_all_is_could_not_look(repo, monkeypatch):
     monkeypatch.chdir(repo)
     monkeypatch.delenv("BASE_SHA", raising=False)
     monkeypatch.delenv("HEAD_SHA", raising=False)
     assert main([]) == EXIT_COULD_NOT_LOOK
+
 
 def test_the_exit_code_separates_unsigned_from_clean(repo, monkeypatch):
     base = _git(repo, "rev-parse", "HEAD")
@@ -118,6 +131,7 @@ def test_the_exit_code_separates_unsigned_from_clean(repo, monkeypatch):
     monkeypatch.setenv("BASE_SHA", base)
     monkeypatch.setenv("HEAD_SHA", _git(repo, "rev-parse", "HEAD"))
     assert main([]) == EXIT_UNSIGNED
+
 
 def test_the_failure_message_names_no_contributor_written_text(repo, monkeypatch, capsys):
     """A CI log is parsed -- `##[error]` needs no line start and `::` survives an indent -- so this script prints SHAs and nothing a contributor chose. The forged subject below would be a workflow command if it reached the log; the assertion is that it does not."""
@@ -136,6 +150,7 @@ def test_the_failure_message_names_no_contributor_written_text(repo, monkeypatch
 # -- the parse itself, which the review of #518 reproduced a forgery through ---------------------
 
 FORGED_BODY = "a change\x1e::error::forged-by-a-contributor\n##[error]forged-workflow-command"
+
 
 def test_a_commit_message_cannot_split_itself_into_a_second_record(repo, monkeypatch, capsys):
     """The defect review of #518 reproduced: record/field separators (`\x1e`/`\x1f`) are bytes a commit message can contain, so one carrying `\x1e` split into a forged second record whose "sha" was attacker text, printed by `main` at column 0 -- exactly what the `##[error]`/`::` detection assumes cannot happen.
@@ -157,6 +172,7 @@ def test_a_commit_message_cannot_split_itself_into_a_second_record(repo, monkeyp
         assert not line.lstrip().startswith("::"), f"a workflow command was forged: {line!r}"
         assert "##[" not in line, f"a legacy workflow command was forged: {line!r}"
 
+
 def test_only_commit_ids_are_ever_printed(repo, monkeypatch, capsys):
     """The guard that does not depend on getting the parse right. Every line `git log` hands back is matched against `_SHA_RE` before it is used, so a parse that went wrong raises rather than rendering whatever it found -- which would have caught the defect above even with the old delimiters in place."""
     base = _git(repo, "rev-parse", "HEAD")
@@ -172,11 +188,13 @@ def test_only_commit_ids_are_ever_printed(repo, monkeypatch, capsys):
         assert check_dco._SHA_RE.match(item), f"something that is not a commit id was printed: {item!r}"
     assert listed, "nothing was listed, so this row asserts nothing"
 
+
 def test_a_line_that_is_not_a_commit_id_is_refused_rather_than_reported(repo, monkeypatch):
     """`git log` handing back something that is not a commit id means the parse is wrong, and a wrong parse must raise rather than render. Simulated at `_git`, the one seam a forged line could arrive through, because git itself will not produce one."""
     monkeypatch.setattr(check_dco, "_git", lambda _args: "not-a-sha\n")
     with pytest.raises(ValueError):
         unsigned_commits("a", "b")
+
 
 def test_a_merge_commit_is_reported_as_not_checked_rather_than_passed_over(repo, monkeypatch,
                                                                           capsys):
@@ -203,6 +221,7 @@ def test_a_merge_commit_is_reported_as_not_checked_rather_than_passed_over(repo,
     out = capsys.readouterr().out
     assert "merge commit(s) were not checked" in out, (
         "the success line claims more than the check looked at")
+
 
 def test_a_git_that_cannot_be_run_at_all_is_could_not_look(repo, monkeypatch):
     """An unspawnable binary raises `FileNotFoundError`, an `OSError` -- the shape this project names -- and a bare `CalledProcessError` arm would have let it out as a traceback instead of the exit code this script's own contract promises."""

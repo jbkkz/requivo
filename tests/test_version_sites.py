@@ -28,6 +28,7 @@ _PRUNED = frozenset({
     ".pytest_cache", ".ruff_cache", ".eggs",
 })
 
+
 def _is_nested_checkout(directory: Path) -> bool:
     """Is this directory a git worktree or clone of its own, sitting inside the tree? `_PRUNED` prunes by name and cannot see one -- `git worktree add` under the repo root left six strays, each a duplicate of an already-registered site. So this prunes by what a directory IS: a worktree's `.git` is a file (parent
     gitdir), a nested clone's is a directory; `exists()` not `is_dir()` catches both."""
@@ -41,14 +42,17 @@ _DUNDER_RE = re.compile(r"""^__version__[ \t]*=[ \t]*["']([^"']+)["']""", re.MUL
 # `[tool.ruff] target-version` must never be mistaken for a declaration.
 _PROJECT_TABLE_RE = re.compile(r"^\[project\][^\n]*\n(.*?)(?=^\[|\Z)", re.MULTILINE | re.DOTALL)
 
+
 class Unreadable(Exception):
     """A file this guard knows how to read, that it could not read. Never silently skipped."""
+
 
 @dataclass(frozen=True)
 class Declaration:
     site: str     # repo-relative, POSIX separators -- comparable with .oss.json on any platform
     where: str    # the structural position inside the file, for the failure message
     version: str
+
 
 @dataclass(frozen=True)
 class Survey:
@@ -66,6 +70,7 @@ class Survey:
     def describe_problems(self) -> str:
         return "\n".join(f"  {site}: {reason}" for site, reason in sorted(self.problems))
 
+
 def _text(path: Path) -> str:
     # encoding pinned to utf-8 (files carry em-dashes; the locale default is cp1252 on Windows), and both OSError
     # and UnicodeDecodeError become `Unreadable` rather than an escaping traceback.
@@ -76,11 +81,13 @@ def _text(path: Path) -> str:
     except UnicodeDecodeError as exc:
         raise Unreadable(f"not valid UTF-8: {exc}") from exc
 
+
 def _json(path: Path):
     try:
         return json.loads(_text(path))
     except json.JSONDecodeError as exc:
         raise Unreadable(f"not valid JSON: {exc}") from exc
+
 
 def _read_pyproject(site: str, path: Path) -> list:
     """`[project] version`, by a section-scoped regex rather than a TOML parse: this suite's floor is Python 3.9, `tomllib` landed in 3.11, and there is no `tomli` in the dev extras."""
@@ -92,10 +99,12 @@ def _read_pyproject(site: str, path: Path) -> list:
         raise Unreadable("[project] declares no version")
     return [Declaration(site, "[project] version", found.group(1))]
 
+
 def _read_dunder(site: str, path: Path) -> list:
     """`__version__` in a top-level package. A package without one declares nothing and is skipped; the anchor is what makes DELETING ours a failure rather than a quietly shorter scan."""
     found = _DUNDER_RE.search(_text(path))
     return [Declaration(site, "__version__", found.group(1))] if found else []
+
 
 def _read_plugin_manifest(site: str, path: Path) -> list:
     data = _json(path)
@@ -104,6 +113,7 @@ def _read_plugin_manifest(site: str, path: Path) -> list:
     if "version" not in data:
         raise Unreadable("the plugin manifest declares no version -- the Claude Code updater reads this key")
     return [Declaration(site, "version", str(data["version"]))]
+
 
 def _read_marketplace(site: str, path: Path) -> list:
     data = _json(path)
@@ -119,6 +129,7 @@ _SITE_READERS = (
     ("pyproject.toml", _read_pyproject), ("src/*/__init__.py", _read_dunder),
     ("**/.claude-plugin/plugin.json", _read_plugin_manifest), ("**/.claude-plugin/marketplace.json", _read_marketplace),
 )
+
 
 def survey(root: Path) -> Survey:
     """Every version declaration under `root`, plus every site that could not be read."""
@@ -142,9 +153,11 @@ def survey(root: Path) -> Survey:
                 problems.append((site, str(exc)))
     return Survey(tuple(declarations), tuple(problems))
 
+
 def missing_anchors(found: Survey) -> list:
     sites = {d.site for d in found.declarations}
     return [a for a in ANCHOR_SITES if a not in sites]
+
 
 def unregistered(found: Survey, root: Path) -> list:
     """Derived sites absent from `.oss.json`'s `version_sites`.
@@ -161,6 +174,7 @@ def unregistered(found: Survey, root: Path) -> list:
 
 # -- the real tree ---------------------------------------------------------------------------
 
+
 def test_no_site_was_unreadable():
     """`could not check` is its own verdict and must never ride along inside a green agreement."""
     found = survey(REPO_ROOT)
@@ -168,6 +182,7 @@ def test_no_site_was_unreadable():
         "COULD NOT CHECK -- this is not drift, and it is not agreement. A version site exists that this guard "
         "knows how to read and could not:\n" + found.describe_problems()
     )
+
 
 def test_the_scan_reached_every_known_declaration_site():
     """An empty or shortened scan is 'could not look', never 'looked and found nothing'."""
@@ -181,12 +196,14 @@ def test_the_scan_reached_every_known_declaration_site():
         + found.describe()
     )
 
+
 def test_every_declared_version_agrees():
     found = survey(REPO_ROOT)
     assert len(found.versions) == 1, (
         "VERSION DRIFT -- these files declare the project version and they disagree. A release that half-lands " "is invisible: PyPI gets the new version while plugin users are never offered it and `requivo doctor` "
         "reports the wrong one.\n" + found.describe()
     )
+
 
 def test_every_declaration_site_is_registered():
     """The release process edits `version_sites`; a site missing from it is a site a release skips."""
@@ -199,12 +216,14 @@ def test_every_declaration_site_is_registered():
 # Positive controls: every "must not fire" above is paired with a "must fire" below, so this file cannot be asserting
 # nothing while looking identical.
 
+
 def _tree(root: Path, files: dict) -> Path:
     for name, body in files.items():
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding="utf-8")
     return root
+
 
 def _agreeing(version: str = "1.2.3") -> dict:
     return {
@@ -218,12 +237,14 @@ def _agreeing(version: str = "1.2.3") -> dict:
         ]}),
     }
 
+
 def test_an_agreeing_tree_is_read_as_agreeing(tmp_path):
     """The must-fire control's partner: if this failed, every red below would prove nothing."""
     found = survey(_tree(tmp_path, _agreeing()))
     assert not found.problems
     assert found.versions == {"1.2.3"}
     assert len(found.declarations) == 4
+
 
 @pytest.mark.parametrize("site", [
     "pyproject.toml", "src/x/__init__.py", ".claude-plugin/marketplace.json", "plugins/x/.claude-plugin/plugin.json",
@@ -235,6 +256,7 @@ def test_a_drift_at_any_single_site_is_caught(tmp_path, site):
     found = survey(_tree(tmp_path, files))
     assert not found.problems, "a drifted file must still be READABLE -- otherwise this proves the wrong thing"
     assert found.versions == {"1.2.3", "9.9.9"}, f"{site}: drift went unnoticed"
+
 
 def test_a_nested_checkout_is_pruned_and_the_prune_is_what_did_it(tmp_path):
     """A `git worktree` under the repo root duplicates every site; `_PRUNED` prunes by name and missed six strays. Asserted both ways: with the `.git` marker the nested tree is invisible, without it the identical tree is found -- proving the prune, not a scan gone blind."""
@@ -259,6 +281,7 @@ def test_a_nested_checkout_is_pruned_and_the_prune_is_what_did_it(tmp_path):
     (nested / ".git").unlink()
     assert survey(root).versions == {"1.2.3", "9.9.9"}
 
+
 def test_an_unreadable_site_is_could_not_check_and_not_drift(tmp_path):
     """The two reds must be distinguishable: this one reports a problem and NO disagreement."""
     files = _agreeing()
@@ -270,11 +293,13 @@ def test_an_unreadable_site_is_could_not_check_and_not_drift(tmp_path):
     # The decisive half: the surviving sites still agree, so agreement alone would have passed.
     assert len(found.versions) == 1
 
+
 def test_a_manifest_that_declares_no_version_is_could_not_check(tmp_path):
     files = _agreeing()
     files["plugins/x/.claude-plugin/plugin.json"] = json.dumps({"name": "x"})
     found = survey(_tree(tmp_path, files))
     assert "declares no version" in found.describe_problems()
+
 
 def test_a_site_that_is_not_utf8_is_could_not_check(tmp_path):
     """`UnicodeDecodeError` is a `ValueError`, not an `OSError` -- catching only the latter let a mis-encoded site escape the survey as a traceback instead of a `could not look` verdict."""
@@ -286,6 +311,7 @@ def test_a_site_that_is_not_utf8_is_could_not_check(tmp_path):
     # And it must not be mistaken for agreement: the readable sites still agree.
     assert len(found.versions) == 1
 
+
 def test_a_missing_anchor_is_could_not_check(tmp_path):
     """A site that MOVED must not read as a shorter, still-agreeing scan."""
     files = _agreeing()
@@ -294,14 +320,17 @@ def test_a_missing_anchor_is_could_not_check(tmp_path):
     assert len(found.versions) == 1, "the remaining sites agree -- which is exactly the trap"
     assert "pyproject.toml" in missing_anchors(found)
 
+
 def test_an_empty_tree_is_refused_rather_than_called_clean(tmp_path):
     found = survey(tmp_path)
     assert not found.declarations
     assert missing_anchors(found) == list(ANCHOR_SITES)
 
+
 def test_a_root_that_does_not_exist_is_could_not_check(tmp_path):
     found = survey(tmp_path / "nope")
     assert found.problems and "no such directory" in found.describe_problems()
+
 
 def test_a_changelog_is_never_read_as_a_declaration(tmp_path):
     """CHANGELOG.md names every past version. A history file is not a declaration."""
@@ -310,6 +339,7 @@ def test_a_changelog_is_never_read_as_a_declaration(tmp_path):
     found = survey(_tree(tmp_path, files))
     assert found.versions == {"1.2.3"}
     assert "CHANGELOG.md" not in {d.site for d in found.declarations}
+
 
 def test_a_dependency_pin_is_never_read_as_a_declaration(tmp_path):
     files = _agreeing()
@@ -320,11 +350,13 @@ def test_a_dependency_pin_is_never_read_as_a_declaration(tmp_path):
     found = survey(_tree(tmp_path, files))
     assert found.versions == {"1.2.3"}
 
+
 def test_an_installed_dependency_is_not_scanned(tmp_path):
     files = _agreeing()
     files[".venv/lib/site-packages/other/.claude-plugin/plugin.json"] = json.dumps({"name": "o", "version": "0.0.1"})
     found = survey(_tree(tmp_path, files))
     assert found.versions == {"1.2.3"}, "a vendored/installed tree must be pruned, not compared"
+
 
 def test_an_unregistered_site_is_reported(tmp_path):
     """The failure that actually happened: a real site nobody added to `version_sites`."""
@@ -337,10 +369,12 @@ def test_an_unregistered_site_is_reported(tmp_path):
     assert len(found.versions) == 1, "everything agrees today -- the registry gap is the finding"
     assert unregistered(found, root) == ["src/x/__init__.py"]
 
+
 def test_a_registry_naming_a_non_declaring_file_is_not_a_finding(tmp_path):
     """CHANGELOG.md is registered and declares nothing. One-directional, so that is fine."""
     root = _tree(tmp_path, _agreeing())
     assert unregistered(survey(root), root) == []
+
 
 def test_a_missing_registry_is_could_not_check_rather_than_clean(tmp_path):
     files = _agreeing()
@@ -348,6 +382,7 @@ def test_a_missing_registry_is_could_not_check_rather_than_clean(tmp_path):
     root = _tree(tmp_path, files)
     with pytest.raises(Unreadable, match="registry cross-check could not be made"):
         unregistered(survey(root), root)
+
 
 def test_a_registry_with_no_version_sites_is_could_not_check(tmp_path):
     files = _agreeing()

@@ -18,8 +18,10 @@ INLINE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)")
 REFDEF = re.compile(r"^\[([^\]]+)\]:\s*(\S+)\s*$", re.MULTILINE)
 IMAGE_SUFFIXES = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg"}
 
+
 def _doc_pages():
     return [REPO / "README.md", *sorted((REPO / "docs").glob("*.md"))]
+
 
 def test_every_readme_image_hosted_from_this_repo_names_a_file_that_exists():
     """Only the repository's own images. A shields.io badge and the Actions status SVG are images too, and neither is a file anyone here can check."""
@@ -31,6 +33,7 @@ def test_every_readme_image_hosted_from_this_repo_names_a_file_that_exists():
     for u in ours:
         assert (REPO / u[len(RAW):]).is_file(), f"{u} names no file in this repository"
 
+
 def test_no_readme_image_is_relative():
     """`pyproject` sets `readme = README.md`, so PyPI renders this file verbatim and does not rewrite relative hrefs. A relative image renders on GitHub and 404s on the project page -- half the audience, and the half deciding whether to install."""
     text = (REPO / "README.md").read_text(encoding="utf-8")
@@ -38,6 +41,7 @@ def test_no_readme_image_is_relative():
     candidates += INLINE.findall(text)
     for u in candidates:
         assert u.startswith("http"), f"README image {u!r} is relative and will 404 on PyPI"
+
 
 @pytest.mark.parametrize("page", _doc_pages(), ids=lambda p: p.name)
 def test_every_relative_image_path_in_a_doc_page_resolves(page):
@@ -55,6 +59,7 @@ def test_every_relative_image_path_in_a_doc_page_resolves(page):
 
 MANIFEST = REPO / "docs" / "images" / "manifest.json"
 
+
 def _shoot_module():
     """`scripts/` is not a package; load the shooter by path so this test and the script cannot disagree about what the surface is. Importing it must not need playwright or pillow -- both are lazy inside `shoot()` for exactly this reason."""
     import importlib.util
@@ -68,6 +73,7 @@ def _shoot_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
 
 def test_the_screenshots_were_taken_from_the_web_surface_as_it_stands_now():
     """Red when a template, a stylesheet or a user-facing label moved after the shots were taken. The remedy is in the message because the whole point is that the next person should not have to reconstruct how the last set was framed."""
@@ -84,6 +90,7 @@ def test_the_screenshots_were_taken_from_the_web_surface_as_it_stands_now():
         f"{', '.join(stale)} — the web surface has changed since {'these were' if len(stale) > 1 else 'this was'} " f"shot (manifest dated {manifest.get('shot_at')}), so they may now show a product that no " f"longer exists — the exact defect #329 was filed for. Re-shoot and commit both the images "
         f"and the manifest:\n    python scripts/shoot_doc_images.py {' '.join(stale)}\n" f"  current: {current}"
     )
+
 
 def _webp_size(path: Path) -> tuple[int, int]:
     """WebP dimensions from the header, not Pillow (maintainer-only tooling; this file runs on every CI leg). `VP8X` carries a 24-bit canvas size minus one, `VP8L` packs 14 bits each into the bitstream, `VP8 ` (lossy) puts them after the start code. A file that is none of these is a hard failure, not a skip: an
@@ -104,6 +111,7 @@ def _webp_size(path: Path) -> tuple[int, int]:
                 int.from_bytes(data[28:30], "little") & 0x3FFF)
     raise AssertionError(f"{path.name} has an unrecognised WebP chunk {chunk!r}")
 
+
 def test_every_manifest_entry_names_an_image_that_exists_and_matches_its_recorded_size():
     """The manifest is only worth trusting if it describes the files actually in the tree. A shot renamed in `SHOTS` but left on disk under the old name would otherwise keep passing the digest check above while `docs/web.md` pointed at the stale file."""
     import json
@@ -117,6 +125,7 @@ def test_every_manifest_entry_names_an_image_that_exists_and_matches_its_recorde
             f"{name}.webp is {_webp_size(path)} and the manifest records " f"({entry['width']}, {entry['height']}) — one of the two was edited by hand"
         )
 
+
 def _surface_tree(root: Path) -> None:
     """The smallest tree `surface_digest` accepts: one file at every path `SURFACE` names.
 
@@ -129,6 +138,7 @@ def _surface_tree(root: Path) -> None:
         else:
             target.mkdir(parents=True, exist_ok=True)
             (target / "a.html").write_bytes(b"original\n")
+
 
 def test_the_screenshot_freshness_digest_moves_when_the_surface_does(tmp_path):
     """The must-fire control for the guard above, which without it would pass forever on a digest that never changes. Both halves matter and the second is the one a checksum usually misses: a template *renamed* renders the same bytes, so a digest over content alone would call the surface unchanged — while
@@ -155,11 +165,13 @@ def test_the_screenshot_freshness_digest_moves_when_the_surface_does(tmp_path):
 # line that is actual behaviour, so the two tests below pin both directions off the same fixture.
 _PY_SOURCE_BASELINE = """\"\"\"Module docstring.\"\"\"
 
+
 def f():
     \"\"\"Docstring for f.\"\"\"
     return 1
 """
 _PY_SOURCE_PROSE_EDIT = """\"\"\"Module docstring, reworded for clarity.\"\"\"
+
 
 def f():
     # a new comment that changes nothing
@@ -168,10 +180,12 @@ def f():
 """
 _PY_SOURCE_CODE_EDIT = """\"\"\"Module docstring.\"\"\"
 
+
 def f():
     \"\"\"Docstring for f.\"\"\"
     return 2
 """
+
 
 def test_a_comment_or_docstring_only_edit_to_a_viewmodel_does_not_move_the_digest(tmp_path):
     """The digest hashes a `.py` file's `ast.dump` with docstrings stripped, and comments are never part of the AST at all -- so English prose moving inside a viewmodel module cannot move the digest, because it cannot change what a screenshot shows (#530)."""
@@ -187,6 +201,7 @@ def test_a_comment_or_docstring_only_edit_to_a_viewmodel_does_not_move_the_diges
         "a comment/docstring-only edit to a viewmodel moved the freshness digest"
     )
 
+
 def test_a_code_edit_to_a_viewmodel_still_moves_the_digest(tmp_path):
     """The other direction of #530's fix: stripping docstrings must not swallow a real behaviour change along with the prose it was aimed at."""
     digest = _shoot_module().surface_digest
@@ -199,6 +214,7 @@ def test_a_code_edit_to_a_viewmodel_still_moves_the_digest(tmp_path):
     target.write_bytes(_PY_SOURCE_CODE_EDIT.encode("utf-8"))
     assert digest(tmp_path) != baseline, "a code edit to a viewmodel left the freshness digest unchanged"
 
+
 def test_a_python_file_that_fails_to_parse_falls_back_to_text_instead_of_crashing(tmp_path):
     """`_normalised_python` must degrade to `_normalised_bytes` on a `.py` file it cannot parse, never raise -- a guard is not the place to discover a syntax error (surface_digest's own docstring). Two distinct exceptions cover this on the versions this project supports: a NUL byte raises `SyntaxError` on
     3.12/3.13 and `ValueError` on 3.9 for the identical input, found in self-review (#530) after the first cut of this function caught only `SyntaxError`."""
@@ -208,12 +224,14 @@ def test_a_python_file_that_fails_to_parse_falls_back_to_text_instead_of_crashin
             f"{broken!r} should fall back to the text hash, not raise or diverge from it"
         )
 
+
 def test_the_freshness_guard_refuses_a_surface_path_that_no_longer_exists(tmp_path):
     """The third state. A `SURFACE` entry pointing at a deleted directory must be a hard failure and not a quietly smaller digest: a guard that silently stops watching half the surface is the all-clear nobody earned, which is the same reason `tests/test_boundaries.py` fails on an empty scan set."""
     _surface_tree(tmp_path)
     shutil.rmtree(tmp_path / "src/requivo/web/templates")
     with pytest.raises(SystemExit, match="not in the tree"):
         _shoot_module().surface_digest(tmp_path)
+
 
 def test_the_digest_is_the_same_whatever_the_line_endings(tmp_path):
     """The digest is a fact about the web surface, not the checkout it was computed in. `.gitattributes` (#504) covers only `*/static/vendor/**`, not `SURFACE`, so a Windows clone still holds CRLF where macOS/Linux hold LF. Hashing raw bytes failed only the Windows leg on an unchanged tree -- same shape as
@@ -233,6 +251,7 @@ def test_the_digest_is_the_same_whatever_the_line_endings(tmp_path):
         "the digest moved when the same content was checked out with CRLF endings — it is measuring " "the checkout rather than the surface, and will go red on Windows and nowhere else"
     )
 
+
 def test_a_partial_reshoot_does_not_bless_the_shots_it_did_not_take():
     """The must-fire control for the per-image digest. `shoot(names)` used to overwrite one shared `surface_digest` with the current tree regardless of which shots were retaken, so a documented partial re-shoot (e.g. `shoot_doc_images.py web-home`) silently certified screenshots nobody had retaken. Asserted
     against `stale_shots` (the predicate `check()` and the guard above both read) rather than by driving `shoot()`, which needs playwright, a browser and a session."""
@@ -249,6 +268,7 @@ def test_a_partial_reshoot_does_not_bless_the_shots_it_did_not_take():
     )
     assert shoot.stale_shots({"images": {n: {"surface_digest": fresh} for n in partially["images"]}},
                              fresh) == [], "a full re-shoot must leave nothing flagged"
+
 
 def test_a_manifest_entry_with_no_recorded_digest_reads_as_stale():
     """The third state: an entry with no recorded per-image digest knows nothing about the tree it was shot against, and *unknown* is not *current* -- the guard must not answer "fine" when it has nothing to compare, same rule as `test_the_freshness_guard_refuses_a_surface_path_that_no_longer_exists` above and

@@ -1,7 +1,7 @@
 """Shared plumbing for this suite's source-scanning guards (#288, #551).
 
 Three tiers once each carried near-duplicate `scan`/`_parse`/`_write_tree` copies and one re-derived the empty-root refusal a third time; this module is that logic, once. Like `tests/_cli_harness.py` beside it, the underscore prefix keeps pytest's `test_*.py` collection from picking it up, so every property
-it backs is still asserted from the guard file that imports it -- now `test_source_form.py` for all three (#551); `test_boundaries.py`/`test_narrative_references.py` stay as name-only stubs so `src/` and `CLAUDE.md`'s citations keep resolving without a `src/` diff."""
+it backs is still asserted from the guard file that imports it -- now `test_source_form.py` for all three (#551); `test_boundaries.py`, `test_encoding.py` and `test_narrative_references.py` all stay as name-only stubs so `src/` and `CLAUDE.md`'s citations keep resolving without a `src/` diff."""
 from __future__ import annotations
 
 import ast
@@ -13,6 +13,7 @@ def parse_utf8(path: Path) -> ast.Module:
     """Parse a source file as UTF-8, explicitly -- this repository's own prose is not ASCII (an em dash is enough), so a bare `read_text()` decodes with the *locale* codepage instead and a guard reading its own scan set can die instead of running, under exactly the locale it exists to protect against. Not
     hypothetical: it is what happened to the #10 guard's first version."""
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
 
 def list_python_files(root: Path, *, label: str) -> list[Path]:
     """Every `.py` file under `root`, recursively. Refuses rather than answers over what it could not see (#10): `Path.rglob` on a directory that does not exist returns `[]`, which is exactly the shape that let a guard pass green while checking nothing. `label` names the calling guard in the message ("boundary
@@ -28,6 +29,7 @@ def list_python_files(root: Path, *, label: str) -> list[Path]:
         )
     return found
 
+
 def list_files(roots: tuple[Path, ...], *, suffixes: tuple[str, ...], label: str,
                 extra: tuple[Path, ...] = ()) -> list[Path]:
     """Every file under `roots` whose suffix is in `suffixes`, plus `extra`. The same refusal as `list_python_files`, generalised past `.py` alone and over several roots at once, for `test_narrative_references.py`."""
@@ -39,6 +41,7 @@ def list_files(roots: tuple[Path, ...], *, suffixes: tuple[str, ...], label: str
             f"{label} found no files under {roots}. This is 'could not look', not 'looked and " f"found nothing' -- fix the path, never the assertion."
         )
     return found
+
 
 def write_tree(root: Path, sources: dict) -> None:
     """Materialise a small fixture tree under `root`, for a guard's own positive-control tests."""
