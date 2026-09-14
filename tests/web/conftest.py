@@ -67,12 +67,9 @@ def _make_session(slug="leave-approval", **model_over):
 class Spend:
     """The token counts the SDK reports on a response, under the names it uses.
 
-    The default fake reports `usage = None`, which is right for every test that is not about cost:
-    the provider then records a call with zero tokens and nothing prints. A test *about* the spend
-    has to say what was spent, so it passes one of these — the attribute names are the SDK's, because
-    `_complete` reads them by name and a rename there has to break these tests rather than quietly
-    zero them (#253).
-    """
+    `usage = None` by default: a test not about cost pays nothing and prints nothing. Names match
+    the SDK's, since `_complete` reads them by name — a rename there must break these tests, not
+    quietly zero them (#253)."""
 
     def __init__(self, input_tokens=0, output_tokens=0, cache_read_input_tokens=0,
                  cache_creation_input_tokens=0):
@@ -159,12 +156,10 @@ _HTMX_POST_PATHS = ("/answers", "/artifacts/")
 
 @pytest.fixture
 def client(raw_client):
-    """The everyday client: same as `raw_client` plus the cross-site request token every rendered form
-    carries as a hidden field (sent as a header so tests can keep posting plain `data=` dicts), and
-    `HX-Request: true` on the two htmx-post forms (#428) -- modelling a browser with JavaScript
-    loaded, which is what the rest of this suite means by "the everyday client". The one place that
-    distinction matters is the no-JS fallback itself (`test_web_no_js_forms.py`), which drives
-    `raw_client` directly and sends neither header, exactly as a browser with JavaScript off would."""
+    """The everyday client: `raw_client` plus the CSRF token every rendered form carries (as a
+    header, so tests can keep posting plain `data=` dicts) and `HX-Request: true` on the two
+    htmx-post forms (#428) -- a browser with JavaScript loaded. The no-JS fallback
+    (`test_web_no_js_forms.py`) drives `raw_client` directly and sends neither header."""
     raw_client.headers[CSRF_HEADER] = csrf_token()
     original_post = raw_client.post
 

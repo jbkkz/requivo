@@ -118,15 +118,11 @@ REFUSALS_WITH_NO_NAME = [
 
 @pytest.mark.parametrize("label, data, status", REFUSALS_WITH_NO_NAME)
 def test_a_refusal_never_fills_in_a_session_name_the_reader_did_not_type(client, label, data, status):
-    """A refusal must hand back the form as submitted — and a field left blank was submitted blank.
-
-    `create_session` reuses one name for two meanings: the string the reader typed, and the argument
-    the service takes, where `None` means *derive a slug from the request*. An empty name collapses to
-    `None` before the empty-request arm is reached, and Jinja stringifies that, so the reader got
-    `value="None"` in a box they never touched. It also fails the field's own
-    `pattern="[a-z0-9]+(-[a-z0-9]+)*"`, so they had to notice it and clear it before they could
-    resubmit — the refusal path #30 built to stop costing the reader work had started adding some.
-    """
+    """A refusal must hand back the form as submitted -- a field left blank was submitted blank.
+    `create_session` reuses one name for two meanings: the reader's typed string, and `None`
+    meaning *derive a slug from the request*. An empty name collapsed to `None`, and Jinja
+    stringified that, so the reader got `value="None"` in a box they never touched -- and failed
+    the field's own pattern: the refusal path #30 built to save work had started adding some."""
     r = client.post("/sessions", data={**data, "provider": "create_only"})
     assert r.status_code == status, label
     assert input_value(r.text, "slug") == "", label

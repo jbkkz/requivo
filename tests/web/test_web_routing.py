@@ -118,17 +118,11 @@ def test_missing_session_is_404(client):
 
 
 def test_a_corrupt_model_is_the_malformed_session_page_not_a_generic_500(client):
-    """The web half of #204, and the reason it was a *generic* 500 rather than a bad one.
-
-    `GET /sessions/<slug>` reads the model. A pydantic `ValidationError` is not a `RequivoError`, so
-    it never reached the handler that already had a whole vocabulary for a malformed session --
-    eight mapped codes, each with a status chosen on the "is this about the request or about the
-    store?" question -- and landed in the catch-all instead, as "Something went wrong on the server"
-    with nothing to act on.
-
-    500 is the right number and always was: an unreadable model on disk is a fact about the store.
-    What changed is that the page can now say which fact.
-    """
+    """The web half of #204, and the reason it was a generic 500 rather than a bad one. `GET
+    /sessions/<slug>` reads the model; a pydantic `ValidationError` is not a `RequivoError`, so it
+    missed the handler's whole vocabulary for a malformed session and landed in the catch-all as
+    "Something went wrong on the server" with nothing to act on. 500 is still right: now the page
+    can say which fact about the store made it so."""
     _make_session("leave-approval", problem=HIGH_EXPLICIT)
     from requivo.core import persistence as store
     (store.canonical_dir("leave-approval") / "model.json").write_text("{", encoding="utf-8")
@@ -184,19 +178,11 @@ def test_context_unreadable_reaches_the_browser_as_a_server_error(client, monkey
 
 
 def test_a_taken_session_name_is_suffixed_rather_than_refused(client):
-    """Why `session_exists` gets a status row but no end-to-end test — and a finding recorded where
-    the next reader will look for it.
-
-    Posting a name that is already taken by a *different* request does not raise `session_exists`:
-    `create_session` falls through to a `<base>-<identity hash>` candidate, which is free, so the
-    reader is redirected to a session with a name they did not choose and nothing says so. The raise
-    at `services/sessions.py:163` needs *both* candidates taken with different identities, and the
-    suffix is a hash of the request, so from this route that is close to unreachable.
-
-    This pins the behaviour as it is rather than asserting it is right — the silent rename is
-    reported as an adjacent finding, not fixed here, because choosing between refusing, suffixing
-    loudly, and re-rendering the form is a design decision this change was not briefed to make.
-    """
+    """Why `session_exists` gets a status row but no end-to-end test, recorded where the next
+    reader will look. Posting a name already taken by a different request does not raise
+    `session_exists`: `create_session` falls through to a free `<base>-<identity hash>` candidate,
+    silently redirecting the reader to a session with a name they did not choose. This pins the
+    behaviour as-is; the silent rename is an adjacent finding, not fixed here."""
     first = client.post("/sessions", data={"request_text": "A leave approval request",
                                            "slug": "leave-approval", "provider": "create_only"},
                         follow_redirects=False)

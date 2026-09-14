@@ -258,18 +258,11 @@ def test_the_decision_briefs_own_content_still_declares_english(client):
 
 
 def test_the_tab_title_is_a_stated_gap_rather_than_an_oversight(client):
-    """The one region this change leaves declared English while it may hold the engine's mirroring
-    prose, and it is a decision rather than a miss.
-
-    `<title>`'s content model is text, so the objective cannot be wrapped and tagged apart from the
-    " — Requivo" it is concatenated with; and no single `lang` value is true of that whole string,
-    so `lang=""` on the element would declare the product's own name to be of unknown language on
-    every page. Leaving the document's `en` is wrong for the objective half and right for the rest.
-
-    This test exists so the trade-off cannot be quietly reversed: it goes red both if someone tags
-    the title without revisiting the reason written beside it in `sessions/detail.html`, and if the
-    title stops carrying the objective at all -- which is what would make the gap disappear for
-    real."""
+    """The one region this change leaves declared English while it may hold the engine's
+    mirroring prose -- a decision, not a miss. `<title>`'s content model is text, so the objective
+    cannot be tagged apart from the " -- Requivo" suffix, and no single `lang` is true of the whole
+    string, so `lang=""` would declare the product's own name unknown-language on every page. Pins
+    the trade-off against `sessions/detail.html`'s own stated reason."""
     slug = _french_session()
 
     page = client.get(f"/sessions/{slug}").text

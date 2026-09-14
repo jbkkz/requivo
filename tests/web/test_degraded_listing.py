@@ -82,13 +82,11 @@ def break_request(slug: str) -> None:
 
 
 def break_model(slug: str) -> None:
-    """A crash mid-write leaves `model.json` truncated — scenario B, and the sharpest of the three.
+    """A crash mid-write leaves `model.json` truncated -- scenario B, the sharpest of three.
 
-    `status()` reaches `PersistedEngineOutput.model_validate_json`, which raises a pydantic `ValidationError`.
-    That is not a `RequivoError`, so it misses the viewmodel's `SessionNotFoundError` catch *and*
-    `create_app`'s `RequivoError` handler, and lands on the bare `Exception` handler as a 500 over
-    the whole page.
-    """
+    `status()` raises a pydantic `ValidationError`, not a `RequivoError`, so it misses both the
+    viewmodel's `SessionNotFoundError` catch and `create_app`'s `RequivoError` handler, and lands
+    on the bare `Exception` handler as a 500 over the whole page."""
     (canonical_dir(slug) / "model.json").write_text('{"summary": {"objec', encoding="utf-8")
 
 
@@ -267,18 +265,11 @@ def test_the_metadata_failure_is_reported_as_the_error_it_was(mixed_workspace):
 
 
 def test_an_entry_that_could_not_be_examined_is_a_row_and_not_a_broken_page(client, request):
-    """The three modes above break a member the listing already *has*. This one breaks the scan that
-    decides what the members are, so it took the whole page down from below the guard (#80).
-
-    `_scan_session_root` probes `<name>/session.json` to decide whether a name is a session, and
-    `Path.exists()` re-raises EACCES — so one directory the process cannot stat into raised inside
-    `list_entries`' own `list_slugs()` call, above every per-row `try` in this module. The home page
-    was a 500 with no row to name anything.
-
-    Pinned here because the web reached this for free through `list_entries()` and nothing else in
-    the repo says so: the issue was filed against `session list` and `doctor`, and a surface that is
-    correct only incidentally is a surface the next change to `list_entries` can quietly break.
-    """
+    """The three modes above break a member the listing already has; this one breaks the scan
+    that decides what the members are (#80). `Path.exists()` re-raises EACCES for one unstatable
+    directory inside `list_entries()`'s own `list_slugs()`, above every per-row `try`, so the home
+    page was a 500 with no row to name. Pinned because the web reaches `list_entries()` for free
+    and nothing else in the repo says so (filed against `session list` and `doctor`)."""
     import os
 
     _seed(HEALTHY_ANALYSED, analysed=True)
@@ -351,19 +342,11 @@ def _leaks(slug: str) -> bool:
 
 
 def test_the_leak_this_section_checks_for_is_reachable_at_all():
-    """Must fire, and it is the control the first draft of this section did not have.
-
-    Every assertion below is a *negative* one — this string is not on the page — and a negative
-    assertion over something that could never have been there passes against the unfixed code too.
-    Two of the five tokens originally listed were exactly that: `OSError.__str__` renders
-    `[Errno 21] Is a directory: '…'` and never the class name (only `repr()` would, and nothing
-    here renders or logs a `repr`), and a traceback never reaches a template at all.
-
-    So: at least one break mode must have something to leak, or this whole section is decorative.
-    It is deliberately a claim about the *set* rather than about each member, because one member
-    genuinely has nothing to leak, and asserting per-arm would make this test fail for the one
-    reason that is not a defect.
-    """
+    """Must fire: the control the first draft of this section lacked. Every assertion below is
+    negative (this string is not on the page), which passes against unfixed code too -- two of the
+    five tokens originally listed could never have appeared (`OSError.__str__` never renders the
+    class name). So at least one break mode must have something to leak, or the section is
+    decorative -- a claim about the set, since one member genuinely has nothing to leak."""
     for slug in sorted(BREAKERS):
         _seed(slug, analysed=True)
         BREAKERS[slug](slug)
@@ -394,18 +377,11 @@ def test_a_degraded_row_shows_one_human_line_and_no_engine_internals(client, slu
 
 
 def test_a_failure_already_written_for_a_reader_survives_to_the_row(client):
-    """The over-correction this issue had to avoid, and the first draft of the fix walked into it.
-
-    `read_meta` refusing a newer `format_version` says *session format v2 is newer than this
-    Requivo understands (v1) — upgrade requivo*: one line, no path, no class name, and it carries
-    the one thing a generic sentence cannot — what to do about it. Replacing that with *Requivo
-    could not read the files for this session* was not a trade, it was a strict loss, and nothing
-    in the humanising assertions above could see it: there was no engine vocabulary in that message
-    to catch, so every one of them passed.
-
-    `test_the_metadata_failure_is_reported_as_the_error_it_was` already pins the service layer
-    keeping this text. This pins it reaching the reader.
-    """
+    """The over-correction this issue had to avoid: `read_meta` refusing a newer `format_version`
+    says *session format v2 is newer than this Requivo understands -- upgrade requivo*, carrying
+    what to do about it, where a generic *could not read the files* message is a strict loss no
+    humanising assertion above could catch. `test_the_metadata_failure_is_reported_as_the_error_it_was`
+    pins the service layer keeping this text; this pins it reaching the reader."""
     _seed(BROKEN_META, analysed=True)
     break_meta(BROKEN_META)
 
@@ -477,16 +453,11 @@ def test_opening_an_unreadable_session_answers_with_the_status_it_always_did(cli
 
 @pytest.mark.parametrize("slug", sorted(BREAKERS))
 def test_the_unreadable_session_page_is_logged_for_whoever_has_to_fix_it(client, caplog, slug):
-    """The page is for the reader; the log is for the operator. Both, or the humanising has simply
-    moved the detail somewhere nobody looks.
-
-    **The assertion is on all three of slug, phrase and detail, and that is not belt-and-braces.**
-    Asserting the slug alone passes without this route logging anything at all: `create_app`'s own
-    handlers already log the request *path*, which contains the slug, for every arm here. The
-    phrase is what only this line writes, and the detail is what the `OSError` arm's old
-    `logger.exception` put in `exc_info` rather than in the message — so a reader grepping the
-    terminal for what went wrong found the class name and not the file.
-    """
+    """The page is for the reader; the log is for the operator. Both, or humanising has just
+    moved the detail nobody looks at. Asserted on all three of slug, phrase and detail -- not
+    belt-and-braces: slug alone passes with no route logging anything (`create_app`'s handlers log
+    the request path, which contains it); phrase is what only this line writes; detail is what the
+    `OSError` arm's old `logger.exception` put in `exc_info` rather than the message."""
     import logging
 
     _seed(slug, analysed=True)
