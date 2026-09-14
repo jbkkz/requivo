@@ -62,6 +62,14 @@ It is a plain bullet rather than front matter, so the assembler needs no special
 and the claim ships into `CHANGELOG.md` where a user reads it, instead of being
 metadata deleted at the fold.
 
+**If the change touches a surface `docs/compatibility.md` promises** — the session
+format, a `--json` payload, an exit code, an environment variable, a CLI verb, the
+lock file, or any other table on that page — add a **row** to the relevant table
+(promise, since-version, the test that pins it) in the same pull request, rather than
+a new paragraph. That page is a set of promise tables precisely so the next additive
+change stays one row wide; a paragraph explaining that a change is additive is the
+shape #552 removed.
+
 ## Nothing user-visible in this change?
 
 Label the pull request `no-changelog`. **That label is not created for you.** Writing
