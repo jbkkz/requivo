@@ -27,6 +27,150 @@ from pathlib import Path
 import pytest
 from _credentials import _CREDENTIAL_ENV, SINKHOLE_BASE_URL
 
+from requivo.core import persistence as _persistence_store
+from requivo.core.contracts import _schema_order, schema_slot_ids
+from requivo.services.artifacts import ArtifactService as _ArtifactService
+from requivo.services.sessions import SessionService as _SessionService
+
+
+def slot(completeness=0, confidence="empty", impact="low", value=""):
+    """A raw slot dict -- the four keys `full_model` and every direct `svc.update_model(...)` call
+    in the persistence/sessions/integrity suites build a proposal out of. Distinct from
+    `tests/_fakes.py`'s `slot()`, which has no `value` and feeds `EngineOutput.model_validate`
+    rather than a raw proposal dict -- the two suites build different shapes on purpose (#555)."""
+    return {"completeness": completeness, "confidence": confidence, "impact": impact, "value": value}
+
+
+def full_model(**overrides) -> dict:
+    """A complete required-slot model proposal, with per-slot overrides -- the raw-dict counterpart
+    of `_fakes.out()`. A complete model owes an objective as much as it owes its slots
+    (`completeness_gap`), so the shared fixture carries one."""
+    _, required = schema_slot_ids()
+    model = {sid: slot() for sid in _schema_order() if sid in required}
+    model.update(overrides)
+    return {"model": model, "questions": [], "summary": {"objective": "A leave approval system"}}
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    """A temp `.requivo/` workspace, isolated from the caller's real one and from the legacy `out/`
+    root -- shared by every persistence/sessions/integrity test that touches disk (#555)."""
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+    return tmp_path
+
+
+# ── a stub ReasoningProvider that records calls, shared by the sessions-service and ─────────
+# discovery-provider-seam suites (#555) -- was declared twice in test_sessions.py before the split.
+
+
+class RacingClient:
+    """A provider whose reply arrives only after someone else has already moved the session --
+    drives the invariant-2 "a generation carries the revision it read" tests."""
+
+    def __init__(self, reply: str, on_call):
+        self._reply, self._on_call = reply, on_call
+        self.messages = self
+
+    def create(self, **kwargs):
+        self._on_call()          # the concurrent write lands while "reasoning" is in flight
+        return RacingReply(self._reply)
+
+
+class RacingReply:
+    def __init__(self, text):
+        self.content = [type("B", (), {"type": "text", "text": text})()]
+        self.stop_reason = "end_turn"
+        self.usage = None
+
+
+class FakeProvider:
+    """A `ReasoningProvider` with no vendor behind it -- the stand-in for a second implementation."""
+
+    name = "fake"
+
+    def analyze(self, request, *, current_model=None, answers=None, only=None):
+        from requivo.core.contracts import EngineOutput
+        return EngineOutput.model_validate({**full_model(), "summary": {"objective": "A leave system"}})
+
+    def generate(self, artifact_type, model, *, only=None):
+        raise AssertionError("not needed for this test")
+
+    def model_name(self):
+        return "fake-model-1"
+
+    def provenance(self, op, *, only=None):
+        return {"provider": self.name, "model_name": self.model_name(), "prompt_version": "sha256:fake"}
+
+
+class CountingProvider(FakeProvider):
+    """A provider that records whether it was asked to reason -- the point of a pre-flight check."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def analyze(self, request, *, current_model=None, answers=None, only=None):
+        self.calls += 1
+        return super().analyze(request, current_model=current_model, answers=answers, only=only)
+
+    def generate(self, artifact_type, model, *, only=None, **kwargs):
+        # Overrides `FakeProvider.generate`, which raises "not needed for this test". A guard test
+        # has to be able to tell *reached the provider* from *raised somewhere else on the way*, and
+        # an AssertionError from the stand-in reads like a failed assertion in the test itself.
+        self.calls += 1
+        raise AssertionError(f"the provider was reached with model={model!r}")
+
+
+# ── a session at a given revision with a saved artifact, and the symlink-containment probes ──
+# shared by the persistence and integrity suites (#555) -- declared twice, once per file, before.
+
+
+def healthy_session(slug: str = "s"):
+    """A session at revision 2 with a `prd` saved against it -- "a session at revision N with a
+    saved artifact", the shared fixture #555 asks for. Returns the `SessionService`."""
+    svc = _SessionService()
+    svc.create_session("Something.", slug=slug)
+    svc.update_model(slug, full_model())
+    svc.update_model(slug, full_model(**{"workflow": slot(80, "explicit", "high", "moved")}))
+    # Two revisions were applied above, so 2 is the revision this PRD was generated from. Stating
+    # it is now the caller's job rather than the service's guess (#6).
+    _ArtifactService().save(slug, "prd", "# PRD\n", source_revision=2)
+    return svc
+
+
+def symlink_or_skip(link, target, *, target_is_directory: bool = False) -> None:
+    """Create a symlink, or skip loudly naming what went untested -- Windows refuses
+    `CreateSymbolicLink` without a privilege or Developer Mode, which no CI runner can be assumed to
+    have (#3). Silently passing instead would claim coverage that does not exist."""
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except (OSError, NotImplementedError) as e:
+        pytest.skip(
+            f"this platform refuses to create a symlink ({type(e).__name__}: {e}). UNTESTED HERE: "
+            f"that a symlink escaping the session root is refused. The containment check itself "
+            f"still runs on every platform; only the symlink half of it is unreachable.")
+
+
+def blind_to_dangling_links(monkeypatch) -> None:
+    """Give the store's own resolution the semantics CPython 3.9 has on Windows, on any platform
+    (#3): a dangling symlink's unresolvable tail is split off and the resolved prefix re-joined to
+    it verbatim, so it reports itself as sitting wherever the prefix does. Patches `store._resolve`
+    -- the resolution the product performs -- not `Path.resolve`, which the store no longer calls."""
+    real_resolve = _persistence_store._resolve
+
+    def resolve(path):
+        s = Path(path)
+        tail: list[str] = []
+        while True:
+            if s.exists():                       # stands in for `_getfinalpathname` succeeding
+                return Path(real_resolve(s), *reversed(tail))
+            if s.parent == s:                    # nothing resolved: 3.9 hands the path straight back
+                return Path(path)
+            tail.append(s.name)
+            s = s.parent
+
+    monkeypatch.setattr(_persistence_store, "_resolve", resolve)
+
 
 @pytest.fixture(autouse=True)
 def _no_ambient_credentials(monkeypatch):

@@ -1,22 +1,8 @@
-"""The repository conformance suite is genuinely a public, wheel-shipped, out-of-repo-runnable
-artifact -- not merely a class that happens to sit under `src/` (#424).
-
-CLAUDE.md claims "a Postgres repository reuses [the service orchestration] verbatim", and the proof
-used to be real but private: `InMemorySessionRepository` inside `tests/test_sessions.py`, runnable
-by nothing outside this repository. This file pins the three shapes that make the extracted suite
-(`requivo.testing.repository_conformance.SessionRepositoryConformance`) actually usable by an
-external implementer, none of which `tests/test_sessions.py`'s own use of the suite (as a subclass)
-can itself prove:
-
-- it ships in the built wheel, not only in this checkout;
-- the base class is importable and not collected as a test on its own (no `Test*` name -- an
-  external suite that merely imports it must not pick up phantom failures for a class with no
-  `make_repository()`);
-- both implementations this repo carries (`FileSessionRepository`, the in-memory fake) are wired to
-  it as subclasses, which is the "shrinks to the factory wiring" acceptance criterion.
-
-Would this pass if #424 did nothing? No: before this change there was no `requivo.testing` package
-at all, so every assertion below raises `ModuleNotFoundError` or `ImportError` at collection.
+"""The repository conformance suite is a public, wheel-shipped, out-of-repo-runnable artifact (#424)
+-- not merely a class under `src/`. It ships in the built wheel; the base class is importable and
+not collected as a test on its own; and both implementations this repo carries
+(`FileSessionRepository`, `test_discovery_provider_seam.py`'s in-memory fake) are wired to it as
+subclasses -- the "shrinks to the factory wiring" acceptance criterion.
 """
 from __future__ import annotations
 
@@ -40,12 +26,11 @@ def test_the_suite_is_importable_and_not_collected_as_a_test_on_its_own():
 
 
 def test_full_model_is_re_exported_and_documented():
-    """A reviewer finding (#424): `full_model` was importable from the submodule and used by the
-    suite's own test methods, but the package's `__init__.py` re-exported only the base class and
-    neither `docs/compatibility.md` nor this file's own SEAM-shaped guards mentioned it -- an
-    out-of-repo subclass following the submodule's own docstring advice ("so an out-of-repo subclass
-    of this suite can call it too") was relying on a name nothing pinned. Fixed alongside this test:
-    `requivo.testing.__init__`'s `__all__` and import now both name it."""
+    """A reviewer finding (#424): `full_model` was importable from the submodule and used by the suite's
+own test methods, but the package's `__init__.py` re-exported only the base class and neither
+`docs/compatibility.md` nor this file's own SEAM-shaped guards mentioned it -- an out-of-repo
+subclass following the submodule's own docstring advice ("so an out-of-repo subclass of this
+suite can call it too") was relying on a name nothing pinned."""
     from requivo.testing import SessionRepositoryConformance, full_model
     from requivo.testing.repository_conformance import full_model as direct
 
@@ -62,7 +47,7 @@ def test_both_shipped_implementations_are_wired_to_the_suite():
     # Bare module name, not `tests.test_sessions` -- there is no `tests/__init__.py`, so pytest's own
     # rootdir import mode puts `tests/` directly on `sys.path` (the same reason `_fakes` is imported
     # by bare name throughout this suite rather than as `tests._fakes`).
-    from test_sessions import TestFileRepositoryConformance, TestInMemoryRepositoryConformance
+    from test_discovery_provider_seam import TestFileRepositoryConformance, TestInMemoryRepositoryConformance
 
     from requivo.testing.repository_conformance import SessionRepositoryConformance
 

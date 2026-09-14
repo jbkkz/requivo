@@ -39,13 +39,6 @@ HEALTHY = "leave-approval"
 BLOCKED = "blocked-entry"
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    return tmp_path
-
-
 def _run(argv):
     """`app()` with stdout captured, returning `(text, exit_code)`.
 
@@ -326,13 +319,9 @@ def test_a_clean_workspace_lists_cleanly_and_exits_zero(workspace):
 
 def test_an_unexaminable_name_carrying_a_control_character_cannot_forge_a_line(workspace, request):
     """The directory name is created by whoever holds the workspace and reaches both surfaces raw:
-    `session list` prints it as a degraded row's slug, `doctor` prints it under the sessions check.
-    A name carrying a newline would otherwise write what reads as a second, authoritative line of
-    Requivo's own output at column 0 — the shape #40 found in `doctor`.
-
-    Two *new* sites for `display_token`, because nothing between the directory entry and the line
-    has validated this name — the `read_meta` that would have refused it is precisely what could not
-    run."""
+`session list` prints it as a degraded row's slug, `doctor` prints it under the sessions check. A
+name carrying a newline would otherwise write what reads as a second, authoritative line of
+Requivo's own output at column 0 — the shape #40 found in `doctor`."""
     if os.name == "nt":
         pytest.skip("NTFS refuses a control character in a filename, and POSIX mode bits do not "
                     "deny traversal here either. UNTESTED HERE: the render guard on an "
@@ -368,15 +357,11 @@ def test_an_unexaminable_name_carrying_a_control_character_cannot_forge_a_line(w
 
 
 def test_session_exists_answers_could_not_tell_through_the_error_channel(blocked):
-    """`session_exists` raises rather than answering `False` on a probe it could not make.
-
-    Same defect as the partition above, in the function every other verb opens with. The bool is
-    deliberately *not* widened: `cli.py` and `session import --force` read this to decide whether to
-    create or overwrite, so `False` on a permissions fault is *there is nothing here* followed by a
-    write. Three states, two returns, so the third leaves as an error.
-
-    `SessionUnreadableError` and not a new code: #82 made it mean *a fact about the store, not about
-    the request*, which is exactly this, and it already answers 500 over HTTP."""
+    """`session_exists` raises rather than answering `False` on a probe it could not make. Same defect
+as the partition above, in the function every other verb opens with. The bool is deliberately
+*not* widened: `cli.py` and `session import --force` read this to decide whether to create or
+overwrite, so `False` on a permissions fault is *there is nothing here* followed by a write.
+Three states, two returns, so the third leaves as an error. See #82."""
     from requivo.core.errors import SessionUnreadableError
 
     with pytest.raises(SessionUnreadableError) as caught:
@@ -389,12 +374,10 @@ def test_session_exists_answers_could_not_tell_through_the_error_channel(blocked
 
 
 def test_read_meta_answers_could_not_tell_through_the_error_channel(blocked):
-    """#264, the identical class one function further along. `session_exists` was fixed by routing
-    its existence probe through `_probe`; `read_meta`'s own `if not p.exists(): raise
-    _no_session(slug)` sat outside the `try` that wraps `OSError`, so a session.json the process
-    cannot stat still escaped as a raw `PermissionError` instead of `SessionUnreadableError` --
-    bypassing the structured-error contract every caller (`session show`, doctor's per-session arm,
-    the HTTP 500 mapping) is written against."""
+    """#264, the identical class one function further along. `session_exists` was fixed by routing its
+existence probe through `_probe`; `read_meta`'s own `if not p.exists(): raise _no_session(slug)`
+sat outside the `try` that wraps `OSError`, so a session.json the process cannot stat still
+escaped as a raw `PermissionError` instead of `SessionUnreadableError`"""
     from requivo.core.errors import SessionNotFoundError, SessionUnreadableError
 
     with pytest.raises(SessionUnreadableError) as caught:
@@ -419,14 +402,11 @@ def test_absent_is_still_false_because_absent_is_a_real_answer(workspace):
 
 
 def test_verify_says_it_could_not_look_and_exits_4_not_1(blocked):
-    """The pairing #80 created and #97 closes.
-
-    `session list` renders a degraded row for an entry it could not examine and prints a footer
-    telling the reader to run `session verify <slug>`. That verb opened with `session_exists` and
-    crashed with a bare `PermissionError` on the one slug it had just been pointed at.
-
-    **4, not 1.** Exit 1 says *I checked and it is broken*; nothing checked anything here. That is
-    the collapse #86 removed from this verb and it must not return through the probe."""
+    """The pairing #80 created and #97 closes. `session list` renders a degraded row for an entry it
+could not examine and prints a footer telling the reader to run `session verify <slug>`. That
+verb opened with `session_exists` and crashed with a bare `PermissionError` on the one slug it
+had just been pointed at. **4, not 1.** Exit 1 says *I checked and it is broken*; nothing checked
+anything here. See #86."""
     text, code = _run(["session", "verify", BLOCKED])
     assert code == EXIT_DEGRADED, text
     assert "could not examine" in text.lower(), text
@@ -436,12 +416,10 @@ def test_verify_says_it_could_not_look_and_exits_4_not_1(blocked):
 
 
 def test_verify_json_carries_the_third_state_as_a_field_not_as_an_empty_list(blocked):
-    """`problems: []` spells both *checked, nothing wrong* and *nothing was checked*.
-
-    So the payload gains `session: {checked, error}`, a sibling of `context_cards` carrying the same
-    two keys for the same reason. A consumer must branch on `session.checked`, never on the
-    emptiness of `problems` — this asserts the field is there and that the empty list alone would
-    have misled."""
+    """`problems: []` spells both *checked, nothing wrong* and *nothing was checked*. So the payload
+gains `session: {checked, error}`, a sibling of `context_cards` carrying the same two keys for
+the same reason. A consumer must branch on `session.checked`, never on the emptiness of
+`problems` — this asserts the field is there and that the empty list alone would have misled."""
     text, code = _run(["session", "verify", BLOCKED, "--json"])
     assert code == EXIT_DEGRADED, text
     payload = json.loads(text)
@@ -466,17 +444,11 @@ def test_a_healthy_session_reports_checked_true_so_the_field_is_not_a_constant(b
 
 
 def test_the_error_text_on_a_non_session_line_cannot_forge_a_line_either():
-    """`_non_session_detail` interpolates `error` beside names that all go through `display_token`.
-
-    The names were wrapped and the error was not, for a release. `error` is `str(e)` from a
-    deliberately wide `except Exception` in the store — the docstring beside it says the set of ways
-    a member can be broken is open — so an open set of causes was feeding an unescaped
-    interpolation, which is the shape #40 was.
-
-    A platform-free unit test on purpose: this asserts the *render*, and the render must hold
-    whatever the exception space happens to look like on the leg it runs on. Whether a reachable
-    exception can carry a newline today is a separate question, and the answer being *probably not*
-    is not a property of this line."""
+    """`_non_session_detail` interpolates `error` beside names that all go through `display_token`. The
+names were wrapped and the error was not, for a release. `error` is `str(e)` from a deliberately
+wide `except Exception` in the store — the docstring beside it says the set of ways a member can
+be broken is open — so an open set of causes was feeding an unescaped interpolation, which is the
+shape #40 was."""
     from requivo.deterministic.doctor import _non_session_detail
 
     forged = "boom\nTOTAL: 0 sessions, all clear"
@@ -499,35 +471,11 @@ def test_a_plain_error_is_not_mangled_by_the_wrap():
 
 
 def test_no_error_string_reaches_a_printed_line_unwrapped():
-    """The class guard, added because fixing the two named instances left four siblings (#90).
-
-    The first attempt at #90 wrapped the two sites the issue pointed at. Four more of exactly the
-    same shape stayed raw — three of them on `doctor`'s own report, the surface #40 and #90 are both
-    about, and one of them **eleven lines below** a sibling that had just been wrapped, in the same
-    function. A guard on the instances would have stayed green through all of that, which is the
-    whole reason this one reasons over the file.
-
-    Deliberately a source sweep and not a behavioural test: the hazard is a *new* interpolation
-    somebody adds later, and no runtime assertion can see a line nobody wrote yet. The same argument
-    `tests/test_encoding.py` makes for its own walk.
-
-    **The reach is the whole point, so it is stated exactly.** The first version of this guard matched
-    `{x['error']}` — a subscript read — and claimed that was "the shape every one of the six had". It
-    was the shape of four. `_non_session_detail` binds `error` to a bare local and interpolates
-    `{error}`, and the degraded-listing site wraps an `or` expression; both slipped through a guard
-    whose docstring said they were covered. A guard that reads broader than it is, is worse than
-    none — so this now matches any interpolation whose expression mentions `error`, and excludes the
-    ones already inside a `display_token(` call.
-
-    What it still does not cover, named rather than left to be discovered: a value that does not have
-    `error` in its expression, and any file outside `src/requivo/deterministic/`. `cli.py:581` prints
-    a whole `RequivoError` to stderr and is deliberately out of scope — that text is guarded at the
-    interpretation site by `normalize_tokens`, which is where invariant 14 says the guard belongs.
-
-    **It walks the package, not a file** (#73). The surface was one module until that split, and a
-    sweep left pointing at `deterministic.py` would have gone on passing while reading nothing at
-    all: the all-clear nobody earned, in the guard that exists to say so. The empty-scan assertion
-    below is what makes that failure loud instead of green."""
+    """The class guard, added because fixing the two named instances left four siblings (#90). The first
+attempt at #90 wrapped the two sites the issue pointed at. Four more of exactly the same shape
+stayed raw — three of them on `doctor`'s own report, the surface #40 and #90 are both about, and
+one of them **eleven lines below** a sibling that had just been wrapped, in the same function.
+See #73."""
     package = Path(__file__).resolve().parents[1] / "src" / "requivo" / "deterministic"
     modules = sorted(package.rglob("*.py"))
     assert modules, (
@@ -549,12 +497,10 @@ def test_no_error_string_reaches_a_printed_line_unwrapped():
 
 
 def test_that_guard_really_fires(tmp_path):
-    """The positive control the guard above shipped without, which is this class's own tell.
-
-    A guard asserting `not []` over a scan that found nothing is an all-clear nobody earned — the
-    same argument `tests/test_boundaries.py` makes about an empty scan set. So both spellings that
-    escaped the first version are fed to the matcher here, and the wrapped forms beside them must
-    not fire."""
+    """The positive control the guard above shipped without, which is this class's own tell. A guard
+asserting `not []` over a scan that found nothing is an all-clear nobody earned — the same
+argument `tests/test_boundaries.py` makes about an empty scan set. So both spellings that escaped
+the first version are fed to the matcher here, and the wrapped forms beside them must not fire."""
     pattern = re.compile(r"\{([^{}]*\berror\b[^{}]*)\}")
 
     def fires(line: str) -> bool:

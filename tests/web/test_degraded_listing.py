@@ -289,7 +289,7 @@ def test_an_entry_that_could_not_be_examined_is_a_row_and_not_a_broken_page(clie
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny traversal on Windows. UNTESTED HERE: that the home "
                     "page survives an entry whose examination raises. The CLI sibling of this case "
-                    "is tests/test_unexaminable_entries.py, skipped there for the same reason.")
+                    "is tests/test_persistence_scan.py, skipped there for the same reason.")
     d.chmod(0o000)
     try:
         (d / "session.json").exists()
