@@ -555,7 +555,8 @@ def _cmd_answer(a, client) -> None:
     # test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path.
     parts = [(result.invalidated_decisions, "decision(s)"),
              (result.invalidated_challenges, "premise(s)"),
-             (result.invalidated_exclusions, "exclusion(s)")]
+             (result.invalidated_exclusions, "exclusion(s)"),
+             (result.invalidated_thresholds, "threshold(s)")]
     n_reasoning = sum(len(items) for items, _ in parts)
     if n_reasoning:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)

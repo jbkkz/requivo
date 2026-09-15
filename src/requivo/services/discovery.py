@@ -223,16 +223,19 @@ def _require_a_model(slug: str, snap: SessionSnapshot) -> EngineOutput:
 
 
 def absorb_reasoning(out: EngineOutput, brief) -> None:
-    """Persist the assessment's reasoning (decisions, challenges, opportunities, exclusions) into the
-    model so every generator inherits it, not just the facts. Called wherever the assessment is
-    produced, before the model is applied — the single definition, shared by the CLI and the Web."""
+    """Persist the assessment's reasoning (decisions, challenges, opportunities, exclusions,
+    thresholds) into the model so every generator inherits it, not just the facts. Called wherever
+    the assessment is produced, before the model is applied — the single definition, shared by the
+    CLI and the Web."""
     out.decisions = brief.decisions
     out.challenges = brief.challenges
     out.opportunities = brief.opportunities
     # #600: the compression's cuts land in the model the same way its three siblings do, so
-    # `model.json` carries them (#599's typed item), not only the rendered brief -- guarded by
-    # test_a_generated_briefs_exclusions_are_absorbed_into_the_persisted_model.
+    # `model.json` carries them (#599's typed item), not only the rendered brief; #604 does the
+    # same for a decision threshold -- both guarded by
+    # test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model.
     out.exclusions = brief.exclusions
+    out.thresholds = brief.thresholds
 
 
 def _discovery_guard_path(slug: str, store: Store) -> Path:

@@ -293,10 +293,10 @@ each one `{ "q": …, "slot": …, "why": … }`, the text field being **`q`** �
 emit `[]` when nothing is both uncertain and high-impact (discovery has converged). Pass the client's
 answers through faithfully — do not embellish them.
 
-Say nothing about `decisions`, `challenges`, `opportunities` or `exclusions` — leave the keys out
-entirely. A refinement turn is not re-deriving the brief, and what is established stands on its own
-(see the reasoning layer in REASONING.md). Emitting `[]` for them means "these no longer hold", which
-is a real deletion and marks what rested on them stale.
+Say nothing about `decisions`, `challenges`, `opportunities`, `exclusions` or `thresholds` — leave
+the keys out entirely. A refinement turn is not re-deriving the brief, and what is established stands
+on its own (see the reasoning layer in REASONING.md). Emitting `[]` for them means "these no longer
+hold", which is a real deletion and marks what rested on them stale.
 
 ### Apply → fix → re-apply
 
@@ -322,8 +322,9 @@ current state — never re-apply the stale proposal.
 From the `model apply` JSON, tell the user in plain language:
 - which slots changed,
 - any **decisions to re-validate** (`invalidated_decisions`), **premises to re-examine**
-  (`invalidated_challenges`), or **excluded options worth reconsidering** (`invalidated_exclusions`,
-  #599) that rested on a changed slot,
+  (`invalidated_challenges`), **excluded options worth reconsidering** (`invalidated_exclusions`,
+  #599), or **thresholds worth reconsidering** (`invalidated_thresholds`, #604) that rested on a
+  changed slot,
 - any **artifacts that went stale** (`stale_artifacts`) — recommend regenerating those; a saved
   brief rests on the whole understanding, so it needs updating on any material change,
 - the new readiness (ready, or which slots still block it),

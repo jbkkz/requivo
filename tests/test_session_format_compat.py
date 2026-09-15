@@ -274,9 +274,9 @@ than listed: add a nested contract to the model and this fails until it has a si
 directions are asserted, because the point is the asymmetry and not either half of it."""
     persisted = _contracts_reachable_from(PersistedEngineOutput)
     strict = _contracts_reachable_from(EngineOutput)
-    # A walk that finds nothing is an all-clear nobody earned; the model tree has eight contracts
-    # since #599 added Exclusion/PersistedExclusion as a fourth reasoning collection.
-    assert len(persisted) == len(strict) >= 8
+    # A walk that finds nothing is an all-clear nobody earned; the model tree has nine contracts
+    # since #604 added Threshold/PersistedThreshold as a fifth reasoning collection.
+    assert len(persisted) == len(strict) >= 9
     assert [c.__name__ for c in persisted if c.model_config.get("extra") != "allow"] == []
     assert [c.__name__ for c in strict if c.model_config.get("extra") != "forbid"] == []
 
@@ -288,16 +288,16 @@ trees carried a hand-written `max_length=6` on `questions` and nothing made them
     pairs = [(p, p.__mro__[1]) for p in _contracts_reachable_from(PersistedEngineOutput)]
     for permissive, strict in pairs:
         assert issubclass(strict, BaseModel) and strict is not BaseModel, permissive.__name__
-    # Not vacuous, on both counts: eight twins exist (#599 added Exclusion/PersistedExclusion),
-    # and the mirror really does re-point seven fields at permissive types — which is exactly why
+    # Not vacuous, on both counts: nine twins exist (#604 added Threshold/PersistedThreshold),
+    # and the mirror really does re-point eight fields at permissive types — which is exactly why
     # it has to restate their constraints.
-    assert len(pairs) == 8
+    assert len(pairs) == 9
     redeclared = {name for p, s in pairs for name in p.model_fields
                   if p.model_fields[name].annotation != s.model_fields[name].annotation}
     # `confidence` joined this set with #610: `PersistedSlot` widens it to `Confidence | str` so a
     # value this build does not define survives a round-trip instead of raising (invariant 8).
     assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities",
-                          "exclusions", "confidence"}
+                          "exclusions", "thresholds", "confidence"}
 
     drift = []
     for permissive, strict in pairs:

@@ -186,12 +186,14 @@ def test_render_brief_titles_decision_brief_and_shows_challenges():
 def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief():
     """Self-review finding on #599: brief_markdown's decisions/challenges/opportunities loops
     were already unguarded against this (same shape as #519's stories/estimate fix), and the
-    new exclusions loop repeated it. All four are now line-flattened; the control is the last
+    new exclusions loop repeated it. All five are now line-flattened; the control is the last
     assertion in each pair, mirroring test_a_newline_inside_a_provider_field_cannot_open_a_new_heading."""
-    from requivo.core.contracts import Exclusion
+    from requivo.core.contracts import Exclusion, Threshold
 
     model = out({"problem": slot(80, "explicit", "high")})
     model.exclusions = [Exclusion(option="X\n# INJECTED", reason="r\n# INJECTED")]
+    model.thresholds = [Threshold(condition="C\n# INJECTED", measure="m",
+                                  action="a\n# INJECTED", rests_on=["problem"])]
     brief = Brief(problem="P", solution="S", complexity="low",
                  decisions=[DesignDecision(decision="D\n# INJECTED")],
                  challenges=[Challenge(headline="H\n# INJECTED", premise="p", alternative="a",
@@ -199,8 +201,8 @@ def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief
                  opportunities=[Opportunity(text="O\n# INJECTED", leverage="high")])
     md = brief_markdown(model, brief)
     assert "\n# INJECTED" not in md
-    # 5, not 4: the exclusion carries it in both `option` and `reason`, the other three once each.
-    assert md.count("INJECTED") == 5
+    # 7, not 5: the exclusion and the threshold each carry it in two fields, the other three once each.
+    assert md.count("INJECTED") == 7
 
 
 def test_the_decision_brief_projects_excluded_options_rather_than_writing_them():
@@ -216,6 +218,22 @@ def test_the_decision_brief_projects_excluded_options_rather_than_writing_them()
     md = brief_markdown(model, brief)
     assert "## Out of scope" in md
     assert "**Bulk import** — Out of scope for v1" in md
+    assert "rests on: Real problem" in md
+
+
+def test_the_decision_brief_projects_decision_thresholds_rather_than_writing_them():
+    """#604 acceptance criterion, mirroring #599: the brief's "Decision thresholds" content is a
+    projection of `out.thresholds`, not prose the provider wrote into `Brief`."""
+    from requivo.core.contracts import Threshold
+
+    model = out({"problem": slot(80, "explicit", "high")})
+    model.thresholds = [Threshold(condition="CAC exceeds the stated budget ceiling",
+                                  measure="cost per paid signup", action="stop the paid channel",
+                                  rests_on=["problem"])]
+    brief = Brief(problem="P", solution="S", complexity="low")
+    md = brief_markdown(model, brief)
+    assert "## Decision thresholds" in md
+    assert "**CAC exceeds the stated budget ceiling** → stop the paid channel" in md
     assert "rests on: Real problem" in md
 
 

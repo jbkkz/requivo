@@ -24,6 +24,7 @@ from requivo.core.contracts import (
     EstimateDraft,
     Exclusion,
     Opportunity,
+    Threshold,
 )
 
 # ── Contract validation ──────────────────────────────────────────────────────
@@ -82,7 +83,8 @@ def test_output_caps_questions_at_six():
     ("challenges", [{"headline": "h", "premise": "p", "alternative": "a", "consequence": "c",
                      "recommendation": "r", "contests": ["not_a_slot"]}]),
     ("exclusions", [{"option": "Bulk import", "reason": "r", "rests_on": ["not_a_slot"]}]),
-], ids=["question", "decision", "challenge", "exclusion"])
+    ("thresholds", [{"condition": "c", "measure": "m", "action": "a", "rests_on": ["not_a_slot"]}]),
+], ids=["question", "decision", "challenge", "exclusion", "threshold"])
 def test_output_rejects_a_pointer_to_an_unknown_slot(extra_key, extra_value):
     # A question/decision/challenge must point at a slot the schema defines — a dangling pointer would
     # make the dependency graph look rigorous while pointing at nothing.
@@ -172,7 +174,10 @@ def test_reasoning_ids_are_distinct_per_kind():
                                   "consequence": "c", "recommendation": "r"})
     o = Opportunity.model_validate({"text": "reuse the notification service", "leverage": "high"})
     e = Exclusion.model_validate({"option": "Bulk import", "reason": "out of scope for v1"})
-    assert c.id.startswith("chl_") and o.id.startswith("opp_") and e.id.startswith("exc_")
+    t = Threshold.model_validate({"condition": "CAC exceeds 40", "measure": "CAC",
+                                  "action": "stop the paid channel", "rests_on": ["workflow"]})
+    assert (c.id.startswith("chl_") and o.id.startswith("opp_") and e.id.startswith("exc_")
+           and t.id.startswith("thr_"))
 
 
 def test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_id():
@@ -197,6 +202,45 @@ def test_brief_carries_typed_exclusions_it_can_propose_600():
          "workflow only", "rests_on": ["constraints"]})])
     assert brief.exclusions[0].id.startswith("exc_")
     assert brief.exclusions[0].rests_on == ["constraints"]
+
+
+def test_a_threshold_is_a_fifth_reasoning_item_with_a_stable_content_derived_id():
+    """#604: a decision threshold gets the same identity treatment as its four siblings
+    (invariant 5) — a supplied id is never trusted, and the same condition/action yields
+    the same id regardless of `measure` or `rests_on`."""
+    t1 = Threshold.model_validate({"condition": "CAC exceeds 40", "measure": "CAC",
+                                   "action": "stop the paid channel", "rests_on": ["workflow"]})
+    t2 = Threshold.model_validate({"condition": "CAC exceeds 40", "measure": "different measure",
+                                   "action": "stop the paid channel", "rests_on": ["problem"],
+                                   "id": "thr_forged"})
+    assert t1.id == t2.id
+    assert t1.id != Threshold.model_validate(
+        {"condition": "Rate limit drops below 100", "measure": "vendor API rate limit",
+         "action": "reopen build-versus-buy", "rests_on": ["workflow"]}).id
+
+
+def test_a_threshold_with_no_action_or_no_slot_it_rests_on_is_refused():
+    """#604 acceptance criterion: "a condition with no action, or no slot it rests on, is
+    refused" — the same rule `Challenge`'s five required parts already enforce
+    (`test_contracts_reject_a_challenge_missing_a_load_bearing_part`). `Exclusion.rests_on`
+    stays optional (#599); this is the deliberate divergence."""
+    base = {"condition": "CAC exceeds 40", "measure": "CAC", "action": "stop the paid channel",
+           "rests_on": ["workflow"]}
+    with pytest.raises(ValidationError):
+        Threshold.model_validate({**base, "action": ""})
+    with pytest.raises(ValidationError):
+        Threshold.model_validate({**base, "rests_on": []})
+
+
+def test_brief_carries_typed_thresholds_it_can_propose_604():
+    """#604, mirroring #600: a generator populates thresholds through `Brief`, the same typed
+    `Threshold` this issue gave a home to model.json — not prose. Default is `[]`."""
+    assert Brief(complexity="low").thresholds == []
+    brief = Brief(complexity="low", thresholds=[Threshold.model_validate(
+        {"condition": "CAC exceeds the stated budget ceiling", "measure": "cost per paid signup",
+         "action": "stop the paid channel", "rests_on": ["constraints"]})])
+    assert brief.thresholds[0].id.startswith("thr_")
+    assert brief.thresholds[0].rests_on == ["constraints"]
 
 
 # ── artifact contracts: references that point at something ───────────────────

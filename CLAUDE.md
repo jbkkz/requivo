@@ -190,11 +190,12 @@ issue the test cites — *Where a bug narrative lives* (below) is the rule.
    `EngineOutput` is a legitimate internal object. Cost: a drifted prompt reading as a clean success.
    Guarded by `test_contracts_reject_a_field_the_schema_does_not_define` and
    `test_output_allows_a_partial_but_known_model`.
-5. **Reasoning items have content-derived ids.** `DesignDecision`, `Challenge`, `Opportunity` and
-   `Exclusion` recompute `id` from their own text on every validation; never trust a supplied one.
-   Cost: an echoed stale id letting two different decisions share a handle. Guarded by
-   `test_reasoning_items_carry_a_stable_content_derived_id` and
-   `test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_id`.
+5. **Reasoning items have content-derived ids.** `DesignDecision`, `Challenge`, `Opportunity`,
+   `Exclusion` and `Threshold` recompute `id` from their own text on every validation; never trust a
+   supplied one. Cost: an echoed stale id letting two different decisions share a handle. Guarded by
+   `test_reasoning_items_carry_a_stable_content_derived_id`,
+   `test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_id` and
+   `test_a_threshold_is_a_fifth_reasoning_item_with_a_stable_content_derived_id`.
 6. **Provenance is real or absent.** Each revision records provider, model, surface and a hash of the
    exact prompt; don't add a provenance field you do not populate. Cost: a column that is always
    filled gets trusted, so a revision log nothing can reproduce reads as one that can. Guarded by
@@ -230,10 +231,11 @@ issue the test cites — *Where a bug narrative lives* (below) is the rule.
    `test_a_forced_import_serialises_against_a_concurrent_writer` and
    `test_the_lock_still_guards_a_session_that_exists`.
 10. **A proposal is not a model, and silence is not deletion.** A `ModelProposal`'s slots are complete
-    (an apply *replaces*); `decisions`/`challenges`/`opportunities`/`exclusions` are tri-state —
-    absent means "not speaking to it", `[]` means "delete" — and a key this version cannot name is a
-    fifth thing it cannot speak to. `resolve(current)` is the *only* place the states collapse. Cost:
-    an ordinary answer turn deleting every decision the assessment had produced, silently. Guarded by
+    (an apply *replaces*); `decisions`/`challenges`/`opportunities`/`exclusions`/`thresholds` are
+    tri-state — absent means "not speaking to it", `[]` means "delete" — and a key this version
+    cannot name is a sixth thing it cannot speak to. `resolve(current)` is the *only* place the
+    states collapse. Cost: an ordinary answer turn deleting every decision the assessment had
+    produced, silently. Guarded by
     `test_reasoning_merely_omitted_by_a_turn_is_preserved`,
     `test_reasoning_explicitly_emptied_is_a_deletion_that_invalidates` and
     `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save`.

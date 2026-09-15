@@ -597,6 +597,12 @@ def render_impact(report) -> None:
             print(_bullet(e.option))
             print(f"    ↳ rests on: {', '.join(e.rests_on)}")
 
+    if report.thresholds:
+        print("\nTHRESHOLDS TO RECONSIDER")
+        for t in report.thresholds:
+            print(_bullet(t.condition))
+            print(f"    ↳ rests on: {', '.join(t.rests_on)}")
+
     if report.artifacts:
         print("\nARTIFACTS THAT GO STALE")
         for name in report.artifacts:
@@ -659,6 +665,8 @@ def render_dependency_map(out: EngineOutput) -> None:
             print(f"  challenges: {'; '.join(display_text(c.headline) for c in rep.challenges)}")
         if rep.exclusions:
             print(f"  exclusions: {'; '.join(display_text(e.option) for e in rep.exclusions)}")
+        if rep.thresholds:
+            print(f"  thresholds: {'; '.join(display_text(t.condition) for t in rep.thresholds)}")
         if rep.artifacts:
             print(f"  artifacts: {', '.join(rep.artifacts)}")
 

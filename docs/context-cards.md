@@ -41,9 +41,9 @@ the most expensive default (#257). Measured against the 4 cards this repository 
 `wc -c`, which counts the CRLF line endings a Windows checkout has and the loader never sees):
 23,262 bytes, ~5.8k tokens at 4 bytes/token, split roughly evenly across the four
 (3,842 / 5,576 / 6,995 / 6,849 bytes). Folded
-into an assembled system prompt (`build_prompt()`, offline, no API call), that is **60–75% of every
+into an assembled system prompt (`build_prompt()`, offline, no API call), that is **58–75% of every
 call's system prompt**, across the eight generator prompts measured on 2026-09-15 — lowest for
-`brief` (38,840 bytes total, cards are 59.9%), highest for `estimate`/`release` (~30.9–31.1k bytes
+`brief` (40,018 bytes total, cards are 58.1%), highest for `estimate`/`release` (~30.9–31.1k bytes
 total, cards are ~75%). Across a full pipeline of roughly nine calls, cards alone account for tens of
 thousands of input tokens per session that never opted into `--context`.
 

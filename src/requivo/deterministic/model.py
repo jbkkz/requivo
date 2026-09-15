@@ -79,6 +79,8 @@ def _cmd_model_apply(a, client) -> None:
         print(f"   premises to re-examine: {len(result.invalidated_challenges)}")
     if result.invalidated_exclusions:
         print(f"   exclusions to reconsider: {len(result.invalidated_exclusions)}")
+    if result.invalidated_thresholds:
+        print(f"   thresholds to reconsider: {len(result.invalidated_thresholds)}")
     if result.stale_artifacts:
         print(f"   now stale: {', '.join(result.stale_artifacts)}")
     rd = result.readiness

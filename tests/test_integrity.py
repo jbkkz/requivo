@@ -227,6 +227,41 @@ def test_an_exclusion_explicitly_emptied_invalidates_what_rests_on_it(workspace)
     assert art.list("s")["prd"]["stale"] is True
 
 
+def _with_threshold(model: dict, action: str) -> dict:
+    model["thresholds"] = [{"condition": "CAC exceeds the stated budget ceiling",
+                            "measure": "cost per paid signup", "action": action,
+                            "rests_on": ["permissions"]}]
+    return model
+
+
+def test_a_threshold_merely_omitted_by_a_turn_is_preserved(workspace):
+    """#604, invariant 10's fifth collection: a refinement turn that says nothing about
+    `thresholds` must leave the established one standing, exactly like decisions/challenges/
+    exclusions."""
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _with_threshold(_full_model(), "stop the paid channel"))
+
+    result = svc.update_model("s", _full_model())            # same slots, thresholds simply absent
+    assert [t.action for t in svc.load_model("s").thresholds] == ["stop the paid channel"]
+    assert result.changed_thresholds == []
+
+
+def test_a_threshold_explicitly_emptied_invalidates_what_rests_on_it(workspace):
+    """#604: `"thresholds": []` deletes, like `"exclusions": []` — and the artifacts consuming
+    the reasoning layer (every generator, via `REASONING_CONSUMERS`) go stale with it."""
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _with_threshold(_full_model(), "stop the paid channel"))
+    art.save("s", "prd", "# PRD\n", source_revision=1)
+
+    result = svc.update_model("s", {**_full_model(), "thresholds": []})
+    assert svc.load_model("s").thresholds == []
+    assert len(result.changed_thresholds) == 1
+    assert "prd" in result.stale_artifacts
+    assert art.list("s")["prd"]["stale"] is True
+
+
 # ── the second version contract: the slot vocabulary ──────────────────────────
 
 
