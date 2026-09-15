@@ -44,6 +44,25 @@ def test_prd_markdown_escapes_pipes_in_table_cells():
     assert "| FR-1 | Export as CSV \\| XLSX \\| PDF | Must |" in md
 
 
+def test_prd_markdown_shows_each_envelope_element_s_own_provenance():
+    """#603: a slot-sourced element names the slot's human label; an assumed one says so plainly --
+    never a raw slot id or a confidence label in the rendered text (Voice rule)."""
+    prd = PRD(title="X", problem="P", envelope=[
+        {"kind": "Budget", "value": "50k", "origin": "slot", "source_slot": "constraints"},
+        {"kind": "Team size", "value": "3 developers", "origin": "assumption"},
+    ])
+    md = prd_markdown(prd)
+    assert "## Resource envelope" in md
+    assert "**Budget** — 50k _(stated in Constraints)_" in md
+    assert "**Team size** — 3 developers _(assumption — not stated in the model)_" in md
+
+
+def test_prd_markdown_omits_the_envelope_section_when_it_is_empty():
+    # Acceptance criterion (#603): nothing invented means nothing rendered, not an empty heading.
+    md = prd_markdown(PRD(title="X", problem="P"))
+    assert "Resource envelope" not in md
+
+
 def test_criteria_markdown_renders_gherkin_checklist():
     ac = AcceptanceCriteria(
         title="Leave approval",

@@ -14,6 +14,7 @@ from _fakes import out, slot
 from pydantic import ValidationError
 
 from requivo.core.contracts import (
+    PRD,
     AcceptanceCriteria,
     Challenge,
     DesignDecision,
@@ -234,6 +235,38 @@ def test_a_prd_requirement_cannot_be_an_empty_row():
 
     with pytest.raises(ValidationError):
         Requirement(id="", requirement="", priority="must")
+
+
+# -- the PRD envelope (#603) ---------------------------------------------------
+# The same honesty split `confidence` already draws for slots, applied to a generated artifact's own
+# assumed resource envelope: a value read off the model names its slot; one the generator assumed
+# does not name one at all.
+
+
+def test_an_envelope_element_s_origin_and_source_slot_must_agree():
+    """A slot-sourced element with no slot, or an assumed one that names one anyway, is a
+    provenance claim that contradicts itself -- the exact confusion this field exists to end."""
+    from requivo.core.contracts import EnvelopeElement
+
+    EnvelopeElement(kind="Budget", value="50k", origin="slot", source_slot="constraints")
+    EnvelopeElement(kind="Team size", value="3 developers", origin="assumption")
+    with pytest.raises(ValidationError):
+        EnvelopeElement(kind="Budget", value="50k", origin="slot")
+    with pytest.raises(ValidationError):
+        EnvelopeElement(kind="Team size", value="3 developers", origin="assumption",
+                        source_slot="constraints")
+
+
+def test_a_prd_envelope_cannot_cite_a_slot_the_schema_does_not_define():
+    element = {"kind": "Budget", "value": "50k", "origin": "slot", "source_slot": "not_a_slot"}
+    with pytest.raises(ValidationError):
+        PRD(title="X", problem="P", envelope=[element])
+
+
+def test_a_prd_with_no_constraint_content_has_an_empty_envelope_by_default():
+    """Acceptance criterion (#603): a model with nothing to say about its envelope must not have one
+    invented for it -- `envelope` defaults to empty rather than requiring a provider to fill it."""
+    assert PRD(title="X", problem="P").envelope == []
 
 
 # ── the grounding judgment (#593) ─────────────────────────────────────────────────────────────────
