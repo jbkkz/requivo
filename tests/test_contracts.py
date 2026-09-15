@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
+    Brief,
     Challenge,
     DesignDecision,
     EngineOutput,
@@ -169,6 +170,18 @@ def test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_i
                                    "id": "exc_forged"})
     assert e1.id == e2.id
     assert e1.id != Exclusion.model_validate({"option": "SSO", "reason": "Not asked for"}).id
+
+
+def test_brief_carries_typed_exclusions_it_can_propose_600():
+    """#600: a generator populates exclusions through `Brief`, the same typed `Exclusion`
+    #599 gave a home to model.json — not prose. Default is `[]`, matching the "a forced
+    challenge is worse than none" rule `brief.md` already applies to `challenges`."""
+    assert Brief(complexity="low").exclusions == []
+    brief = Brief(complexity="low", exclusions=[Exclusion.model_validate(
+        {"option": "A full audit-trail UI", "reason": "The stated timeline funds the approval "
+         "workflow only", "rests_on": ["constraints"]})])
+    assert brief.exclusions[0].id.startswith("exc_")
+    assert brief.exclusions[0].rests_on == ["constraints"]
 
 
 # ── artifact contracts: references that point at something ───────────────────
