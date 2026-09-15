@@ -129,11 +129,13 @@ def impact_view(result: Any) -> dict:
 
     `invalidated_*` rather than `changed_*` is deliberate: the changed collections are content-derived
     ids, which mean nothing on screen, while the invalidated ones carry the decision text, the
-    challenge headline and the excluded option — the thing a reader has to go and re-examine."""
+    challenge headline, the excluded option and the threshold condition — the thing a reader has to
+    go and re-examine."""
     changed = slot_labels(result.changed_slots)
     decisions = list(result.invalidated_decisions)
     assumptions = list(result.invalidated_challenges)
     exclusions = list(result.invalidated_exclusions)
+    thresholds = list(result.invalidated_thresholds)
     documents = artifact_labels(result.stale_artifacts)
     return {
         "revision": result.revision,
@@ -142,8 +144,9 @@ def impact_view(result: Any) -> dict:
         "decisions_to_review": decisions,
         "assumptions_to_review": assumptions,
         "exclusions_to_review": exclusions,
+        "thresholds_to_review": thresholds,
         "documents_to_update": documents,
-        "needs_review": bool(decisions or assumptions or exclusions or documents),
+        "needs_review": bool(decisions or assumptions or exclusions or thresholds or documents),
         "ready": result.readiness.ready,
     }
 

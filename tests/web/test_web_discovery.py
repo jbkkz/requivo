@@ -362,6 +362,22 @@ def test_answers_report_what_changed_and_what_needs_review(client, with_provider
     assert "Needs review" in r.text and "PRD" in r.text  # the document the change reaches
 
 
+def test_a_threshold_only_invalidation_is_not_a_false_all_clear_on_the_web():
+    """Codex review on #604: `impact_view` ignored `invalidated_thresholds`, so a change that
+    unseats only a threshold rendered as "nothing to review" -- the primary screen stating a fact
+    it cannot support (CLAUDE.md: "the counts are always stated"). A direct unit test, not an
+    end-to-end flow: `impact_view` is a pure function over `UpdateResult`."""
+    from requivo.services.sessions import Readiness, UpdateResult
+    from requivo.web.viewmodels.status import impact_view
+
+    result = UpdateResult(status="applied", revision=2, changed_slots=["constraints"],
+                          invalidated_thresholds=["Budget exceeded"],
+                          readiness=Readiness(True, []))
+    view = impact_view(result)
+    assert view["needs_review"] is True, "a threshold-only invalidation must not read as all-clear"
+    assert view["thresholds_to_review"] == ["Budget exceeded"]
+
+
 def test_an_unrelated_change_leaves_a_document_alone(client, with_provider):
     """The differentiator cuts both ways: a change that misses a document's dependencies must not
     flag it. Reporting is not one of the PRD's inputs, so moving it changes nothing the PRD rests on."""
