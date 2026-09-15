@@ -13,7 +13,7 @@ import pytest
 
 from requivo.core.contracts import EngineOutput, ModelProposal, schema_slot_ids
 from requivo.core.dependencies import _ARTIFACT_SLOTS_RAW, ARTIFACT_FILENAMES, artifact_slots
-from requivo.core.errors import UnknownPerimeterError, UnknownSlotError
+from requivo.core.errors import SessionExistsError, UnknownPerimeterError, UnknownSlotError
 from requivo.core.integrity import inspect_session_dir
 from requivo.core.perimeters import (
     DEFAULT_PERIMETER,
@@ -50,6 +50,57 @@ def _go_to_market_out() -> EngineOutput:
         {"model": _go_to_market_slots(), "questions": [], "summary": {"objective": "grow the funnel"}},
         context={"perimeter": GO_TO_MARKET},
     )
+
+
+def test_a_go_to_market_discovery_completes_through_the_real_provider_completion_path():
+    """[P1, review] `_require_complete_model` used to call `completeness_gap(out)` with no
+    perimeter, so a complete go-to-market reply was rejected for missing `business_rules` and every
+    other software-only required slot -- and adding those to satisfy it then failed the perimeter
+    vocabulary check instead, burning every retry. The stub-provider evidence this issue originally
+    shipped with never exercised `_complete()`'s `validate` hook at all; this goes through the real
+    completion path (`FakeClient` -> `run()` -> `_complete()`) instead of a stub's own `analyze()`."""
+    from _fakes import FakeClient
+
+    from requivo.providers.anthropic.generators import run
+
+    reply = json.dumps({"model": _go_to_market_slots(), "questions": [],
+                        "summary": {"objective": "grow the funnel"}})
+    fake = FakeClient(reply)
+    result = run(fake, [{"role": "user", "content": "grow the funnel"}], perimeter=GO_TO_MARKET)
+    assert set(result.model) == schema_slot_ids(GO_TO_MARKET)[0]
+
+
+def test_a_same_text_request_under_a_different_perimeter_does_not_reuse_the_session():
+    """[P1, review] `_same_identity`/`_identity_hash` used to compare only the request and the card
+    selection, so a revision-zero `software` session and a `go-to-market` request with identical
+    text collided on the same slug -- `_same_identity` said "yes, reuse", `DiscoveryService.start`
+    then paid for the analysis under the requested perimeter, and `update_model` rejected the result
+    against the existing session's vocabulary *after* the call. `create_session_report` runs before
+    any provider call in every discovery entry point (invariant 13), so fixing the identity
+    comparison itself is what keeps the refusal-or-reuse decision ahead of the paid call -- there is
+    no separate ordering to get right here, only a correct comparison."""
+    svc = SessionService()
+    software_meta = svc.create_session("grow the funnel", perimeter=SOFTWARE)
+
+    gtm_meta, created = svc.create_session_report("grow the funnel", perimeter=GO_TO_MARKET)
+
+    assert created is True
+    assert gtm_meta.slug != software_meta.slug
+    assert resolve_perimeter(gtm_meta.perimeter) == GO_TO_MARKET
+    assert resolve_perimeter(svc.meta(software_meta.slug).perimeter) == SOFTWARE
+
+
+def test_an_explicit_slug_reused_under_a_different_perimeter_is_refused_before_any_reasoning():
+    """The `strict_slug=True` arm (the API's `POST /sessions`) refuses outright, before a
+    `DiscoveryService` caller could ever reach a provider call with it: an explicit slug already
+    claimed by a different perimeter is exactly the "different identity" `strict_slug` exists to
+    refuse rather than silently suffix."""
+    svc = SessionService()
+    svc.create_session("grow the funnel", slug="gtm", perimeter=SOFTWARE)
+
+    with pytest.raises(SessionExistsError):
+        svc.create_session_report("grow the funnel", slug="gtm", perimeter=GO_TO_MARKET,
+                                  strict_slug=True)
 
 
 def test_two_perimeters_are_installed():

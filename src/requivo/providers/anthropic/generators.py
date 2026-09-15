@@ -38,7 +38,7 @@ from requivo.providers.anthropic.completion import _complete
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
-def _require_complete_model(out: ModelProposal) -> None:
+def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> None:
     """A discovery turn must return the whole required slot set, and must say what the thing is for.
 
     The rules themselves live in `core.validation.completeness_gap`, shared with the deterministic
@@ -47,8 +47,15 @@ def _require_complete_model(out: ModelProposal) -> None:
     nudge, so it self-corrects instead of the turn dying. Neither rule is in the contract itself,
     because a partial model is a legitimate internal object (a diff basis, a projection) — it is only
     a *discovery reply* that owes completeness.
+
+    `perimeter` (#608) must be the one the reply was reasoned against, or this checks the wrong
+    required set entirely: a complete go-to-market reply was refused for missing `business_rules`
+    and every other software-only slot, defaulting silently to software here while `run()`'s own
+    `build_system_prompt`/`context=` calls three lines away already knew better. `run()` closes over
+    its own `perimeter` when it hands this to `_complete()` as the `validate` hook -- this function
+    itself stays a plain, perimeter-agnostic check, callable with either.
     """
-    gap = completeness_gap(out)
+    gap = completeness_gap(out, perimeter)
     if gap is not None:
         raise ValueError(gap.message)
 
@@ -75,8 +82,8 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
     callers of this function are `answer_turn` and `scripts/golden_run.py`; no interface reaches it."""
     proposal = _complete(
         client, build_system_prompt("engine.md", only, perimeter=perimeter), messages, ModelProposal,
-        retries, validate=_require_complete_model, reuse_system=reuse_system, model=model,
-        operation="analyze", context={"perimeter": perimeter})
+        retries, validate=lambda o: _require_complete_model(o, perimeter), reuse_system=reuse_system,
+        model=model, operation="analyze", context={"perimeter": perimeter})
     return proposal.resolve(carry_from, perimeter=perimeter)
 
 
