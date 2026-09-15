@@ -23,6 +23,7 @@
       <ul class="clean tight">
         {% for d in update.decisions_to_review %}<li>{{ d }} <span class="muted">— decision</span></li>{% endfor %}
         {% for c in update.assumptions_to_review %}<li>{{ c }} <span class="muted">— assumption</span></li>{% endfor %}
+        {% for e in update.exclusions_to_review %}<li>{{ e }} <span class="muted">— exclusion</span></li>{% endfor %}
         {% for doc in update.documents_to_update %}<li>{{ doc }} <span class="muted">— document</span></li>{% endfor %}
       </ul>
       {% endif %}

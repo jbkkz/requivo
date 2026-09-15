@@ -83,6 +83,17 @@
     </ul>
     {% endif %}
 
+    {# `rests_on` is raw slot ids, like `derived_from` on a decision above — neither is rendered
+       here, matching the Voice rule the rest of this page already follows. #}
+    {% if s.exclusions %}
+    <h3>Out of scope</h3>
+    <ul class="clean">
+      {% for e in s.exclusions %}
+      <li><strong>{{ e.option }}</strong> — {{ e.reason }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
     <h3>Provenance</h3>
     <p class="meta mono">History: revision {{ s.revision }}{% if s.context_cards %} ·
       product context: {{ s.context_cards|join(', ') }}{% else %} · product context: all cards{% endif %}</p>

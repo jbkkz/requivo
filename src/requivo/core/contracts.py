@@ -13,7 +13,7 @@ from requivo.paths import FRAMEWORK
 SOFT_COMPLETENESS = 70  # below this a slot is "soft" (tunable)
 
 # The element type of one tri-state reasoning collection. It exists so `ModelProposal.resolve`'s inner
-# `keep` helper can be annotated per call site rather than inferred across all three of them — see the
+# `keep` helper can be annotated per call site rather than inferred across all four of them — see the
 # comment at its definition. Runtime behaviour is unchanged; this is a name for the checker.
 _Item = TypeVar("_Item")
 
@@ -220,7 +220,7 @@ class Summary(StrictModel):
 class ModelProposal(StrictModel):
     """A *proposed* model — what a surface sends to be applied: a discovery reply, a Claude Code
     proposal file, a Web form. Identical to the `EngineOutput` it resolves into, except in one
-    load-bearing way: the three reasoning collections are **tri-state**.
+    load-bearing way: the four reasoning collections are **tri-state**.
 
         absent   the proposal says nothing about them — the established reasoning stands
         []       an explicit removal — the established reasoning is dropped
@@ -245,11 +245,13 @@ class ModelProposal(StrictModel):
     # information value. The persisted mirror restates this field and must restate the cap with it.
     questions: list[Question] = Field(default_factory=list, max_length=MAX_QUESTIONS)
     summary: Summary
-    # The reasoning layer — persisted so generators inherit it, not just the facts. Filled at discovery
-    # finalization by absorbing advise()'s Brief. These types are defined below (Brief section);
-    # forward-referenced here, resolved by model_rebuild() at the end of this module.
+    # The reasoning layer — persisted so generators inherit it, not just the facts. Decisions,
+    # challenges and opportunities are filled at discovery finalization by absorbing advise()'s
+    # Brief; `exclusions` is not (#599) — nothing populates it yet, on purpose (asking a generator
+    # to is #600). These types are defined below (Brief section); forward-referenced here, resolved
+    # by model_rebuild() at the end of this module.
     #
-    # `SerializeAsAny` on these three and nowhere else, because these three are the only fields a
+    # `SerializeAsAny` on these four and nowhere else, because these four are the only fields a
     # value read off disk survives into: `resolve()` carries an unstated collection forward from the
     # model being refined (invariant 10), so a `PersistedDesignDecision` loaded from a newer
     # Requivo ends up sitting under this strict annotation. Pydantic serializes by the *annotated*
@@ -260,6 +262,7 @@ class ModelProposal(StrictModel):
     decisions: Optional[list[SerializeAsAny[DesignDecision]]] = None
     challenges: Optional[list[SerializeAsAny[Challenge]]] = None
     opportunities: Optional[list[SerializeAsAny[Opportunity]]] = None
+    exclusions: Optional[list[SerializeAsAny[Exclusion]]] = None
 
     def resolve(self, current: Optional[EngineOutput] = None) -> EngineOutput:
         """Collapse the proposal onto the model it refines, yielding a complete `EngineOutput`.
@@ -297,6 +300,7 @@ class ModelProposal(StrictModel):
             decisions=keep(self.decisions, prior.decisions),
             challenges=keep(self.challenges, prior.challenges),
             opportunities=keep(self.opportunities, prior.opportunities),
+            exclusions=keep(self.exclusions, prior.exclusions),
         )
         carried = getattr(prior, "__pydantic_extra__", None) or {}
         if not carried:
@@ -324,6 +328,7 @@ class ModelProposal(StrictModel):
         bad_refs = sorted(
             {sid for d in (self.decisions or []) for sid in d.derived_from if sid not in allowed}
             | {sid for c in (self.challenges or []) for sid in c.contests if sid not in allowed}
+            | {sid for e in (self.exclusions or []) for sid in e.rests_on if sid not in allowed}
         )
         if bad_refs:
             raise ValueError(f"reasoning references unknown slots (not in schema): {bad_refs}")
@@ -333,7 +338,7 @@ class ModelProposal(StrictModel):
         # engine restating the same decision twice is the realistic cause, and it is a defect in the
         # reply — the retry loop can fix it, silently dropping one cannot.
         for label, items in (("decisions", self.decisions), ("challenges", self.challenges),
-                             ("opportunities", self.opportunities)):
+                             ("opportunities", self.opportunities), ("exclusions", self.exclusions)):
             ids = [i.id for i in (items or [])]
             dupes = sorted({i for i in ids if ids.count(i) > 1})
             if dupes:
@@ -345,7 +350,7 @@ class ModelProposal(StrictModel):
 class EngineOutput(ModelProposal):
     """A *resolved* model — the durable product, and what every reader downstream sees.
 
-    The difference from `ModelProposal` is exactly the tri-state: here the three reasoning collections
+    The difference from `ModelProposal` is exactly the tri-state: here the four reasoning collections
     are always concrete lists, so no renderer, generator or diff has to ask whether "no decisions"
     means none or means unstated. A proposal becomes one through `resolve()`, which is the only place
     that question is answered."""
@@ -353,6 +358,7 @@ class EngineOutput(ModelProposal):
     decisions: list[SerializeAsAny[DesignDecision]] = Field(default_factory=list)
     challenges: list[SerializeAsAny[Challenge]] = Field(default_factory=list)
     opportunities: list[SerializeAsAny[Opportunity]] = Field(default_factory=list)
+    exclusions: list[SerializeAsAny[Exclusion]] = Field(default_factory=list)
 
 
 class Story(StrictModel):
@@ -481,6 +487,22 @@ class DesignDecision(StrictModel):
     @model_validator(mode="after")
     def _assign_id(self):
         object.__setattr__(self, "id", _stable_id("dec", self.decision))
+        return self
+
+
+class Exclusion(StrictModel):
+    # An option that was considered and deliberately ruled out (#599) — a first-class model item,
+    # so "we are not building X, because Y" is a recorded choice rather than a restatement of a
+    # constraint slot. `rests_on` is the same DAG edge `derived_from` is for a decision: an
+    # exclusion re-opens for re-validation when a slot it rests on changes (see `propagate()`).
+    id: str = ""            # derived from `option`; see _stable_id
+    option: NonEmpty        # the option that was considered
+    reason: NonEmpty        # why it lost
+    rests_on: list[str] = Field(default_factory=list)  # slot ids this exclusion rests on (the DAG edge)
+
+    @model_validator(mode="after")
+    def _assign_id(self):
+        object.__setattr__(self, "id", _stable_id("exc", self.option))
         return self
 
 
@@ -650,7 +672,7 @@ EngineOutput.model_rebuild()
 # reader accepts and what a *writer* preserves are two questions, and getting the first right while
 # the second silently drops the key is worse than the refusal it replaced: nothing fails and nothing
 # says so. Two places had to move with it, both in `resolve()` — `SerializeAsAny` on the strict
-# tree's three reasoning collections, because those are where a value read off disk survives into,
+# tree's four reasoning collections, because those are where a value read off disk survives into,
 # and carrying `current`'s top-level unknown keys, because a proposal is `extra="forbid"` and so
 # cannot speak to them at all. `resolve()` states the argument for each.
 #
@@ -692,6 +714,10 @@ class PersistedOpportunity(Opportunity):
     model_config = ConfigDict(extra="allow")
 
 
+class PersistedExclusion(Exclusion):
+    model_config = ConfigDict(extra="allow")
+
+
 class PersistedEngineOutput(EngineOutput):
     """An `EngineOutput` as it is read back from `model.json` or `revisions/NNNN-model.json`.
 
@@ -715,3 +741,4 @@ class PersistedEngineOutput(EngineOutput):
     decisions: list[PersistedDesignDecision] = Field(default_factory=list)
     challenges: list[PersistedChallenge] = Field(default_factory=list)
     opportunities: list[PersistedOpportunity] = Field(default_factory=list)
+    exclusions: list[PersistedExclusion] = Field(default_factory=list)

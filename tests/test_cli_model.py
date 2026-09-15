@@ -222,3 +222,27 @@ def test_impact_on_an_unmatched_slot_exits_1_not_0(workspace, tmp_path):
         _run(["impact", "s", "not-a-real-slot"])
     assert e.value.code == 1
 
+
+def test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path(workspace, tmp_path):
+    """#599: the service reported an unseated exclusion and this printer did not, so a change that
+    unseated only an exclusion was announced by `impact`, `--json` and the Web and by nothing on the
+    text path — the half-registered shape invariant 1 fails through."""
+    _run(["session", "init", "Something.", "--slug", "exc"])
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps(_full_model(
+        **{"workflow": _slot(80, "explicit", "high", "manual scan")},
+        )), encoding="utf-8")
+    # The exclusion rests on `workflow` and nothing else does: no decision, no challenge.
+    payload = json.loads(first.read_text(encoding="utf-8"))
+    payload["exclusions"] = [{"option": "Bulk import", "reason": "Out of scope for v1",
+                              "rests_on": ["workflow"]}]
+    first.write_text(json.dumps(payload), encoding="utf-8")
+    _run(["model", "apply", "exc", str(first)])
+
+    moved = tmp_path / "moved.json"
+    moved.write_text(json.dumps(_full_model(
+        **{"workflow": _slot(80, "explicit", "high", "an approval queue instead")},
+        )), encoding="utf-8")
+    out = _run(["model", "apply", "exc", str(moved)])
+    assert "exclusions to reconsider: 1" in out, (
+        f"a change that unseats only an exclusion said nothing on the text path: {out!r}")

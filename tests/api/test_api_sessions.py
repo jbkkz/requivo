@@ -199,11 +199,15 @@ def test_impact_with_a_blank_slots_value_is_the_empty_report_not_a_refusal(clien
     resp = client.get("/api/v1/sessions/leave-approval/impact", params={"slots": ""})
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"changed": [], "decisions": [], "challenges": [], "artifacts": [],
+    assert body == {"changed": [], "decisions": [], "challenges": [], "exclusions": [],
+                    "artifacts": [],
                     # The review ran (#493) -- `evidence` is a report, not `None` -- over the zero
                     # decisions `seed_session` writes; the firing arm is pinned in
                     # `tests/test_thinner_evidence.py`, and the count is pinned here so a review
                     # that examined nothing cannot pass as one that examined the model.
+                    #
+                    # `exclusions` joined this dict as a fourth, additive `ImpactReport.to_dict()`
+                    # key (#599) -- keep this exact-equality assertion in sync with that shape.
                     "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
 
 

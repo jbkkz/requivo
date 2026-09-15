@@ -164,6 +164,42 @@ def test_render_brief_titles_decision_brief_and_shows_challenges():
     assert "✓ Amount sourced from the Contract" in text
 
 
+def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief():
+    """Self-review finding on #599: brief_markdown's decisions/challenges/opportunities loops
+    were already unguarded against this (same shape as #519's stories/estimate fix), and the
+    new exclusions loop repeated it. All four are now line-flattened; the control is the last
+    assertion in each pair, mirroring test_a_newline_inside_a_provider_field_cannot_open_a_new_heading."""
+    from requivo.core.contracts import Exclusion
+
+    model = out({"problem": slot(80, "explicit", "high")})
+    model.exclusions = [Exclusion(option="X\n# INJECTED", reason="r\n# INJECTED")]
+    brief = Brief(problem="P", solution="S", complexity="low",
+                 decisions=[DesignDecision(decision="D\n# INJECTED")],
+                 challenges=[Challenge(headline="H\n# INJECTED", premise="p", alternative="a",
+                                       consequence="c", recommendation="r")],
+                 opportunities=[Opportunity(text="O\n# INJECTED", leverage="high")])
+    md = brief_markdown(model, brief)
+    assert "\n# INJECTED" not in md
+    # 5, not 4: the exclusion carries it in both `option` and `reason`, the other three once each.
+    assert md.count("INJECTED") == 5
+
+
+def test_the_decision_brief_projects_excluded_options_rather_than_writing_them():
+    """#599 acceptance criterion: the brief's "Out of scope" content is a projection of
+    `out.exclusions`, not prose the provider wrote into `Brief` — the same split `_stated()`
+    already draws for confirmed facts and assumptions."""
+    from requivo.core.contracts import Exclusion
+
+    model = out({"problem": slot(80, "explicit", "high")})
+    model.exclusions = [Exclusion(option="Bulk import", reason="Out of scope for v1",
+                                  rests_on=["problem"])]
+    brief = Brief(problem="P", solution="S", complexity="low")
+    md = brief_markdown(model, brief)
+    assert "## Out of scope" in md
+    assert "**Bulk import** — Out of scope for v1" in md
+    assert "rests on: Real problem" in md
+
+
 def test_render_brief_opportunity_names_reached_modules():
     model = {"problem": slot(80, "explicit", "high")}
     brief = Brief(

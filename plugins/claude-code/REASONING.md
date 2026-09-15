@@ -260,8 +260,9 @@ files anywhere:
    again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
    `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
    (shape/JSON). On `revision_conflict`, see the revision contract above.
-4. Read back the structured result (revision, changed_slots, changed_decisions, stale_artifacts,
-   readiness) and relay it.
+4. Read back the structured result (revision, changed_slots, changed_decisions,
+   changed_challenges, changed_opportunities, changed_exclusions, stale_artifacts, readiness) and
+   relay it.
 
 **A refused apply changed nothing, so there is nothing to undo.** `update_model` validates the
 proposal inside the session lock *before* it writes, so a proposal that fails validation leaves no
@@ -279,9 +280,11 @@ second emission.
 
 ## The reasoning layer: say nothing, or say it deliberately
 
-A model carries `decisions`, `challenges` and `opportunities` alongside its slots — the judgment over
-the facts, produced by the assessment and inherited by every later generator. In a proposal these three
-are **tri-state**, and the difference is load-bearing:
+A model carries `decisions`, `challenges`, `opportunities` and `exclusions` alongside its slots — the
+judgment over the facts, produced by the assessment and inherited by every later generator (`exclusions`
+is a fourth, added by #599: an option that was considered and deliberately ruled out — nothing in this
+skill populates it yet, but a proposal you build by hand may). In a proposal all four are **tri-state**,
+and the difference is load-bearing:
 
 | in your proposal | meaning |
 | --- | --- |
@@ -289,7 +292,7 @@ are **tri-state**, and the difference is load-bearing:
 | `"decisions": []` | an explicit deletion — what rested on those decisions goes stale |
 | `"decisions": [ … ]` | a replacement |
 
-A refinement turn answers a question; it does not re-derive the brief, so **omitting the three is the
+A refinement turn answers a question; it does not re-derive the brief, so **omitting all four is the
 normal case** and costs nothing. Emit `[]` only when you mean "these no longer hold" — it is recorded
 as a real change, and the user is told what it unseated.
 

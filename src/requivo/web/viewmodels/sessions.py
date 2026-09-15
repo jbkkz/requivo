@@ -235,4 +235,5 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
         "evidence_reviewed": evidence["reviewed"],
         "challenges": [c.model_dump(mode="json") for c in model.challenges],
         "opportunities": [o.model_dump(mode="json") for o in model.opportunities],
+        "exclusions": [e.model_dump(mode="json") for e in model.exclusions],
     }

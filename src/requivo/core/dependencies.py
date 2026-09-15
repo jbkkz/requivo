@@ -154,10 +154,20 @@ class ChallengeImpact:
 
 
 @dataclass
+class ExclusionImpact:
+    option: str
+    rests_on: list[str]  # labels of the changed slots this exclusion rests on
+
+    def to_dict(self) -> dict:
+        return {"option": self.option, "rests_on": self.rests_on}
+
+
+@dataclass
 class ImpactReport:
     changed: list[str]  # labels of the slots in question
     decisions: list[DecisionImpact] = field(default_factory=list)
     challenges: list[ChallengeImpact] = field(default_factory=list)
+    exclusions: list[ExclusionImpact] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)  # artifact names whose slot set is touched
     # Decisions derived from thinner evidence than the model now holds (#493). `None` is *not
     # reviewed* -- `propagate` alone has no revision history to compare against, and a bare
@@ -167,13 +177,14 @@ class ImpactReport:
 
     @property
     def reasoning_hit(self) -> bool:
-        """True if the change unseats a piece of baked-in reasoning (a decision or a challenge) — the
-        signal that the saved assessment, which renders that reasoning, no longer holds."""
-        return bool(self.decisions or self.challenges)
+        """True if the change unseats a piece of baked-in reasoning (a decision, a challenge or an
+        exclusion) — the signal that the saved assessment, which renders that reasoning, no longer
+        holds."""
+        return bool(self.decisions or self.challenges or self.exclusions)
 
     @property
     def empty(self) -> bool:
-        return not self.decisions and not self.challenges and not self.artifacts
+        return not self.decisions and not self.challenges and not self.exclusions and not self.artifacts
 
     def to_dict(self) -> dict:
         """The wire shape for the API's `/impact` route (#425) -- the first `--json`-style payload
@@ -182,15 +193,17 @@ class ImpactReport:
         return {"changed": self.changed,
                 "decisions": [d.to_dict() for d in self.decisions],
                 "challenges": [c.to_dict() for c in self.challenges],
+                "exclusions": [e.to_dict() for e in self.exclusions],
                 "artifacts": self.artifacts,
                 "evidence": None if self.evidence is None else self.evidence.to_dict()}
 
 
 def propagate(out: EngineOutput, changed: list[str]) -> ImpactReport:
     """Given slot ids that changed (or are being probed), report what rests on them: the design
-    decisions to re-validate, the challenges whose premise is now in question, and the artifacts that
-    go stale. Decisions rest on slots via `derived_from`; challenges contest slots via `contests` —
-    the same DAG edge, the other direction of reasoning."""
+    decisions to re-validate, the challenges whose premise is now in question, the excluded options
+    worth reconsidering, and the artifacts that go stale. Decisions rest on slots via `derived_from`;
+    challenges contest slots via `contests`; exclusions rest on slots via `rests_on` — the same DAG
+    edge, three directions of reasoning."""
     changed_set = set(changed)
     report = ImpactReport(changed=[slot_label(sid) for sid in changed])
 
@@ -204,6 +217,11 @@ def propagate(out: EngineOutput, changed: list[str]) -> ImpactReport:
         if hit:
             report.challenges.append(ChallengeImpact(c.headline, [slot_label(sid) for sid in hit]))
 
+    for e in out.exclusions:
+        hit = [sid for sid in e.rests_on if sid in changed_set]
+        if hit:
+            report.exclusions.append(ExclusionImpact(e.option, [slot_label(sid) for sid in hit]))
+
     amap = artifact_slots()
     report.artifacts = [name for name in _ARTIFACT_SLOTS_RAW if amap[name] & changed_set]
     return report
@@ -215,14 +233,15 @@ class ReasoningDiff:
     decisions: list[str] = field(default_factory=list)
     challenges: list[str] = field(default_factory=list)
     opportunities: list[str] = field(default_factory=list)
+    exclusions: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
-        return bool(self.decisions or self.challenges or self.opportunities)
+        return bool(self.decisions or self.challenges or self.opportunities or self.exclusions)
 
     def to_dict(self) -> dict:
         return {"decisions": self.decisions, "challenges": self.challenges,
-                "opportunities": self.opportunities}
+                "opportunities": self.opportunities, "exclusions": self.exclusions}
 
 
 def _diff_items(old_items: list, new_items: list) -> list[str]:
@@ -247,13 +266,14 @@ def _diff_items(old_items: list, new_items: list) -> list[str]:
 
 
 def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
-    """The reasoning-layer counterpart of `diff_models`. Slots carry the facts; decisions, challenges
-    and opportunities carry the judgment over them, and both reach the generators. A model whose
-    slots are untouched but whose design decisions changed is a materially different model."""
+    """The reasoning-layer counterpart of `diff_models`. Slots carry the facts; decisions, challenges,
+    opportunities and exclusions carry the judgment over them, and all reach the generators. A model
+    whose slots are untouched but whose design decisions changed is a materially different model."""
     return ReasoningDiff(
         decisions=_diff_items(old.decisions, new.decisions),
         challenges=_diff_items(old.challenges, new.challenges),
         opportunities=_diff_items(old.opportunities, new.opportunities),
+        exclusions=_diff_items(old.exclusions, new.exclusions),
     )
 
 

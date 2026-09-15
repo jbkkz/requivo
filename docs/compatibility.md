@@ -195,6 +195,7 @@ than implied since 0.9.6:
 | `model` is the complete slot set; an apply **replaces**, never merges, so a partial one is refused (check a projection with `model validate --allow-partial` instead) | 0.9.6 | `test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one` |
 | `summary.objective` must say something, or the proposal is refused as incomplete | 0.9.6 | `test_validate_rejects_a_complete_model_with_no_objective` |
 | `decisions`/`challenges`/`opportunities` are **tri-state**: an omitted key leaves them untouched, `[]` deletes them, a list replaces them | 0.9.6 | `test_reasoning_merely_omitted_by_a_turn_is_preserved` |
+| `exclusions` — an option considered and deliberately ruled out — is a fourth tri-state reasoning collection, added as a free field (no `format_version` bump); each item carries a content-derived id and `rests_on` (slot ids), the same DAG edge `derived_from` is for a decision | #599 | `test_reasoning_items_carry_a_stable_content_derived_id`, `test_propagate_flags_dependent_decisions_and_artifacts` |
 
 ## The session lock
 

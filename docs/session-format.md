@@ -177,13 +177,14 @@ Two kinds of dependency feed that judgment:
 
 - **Slots** — the facts an artifact consumes, per artifact (`ARTIFACT_SLOTS`). The saved assessment is
   the one that rests on all of them: it is a judgment over the whole model.
-- **The reasoning layer** — the design decisions, challenges and opportunities. Every generator is
-  prompted with the complete model, reasoning included, so a rewritten decision can change a PRD with
-  no slot touched. A model whose slots are identical but whose judgment moved is a different model.
+- **The reasoning layer** — the design decisions, challenges, opportunities and excluded options
+  (#599). Every generator is prompted with the complete model, reasoning included, so a rewritten
+  decision can change a PRD with no slot touched. A model whose slots are identical but whose
+  judgment moved is a different model.
 
 Reasoning that a turn simply *omits* is not a removal — a refinement turn answers a question rather
 than re-deriving the brief, so its reply routinely carries no decisions at all. That is resolved when
-the proposal is validated, not when it is diffed: the three collections are tri-state in a proposal
+the proposal is validated, not when it is diffed: the four collections are tri-state in a proposal
 (absent = keep, `[]` = delete, a list = replace), and `ModelProposal.resolve` collapses them against
 the model being refined. The diff itself is symmetric, so an explicit deletion *is* reported and does
 mark what rested on it stale.
@@ -217,12 +218,12 @@ caught every other malformed-session fact along with it. #82 closed the other di
 
 ## Stable identifiers
 
-Design decisions, challenges and opportunities each carry an `id` (`dec_…`, `chl_…`, `opp_…`) derived
-from their own content and recomputed on every validation. It is the same value across revisions,
-surfaces and machines for as long as the statement is unchanged, so a decision can be referred back to
-without quoting its text. A supplied id is never trusted — it is always recomputed, so neither a model
-nor a hand-edited session file can invent an identity. A reworded statement gets a new id; nothing in
-the data says the rewording preserved the intent.
+Design decisions, challenges, opportunities and exclusions each carry an `id` (`dec_…`, `chl_…`,
+`opp_…`, `exc_…`) derived from their own content and recomputed on every validation. It is the same
+value across revisions, surfaces and machines for as long as the statement is unchanged, so a
+decision can be referred back to without quoting its text. A supplied id is never trusted — it is
+always recomputed, so neither a model nor a hand-edited session file can invent an identity. A
+reworded statement gets a new id; nothing in the data says the rewording preserved the intent.
 
 ## Slugs
 

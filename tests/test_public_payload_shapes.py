@@ -183,11 +183,14 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
               {"status": "str", "slots": "int"}),
     ),
     "model apply": (
+        # #599 added `changed_exclusions`/`invalidated_exclusions` -- additive (invariant 8), the
+        # fourth reasoning collection's own pair beside decisions/challenges/opportunities.
         _Case("model apply --json", ("model", "apply", "s", "{proposal}", "--json"), {
             "status": "str", "revision": "int", "changed_slots": "list",
             "changed_decisions": "list", "changed_challenges": "list",
-            "changed_opportunities": "list", "invalidated_decisions": "list",
-            "invalidated_challenges": "list", "stale_artifacts": "list", "readiness": "dict"}),
+            "changed_opportunities": "list", "changed_exclusions": "list",
+            "invalidated_decisions": "list", "invalidated_challenges": "list",
+            "invalidated_exclusions": "list", "stale_artifacts": "list", "readiness": "dict"}),
     ),
     "model diff": (
         # The same `UpdateResult.to_dict()` as `model apply`, which is the point: `diff` is `apply`
@@ -195,8 +198,9 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
         _Case("model diff --json", ("model", "diff", "s", "{proposal}", "--json"), {
             "status": "str", "revision": "int", "changed_slots": "list",
             "changed_decisions": "list", "changed_challenges": "list",
-            "changed_opportunities": "list", "invalidated_decisions": "list",
-            "invalidated_challenges": "list", "stale_artifacts": "list", "readiness": "dict"}),
+            "changed_opportunities": "list", "changed_exclusions": "list",
+            "invalidated_decisions": "list", "invalidated_challenges": "list",
+            "invalidated_exclusions": "list", "stale_artifacts": "list", "readiness": "dict"}),
     ),
     "artifact save": (
         _Case("artifact save --json",
