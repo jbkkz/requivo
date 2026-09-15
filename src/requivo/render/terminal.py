@@ -23,6 +23,7 @@ from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 STATE_ROWS = [
     ("confirmed", "✅ Confirmed"),
     ("inferred", "🟡 Inferred"),
+    ("to_test", "🧪 To test"),
     ("unknown", "⚪ Unknown"),
 ]
 

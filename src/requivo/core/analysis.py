@@ -96,20 +96,30 @@ def readiness_blockers(out: EngineOutput) -> list[str]:
             and s.confidence is Confidence.explicit
             and s.completeness >= SOFT_COMPLETENESS
         )
-        if impact is Impact.high and not confirmed:
+        # A slot deliberately deferred to a test (#610) is a known unknown, not an unasked question --
+        # readiness means "precise enough to build from", and shipping with a named test still to run
+        # is compatible with that. Cost of missing this: the target persona (a builder, whose ideas are
+        # full of exactly this kind of gap) can never reach "ready" honestly.
+        deferred_to_test = s is not None and s.confidence is Confidence.testable
+        if impact is Impact.high and not confirmed and not deferred_to_test:
             blockers.append(sid)
     return [sid for sid in slot_meta()[1] if sid in set(blockers)]  # schema order
 
 
 def state_of(s: Slot) -> str:
-    """`confirmed` / `inferred` / `unknown` for one slot's confidence. Public since #302:
+    """`confirmed` / `inferred` / `to_test` / `unknown` for one slot's confidence. Public since #302:
     `render/terminal.py` already called this under its underscore name, and the alternative --
     inlining the confidence-to-state mapping there -- would duplicate a core classification rule in
-    a render module rather than share it."""
+    a render module rather than share it.
+
+    `to_test` is its own bucket, not folded into `unknown` (#610): a reader must never mistake a
+    named, deliberately-deferred gap for either a confirmed fact or a plain open question."""
     if s.confidence is Confidence.explicit:
         return "confirmed"
     if s.confidence is Confidence.inferred:
         return "inferred"
+    if s.confidence is Confidence.testable:
+        return "to_test"
     return "unknown"
 
 
@@ -138,7 +148,7 @@ def understanding_view(out: EngineOutput) -> dict[str, list[dict]]:
     presentation logic. `thin` marks a confirmed-but-below-coverage slot — the exact case readiness now
     still blocks on, surfaced so a client can render 'stated but partial' without re-deriving it."""
     pillars, _labels = slot_meta()
-    groups: dict[str, list[dict]] = {"confirmed": [], "inferred": [], "unknown": []}
+    groups: dict[str, list[dict]] = {"confirmed": [], "inferred": [], "to_test": [], "unknown": []}
     for sid, s in out.model.items():
         groups[state_of(s)].append({
             "slot": sid,

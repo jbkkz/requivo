@@ -1,15 +1,15 @@
 /* Requivo Web.
  *
  * A calm, modern product interface. The engine keeps an epistemic ledger — every topic carries an
- * evidence grade (explicit / inferred / empty) and an impact weight — so the one thing this design
- * has to do well is make those three states readable at a glance, everywhere they appear, without
- * turning the page into a dashboard of scores.
+ * evidence grade (explicit / inferred / testable / empty) and an impact weight — so the one thing
+ * this design has to do well is make those four states readable at a glance, everywhere they appear,
+ * without turning the page into a dashboard of scores.
  *
  * The rules that hold it together:
- *   - Colour encodes state, never decoration. Emerald = known, amber = assumed, slate = open. Nothing
- *     else on the page is allowed to use those hues.
+ *   - Colour encodes state, never decoration. Emerald = known, amber = assumed, violet = to test,
+ *     slate = open. Nothing else on the page is allowed to use those hues.
  *   - Interactive weight is ink, not a brand colour. Buttons are near-black; blue is for links and
- *     focus, where a reader already expects it. That leaves the semantic triad unopposed.
+ *     focus, where a reader already expects it. That leaves the semantic quartet unopposed.
  *   - Depth is minimal and consistent: a white surface, a 1px border, one soft shadow. Never two.
  *
  * Built inside real constraints rather than around them: the CSP is `style-src \'self\'` and the app is
@@ -32,11 +32,13 @@
   --text: #464e5a;            /* body */
   --muted: #676f7b;           /* labels, meta, hints — 4.57:1 on the tinted surface */
 
-  /* The evidence triad. These three hues mean one thing each, everywhere. */
+  /* The evidence quartet. These four hues mean one thing each, everywhere. */
   --known: #047857;
   --known-soft: #e7f5ef;
   --assumed: #b45309;
   --assumed-soft: #fdf1e3;
+  --test: #7c3aed;
+  --test-soft: #f2ecfd;
   --open: #5b6472;
   --open-soft: #eef0f4;
 
@@ -78,6 +80,8 @@
     --known-soft: #10251f;
     --assumed: #f0b357;
     --assumed-soft: #251c10;
+    --test: #b794f6;
+    --test-soft: #241c33;
     --open: #98a2b1;
     --open-soft: #1c212a;
 
@@ -335,6 +339,7 @@ ul.clean.session-list > li:last-child { border-bottom: 0; }
 .dot { width: 9px; height: 9px; flex: none; border-radius: 2px; }
 .dot.fact { background: var(--known); }
 .dot.assum { background: var(--assumed); border-radius: 1px; transform: rotate(45deg); }
+.dot.test { background: transparent; border: 1.5px solid var(--test); border-radius: 2px; }
 .dot.unkwn { background: transparent; border: 1.5px solid var(--open); border-radius: 50%; }
 .model-row .tag {
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;

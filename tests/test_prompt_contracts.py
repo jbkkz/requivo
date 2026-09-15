@@ -15,7 +15,7 @@ import pytest
 from pydantic import BaseModel, ValidationError, create_model
 
 from requivo.core.contracts import StrictModel, schema_slot_ids
-from requivo.paths import PROMPTS
+from requivo.paths import FRAMEWORK, PROMPTS
 from requivo.providers.anthropic import generators
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, _STANDALONE_PROMPTS
 
@@ -281,3 +281,18 @@ def test_the_derivation_refuses_a_generator_it_cannot_read(monkeypatch):
     monkeypatch.setitem(_GENERATORS, "brief", not_a_generator)
     with pytest.raises(AssertionError, match="expected exactly one"):
         contract_for("brief")
+
+
+def test_the_confidence_grading_in_the_schema_and_the_prompt_agree():
+    """#611 AC: the grading is defined in `framework/model_schema.json` AND restated in `engine.md`,
+    and the two must not silently drift apart -- a rule landing in only one of them is the exact
+    failure the audit warned against. Checks the load-bearing phrases, not a word-for-word diff."""
+    schema_confidence = json.dumps(
+        json.loads((FRAMEWORK / "model_schema.json").read_text(encoding="utf-8"))["confidence"])
+    engine_md = (PROMPTS / "engine.md").read_text(encoding="utf-8")
+    for value in ("explicit", "inferred", "empty", "testable"):
+        assert value in schema_confidence, f"{value!r} missing from model_schema.json's confidence grading"
+        assert value in engine_md, f"{value!r} missing from engine.md's restatement"
+    for phrase in ("belief about the world", "test_plan"):
+        assert phrase in schema_confidence, f"{phrase!r} missing from model_schema.json"
+        assert phrase in engine_md, f"{phrase!r} missing from engine.md"

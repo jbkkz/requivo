@@ -3,9 +3,15 @@
     "rule": "information_value = uncertainty * impact",
     "ask_when": "information_value is high",
     "do_not_ask_when": "slot is empty but impact is low",
-    "uncertainty": "derived from completeness (0-100) and confidence (explicit|inferred|empty)",
+    "uncertainty": "derived from completeness (0-100) and confidence (see confidence below)",
     "impact": "how much this slot changes the shape/cost of the solution; estimated using the product context (context/*.md)",
     "impact_is_dynamic": "impact_default is only a BASELINE. Raise a slot's impact above its default when the request or context names a driver for it (a slot's impact_signals list the triggers). A compliance/audit/traceability/regulatory need named anywhere — success_metrics, constraints, the request — makes the slots that serve it (reporting=auditability, permissions, constraints) high-impact, whatever their default."
+  },
+  "confidence": {
+    "explicit": "the requester committed to this. A third party's own word (a client, a stakeholder) always qualifies. With no third party — a solo builder describing their own idea — ONLY their own intent qualifies: what they want, will or will not build, will spend, have decided. Their unconfirmed belief about the world (what users want, what a channel yields, what a system does) is NEVER explicit, no matter how confidently it is stated — grade it inferred or testable instead.",
+    "inferred": "deduced by you, OR the requester's own unconfirmed belief about the world — an assumption to confirm before it drives the build.",
+    "empty": "unknown, and answerable by asking the person in front of you.",
+    "testable": "unknown, and NOT answerable by asking — only a real test or experiment would settle it. This is the default state of a half-formed idea, not an edge case. Requires test_plan naming what would settle it, or the slot is refused. Does not block readiness: a named test still to run is compatible with 'precise enough to build from'."
   },
   "pillars": {
     "why": "Why? The real problem and the measure of success.",

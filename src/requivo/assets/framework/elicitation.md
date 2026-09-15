@@ -23,16 +23,29 @@ Pillars are for navigation. The unit that actually gets filled and tracked is th
 A slot records not just what we know, but how well we know it and where it came from:
 
 ```
-completeness   0–100                         how fully the slot is known
-confidence     explicit | inferred | empty   where that knowledge came from
-impact         low | medium | high           how much it shapes the solution
+completeness   0–100                                    how fully the slot is known
+confidence     explicit | inferred | empty | testable    where that knowledge came from
+impact         low | medium | high                      how much it shapes the solution
 value          what we currently know
 evidence       what it's based on
+test_plan      what would settle it — only when confidence is testable
 ```
 
 `confidence` is what keeps assumptions visible. An `inferred` slot is something the engine deduced
 but hasn't confirmed, so it flows straight into the "Assumptions made" section of the summary —
 nothing is quietly taken for granted.
+
+**`explicit` needs an authority, not just confidence.** It means the person who said it can actually
+commit to it — a client's own word always qualifies. With no client (a builder describing their own
+idea), only their own *intent* qualifies: what they want, will build, will spend. Their unconfirmed
+*belief about the world* — will users want this, will they pay — is never `explicit`, however
+confidently they state it; it is `inferred` (an assumption to confirm) or, when no amount of further
+conversation would settle it, `testable`.
+
+**`testable` is the fourth state**, for the gap a builder's idea is usually made of: not "nobody has
+told me" (ask), but "nobody knows until something is tried" (test). It carries what would settle it
+and does not block readiness — a named test still to run is compatible with "precise enough to build
+from"; an unasked question is not.
 
 ## The driver: uncertainty × impact
 

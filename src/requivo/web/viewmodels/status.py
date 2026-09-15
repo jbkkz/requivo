@@ -14,12 +14,13 @@ from typing import Any
 from requivo.core.analysis import slot_labels
 from requivo.web.viewmodels.labels import artifact_labels
 
-# The three understanding states the Core emits (evidence, NOT coverage — coverage is the separate
+# The four understanding states the Core emits (evidence, NOT coverage — coverage is the separate
 # `thin` flag each entry carries), each with its display tag and dot colour class. The tags read as
-# the vocabulary the page uses in prose: what we know / what we are assuming / open question.
+# the vocabulary the page uses in prose: what we know / what we are assuming / to test / open question.
 UNDERSTANDING_STATES = [
     ("confirmed", "KNOWN", "fact"),
     ("inferred", "ASSUMED", "assum"),
+    ("to_test", "TO TEST", "test"),
     ("unknown", "OPEN", "unkwn"),
 ]
 

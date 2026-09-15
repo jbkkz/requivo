@@ -24,8 +24,10 @@ from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput
 
 
-def slot(completeness, confidence, impact):
-    return {"completeness": completeness, "confidence": confidence, "impact": impact}
+def slot(completeness, confidence, impact, test_plan=""):
+    # `test_plan` only for a `testable` slot, which the contract refuses without one (#610).
+    d = {"completeness": completeness, "confidence": confidence, "impact": impact}
+    return {**d, "test_plan": test_plan} if test_plan else d
 
 
 def full_slots(**overrides):

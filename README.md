@@ -29,7 +29,7 @@ agency leads — on complex, configurable B2B products. Run it locally, then han
 
 Opens `http://127.0.0.1:8765`. No key? It still opens and offers **Explore a worked example** — the
 same client email `requivo demo` replays, materialised as a real session ([demo video][demo-video]).
-Analysing your own request costs roughly **$0.03–$0.06 per call**, **$0.47–$1.03** for a complete
+Analysing your own request costs roughly **$0.03–$0.06 per call**, **$0.47–$1.04** for a complete
 session end to end — derived, not typed: the per-step table and its method are in
 [`docs/providers.md`][providers]. Other install routes and the full platform list:
 [`docs/getting-started.md`][getting-started].

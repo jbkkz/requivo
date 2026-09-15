@@ -12,8 +12,9 @@ stored, computed or emitted by `--json`; this is a translation layer over the sa
     explicit evidence   →  what we know               stale artifact  →  needs updating
     inferred evidence   →  what we are assuming       revision        →  history
     unknown             →  open question              context card    →  product context
-    challenge           →  assumption to review       provider        →  advanced setting
-    readiness           →  are we ready?              slot            →  (never shown by default)
+    testable evidence   →  to test                    challenge       →  assumption to review
+    readiness           →  are we ready?              provider        →  advanced setting
+                                                        slot            →  (never shown by default)
 """
 
 from __future__ import annotations

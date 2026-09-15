@@ -186,6 +186,21 @@ def test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip(work
         assert written["decisions"][0]["settled_at"] == "r1", path.name
 
 
+def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit(workspace):
+    """Invariant 8, extended to a closed enum, not only unknown keys (#610): a confidence value a
+    still-newer Requivo might invent must load rather than raise, and must never silently read as
+    `explicit`. Simulated forward -- this build cannot run an older one to check the real case."""
+    store.create_session("future-confidence", "A leave approval system.")
+    d = store.canonical_dir("future-confidence")
+    m = _full_model(workflow=_slot(90, "measured", "high"))   # a confidence value this build refuses
+    (d / "model.json").write_text(json.dumps(m, indent=2), encoding="utf-8")
+
+    loaded = store.load_session_model("future-confidence")   # must not raise
+    assert loaded.model["workflow"].confidence == "measured"
+    from requivo.core.analysis import readiness_blockers
+    assert "workflow" in readiness_blockers(loaded)   # tolerated, never promoted to "confirmed"
+
+
 def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save(workspace):
     """The half the first version of this fix got wrong, and the reason it is worth a second test.
 Making the *read* permissive is not enough: `resolve()` carries an unstated reasoning collection
@@ -279,8 +294,10 @@ trees carried a hand-written `max_length=6` on `questions` and nothing made them
     assert len(pairs) == 8
     redeclared = {name for p, s in pairs for name in p.model_fields
                   if p.model_fields[name].annotation != s.model_fields[name].annotation}
+    # `confidence` joined this set with #610: `PersistedSlot` widens it to `Confidence | str` so a
+    # value this build does not define survives a round-trip instead of raising (invariant 8).
     assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities",
-                          "exclusions"}
+                          "exclusions", "confidence"}
 
     drift = []
     for permissive, strict in pairs:

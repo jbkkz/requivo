@@ -129,6 +129,44 @@ def test_diff_models_flags_material_change_but_ignores_completeness_noise():
     assert diff_models(old, newv) == ["workflow"]
 
 
+def test_a_settled_testable_slot_propagates_like_any_other_change():
+    """#610: the point of "testable" is that a test result is a model change with a blast radius --
+    settling one (confidence testable -> explicit) must flow through diff_models/propagate exactly
+    like any other slot change, not exit through a side door of its own."""
+    old = EngineOutput.model_validate({
+        "model": {"business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
+                                     "value": "", "evidence": "", "test_plan": "Run a pricing survey."}},
+        "questions": [], "summary": {},
+        "decisions": [DesignDecision(decision="Ship a flat monthly price",
+                                     derived_from=["business_rules"]).model_dump()],
+    })
+    settled = EngineOutput.model_validate({
+        "model": {"business_rules": {"completeness": 90, "confidence": "explicit", "impact": "high",
+                                     "value": "$29/month, confirmed by the survey", "evidence": "survey"}},
+        "questions": [], "summary": {},
+        "decisions": [d.model_dump() for d in old.decisions],
+    })
+    changed = diff_models(old, settled)
+    assert changed == ["business_rules"]
+    rep = propagate(old, changed)
+    assert [d.decision for d in rep.decisions] == ["Ship a flat monthly price"]
+    assert "estimate" in rep.artifacts
+
+
+def test_a_re_planned_test_is_a_material_change():
+    """#610: `test_plan` rides into every generator prompt with the rest of the model, so swapping a
+    survey for a paid pilot changes what they read. Before this, only value/confidence/impact were
+    compared, so the swap marked nothing stale -- invariant 1's failure shape. Codex found it."""
+    def _m(plan):
+        return EngineOutput.model_validate({
+            "model": {"business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
+                                         "value": "", "evidence": "", "test_plan": plan}},
+            "questions": [], "summary": {},
+        })
+    assert diff_models(_m("Run a pricing survey."), _m("Run a two-week paid pilot.")) == ["business_rules"]
+    assert diff_models(_m("Run a pricing survey."), _m("Run a pricing survey.")) == []
+
+
 def test_diff_models_flags_a_removed_slot():
     """Invariant 1's symmetry. Reasoning a turn merely *omits* is not a removal — but that is
     resolved *before* the diff, by `ModelProposal.resolve` (invariant 10), never inside it. By the

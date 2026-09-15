@@ -6,7 +6,7 @@ because a slot is empty, it asks where information value is high.
 """
 from _fakes import out, slot
 
-from requivo.core.analysis import estimate_confidence, readiness_blockers, soft_slots, state_of
+from requivo.core.analysis import estimate_confidence, readiness_blockers, soft_slots, state_of, understanding_view
 from requivo.core.contracts import EngineOutput, Slot
 
 
@@ -69,6 +69,63 @@ def test_state_of_maps_confidence():
     assert state_of(Slot(completeness=90, confidence="explicit", impact="high")) == "confirmed"
     assert state_of(Slot(completeness=50, confidence="inferred", impact="high")) == "inferred"
     assert state_of(Slot(completeness=0, confidence="empty", impact="low")) == "unknown"
+
+
+def test_state_of_gives_testable_its_own_bucket():
+    # #610: a reader must never mistake a named, deferred-to-test gap for a confirmed fact or a
+    # plain open question -- it is neither, so it is a fourth bucket, not folded into "unknown".
+    s = Slot(completeness=0, confidence="testable", impact="high", test_plan="Run a landing-page test.")
+    assert state_of(s) not in ("confirmed", "unknown")
+    assert state_of(s) == "to_test"
+
+
+def test_readiness_does_not_block_on_a_slot_deferred_to_a_test():
+    # #610: the state's whole point is that a known unknown deliberately deferred to a test does not
+    # keep the target persona (a builder) from ever reaching "ready".
+    model = out({
+        "problem": slot(90, "explicit", "high"),
+        "business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
+                           "test_plan": "Ship a waitlist and see if 20 people sign up."},
+    })
+    assert "business_rules" not in readiness_blockers(model)
+
+
+def test_readiness_is_not_reached_on_self_asserted_beliefs_about_the_world_alone():
+    """#611: with no client, `explicit` means the requester is the authority for the fact -- true of
+    their own intent, false of their guess about the world (model_schema.json's `driver.confidence`
+    and engine.md state the rule the engine grades by). A world-belief graded honestly lands
+    `inferred`, which still blocks high impact, so a model built entirely that way cannot read
+    "ready" on how much the user typed. Pins the *effect* of the rule; the classification itself is
+    the engine's own judgment, per CLAUDE.md's single-LLM-call architecture, not something this
+    test -- or any code in `core/` -- can carry out itself."""
+    model = out({
+        "success_metrics": slot(90, "inferred", "high"),   # "I think people will pay for this"
+        "problem": slot(90, "inferred", "high"),            # "I think this is a real problem"
+    })
+    assert readiness_blockers(model)
+
+
+def test_a_solo_builders_own_intent_still_reaches_explicit_confidence():
+    # #611's other half: the fix must not make a solo builder's session permanently second-class.
+    # A fact about what THEY decided (not about the world) is still gradeable at full confidence.
+    model = out({
+        "constraints": slot(90, "explicit", "high"),   # "I'm giving myself a two-week budget"
+        "workflow": slot(90, "explicit", "high"),       # "I've decided the approval has one step"
+    })
+    assert "constraints" not in readiness_blockers(model)
+    assert "workflow" not in readiness_blockers(model)
+
+
+def test_understanding_view_carries_a_to_test_group():
+    # The groups dict every JSON/Web reader iterates -- a new bucket that stays absent from it would
+    # silently drop every testable slot from `requivo status --json` and the Web's understanding row.
+    model = out({
+        "business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
+                           "test_plan": "Run a pricing survey."},
+    })
+    groups = understanding_view(model)
+    assert "to_test" in groups
+    assert [e["slot"] for e in groups["to_test"]] == ["business_rules"]
 
 
 def test_the_four_slot_projections_all_read_from_one_schema_parse(monkeypatch):

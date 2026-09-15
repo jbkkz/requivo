@@ -133,6 +133,21 @@ def test_contracts_reject_a_challenge_missing_a_load_bearing_part():
             Challenge.model_validate({**base, missing: ""})
 
 
+def test_a_testable_slot_with_no_test_plan_is_refused():
+    """#610: "testable" with nothing naming what would settle it is `empty` with better manners.
+    Refused, not accepted -- the same rule `test_contracts_reject_a_challenge_missing_a_load_bearing_part`
+    pins for `Challenge`'s five required parts. Guards `Slot._testable_names_its_settlement`."""
+    with pytest.raises(ValidationError):
+        out({"problem": {"completeness": 0, "confidence": "testable", "impact": "high"}})
+
+
+def test_a_testable_slot_naming_its_test_plan_is_accepted():
+    # The positive control: a settling condition is all "testable" asks for.
+    model = out({"problem": {"completeness": 0, "confidence": "testable", "impact": "high",
+                             "test_plan": "Ship a waitlist page and see whether 20 people sign up."}})
+    assert model.model["problem"].confidence.value == "testable"
+
+
 def test_reasoning_items_carry_a_stable_content_derived_id():
     """Invariant 5: `DesignDecision`, `Challenge` and `Opportunity` carry an `id` recomputed from
     their own text on every validation. A supplied one is never trusted — an LLM that echoes a

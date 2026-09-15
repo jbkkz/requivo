@@ -390,10 +390,13 @@ extend-exclude = ["out", ".oss"]
 # self-contained strings; CI-lint is here to catch bugs, not to police width.
 select = ["E", "F", "I", "W", "UP", "B"]
 # E501 (line width): off — deliberate alignment + long self-contained strings.
-# UP045 (Optional[X] → X | None): off — the project targets Python 3.9, where Pydantic must *evaluate*
-# model-field annotations at class-definition time, and `X | None` raises TypeError there (unlike
-# deferred function annotations). Pydantic model fields therefore use `Optional[X]` by necessity.
-ignore = ["E501", "UP045"]
+# UP045 (Optional[X] → X | None) and UP007 (Union[X, Y] → X | Y): off — the project targets Python
+# 3.9, where Pydantic must *evaluate* model-field annotations at class-definition time, and `X | Y`
+# raises TypeError there (unlike deferred function annotations). Pydantic model fields therefore use
+# `Optional[X]` and `Union[X, Y]` by necessity. UP045 alone covered this until a field needed a union
+# of two non-None members (#610, `PersistedSlot.confidence`), at which point the surviving rule
+# demanded exactly the syntax that breaks the floor.
+ignore = ["E501", "UP045", "UP007"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection idiom puts these calls in argument defaults on purpose; they are the
