@@ -4,7 +4,7 @@ import functools
 import hashlib
 import json
 from enum import Enum
-from typing import Annotated, Optional, TypeVar
+from typing import Annotated, Optional, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, field_validator, model_validator
 
@@ -759,7 +759,10 @@ class PersistedSlot(Slot):
     # values still resolve to the real `Confidence` member -- `_confidence_or_raw` runs before field
     # validation, so the union below never has to arbitrate the ambiguous case itself. Guarded by
     # `test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit`.
-    confidence: Confidence | str
+    # `Union`, never `Confidence | str`: pydantic evaluates this annotation at class-definition
+    # time and 3.9 -- a supported floor -- cannot, so the whole module fails to import and the CLI
+    # with it. CONTRIBUTING.md states the rule; the 3.9 CI leg is what goes red.
+    confidence: Union[Confidence, str]
 
     @field_validator("confidence", mode="before")
     @classmethod

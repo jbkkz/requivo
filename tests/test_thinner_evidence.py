@@ -67,12 +67,16 @@ def _decision(*derived_from):
 
 
 @pytest.mark.parametrize(
-    ("completeness", "start_confidence"),
-    [(0, "empty"), (40, "inferred")],
-    ids=["empty-to-explicit", "inferred-to-explicit"],
+    ("completeness", "start_confidence", "test_plan"),
+    [(0, "empty", ""), (40, "inferred", ""), (0, "testable", "Run a two-week paid pilot.")],
+    ids=["empty-to-explicit", "inferred-to-explicit", "testable-to-explicit"],
 )
-def test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged(completeness, start_confidence):
-    then = _model(_decision("current_process"), current_process=slot(completeness, start_confidence, "high"))
+def test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged(completeness, start_confidence, test_plan):
+    """The `testable` leg is the case #610 was opened for: a decision taken while the answer could
+    only be tested, against a test that has since returned, is the one nobody goes back to re-read.
+    Codex found `_THIN` had been widened nowhere when the fourth confidence value landed."""
+    then = _model(_decision("current_process"),
+                  current_process=slot(completeness, start_confidence, "high", test_plan))
     now = _model(_decision("current_process"), current_process=slot(90, "explicit", "high"))
     report = thinner_evidence(then, now)
     assert [f.decision for f in report.flagged] == [DECISION]

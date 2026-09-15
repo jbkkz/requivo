@@ -153,6 +153,20 @@ def test_a_settled_testable_slot_propagates_like_any_other_change():
     assert "estimate" in rep.artifacts
 
 
+def test_a_re_planned_test_is_a_material_change():
+    """#610: `test_plan` rides into every generator prompt with the rest of the model, so swapping a
+    survey for a paid pilot changes what they read. Before this, only value/confidence/impact were
+    compared, so the swap marked nothing stale -- invariant 1's failure shape. Codex found it."""
+    def _m(plan):
+        return EngineOutput.model_validate({
+            "model": {"business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
+                                         "value": "", "evidence": "", "test_plan": plan}},
+            "questions": [], "summary": {},
+        })
+    assert diff_models(_m("Run a pricing survey."), _m("Run a two-week paid pilot.")) == ["business_rules"]
+    assert diff_models(_m("Run a pricing survey."), _m("Run a pricing survey.")) == []
+
+
 def test_diff_models_flags_a_removed_slot():
     """Invariant 1's symmetry. Reasoning a turn merely *omits* is not a removal — but that is
     resolved *before* the diff, by `ModelProposal.resolve` (invariant 10), never inside it. By the

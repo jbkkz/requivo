@@ -290,6 +290,11 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
             old_slot.value.strip() != new_slot.value.strip()
             or old_slot.confidence != new_slot.confidence
             or old_slot.impact != new_slot.impact
+            # A re-planned test is a material change (#610): the model carries `test_plan` into every
+            # generator prompt, so swapping a survey for a paid pilot changes what they read while
+            # every artifact stays marked fresh -- invariant 1's failure shape. Guarded by
+            # `test_a_re_planned_test_is_a_material_change`.
+            or old_slot.test_plan.strip() != new_slot.test_plan.strip()
         ):
             changed.append(sid)
     return changed
@@ -301,11 +306,16 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
 # earlier, thinner state of that same slot: everyone is pleased the slot got filled, so nobody
 # re-reads the decision. Whether the new evidence *contradicts* the decision is a judgment over
 # both and belongs to the assessment (a provider call). What is decidable here, for free, is the
-# approximation: the decision was derived while a slot it rests on was `empty` or `inferred`, and
-# that slot is `explicit` now. The wording that goes with it is *derived from thinner evidence than
-# exists now, worth re-reading* -- never "contradicted".
+# approximation: the decision was derived while a slot it rests on was `empty`, `inferred` or
+# `testable`, and that slot is `explicit` now. The wording that goes with it is *derived from thinner
+# evidence than exists now, worth re-reading* -- never "contradicted".
+#
+# `testable` belongs here as much as the other two, and is the case #610 was opened for: a decision
+# taken while an answer was only-testable, against a test that has since returned, is exactly what
+# nobody goes back to re-read. Guarded by
+# `test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged`.
 
-_THIN = frozenset({Confidence.empty, Confidence.inferred})
+_THIN = frozenset({Confidence.empty, Confidence.inferred, Confidence.testable})
 
 
 @dataclass
