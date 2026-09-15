@@ -549,11 +549,18 @@ def _cmd_answer(a, client) -> None:
     if result.stale_artifacts:
         pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
         render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
-    n_reasoning = len(result.invalidated_decisions) + len(result.invalidated_challenges)
+    # Every invalidated collection is counted here, or a change that unseats only one kind of
+    # reasoning reports nothing on this path while `impact`, --json and the Web all report it — the
+    # half-registered shape invariant 1 fails through. Guarded by
+    # test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path.
+    parts = [(result.invalidated_decisions, "decision(s)"),
+             (result.invalidated_challenges, "premise(s)"),
+             (result.invalidated_exclusions, "exclusion(s)")]
+    n_reasoning = sum(len(items) for items, _ in parts)
     if n_reasoning:
+        breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
         print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the decision brief's reasoning "
-              f"({len(result.invalidated_decisions)} decision(s), {len(result.invalidated_challenges)} "
-              f"premise(s)) — regenerate the brief to refresh it.")
+              f"({breakdown}) — regenerate the brief to refresh it.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")
     if not out.questions:
         print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
