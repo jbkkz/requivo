@@ -114,6 +114,11 @@ time:
 | Change impact | tested / not tested |
 | Trust | tested / not tested |
 
+**Trust** is the "What to record" table's own last row: *would you send the brief to a client
+as-is?* It is the one moment that costs nothing extra to test — it falls out of the questions row
+above, in the same sitting, with no two-day floor and no need to change an answer — which is exactly
+why a run that records "trust: not tested" is the one gap in the four that most needs explaining.
+
 **Not tested is a legitimate entry, not an apology.** Resumption alone carries a two-day floor, so a
 single sitting can honestly test only discovery and trust — that is a fine reason to write "not
 tested" against the other two, and a worse one to leave the cell blank and let a reader assume it was
