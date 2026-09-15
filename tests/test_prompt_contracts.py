@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError, create_model
 from requivo.core.contracts import StrictModel, schema_slot_ids
 from requivo.paths import PROMPTS
 from requivo.providers.anthropic import generators
-from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS
+from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, _STANDALONE_PROMPTS
 
 # analyze is the discovery turn, not a generator -- no _GENERATORS entry; reached via run(), a stated exception.
 ANALYZE_OP = "analyze"
@@ -27,7 +27,7 @@ ANALYZE_ENTRY = generators.run
 PROMPT_ANCHORS = ("engine.md", "brief.md")
 
 # Token a prompt writes for a real value, substituted before validation; checked for deadness below.
-_PLACEHOLDERS = ("<slot_id>",)
+_PLACEHOLDERS = ("<slot_id>", "{{REQUEST}}", "{{CARDS}}")
 
 _HEADING = re.compile(r"^# Output format[ \t]*$", re.M)
 _FENCE = re.compile(r"^```json[^\n]*\n(.*?)^```", re.S | re.M)
@@ -168,7 +168,9 @@ def test_every_reachable_operation_is_covered_by_this_guard():
 def test_every_prompt_asset_belongs_to_an_operation():
     """The scan set and `_OP_PROMPTS` must account for each other: a file is dead weight, or a call fails at runtime."""
     on_disk = {p.name for p in scan_prompts()}
-    registered = set(_OP_PROMPTS.values())
+    # Two ways for a file to be claimed since #593, not one: an operation with a contract and a
+    # prompt version, or a standalone prompt that deliberately carries no shared leading block.
+    registered = set(_OP_PROMPTS.values()) | set(_STANDALONE_PROMPTS.values())
     assert on_disk == registered, (
         f"prompt assets on disk {sorted(on_disk)} and prompts named by _OP_PROMPTS {sorted(registered)} disagree; " f"unclaimed: {sorted(on_disk - registered)}, missing: {sorted(registered - on_disk)}"
     )

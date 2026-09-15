@@ -99,6 +99,55 @@ def _cards_for_selection() -> dict[str, Path]:
     return paths
 
 
+class CardSummary(NamedTuple):
+    """One installed card, reduced to what a grounding judgment needs to decide whether it covers a
+    request. `domain` is the card's own `Business domain:` line; `unreadable` is the third state --
+    we found the file and could not read it, which is not the same as a card with no domain line."""
+
+    stem: str
+    domain: str
+    unreadable: bool = False
+
+
+def card_summaries() -> list[CardSummary]:
+    """Every installed card as one line, for a judgment that must not pay to read them in full.
+
+    A per-card read failure degrades that row and never the listing (invariant 15): a judgment told
+    about three of four cards can still be right about those three, where a raised error would make
+    an unreadable card look like an install with no cards at all -- the state `load_context` refuses
+    outright. Guarded by `test_one_unreadable_card_degrades_its_own_summary_row`."""
+    out = []
+    for stem, path in sorted(_card_paths().items()):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            out.append(CardSummary(stem=stem, domain="", unreadable=True))
+            continue
+        out.append(CardSummary(stem=stem, domain=_business_domain(text)))
+    return out
+
+
+def _business_domain(text: str) -> str:
+    """The `- Business domain:` value from a card, joined across its wrapped continuation lines.
+
+    The template's own first field, so every card written from it has one; a card that does not is
+    reported with an empty domain rather than skipped, because its *name* is still evidence and a
+    judgment that never heard of it cannot select it."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        head, sep, rest = line.partition(":")
+        if sep and head.strip().lstrip("-*").strip().lower() == "business domain":
+            parts = [rest.strip()]
+            # Continuation lines are indented and carry no bullet of their own -- the template wraps
+            # the long ones, and a domain cut at the wrap reads as a different domain.
+            for cont in lines[i + 1:]:
+                if not cont.startswith((" ", "\t")) or cont.strip().startswith(("-", "*", "#")):
+                    break
+                parts.append(cont.strip())
+            return " ".join(p for p in parts if p)
+    return ""
+
+
 def available_cards() -> list[str]:
     """Stems of the loadable context cards (bundled + user), sorted — the vocabulary of the
     `--context` selector.
@@ -346,6 +395,28 @@ def build_system_prompt(name: str, only: list[str] | None = None) -> SystemPromp
     specific = template[len(SHARED_PROMPT_HEAD):].replace("{{SCHEMA}}", schema).replace(
         "{{CONTEXT}}", cards)
     return SystemPrompt(shared, specific)
+
+
+def build_standalone_prompt(name: str, substitutions: dict[str, str]) -> str:
+    """A prompt that is deliberately *not* grounded in the schema and the cards.
+
+    `build_system_prompt` refuses a template that does not open with `SHARED_PROMPT_HEAD`, because
+    every reasoning operation must share that prefix for the cache to hold (#258). Exactly one kind
+    of call must not: the grounding judgment that runs *before* a session has a card selection, and
+    whose whole economy is that it costs a few hundred tokens instead of a share of the shared
+    block. This is its builder, and it refuses the mirror mistake -- a template that *does* open with
+    the shared head would quietly send ~9k uncached tokens on the one call that exists to be cheap.
+    Guarded by `test_a_standalone_prompt_that_carries_the_shared_head_is_refused`."""
+    template = (PROMPTS / name).read_text(encoding="utf-8")
+    if template.startswith(SHARED_PROMPT_HEAD):
+        raise ValueError(
+            f"prompt template {name} opens with the shared leading block (SHARED_PROMPT_HEAD) and is "
+            f"being built as a standalone prompt; it would send the schema and every context card on "
+            f"a call whose reason to exist is that it sends neither. Use build_system_prompt()."
+        )
+    for key, value in substitutions.items():
+        template = template.replace(key, value)
+    return template
 
 
 def build_prompt(name: str, only: list[str] | None = None) -> str:

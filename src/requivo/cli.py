@@ -52,6 +52,7 @@ from requivo.render.terminal import (
     DOC_TYPES,
     docs_menu_rows,
     render_brief,
+    render_context_judgment,
     render_dependency_map,
     render_docs_menu,
     render_estimate,
@@ -443,6 +444,10 @@ def _cmd_discover(a, client) -> None:
         # own: the session was already claimed and on disk, and the traceback that reached the
         # operator never said so.
         meta = disco.claim_session(request, cards=only, slug=slug_hint)
+        # After the claim (invariant 13 -- the free gate stays ahead of every paid call) and before
+        # the discovery turn, so a reader learns their grounding is wrong while it is still cheap to
+        # stop (#593).
+        render_context_judgment(disco.judge_grounding(request, cards=only))
         try:
             slug = disco.start(request, cards=only, slug=meta.slug, finalize=False,
                                surface="cli-discover")
@@ -464,6 +469,7 @@ def _cmd_discover(a, client) -> None:
     # loop meant paying for up to nine provider calls first (#133). Pinned by
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
     slug = disco.claim_session(request, cards=only, slug=slug_hint).slug
+    render_context_judgment(disco.judge_grounding(request, cards=only))
     try:
         drafted = converse(disco, request, only=only)
     except DraftingFailed as e:

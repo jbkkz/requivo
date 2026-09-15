@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from requivo.core.contracts import EngineOutput
+from requivo.core.context import CardSummary
+from requivo.core.contracts import ContextJudgment, EngineOutput
 from requivo.providers.anthropic.client import current_model_name, new_client
-from requivo.providers.anthropic.generators import _GENERATORS, answer_turn, prompt_version, run
+from requivo.providers.anthropic.generators import _GENERATORS, answer_turn, judge_context, prompt_version, run
 from requivo.providers.errors import EngineError
 
 
@@ -43,6 +44,12 @@ class AnthropicProvider:
                                reuse_system=reuse_system, model=self._model)
         return run(self.client, [{"role": "user", "content": request}], only=only,
                    reuse_system=reuse_system, model=self._model)
+
+    def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
+        """`ContextJudge`, the second protocol this class satisfies. Separate from `analyze` because
+        it asks about the grounding rather than from it -- see that protocol for why a provider is
+        allowed not to have this at all."""
+        return judge_context(self.client, request, cards, model=self._model)
 
     def generate(self, artifact_type: str, model: EngineOutput, *, only: list[str] | None = None,
                  **kwargs):

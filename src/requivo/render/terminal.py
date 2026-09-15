@@ -4,7 +4,16 @@ import textwrap
 from typing import NamedTuple
 
 from requivo.core.analysis import readiness_blockers, slot_label, state_of
-from requivo.core.contracts import Brief, Confidence, EngineOutput, EstimateDraft, Impact, Leverage, Stories
+from requivo.core.contracts import (
+    Brief,
+    Confidence,
+    ContextDecision,
+    EngineOutput,
+    EstimateDraft,
+    Impact,
+    Leverage,
+    Stories,
+)
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.selectors import display_text, display_token
@@ -114,6 +123,37 @@ def render_turn(out: EngineOutput) -> None:
         for i, q in enumerate(out.questions, 1):
             print(f"  {i}. {display_text(q.q)}")
             print(f"     → {slot_label(q.slot)}")   # a schema-validated slot id, not free text
+
+
+def render_context_judgment(grounding) -> None:
+    """What the engine made of this request's grounding, before it reasons from it (#593).
+
+    Four outcomes and four sentences, because the expensive collapse is between two of them: *no
+    card is needed* and *nobody asked* are not the same fact, and neither is *no card is needed* and
+    *a card is needed and none exists*. `render_grounding` names what a session was scored against;
+    this says whether that was the right thing to score it against.
+
+    `reason` is LLM-authored prose over an untrusted request, so it goes through `display_text` like
+    every other field in this module. Swept by
+    `test_every_llm_authored_string_the_terminal_renders_is_neutralized`."""
+    judgment = grounding.judgment
+    if judgment is None:
+        # Not asked. Said plainly rather than skipped: silence here reads as a clean bill.
+        print(f"\nGrounding      not checked — {display_text(grounding.why_not)}")
+        return
+    reason = display_text(judgment.reason)
+    if judgment.decision is ContextDecision.installed:
+        print(_labeled("Grounding", f"{', '.join(display_token(c) for c in judgment.cards)} "
+                                    f"describes this domain — {reason}", lw=14))
+        print(_labeled("", f"Narrow to it with --context {','.join(judgment.cards)} on a fresh "
+                           f"discovery; this session reasons against every card.", lw=14))
+    elif judgment.decision is ContextDecision.uncovered:
+        print(_labeled("Grounding", f"⚠ no installed card describes this domain — {reason}", lw=14))
+        print(_labeled("", "Impact is being estimated against products this request has nothing to "
+                           "do with, so the questions below are weaker than they look. Writing a "
+                           "card for this domain is the lever (docs/context-cards.md).", lw=14))
+    else:
+        print(_labeled("Grounding", f"no special domain constraints — {reason}", lw=14))
 
 
 def render_grounding(cards: list[str] | None) -> None:

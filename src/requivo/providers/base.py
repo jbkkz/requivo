@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from requivo.core.contracts import EngineOutput
+from requivo.core.context import CardSummary
+from requivo.core.contracts import ContextJudgment, EngineOutput
 
 
 @runtime_checkable
@@ -78,4 +79,29 @@ class ReasoningProvider(Protocol):
         artifact type). The service records this on the revision rather than assembling it itself —
         provider identity and prompt identity belong to the layer that owns them, so a second provider
         cannot end up stamping its revisions with another's name."""
+        ...
+
+
+@runtime_checkable
+class ContextJudge(Protocol):
+    """Whether the installed context cards cover a request's domain — asked once, before a first
+    discovery, and deliberately **not** part of `ReasoningProvider`.
+
+    Separate because it is a different question. `ReasoningProvider` reasons *over the model*, from
+    the shared system prefix every one of its operations shares; this reasons about the *grounding*,
+    before a session has a card selection at all, on a prompt that carries neither the schema nor the
+    cards (`build_standalone_prompt`). Keeping it out of that protocol also means a provider — or a
+    test stub — that cannot answer this simply does not implement it, and the service reports *not
+    asked* rather than inventing a verdict. That third state is the point: *no card is needed* and
+    *nobody looked* must never render the same, which is the failure #492 refused a status for.
+
+    `decision: the-engine-writes-the-missing-card`.
+    """
+
+    def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
+        """One cheap call: the request and one line per installed card, in; a verdict, out.
+
+        `cards` is passed rather than read, because the summaries are a deterministic read of the
+        install and `core` already owns it — a provider re-deriving them could answer about a
+        different set than the one the session will actually load."""
         ...

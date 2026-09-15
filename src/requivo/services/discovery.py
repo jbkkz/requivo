@@ -34,12 +34,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Generic, Literal, TypeVar, cast, overload
+from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
+from requivo.core.context import card_summaries
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    ContextJudgment,
     EngineOutput,
     Epic,
     EstimateDraft,
@@ -64,6 +66,7 @@ from requivo.core.persistence import (
 )
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
+from requivo.providers.base import ContextJudge
 from requivo.render.markdown import (
     brief_markdown,
     criteria_markdown,
@@ -349,6 +352,17 @@ def _usage_since(before: int) -> dict:
     return usage
 
 
+class Grounding(NamedTuple):
+    """The answer to *is this session grounded in anything that knows its domain?*, and the third
+    state that makes it honest: `judgment is None` means nobody looked, and `why_not` says why.
+
+    A caller that renders `judgment is None` the same as `ContextDecision.none` has turned "we did
+    not ask" into "nothing is needed", which is the exact shape #492 refused to ship."""
+
+    judgment: ContextJudgment | None
+    why_not: str
+
+
 class DiscoveryService:
     """Provider-backed orchestration over the session/artifact services.
 
@@ -446,6 +460,43 @@ class DiscoveryService:
         """Persist a request as a session with no model yet — no LLM call. The 'Create session only'
         path: capture the request now, run discovery later."""
         return self.sessions.create_session(request, context_cards=cards, slug=slug).slug
+
+    def judge_grounding(self, request: str, *, cards: list[str] | None) -> Grounding:
+        """Ask whether any installed context card describes this request's domain.
+
+        **Report-only in this slice, and that is a scoping decision rather than the finished
+        feature** (#593, `decision: the-engine-writes-the-missing-card`): the verdict is handed to
+        the caller to render and changes no card selection. Acting on `installed` would narrow the
+        selection, and the selection is half a session's identity (invariant 11), so it cannot be
+        changed after `claim_session` has already claimed the slug -- see the issue for the three
+        ways out and which one the record picked.
+
+        Three things make this return rather than raise, each a state a caller must be able to tell
+        from the others:
+
+        - **Not asked, because the user chose.** An explicit `--context` is a human decision; paying
+          to second-guess it would either agree at cost or disagree with nothing to do about it.
+        - **Not asked, because this provider cannot.** `ContextJudge` is a protocol a provider may
+          not implement, and a stub in a test is the common case. *Nobody looked* must never render
+          as *no card is needed* -- that is the silent verdict #492 refused a status for.
+        - **Asked, and here is the verdict.**
+
+        Pinned by `test_an_explicit_card_selection_is_not_second_guessed`,
+        `test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_needed` and
+        `test_the_judgment_reaches_the_provider_with_one_line_per_installed_card`."""
+        if cards:
+            return Grounding(None, "the cards for this session were chosen with --context")
+        provider = self._need_provider()
+        if not isinstance(provider, ContextJudge):
+            return Grounding(None, f"the {getattr(provider, 'name', 'current')} provider does not "
+                                   f"answer grounding questions")
+        summaries = card_summaries()
+        if not summaries:
+            # `load_context` refuses this install outright a moment later, and with a remedy this
+            # method has no better version of. Saying "no card is needed" here would be the one
+            # wrong answer. `test_an_install_with_no_cards_is_not_judged_as_needing_none`.
+            return Grounding(None, "this install has no context cards to judge against")
+        return Grounding(provider.judge_context(request, cards=summaries), "")
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None):
         """Create (or reuse) the session a first discovery will land on, and hold it to revision 0.

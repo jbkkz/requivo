@@ -267,6 +267,11 @@ _SWEPT_RENDERERS = {
     # class as the two above. Swept by
     # `test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu` (#544).
     "render_docs_menu",
+    # render_context_judgment's untrusted field is `ContextJudgment.reason` -- LLM-authored prose
+    # over an untrusted request, like `Question.q`, but it does not fit the model/brief/stories
+    # fixture shape the big sweep is built from. Swept by
+    # `test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout` (#593).
+    "render_context_judgment",
 }
 
 # `render_*` functions in `render/terminal.py` that render no model-authored prose, named with a
