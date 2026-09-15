@@ -53,7 +53,7 @@ def test_run_returns_engine_output_and_wires_schema_and_context():
     block = fake.calls[0]["system"][0]
     assert block["cache_control"] == {"type": "ephemeral"}
     system = block["text"]
-    assert "slots" in system              # framework/model_schema.json injected ({{SCHEMA}})
+    assert "slots" in system              # assets/perimeters/software/model_schema.json injected ({{SCHEMA}})
     assert "## b2b-platform" in system    # context card injected ({{CONTEXT}})
 
 

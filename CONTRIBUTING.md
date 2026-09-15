@@ -171,7 +171,7 @@ read the guard to appease it.
 | adds a key to the tracked `.claude/settings.json` | `test_agent_layer.py` | allowlist it **and** describe it in this file, in the same change |
 | edits anything under `.github/workflows/` | `test_workflow_permissions.py`, `test_workflow_untrusted_output.py` | state the `permissions:` block, and never interpolate third-party output into a line that starts at column 0 |
 | adds or moves a runtime dependency bound | `test_dependency_floor.py` | the floor set must stay complete — a dependency that drops out makes the floor leg report a test it never ran |
-| adds a slot to `framework/model_schema.json` | `test_dependencies.py` | add it to `_ARTIFACT_SLOTS_RAW`, or name it in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a reason |
+| adds a slot to a perimeter's `model_schema.json` (`assets/perimeters/<id>/`, #608) | `test_dependencies.py`, `test_perimeters.py` | add it to `_ARTIFACT_SLOTS_RAW` for that perimeter's own artifact types, or name it in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a reason |
 | renames the user-facing caption for `brief` in an asset | `test_vocabulary_boundary.py` | an asset keeping the older wording is a declared exception, never an accident |
 
 **Two of these run in the direction nobody predicts. They are the ones worth reading twice.**
@@ -212,7 +212,8 @@ read the guard to appease it.
   that helps one request can quietly cost a neighbour. Commit an updated baseline only when the change
   is intended.
 - **Keep the output contract in sync.** Each stage's Pydantic contract must agree with its prompt's
-  "Output format" block, and slot ids must stay in `framework/model_schema.json`.
+  "Output format" block, and slot ids must stay in the active perimeter's `model_schema.json`
+  (`assets/perimeters/<id>/`, #608 — software by default).
 - **Session-format compatibility.** The on-disk session format is a product surface. If a change
   alters it, say so explicitly in the PR and describe the migration path — don't break existing
   saved models silently.

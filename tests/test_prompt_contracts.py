@@ -285,9 +285,10 @@ def test_the_derivation_refuses_a_generator_it_cannot_read(monkeypatch):
 
 
 def test_the_confidence_grading_in_the_schema_and_the_prompt_agree():
-    """#611 AC: the grading is defined in `framework/model_schema.json` AND restated in `engine.md`,
-    and the two must not silently drift apart -- a rule landing in only one of them is the exact
-    failure the audit warned against. Checks the load-bearing phrases, not a word-for-word diff."""
+    """#611 AC: the grading is defined in the software perimeter's `model_schema.json` AND restated
+    in `engine.md`, and the two must not silently drift apart -- a rule landing in only one of them
+    is the exact failure the audit warned against. Checks the load-bearing phrases, not a
+    word-for-word diff."""
     schema_confidence = json.dumps(
         json.loads((PERIMETERS / SOFTWARE / "model_schema.json").read_text(encoding="utf-8"))["confidence"])
     engine_md = (PROMPTS / "engine.md").read_text(encoding="utf-8")
