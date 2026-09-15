@@ -13,7 +13,7 @@ from requivo.paths import FRAMEWORK
 SOFT_COMPLETENESS = 70  # below this a slot is "soft" (tunable)
 
 # The element type of one tri-state reasoning collection. It exists so `ModelProposal.resolve`'s inner
-# `keep` helper can be annotated per call site rather than inferred across all four of them — see the
+# `keep` helper can be annotated per call site rather than inferred across all five of them — see the
 # comment at its definition. Runtime behaviour is unchanged; this is a name for the checker.
 _Item = TypeVar("_Item")
 
@@ -240,7 +240,7 @@ class Summary(StrictModel):
 class ModelProposal(StrictModel):
     """A *proposed* model — what a surface sends to be applied: a discovery reply, a Claude Code
     proposal file, a Web form. Identical to the `EngineOutput` it resolves into, except in one
-    load-bearing way: the four reasoning collections are **tri-state**.
+    load-bearing way: the five reasoning collections are **tri-state**.
 
         absent   the proposal says nothing about them — the established reasoning stands
         []       an explicit removal — the established reasoning is dropped
@@ -265,13 +265,14 @@ class ModelProposal(StrictModel):
     # information value. The persisted mirror restates this field and must restate the cap with it.
     questions: list[Question] = Field(default_factory=list, max_length=MAX_QUESTIONS)
     summary: Summary
-    # The reasoning layer — persisted so generators inherit it, not just the facts. Decisions,
-    # challenges and opportunities are filled at discovery finalization by absorbing advise()'s
-    # Brief; `exclusions` is not (#599) — nothing populates it yet, on purpose (asking a generator
-    # to is #600). These types are defined below (Brief section); forward-referenced here, resolved
-    # by model_rebuild() at the end of this module.
+    # The reasoning layer — persisted so generators inherit it, not just the facts. All five
+    # collections are filled at discovery finalization by absorbing advise()'s Brief (`exclusions`
+    # since #600, `thresholds` since #604) — none of them from the discovery turn itself, which asks
+    # only for `model`, `questions` and `summary` (see the class docstring). These types are defined
+    # below (Brief section); forward-referenced here, resolved by model_rebuild() at the end of this
+    # module.
     #
-    # `SerializeAsAny` on these four and nowhere else, because these four are the only fields a
+    # `SerializeAsAny` on these five and nowhere else, because these five are the only fields a
     # value read off disk survives into: `resolve()` carries an unstated collection forward from the
     # model being refined (invariant 10), so a `PersistedDesignDecision` loaded from a newer
     # Requivo ends up sitting under this strict annotation. Pydantic serializes by the *annotated*
@@ -283,6 +284,7 @@ class ModelProposal(StrictModel):
     challenges: Optional[list[SerializeAsAny[Challenge]]] = None
     opportunities: Optional[list[SerializeAsAny[Opportunity]]] = None
     exclusions: Optional[list[SerializeAsAny[Exclusion]]] = None
+    thresholds: Optional[list[SerializeAsAny[Threshold]]] = None
 
     def resolve(self, current: Optional[EngineOutput] = None) -> EngineOutput:
         """Collapse the proposal onto the model it refines, yielding a complete `EngineOutput`.
@@ -321,6 +323,7 @@ class ModelProposal(StrictModel):
             challenges=keep(self.challenges, prior.challenges),
             opportunities=keep(self.opportunities, prior.opportunities),
             exclusions=keep(self.exclusions, prior.exclusions),
+            thresholds=keep(self.thresholds, prior.thresholds),
         )
         carried = getattr(prior, "__pydantic_extra__", None) or {}
         if not carried:
@@ -349,6 +352,7 @@ class ModelProposal(StrictModel):
             {sid for d in (self.decisions or []) for sid in d.derived_from if sid not in allowed}
             | {sid for c in (self.challenges or []) for sid in c.contests if sid not in allowed}
             | {sid for e in (self.exclusions or []) for sid in e.rests_on if sid not in allowed}
+            | {sid for t in (self.thresholds or []) for sid in t.rests_on if sid not in allowed}
         )
         if bad_refs:
             raise ValueError(f"reasoning references unknown slots (not in schema): {bad_refs}")
@@ -358,7 +362,8 @@ class ModelProposal(StrictModel):
         # engine restating the same decision twice is the realistic cause, and it is a defect in the
         # reply — the retry loop can fix it, silently dropping one cannot.
         for label, items in (("decisions", self.decisions), ("challenges", self.challenges),
-                             ("opportunities", self.opportunities), ("exclusions", self.exclusions)):
+                             ("opportunities", self.opportunities), ("exclusions", self.exclusions),
+                             ("thresholds", self.thresholds)):
             ids = [i.id for i in (items or [])]
             dupes = sorted({i for i in ids if ids.count(i) > 1})
             if dupes:
@@ -370,7 +375,7 @@ class ModelProposal(StrictModel):
 class EngineOutput(ModelProposal):
     """A *resolved* model — the durable product, and what every reader downstream sees.
 
-    The difference from `ModelProposal` is exactly the tri-state: here the four reasoning collections
+    The difference from `ModelProposal` is exactly the tri-state: here the five reasoning collections
     are always concrete lists, so no renderer, generator or diff has to ask whether "no decisions"
     means none or means unstated. A proposal becomes one through `resolve()`, which is the only place
     that question is answered."""
@@ -379,6 +384,7 @@ class EngineOutput(ModelProposal):
     challenges: list[SerializeAsAny[Challenge]] = Field(default_factory=list)
     opportunities: list[SerializeAsAny[Opportunity]] = Field(default_factory=list)
     exclusions: list[SerializeAsAny[Exclusion]] = Field(default_factory=list)
+    thresholds: list[SerializeAsAny[Threshold]] = Field(default_factory=list)
 
 
 class Story(StrictModel):
@@ -526,6 +532,26 @@ class Exclusion(StrictModel):
         return self
 
 
+class Threshold(StrictModel):
+    # A decision that has not fired yet — "at X, do Y" (#604) — not domain-specific: a rate limit,
+    # a CAC ceiling and a payback horizon are the same object. `rests_on` is the same DAG edge
+    # `derived_from` is for a decision: a threshold re-opens for re-validation when a slot it rests
+    # on changes (see `propagate()`). All four parts are load-bearing, the same rule `Challenge`
+    # already enforces: a condition with no action, or no slot it rests on, is an objection with
+    # nowhere to go, and `rests_on` is required non-empty for exactly that reason (Exclusion's is
+    # not — this is a deliberate divergence from its otherwise-identical sibling).
+    id: str = ""             # derived from condition + action; see _stable_id
+    condition: NonEmpty      # "at X" — the trigger, in plain terms
+    measure: NonEmpty        # the fact or metric this reads to evaluate the condition
+    action: NonEmpty         # "do Y" — what happens when it fires
+    rests_on: list[str] = Field(min_length=1)  # slot ids this threshold rests on (the DAG edge)
+
+    @model_validator(mode="after")
+    def _assign_id(self):
+        object.__setattr__(self, "id", _stable_id("thr", self.condition, self.action))
+        return self
+
+
 class Brief(StrictModel):
     # The advisory layer: what a senior consultant would add on top of the discovery.
     problem: str = ""                                   # one-line problem statement (exec summary)
@@ -543,6 +569,9 @@ class Brief(StrictModel):
     # constraint (#600) — typed like its `EngineOutput` sibling so a generator hands #599's model
     # item somewhere real, rather than prose: guarded by `test_brief_carries_typed_exclusions_it_can_propose_600`.
     exclusions: list[Exclusion] = Field(default_factory=list)
+    # Decisions that have not fired yet — "at X, do Y" (#604) — the same typed-item-over-prose move
+    # #600 made for exclusions, guarded by `test_brief_carries_typed_thresholds_it_can_propose_604`.
+    thresholds: list[Threshold] = Field(default_factory=list)
     open_decisions: list[str] = Field(default_factory=list)  # decisions still to make
 
 
@@ -732,7 +761,7 @@ EngineOutput.model_rebuild()
 # reader accepts and what a *writer* preserves are two questions, and getting the first right while
 # the second silently drops the key is worse than the refusal it replaced: nothing fails and nothing
 # says so. Two places had to move with it, both in `resolve()` — `SerializeAsAny` on the strict
-# tree's four reasoning collections, because those are where a value read off disk survives into,
+# tree's five reasoning collections, because those are where a value read off disk survives into,
 # and carrying `current`'s top-level unknown keys, because a proposal is `extra="forbid"` and so
 # cannot speak to them at all. `resolve()` states the argument for each.
 #
@@ -799,6 +828,10 @@ class PersistedExclusion(Exclusion):
     model_config = ConfigDict(extra="allow")
 
 
+class PersistedThreshold(Threshold):
+    model_config = ConfigDict(extra="allow")
+
+
 class PersistedEngineOutput(EngineOutput):
     """An `EngineOutput` as it is read back from `model.json` or `revisions/NNNN-model.json`.
 
@@ -823,3 +856,4 @@ class PersistedEngineOutput(EngineOutput):
     challenges: list[PersistedChallenge] = Field(default_factory=list)
     opportunities: list[PersistedOpportunity] = Field(default_factory=list)
     exclusions: list[PersistedExclusion] = Field(default_factory=list)
+    thresholds: list[PersistedThreshold] = Field(default_factory=list)

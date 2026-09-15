@@ -137,6 +137,7 @@ class UpdateResult:
     invalidated_decisions: list[str] = field(default_factory=list)  # decision text needing re-validation
     invalidated_challenges: list[str] = field(default_factory=list)  # challenge headlines now in question
     invalidated_exclusions: list[str] = field(default_factory=list)  # excluded options now in question
+    invalidated_thresholds: list[str] = field(default_factory=list)  # threshold conditions now in question
     stale_artifacts: list[str] = field(default_factory=list)        # artifact types now out of date
     readiness: Readiness = field(default_factory=lambda: Readiness(False, []))
     # What moved in the reasoning layer — ids, per collection. Reported separately from
@@ -146,6 +147,7 @@ class UpdateResult:
     changed_challenges: list[str] = field(default_factory=list)
     changed_opportunities: list[str] = field(default_factory=list)
     changed_exclusions: list[str] = field(default_factory=list)
+    changed_thresholds: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -156,9 +158,11 @@ class UpdateResult:
             "changed_challenges": self.changed_challenges,
             "changed_opportunities": self.changed_opportunities,
             "changed_exclusions": self.changed_exclusions,
+            "changed_thresholds": self.changed_thresholds,
             "invalidated_decisions": self.invalidated_decisions,
             "invalidated_challenges": self.invalidated_challenges,
             "invalidated_exclusions": self.invalidated_exclusions,
+            "invalidated_thresholds": self.invalidated_thresholds,
             "stale_artifacts": self.stale_artifacts,
             "readiness": self.readiness.to_dict(),
         }
@@ -778,19 +782,22 @@ class SessionService:
         report = propagate(new, changed)
 
         # Reasoning invalidation is about the *prior established* reasoning a change unseats — it exists
-        # only when the current model on disk carries decisions/challenges/exclusions (a refinement
-        # turn often drops them from its reply, so `new` may have none). On a first apply —
+        # only when the current model on disk carries decisions/challenges/exclusions/thresholds (a
+        # refinement turn often drops them from its reply, so `new` may have none). On a first apply —
         # `current is None` — the reasoning in `new` was proposed *for* this very state; it is not
         # stale, so nothing is invalidated. Computing this against `new` (the old `basis` fallback)
         # was the bug: it reported a model's own freshly-proposed decisions and challenges as
         # invalidated on their first apply.
-        if current is not None and (current.decisions or current.challenges or current.exclusions):
+        if current is not None and (current.decisions or current.challenges or current.exclusions
+                                    or current.thresholds):
             prior = propagate(current, changed)
             invalidated_decisions = [d.decision for d in prior.decisions]
             invalidated_challenges = [c.headline for c in prior.challenges]
             invalidated_exclusions = [e.option for e in prior.exclusions]
+            invalidated_thresholds = [t.condition for t in prior.thresholds]
         else:
-            invalidated_decisions, invalidated_challenges, invalidated_exclusions = [], [], []
+            invalidated_decisions, invalidated_challenges = [], []
+            invalidated_exclusions, invalidated_thresholds = [], []
 
         def _resolve_stale(generated: set[str]) -> list[str]:
             # The blast radius, intersected with what actually exists on disk. Two edge sets feed it:
@@ -827,12 +834,14 @@ class SessionService:
             invalidated_decisions=invalidated_decisions,
             invalidated_challenges=invalidated_challenges,
             invalidated_exclusions=invalidated_exclusions,
+            invalidated_thresholds=invalidated_thresholds,
             stale_artifacts=stale,
             readiness=_readiness(new),
             changed_decisions=reasoning.decisions,
             changed_challenges=reasoning.challenges,
             changed_opportunities=reasoning.opportunities,
             changed_exclusions=reasoning.exclusions,
+            changed_thresholds=reasoning.thresholds,
         )
 
     # ── status ──────────────────────────────────────────────────────────────────

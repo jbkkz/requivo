@@ -246,3 +246,28 @@ def test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path(wor
     out = _run(["model", "apply", "exc", str(moved)])
     assert "exclusions to reconsider: 1" in out, (
         f"a change that unseats only an exclusion said nothing on the text path: {out!r}")
+
+
+def test_a_threshold_only_invalidation_is_still_announced_on_the_apply_path(workspace, tmp_path):
+    """#604, mirroring #599's fix: the same half-registered shape (invariant 1) is checked in
+    advance for the fifth reasoning collection rather than found by a second-pass reviewer."""
+    _run(["session", "init", "Something.", "--slug", "thr"])
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps(_full_model(
+        **{"workflow": _slot(80, "explicit", "high", "manual scan")},
+        )), encoding="utf-8")
+    # The threshold rests on `workflow` and nothing else does: no decision, no challenge, no exclusion.
+    payload = json.loads(first.read_text(encoding="utf-8"))
+    payload["thresholds"] = [{"condition": "CAC exceeds the stated budget ceiling",
+                              "measure": "cost per paid signup", "action": "stop the paid channel",
+                              "rests_on": ["workflow"]}]
+    first.write_text(json.dumps(payload), encoding="utf-8")
+    _run(["model", "apply", "thr", str(first)])
+
+    moved = tmp_path / "moved.json"
+    moved.write_text(json.dumps(_full_model(
+        **{"workflow": _slot(80, "explicit", "high", "an approval queue instead")},
+        )), encoding="utf-8")
+    out = _run(["model", "apply", "thr", str(moved)])
+    assert "thresholds to reconsider: 1" in out, (
+        f"a change that unseats only a threshold said nothing on the text path: {out!r}")

@@ -18,7 +18,7 @@ from conftest import RacingClient as _RacingClient
 from conftest import full_model as _full_model
 from conftest import slot as _slot
 from requivo.core import persistence as store
-from requivo.core.contracts import EngineOutput
+from requivo.core.contracts import EngineOutput, Exclusion, Threshold
 from requivo.core.errors import MissingRequiredSlotError, RequivoError, SessionNotFoundError, UnknownSlotError
 from requivo.core.validation import validate_proposal
 from requivo.services.artifacts import ArtifactService
@@ -725,29 +725,35 @@ the current model rather than assuming it, which is what this test pins. See #28
     assert saved["stale"] is True        # …and the workflow change it never saw makes it stale
 
 
-def test_a_generated_briefs_exclusions_are_absorbed_into_the_persisted_model(workspace):
-    """#600: `absorb_reasoning` now carries `Brief.exclusions` into the model the same way it
-    already carries decisions/challenges/opportunities, so an excluded option lands in
-    `model.json` — #599's typed model content — not only in the rendered brief."""
-    from requivo.core.contracts import Brief, Exclusion
+@pytest.mark.parametrize("field, id_field, make_item, value", [
+    ("exclusions", "option", lambda: Exclusion(
+        option="A full audit-trail UI", reason="The stated timeline funds the approval workflow "
+        "only", rests_on=["constraints"]), "A full audit-trail UI"),
+    ("thresholds", "condition", lambda: Threshold(
+        condition="CAC exceeds the stated budget ceiling", measure="cost per paid signup",
+        action="stop the paid channel", rests_on=["constraints"]),
+     "CAC exceeds the stated budget ceiling"),
+], ids=["exclusion-600", "threshold-604"])
+def test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model(
+        workspace, field, id_field, make_item, value):
+    """#600/#604: `absorb_reasoning` carries `Brief.exclusions`/`Brief.thresholds` into the model
+    the same way it already carries decisions/challenges/opportunities, so each lands in
+    `model.json` — not only in the rendered brief."""
+    from requivo.core.contracts import Brief
     from requivo.services.discovery import DiscoveryService
 
     class _BriefProvider(_FakeProvider):
         def generate(self, artifact_type, model, *, only=None, **kwargs):
-            assert artifact_type == "brief"
-            return Brief(complexity="low", solution="S", exclusions=[Exclusion(
-                option="A full audit-trail UI", reason="The stated timeline funds the approval "
-                "workflow only", rests_on=["constraints"])])
+            return Brief(complexity="low", **{field: [make_item()]})
 
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())
-
     DiscoveryService(_BriefProvider()).generate("s", "brief")
 
-    exclusions = svc.load_model("s").exclusions
-    assert [e.option for e in exclusions] == ["A full audit-trail UI"]
-    assert exclusions[0].rests_on == ["constraints"]
+    items = getattr(svc.load_model("s"), field)
+    assert [getattr(i, id_field) for i in items] == [value]
+    assert items[0].rests_on == ["constraints"]
 
 
 # ── misc ──────────────────────────────────────────────────────────────────────

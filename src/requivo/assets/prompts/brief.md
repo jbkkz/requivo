@@ -87,6 +87,15 @@ cut belongs in `exclusions` below, not padded into either list as a lower-priori
   already in the model; never invent one to manufacture an exclusion. If everything you considered
   genuinely fits together, return `[]` — the same rule `challenges` follows: a forced exclusion is
   worse than none.
+- `thresholds`: decisions that have **not** fired yet — "at X, do Y" — where X is a fact this model
+  states or a metric it implies, not domain-specific: a vendor rate limit, a cost ceiling, a payback
+  horizon are all the same object. Only where the model actually grounds a number or a concrete
+  trigger; never invent one to manufacture a threshold. For each: `condition` (the trigger, in plain
+  terms — e.g. "CAC exceeds the stated budget ceiling"), `measure` (the fact or metric this reads —
+  e.g. "cost per paid signup"), `action` (what happens when it fires — e.g. "stop the paid channel"),
+  and `rests_on` (the slot id(s) the condition actually rests on, from the schema above). If nothing
+  in the model states a real trigger worth watching, return `[]` — the same rule `exclusions` and
+  `challenges` follow: a forced threshold is worse than none.
 - `open_decisions`: the decisions still to be made before or during build (plain strings).
 
 # Voice
@@ -143,6 +152,12 @@ engine's questions do.
     "option": "A full audit-trail UI in this phase",
     "reason": "The stated timeline funds the approval workflow only; a dedicated audit UI would push delivery past it.",
     "rests_on": ["constraints"]
+  }],
+  "thresholds": [{
+    "condition": "The escalation window needs to vary by client after all",
+    "measure": "how often clients ask to configure the 5-day window",
+    "action": "revisit config_vs_custom and make the escalation window per-client configurable",
+    "rests_on": ["config_vs_custom"]
   }],
   "open_decisions": ["Success metrics / KPIs", "Audit & reporting expectations"]
 }

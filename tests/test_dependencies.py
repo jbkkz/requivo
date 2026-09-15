@@ -20,7 +20,7 @@ import pytest
 from _fakes import FakeClient, _model_in_out, _run_app, full_slots, out, slot
 
 from requivo.core import persistence as store
-from requivo.core.contracts import Challenge, DesignDecision, EngineOutput, Exclusion, schema_slot_ids
+from requivo.core.contracts import Challenge, DesignDecision, EngineOutput, Exclusion, Threshold, schema_slot_ids
 from requivo.core.dependencies import (
     _ARTIFACT_SLOTS_RAW,
     ARTIFACT_FILENAMES,
@@ -93,6 +93,25 @@ def test_propagate_flags_dependent_exclusions():
     assert rep.exclusions[0].rests_on == ["Permissions"]
     assert rep.reasoning_hit and not rep.empty
     assert propagate(out_, ["workflow"]).exclusions == []   # not rested on -- no hit
+
+
+def test_propagate_flags_dependent_thresholds():
+    """#604 acceptance criterion: a threshold rests_on a slot exactly like a decision's
+    derived_from — the same DAG edge, so a changed slot re-opens the threshold for
+    reconsideration through propagate()."""
+    out_ = EngineOutput.model_validate({
+        "model": {"permissions": slot(60, "inferred", "high"),
+                  "workflow": slot(70, "inferred", "high")},
+        "questions": [], "summary": {},
+        "thresholds": [Threshold(condition="CAC exceeds the stated budget ceiling",
+                                 measure="cost per paid signup", action="stop the paid channel",
+                                 rests_on=["permissions"]).model_dump()],
+    })
+    rep = propagate(out_, ["permissions"])
+    assert [t.condition for t in rep.thresholds] == ["CAC exceeds the stated budget ceiling"]
+    assert rep.thresholds[0].rests_on == ["Permissions"]
+    assert rep.reasoning_hit and not rep.empty
+    assert propagate(out_, ["workflow"]).thresholds == []   # not rested on -- no hit
 
 
 def test_propagate_reaches_only_the_assessment_for_an_otherwise_isolated_slot():
@@ -272,6 +291,21 @@ def test_pc_impact_shows_exclusions_alongside_decisions_and_challenges():
         assert "Bulk import" in text
 
 
+def test_pc_impact_shows_thresholds_alongside_decisions_and_challenges():
+    """#604 acceptance criterion: `requivo impact <slug> <slot>` shows thresholds too."""
+    with _model_in_out("clitest-impact-thresholds") as p:
+        out_ = EngineOutput.model_validate({
+            "model": {"permissions": slot(60, "inferred", "high")},
+            "questions": [], "summary": {},
+            "thresholds": [Threshold(condition="CAC exceeds the stated budget ceiling",
+                                     measure="cost per paid signup", action="stop the paid channel",
+                                     rests_on=["permissions"]).model_dump()],
+        })
+        store.save_revision(p.parent.name, out_)
+        text = _run_app(["impact", str(p), "permissions"])
+        assert "CAC exceeds the stated budget ceiling" in text
+
+
 def test_pc_impact_no_slots_prints_the_full_map():
     with _model_in_out("clitest-impact-map") as p:
         store.save_revision(p.parent.name, _out_with_decisions())
@@ -292,6 +326,23 @@ def test_pc_impact_full_map_lists_exclusions_per_slot():
         store.save_revision(p.parent.name, out_)
         text = _run_app(["impact", str(p)])
         assert "exclusions: Bulk import" in text
+
+
+def test_pc_impact_full_map_lists_thresholds_per_slot():
+    """#604: the no-args dependency map (render_dependency_map) names thresholds per slot the
+    same way it names decisions, challenges and exclusions — the sibling of the targeted-slot
+    test above."""
+    with _model_in_out("clitest-impact-map-thresholds") as p:
+        out_ = EngineOutput.model_validate({
+            "model": {"permissions": slot(60, "inferred", "high")},
+            "questions": [], "summary": {},
+            "thresholds": [Threshold(condition="CAC exceeds the stated budget ceiling",
+                                     measure="cost per paid signup", action="stop the paid channel",
+                                     rests_on=["permissions"]).model_dump()],
+        })
+        store.save_revision(p.parent.name, out_)
+        text = _run_app(["impact", str(p)])
+        assert "thresholds: CAC exceeds the stated budget ceiling" in text
 
 
 # ── Tier 2 (B): change-detection — stale artifacts on disk ────────────────────

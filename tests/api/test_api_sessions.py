@@ -200,14 +200,15 @@ def test_impact_with_a_blank_slots_value_is_the_empty_report_not_a_refusal(clien
     assert resp.status_code == 200
     body = resp.json()
     assert body == {"changed": [], "decisions": [], "challenges": [], "exclusions": [],
-                    "artifacts": [],
+                    "thresholds": [], "artifacts": [],
                     # The review ran (#493) -- `evidence` is a report, not `None` -- over the zero
                     # decisions `seed_session` writes; the firing arm is pinned in
                     # `tests/test_thinner_evidence.py`, and the count is pinned here so a review
                     # that examined nothing cannot pass as one that examined the model.
                     #
                     # `exclusions` joined this dict as a fourth, additive `ImpactReport.to_dict()`
-                    # key (#599) -- keep this exact-equality assertion in sync with that shape.
+                    # key (#599); `thresholds` joined it as a fifth the same way (#604) -- keep this
+                    # exact-equality assertion in sync with that shape.
                     "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
 
 

@@ -69,6 +69,21 @@ def _excluded(out: EngineOutput) -> list[str]:
     return lines
 
 
+def _thresholds(out: EngineOutput) -> list[str]:
+    """Decision thresholds — "at X, do Y" (#604) — projected off the model, the same split
+    `_excluded()` draws for exclusions: a restatement can drift from the model it restates, and a
+    projection cannot. Each names what it rests on by label, never by id (the Voice rule).
+    `_line()`-flattened for the same reason as every other reasoning-item field here — a newline in
+    a model-supplied condition or action cannot open a forged heading."""
+    lines = []
+    for th in out.thresholds:
+        line = f"- **{_line(th.condition)}** → {_line(th.action)}"
+        if th.rests_on:
+            line += f" _(rests on: {', '.join(slot_label(sid) for sid in th.rests_on)})_"
+        lines.append(line)
+    return lines
+
+
 def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     """Render the decision brief — the document a scope review is run from.
 
@@ -77,11 +92,12 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     assumed, and only then gives the judgment (decisions, contested premises, complexity, risks,
     opportunities). It is deliberately not a PRD; `prd_markdown` is.
 
-    Half of it is deterministic. What is confirmed, what is being assumed, what is out of scope and
-    what still blocks are read straight off the model — the provider is never asked to restate facts
-    it was given, because a restatement can drift from the model while a projection cannot. The prose
-    sections are the ones that need judgment. Slot ids and internal signals (completeness, confidence
-    labels) never appear in either half, matching the Voice rule the LLM prose already follows."""
+    Half of it is deterministic. What is confirmed, what is being assumed, what is out of scope, the
+    decision thresholds and what still blocks are read straight off the model — the provider is never
+    asked to restate facts it was given, because a restatement can drift from the model while a
+    projection cannot. The prose sections are the ones that need judgment. Slot ids and internal
+    signals (completeness, confidence labels) never appear in either half, matching the Voice rule
+    the LLM prose already follows."""
     blockers = [slot_label(sid) for sid in readiness_blockers(out)]
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Decision Brief{draft}", "",
@@ -136,6 +152,8 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     section("Scope implications", [f"- {i}" for i in brief.introduces])
 
     section("Out of scope", _excluded(out))
+
+    section("Decision thresholds", _thresholds(out))
 
     challenges: list[str] = []
     for c in brief.challenges:

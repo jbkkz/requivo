@@ -64,8 +64,8 @@ new one ships a single artifact, its equivalent of the decision brief; software 
 larger set named below, in *Dependencies and staleness*, because it grew them one at a time and not
 because a perimeter is entitled to them. What is **Core**, unchanged across every perimeter, is the
 *mechanism* the rest of this page describes: the driver, evidence and coverage, the reasoning items
-(decisions, challenges, opportunities, exclusions), the dependency graph and its staleness rule,
-readiness. Where a section below names a concrete artifact type (`prd`, `stories`, `estimate`,
+(decisions, challenges, opportunities, exclusions, decision thresholds), the dependency graph and its
+staleness rule, readiness. Where a section below names a concrete artifact type (`prd`, `stories`, `estimate`,
 `criteria`, `epic`, `release`) or a software-specific slot, that is this one perimeter's own content
 riding on the shared mechanism, not the mechanism itself.
 
@@ -181,8 +181,9 @@ splits its outputs in two, because the two halves have different readers:
 bilingual on purpose rather than by accident.** `brief_markdown` is the only writer that receives an
 `EngineOutput` as well as its contract, and half of what it emits is a *projection* of the model:
 the objective, the current understanding, each slot's stated value under *What is confirmed*, the
-first half of *Important assumptions*, and — since #599 — *Out of scope*, are the model's own words,
-copied through. Those words are on the mirroring side, so a French request produces a
+first half of *Important assumptions*, — since #599 — *Out of scope*, and — since #604 — *Decision
+thresholds*, are the model's own words, copied through. Those words are on the mirroring side, so a
+French request produces a
 `solution-assessment.md` whose judgment — problem, solution, complexity, decisions, challenges,
 risks — is English and whose projected sections are French.
 
