@@ -233,10 +233,30 @@ Run `requivo status <slug> --json` and relay, in plain language:
   lecture,
 - what Requivo now understands and how confident it is,
 - what is still blocking readiness,
-- your 3–6 priority questions, **verbatim and numbered**.
+- **your single highest-value question, verbatim.** One. Not the list.
 
-Then **stop and wait**, in this same conversation, for the user's answers — do not answer for them.
+Then **stop and wait**, in this same conversation, for the user's answer — do not answer for them.
 Go to **7. Wait for the reply**.
+
+### One question at a time, four to a turn
+
+A turn's reasoning yields several questions, ordered by information value. **Ask them one at a
+time**: the leading one, then — once the user has answered — the next, and so on, up to **four**.
+Then fold all four answers into **one** `model apply` and present the checkpoint (step 6's *Relay
+the result*). That is the cadence, and the CLI's own loop holds it at
+`QUESTIONS_PER_CHECKPOINT` in `cli.py`.
+
+Two rules make it work rather than merely feel slower:
+
+- **Nothing is applied mid-window.** The four answers are one turn. Applying after each question
+  would buy four reasoning cycles where the user paid for one, and would re-derive the remaining
+  questions against a model that has moved under them.
+- **The surplus is dropped, not queued.** If the turn produced more than four questions, the ones
+  past the window are not asked later — the next turn derives its own against the updated model, and
+  answering four often makes the fifth obsolete or reveals a better one.
+
+A user who answers several questions at once in a single message has answered them: take what they
+gave, do not re-ask it one at a time.
 
 ## 6. Fold in an answer
 
@@ -300,7 +320,7 @@ From the `model apply` JSON, tell the user in plain language:
 - any **artifacts that went stale** (`stale_artifacts`) — recommend regenerating those; a saved
   brief rests on the whole understanding, so it needs updating on any material change,
 - the new readiness (ready, or which slots still block it),
-- the next small group of questions, verbatim, or that discovery has converged.
+- the next single question, verbatim, or that discovery has converged.
 
 Go to **8. Stop, and say which** to check whether one of the three stop conditions has been reached;
 if not, present the next questions and go to **7. Wait for the reply** again.

@@ -63,6 +63,7 @@ from requivo.render.terminal import (
     render_stale,
     render_stories,
     render_turn,
+    render_turn_state,
 )
 from requivo.services.artifacts import ARTIFACT_FILENAMES
 from requivo.services.discovery import DiscoveryService
@@ -71,6 +72,16 @@ from requivo.streams import configure_streams, safe_write
 from requivo.usage import track_usage
 
 MAX_TURNS = 8
+
+# How many questions an interactive loop asks before compiling the answers and buying the next turn.
+# Not `MAX_QUESTIONS`, which is the contract ceiling on how many a turn may *return*: the engine
+# returns up to that many, ordered by information value, and the loop asks the leading few. The
+# remainder is dropped rather than carried, because a proposal replaces `questions` wholesale
+# (invariant 10) and the next turn re-derives them against the updated model -- carrying one forward
+# would re-ask what the model has since learned. Cost of letting this exceed the cap: the window
+# silently means "ask them all" and a turn is a wall of questions again (#592). Guarded by
+# `test_the_checkpoint_window_fits_inside_the_contract_cap`.
+QUESTIONS_PER_CHECKPOINT = 4
 
 # A command whose *work* succeeded and whose *report* could not be encoded. Distinct from 1 (a clean,
 # expected failure) so a script can tell "nothing happened" from "it happened and you cannot see it";
@@ -196,7 +207,10 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
             # costing one turn and it costing all of them. Pinned by
             # `test_a_provider_output_failure_mid_turn_also_names_the_claimed_session`.
             raise DraftingFailed(e, out, turn) from e
-        render_turn(out)
+        # The checkpoint, and the questions are *not* printed here: `_prompt_answers` asks them one
+        # at a time below. A turn boundary and a checkpoint are the same event, so the cadence the
+        # user sees is `QUESTIONS_PER_CHECKPOINT` questions and then this (#592).
+        render_turn_state(out)
 
         if not out.questions:
             break
@@ -215,22 +229,34 @@ def _prompt_answers(questions: list[Question]) -> str | None:
     `[slot: ...] Q: ... → A: ...` shape both `converse()` and `run`'s resume loop send back to the
     provider. `None` means the user stopped -- quit, Ctrl-C/EOF, or answered nothing -- and this
     already printed why. Extracted from `converse()` (#540) so a second loop over an existing
-    session does not reimplement the terminal side of a turn."""
-    print("\nYour answers (Enter = skip a question · 'q' = stop):")
+    session does not reimplement the terminal side of a turn.
+
+    Only the leading `QUESTIONS_PER_CHECKPOINT` are asked, one per prompt; the rest of the turn's
+    questions are dropped rather than carried, for the reason stated at that constant (#592)."""
+    asked = questions[:QUESTIONS_PER_CHECKPOINT]
+    print("\nEnter skips a question · 'q' stops.")
     replies = []
     try:
-        for i, q in enumerate(questions, 1):
-            # `q.q` is LLM-authored prose over an untrusted client request (SECURITY.md), and
-            # `render_turn` already neutralizes the identical field one call earlier -- this is
-            # the second interpretation site invariant 14 warns about, unapplied. `display_text`
-            # escapes embedded control characters per character rather than dropping them, so a
-            # multi-line forged question becomes one long readable line with a visible `\n`
-            # instead of writing a second line at column 0 that `input()`'s prompt cannot own.
+        for i, q in enumerate(asked, 1):
+            # `q.q` is LLM-authored prose over an untrusted client request (SECURITY.md), and this
+            # is now the **only** place the interactive path neutralizes it: `render_turn` used to
+            # escape the same field one call earlier, and the loops render `render_turn_state`
+            # instead since #592, which prints no question at all. What used to be the second
+            # interpretation site invariant 14 warns about is the first and last one.
+            # `display_text` escapes embedded control characters per character rather than dropping
+            # them, so a multi-line forged question becomes one long readable line with a visible
+            # `\n` instead of writing a second line at column 0 that `input()`'s prompt cannot own.
             # Reproduced through this loop, not through a renderer, by
             # `test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt`
             # (#330); the readability half is `test_an_ordinary_question_still_reads_at_the_input_prompt`.
             safe_q = display_text(q.q)
-            ans = input(f"  {i}. {safe_q}\n     > ").strip()
+            # One question per prompt, and the slot label with it -- `render_turn`'s block used to
+            # carry that line and the interactive loops no longer print the block (#592).
+            ans = input(
+                f"\n  [{i}/{len(asked)}] {safe_q}\n"
+                f"        ({slot_label(q.slot)})\n"
+                f"      > "
+            ).strip()
             if ans.lower() == "q":
                 print("Stopped.")
                 return None
@@ -583,7 +609,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     svc = disco.sessions
     out = svc.load_model(slug)
     for _turn in range(1, MAX_TURNS + 1):
-        render_turn(out)
+        render_turn_state(out)
         if not out.questions:
             print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
             return
