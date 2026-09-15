@@ -44,6 +44,23 @@ workflow, permissions, edge cases, constraints, and more — grouped into four a
 Each slot carries a value plus its **evidence** and **coverage** (below). Every artifact is a render of
 this same filled model.
 
+## One engine, several perimeters
+
+> **Not yet built.** Everything on this page describes the only decision structure the product
+> implements today: **software scoping**. `decision: the-job-not-the-artifact-type` records that the
+> scope is the job, not this one artifact type — the same driver, over a different **perimeter**'s
+> slot schema and elicitation spec, for a request that is not about scoping software at all. Until
+> #608 lands there is no plural schema, no perimeter field, and no router — "the model" below means
+> this one perimeter.
+
+A perimeter owns its slot schema, its elicitation spec, and the discovery guidance specific to it; it
+ships exactly one artifact — software scoping's is the six named below, in *Dependencies and
+staleness*. What is **Core**, unchanged across every perimeter, is the *mechanism* the rest of this
+page describes: the driver, evidence and coverage, decisions/challenges/opportunities, the dependency
+graph and its staleness rule, readiness. Where a section below names a concrete artifact type (`prd`,
+`stories`, `estimate`, `criteria`, `epic`, `release`) or a software-specific slot, that is this one
+perimeter's own content riding on the shared mechanism, not the mechanism itself.
+
 ## The driver: information value = uncertainty × impact
 
 Requivo does **not** ask because a slot is empty — it asks where an answer would change the solution.
