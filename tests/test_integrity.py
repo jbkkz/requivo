@@ -195,6 +195,38 @@ def test_reasoning_explicitly_emptied_is_a_deletion_that_invalidates(workspace):
     assert art.list("s")["prd"]["stale"] is True
 
 
+def _with_exclusion(model: dict, reason: str) -> dict:
+    model["exclusions"] = [{"option": "Bulk import", "reason": reason, "rests_on": ["permissions"]}]
+    return model
+
+
+def test_an_exclusion_merely_omitted_by_a_turn_is_preserved(workspace):
+    """#599, invariant 10's fourth collection: a refinement turn that says nothing about
+    `exclusions` must leave the established one standing, exactly like decisions/challenges."""
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _with_exclusion(_full_model(), "Out of scope for v1"))
+
+    result = svc.update_model("s", _full_model())            # same slots, exclusions simply absent
+    assert [e.reason for e in svc.load_model("s").exclusions] == ["Out of scope for v1"]
+    assert result.changed_exclusions == []
+
+
+def test_an_exclusion_explicitly_emptied_invalidates_what_rests_on_it(workspace):
+    """#599: `"exclusions": []` deletes, like `"decisions": []` — and the artifacts consuming the
+    reasoning layer (every generator, via `REASONING_CONSUMERS`) go stale with it."""
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _with_exclusion(_full_model(), "Out of scope for v1"))
+    art.save("s", "prd", "# PRD\n", source_revision=1)
+
+    result = svc.update_model("s", {**_full_model(), "exclusions": []})
+    assert svc.load_model("s").exclusions == []
+    assert len(result.changed_exclusions) == 1
+    assert "prd" in result.stale_artifacts
+    assert art.list("s")["prd"]["stale"] is True
+
+
 # ── the second version contract: the slot vocabulary ──────────────────────────
 
 

@@ -52,6 +52,20 @@ def _stated(out: EngineOutput, confidence: Confidence) -> list[str]:
             and out.model[sid].value.strip()]
 
 
+def _excluded(out: EngineOutput) -> list[str]:
+    """Excluded options, projected off the model rather than written by the provider (#599) — the
+    same split `_stated()` draws: a restatement of "what we are not doing" can drift from the model
+    it restates, and a projection cannot. Each option names what it rests on by label, never by id
+    (the Voice rule)."""
+    lines = []
+    for ex in out.exclusions:
+        line = f"- **{ex.option}** — {ex.reason}"
+        if ex.rests_on:
+            line += f" _(rests on: {', '.join(slot_label(sid) for sid in ex.rests_on)})_"
+        lines.append(line)
+    return lines
+
+
 def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     """Render the decision brief — the document a scope review is run from.
 
@@ -60,11 +74,11 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     assumed, and only then gives the judgment (decisions, contested premises, complexity, risks,
     opportunities). It is deliberately not a PRD; `prd_markdown` is.
 
-    Half of it is deterministic. What is confirmed, what is being assumed and what still blocks are
-    read straight off the model — the provider is never asked to restate facts it was given, because a
-    restatement can drift from the model while a projection cannot. The prose sections are the ones
-    that need judgment. Slot ids and internal signals (completeness, confidence labels) never appear
-    in either half, matching the Voice rule the LLM prose already follows."""
+    Half of it is deterministic. What is confirmed, what is being assumed, what is out of scope and
+    what still blocks are read straight off the model — the provider is never asked to restate facts
+    it was given, because a restatement can drift from the model while a projection cannot. The prose
+    sections are the ones that need judgment. Slot ids and internal signals (completeness, confidence
+    labels) never appear in either half, matching the Voice rule the LLM prose already follows."""
     blockers = [slot_label(sid) for sid in readiness_blockers(out)]
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Decision Brief{draft}", "",
@@ -112,6 +126,8 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     section("Decisions made", decisions)
 
     section("Scope implications", [f"- {i}" for i in brief.introduces])
+
+    section("Out of scope", _excluded(out))
 
     challenges: list[str] = []
     for c in brief.challenges:

@@ -259,8 +259,9 @@ than listed: add a nested contract to the model and this fails until it has a si
 directions are asserted, because the point is the asymmetry and not either half of it."""
     persisted = _contracts_reachable_from(PersistedEngineOutput)
     strict = _contracts_reachable_from(EngineOutput)
-    # A walk that finds nothing is an all-clear nobody earned; the model tree has seven contracts.
-    assert len(persisted) == len(strict) >= 7
+    # A walk that finds nothing is an all-clear nobody earned; the model tree has eight contracts
+    # since #599 added Exclusion/PersistedExclusion as a fourth reasoning collection.
+    assert len(persisted) == len(strict) >= 8
     assert [c.__name__ for c in persisted if c.model_config.get("extra") != "allow"] == []
     assert [c.__name__ for c in strict if c.model_config.get("extra") != "forbid"] == []
 
@@ -272,12 +273,14 @@ trees carried a hand-written `max_length=6` on `questions` and nothing made them
     pairs = [(p, p.__mro__[1]) for p in _contracts_reachable_from(PersistedEngineOutput)]
     for permissive, strict in pairs:
         assert issubclass(strict, BaseModel) and strict is not BaseModel, permissive.__name__
-    # Not vacuous, on both counts: seven twins exist, and the mirror really does re-point six fields
-    # at permissive types — which is exactly why it has to restate their constraints.
-    assert len(pairs) == 7
+    # Not vacuous, on both counts: eight twins exist (#599 added Exclusion/PersistedExclusion),
+    # and the mirror really does re-point seven fields at permissive types — which is exactly why
+    # it has to restate their constraints.
+    assert len(pairs) == 8
     redeclared = {name for p, s in pairs for name in p.model_fields
                   if p.model_fields[name].annotation != s.model_fields[name].annotation}
-    assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities"}
+    assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities",
+                          "exclusions"}
 
     drift = []
     for permissive, strict in pairs:

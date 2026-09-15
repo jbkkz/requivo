@@ -13,7 +13,7 @@ The engine's **output** is split, and deliberately so: the questions and the und
 each turn mirror the language of the client's request, while every buildable artifact — the decision
 brief, PRD, stories, criteria, epic, release notes — anchors English, because those feed dev teams
 and trackers. The saved decision brief is bilingual and says so: `brief_markdown` is the only writer
-that also receives an `EngineOutput`, and its four projected sections are the model's own words,
+that also receives an `EngineOutput`, and its five projected sections are the model's own words,
 which are on the mirroring side. The policy, its two named open edges (`estimate`, and the brief's
 projected half) and the prompt sentences that enforce it are in `docs/requirements-model.md` under
 "The language of the outputs".
@@ -229,10 +229,10 @@ issue the test cites — *Where a bug narrative lives* (below) is the rule.
    `test_a_forced_import_serialises_against_a_concurrent_writer` and
    `test_the_lock_still_guards_a_session_that_exists`.
 10. **A proposal is not a model, and silence is not deletion.** A `ModelProposal`'s slots are complete
-    (an apply *replaces*); `decisions`/`challenges`/`opportunities` are tri-state — absent means "not
-    speaking to it", `[]` means "delete" — and a key this version cannot name is a fourth thing it
-    cannot speak to. `resolve(current)` is the *only* place the states collapse. Cost: an ordinary
-    answer turn deleting every decision the assessment had produced, silently. Guarded by
+    (an apply *replaces*); `decisions`/`challenges`/`opportunities`/`exclusions` are tri-state —
+    absent means "not speaking to it", `[]` means "delete" — and a key this version cannot name is a
+    fifth thing it cannot speak to. `resolve(current)` is the *only* place the states collapse. Cost:
+    an ordinary answer turn deleting every decision the assessment had produced, silently. Guarded by
     `test_reasoning_merely_omitted_by_a_turn_is_preserved`,
     `test_reasoning_explicitly_emptied_is_a_deletion_that_invalidates` and
     `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save`.
@@ -436,7 +436,7 @@ changing an example still owes a golden capture.
 
 The slot vocabulary is enforced in two layers, with `schema_slot_ids()` as the single source:
 *vocabulary* — both contracts reject unknown slot ids in the model, in each `Question`'s target slot
-and in every DAG edge (`derived_from`, `contests`), and `questions` is capped at 6; *completeness* —
+and in every DAG edge (`derived_from`, `contests`, `rests_on`), and `questions` is capped at 6; *completeness* —
 `completeness_gap()` is the single definition (the full required slot set, plus a non-empty
 objective), read by both boundaries that enforce it: the discovery `validate` hook, which needs a
 `ValueError` to ride the retry loop, and `validate_proposal`, which needs a structured

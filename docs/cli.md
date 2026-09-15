@@ -313,10 +313,10 @@ ambiguous with a future artifact type and breaks that loop.
 ### What `model apply` takes
 
 A proposal replaces the model, so it carries the **complete** slot set and a non-empty
-`summary.objective`. The three reasoning collections are the exception, and they are tri-state: leave
-`decisions`, `challenges` or `opportunities` out and the established ones stand; send `[]` and they are
-deleted (and what rested on them goes stale); send a list and it replaces. A refinement normally says
-nothing about them. To check a partial projection without applying it, use
+`summary.objective`. The four reasoning collections are the exception, and they are tri-state: leave
+`decisions`, `challenges`, `opportunities` or `exclusions` out and the established ones stand; send
+`[]` and they are deleted (and what rested on them goes stale); send a list and it replaces. A
+refinement normally says nothing about them. To check a partial projection without applying it, use
 `model validate --allow-partial`. See [compatibility.md](compatibility.md#what-a-proposal-means).
 
 ### Exit codes, and what 3 and 4 mean

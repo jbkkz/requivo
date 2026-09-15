@@ -20,6 +20,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    Exclusion,
     Opportunity,
 )
 
@@ -78,7 +79,8 @@ def test_output_caps_questions_at_six():
     ("decisions", [{"decision": "X", "derived_from": ["not_a_slot"]}]),
     ("challenges", [{"headline": "h", "premise": "p", "alternative": "a", "consequence": "c",
                      "recommendation": "r", "contests": ["not_a_slot"]}]),
-], ids=["question", "decision", "challenge"])
+    ("exclusions", [{"option": "Bulk import", "reason": "r", "rests_on": ["not_a_slot"]}]),
+], ids=["question", "decision", "challenge", "exclusion"])
 def test_output_rejects_a_pointer_to_an_unknown_slot(extra_key, extra_value):
     # A question/decision/challenge must point at a slot the schema defines — a dangling pointer would
     # make the dependency graph look rigorous while pointing at nothing.
@@ -152,7 +154,20 @@ def test_reasoning_ids_are_distinct_per_kind():
     c = Challenge.model_validate({"headline": "h", "premise": "p", "alternative": "a",
                                   "consequence": "c", "recommendation": "r"})
     o = Opportunity.model_validate({"text": "reuse the notification service", "leverage": "high"})
-    assert c.id.startswith("chl_") and o.id.startswith("opp_")
+    e = Exclusion.model_validate({"option": "Bulk import", "reason": "out of scope for v1"})
+    assert c.id.startswith("chl_") and o.id.startswith("opp_") and e.id.startswith("exc_")
+
+
+def test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_id():
+    """#599: an excluded option gets the same identity treatment as its three siblings
+    (invariant 5) — a supplied id is never trusted, and the same option/reason yields the
+    same id regardless of `rests_on`."""
+    e1 = Exclusion.model_validate({"option": "Bulk import", "reason": "Out of scope for v1",
+                                   "rests_on": ["workflow"]})
+    e2 = Exclusion.model_validate({"option": "Bulk import", "reason": "Out of scope for v1",
+                                   "id": "exc_forged"})
+    assert e1.id == e2.id
+    assert e1.id != Exclusion.model_validate({"option": "SSO", "reason": "Not asked for"}).id
 
 
 # ── artifact contracts: references that point at something ───────────────────

@@ -164,6 +164,22 @@ def test_render_brief_titles_decision_brief_and_shows_challenges():
     assert "✓ Amount sourced from the Contract" in text
 
 
+def test_the_decision_brief_projects_excluded_options_rather_than_writing_them():
+    """#599 acceptance criterion: the brief's "Out of scope" content is a projection of
+    `out.exclusions`, not prose the provider wrote into `Brief` — the same split `_stated()`
+    already draws for confirmed facts and assumptions."""
+    from requivo.core.contracts import Exclusion
+
+    model = out({"problem": slot(80, "explicit", "high")})
+    model.exclusions = [Exclusion(option="Bulk import", reason="Out of scope for v1",
+                                  rests_on=["problem"])]
+    brief = Brief(problem="P", solution="S", complexity="low")
+    md = brief_markdown(model, brief)
+    assert "## Out of scope" in md
+    assert "**Bulk import** — Out of scope for v1" in md
+    assert "rests on: Real problem" in md
+
+
 def test_render_brief_opportunity_names_reached_modules():
     model = {"problem": slot(80, "explicit", "high")}
     brief = Brief(

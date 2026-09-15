@@ -125,15 +125,15 @@ splits its outputs in two, because the two halves have different readers:
 **The saved decision brief is the one artifact this split does not cleanly divide, and it is
 bilingual on purpose rather than by accident.** `brief_markdown` is the only writer that receives an
 `EngineOutput` as well as its contract, and half of what it emits is a *projection* of the model:
-the objective, the current understanding, each slot's stated value under *What is confirmed* and the
-first half of *Important assumptions* are the model's own words, copied through. Those words are on
-the mirroring side, so a French request produces a `solution-assessment.md` whose judgment —
-problem, solution, complexity, decisions, challenges, risks — is English and whose four projected
-sections are French.
+the objective, the current understanding, each slot's stated value under *What is confirmed*, the
+first half of *Important assumptions*, and — since #599 — *Out of scope*, are the model's own words,
+copied through. Those words are on the mirroring side, so a French request produces a
+`solution-assessment.md` whose judgment — problem, solution, complexity, decisions, challenges,
+risks — is English and whose five projected sections are French.
 
 That is not a defect to render away, and since #491 it is not an open question either:
 `decision: the-decision-briefs-quoted-half` settles it. **The saved brief stays on the English
-anchor side, and its four projected sections are quotations** — the client's own words about their
+anchor side, and its five projected sections are quotations** — the client's own words about their
 own problem, which is the one kind of text not improved by being rendered into the document's
 language. What decides it is the reader: a *saved* `solution-assessment.md` is read by the build
 side and stands as the trail behind a commitment, the same audience the anchor exists for, while the
