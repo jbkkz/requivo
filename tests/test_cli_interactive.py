@@ -29,8 +29,8 @@ from pathlib import Path
 import pytest
 from _fakes import _ENGINE_REPLY, FakeClient, _run_app, full_slots, slot
 
-from requivo.cli import MAX_TURNS, app, converse
-from requivo.core.contracts import Brief, EngineOutput, Question, Slot, Summary
+from requivo.cli import MAX_TURNS, QUESTIONS_PER_CHECKPOINT, app, converse
+from requivo.core.contracts import MAX_QUESTIONS, Brief, EngineOutput, Question, Slot, Summary
 from requivo.providers.base import ReasoningProvider
 from requivo.providers.errors import EngineError
 from requivo.services.discovery import DiscoveryService
@@ -105,12 +105,22 @@ def _service(provider: StubProvider) -> DiscoveryService:
     return DiscoveryService(provider)
 
 
-def _converse(disco, request, answers=(), only=None):
-    """Run the loop with `answers` fed to `input()` in order, capturing stdout."""
+def _converse(disco, request, answers=(), only=None, prompts=None):
+    """Run the loop with `answers` fed to `input()` in order, capturing stdout.
+
+    `prompts`, when a list is passed, collects every prompt string `input()` was handed -- the
+    questions live there rather than in stdout since #592, so a test about how they are asked has
+    nowhere else to look."""
     supplied = iter(answers)
     buf = io.StringIO()
     real_input = builtins.input
-    builtins.input = lambda _prompt="": next(supplied)
+
+    def _input(prompt=""):
+        if prompts is not None:
+            prompts.append(prompt)
+        return next(supplied)
+
+    builtins.input = _input
     try:
         with redirect_stdout(buf):
             out = converse(disco, request, only=only)
@@ -248,6 +258,81 @@ def test_an_interrupt_at_the_prompt_stops_rather_than_traces_back(interrupt):
     assert drafted.stopped is True, f"{interrupt.__name__} did not stop the loop"
     assert drafted.model is not None, "the turn the user paid for was discarded"
     assert "Stopped." in buf.getvalue()
+
+# ── one question at a time (#592) ──────────────────────────────────────────────────────────────────
+
+
+def _questions(n: int) -> list[Question]:
+    return [Question(q=f"Question {i}?", slot="permissions", why="w") for i in range(n)]
+
+
+def test_the_interactive_loop_asks_one_question_per_prompt():
+    """A turn printed every question it produced and *then* walked the same list at the prompt, so
+    the user read a wall before answering the first one. The wall is what moved (#592): stdout
+    carries the checkpoint and no question, and each question reaches exactly one `input()`.
+    `PRIORITY QUESTIONS` is `render_turn`'s heading, which the non-interactive verbs keep."""
+    provider = StubProvider(_model(objective="one", questions=_questions(3)),
+                            _model(objective="two"))
+    prompts: list[str] = []
+    _, printed = _converse(_service(provider), "a request", ["a", "b", "c"], prompts=prompts)
+
+    assert "PRIORITY QUESTIONS" not in printed
+    assert "UNDERSTANDING" in printed, "the checkpoint went missing with the question block"
+    assert len(prompts) == 3, "the loop did not ask each question at its own prompt"
+    for i, prompt in enumerate(prompts):
+        assert f"Question {i}?" in prompt
+        assert sum(f"Question {j}?" in prompt for j in range(3)) == 1, (
+            f"prompt {i} carried more than one question: {prompt!r}")
+
+
+def test_only_the_checkpoint_window_is_asked_and_the_remainder_is_dropped():
+    """`MAX_QUESTIONS` is what a turn may return; `QUESTIONS_PER_CHECKPOINT` is what the terminal
+    asks before compiling. The surplus is not carried into the next turn -- the next turn re-derives
+    its own questions against the updated model (invariant 10)."""
+    surplus = _questions(MAX_QUESTIONS)
+    provider = StubProvider(_model(objective="one", questions=surplus), _model(objective="two"))
+    prompts: list[str] = []
+    _converse(_service(provider), "a request", ["a"] * MAX_QUESTIONS, prompts=prompts)
+
+    assert len(prompts) == QUESTIONS_PER_CHECKPOINT
+    dropped = surplus[QUESTIONS_PER_CHECKPOINT:]
+    assert dropped, "the fixture did not actually overflow the window"
+    for q in dropped:
+        assert not any(q.q in p for p in prompts), f"{q.q!r} was asked past the window"
+
+
+def test_a_full_window_still_reaches_the_provider_as_one_turn():
+    """The compile half. This pins forward rather than reproducing a defect -- the old loop was one
+    turn per batch too -- because a loop that sent a turn per question would satisfy every assertion
+    above and multiply the spend by the window."""
+    provider = StubProvider(_model(objective="one", questions=_questions(QUESTIONS_PER_CHECKPOINT)),
+                            _model(objective="two"))
+    _converse(_service(provider), "a request", ["a", "b", "c", "d"])
+
+    assert len(provider.analyze_calls) == 2, "a window is one turn, not one turn per question"
+    folded = provider.analyze_calls[1]["answers"]
+    assert folded.count(ARROW) == QUESTIONS_PER_CHECKPOINT
+    assert len(folded.splitlines()) == QUESTIONS_PER_CHECKPOINT
+
+
+def test_stopping_mid_window_keeps_the_turn_it_paid_for():
+    """#202's guarantee, at the new boundary: quitting on the second of four questions still hands
+    the caller the turn already drafted, and buys no further one."""
+    provider = StubProvider(_model(objective="one", questions=_questions(QUESTIONS_PER_CHECKPOINT)))
+    drafted, printed = _converse(_service(provider), "a request", ["an answer", "q"])
+
+    assert drafted.stopped is True
+    assert drafted.model is not None, "the turn the user paid for was discarded"
+    assert len(provider.analyze_calls) == 1
+    assert "Stopped." in printed
+
+
+def test_the_checkpoint_window_fits_inside_the_contract_cap():
+    """A window above the cap would silently mean "ask them all" and put the wall back. The two
+    numbers live in different modules -- the cap is a contract constraint, the window a journey
+    one -- so nothing but this compares them."""
+    assert 0 < QUESTIONS_PER_CHECKPOINT <= MAX_QUESTIONS
+
 
 # ── the entry-point gate, driven through `app()` (#133) ────────────────────────────────────────────
 # Everything above injects a stub provider into the service and drives `converse()` directly. The

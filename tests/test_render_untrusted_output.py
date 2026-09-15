@@ -286,6 +286,12 @@ _NON_PROSE_RENDERERS = {
     # `requivo status`, forgeable through `session import` (#388).
     "render_usage": "the in-process usage ledger this run itself built -- never persisted, never "
                      "read back off disk, so it carries nothing another process could have forged",
+    # render_turn minus its question block (#592). What it prints is render_understanding plus the
+    # readiness verdict, both already exempt above for the same reason -- and the questions it no
+    # longer prints are neutralized where the interactive loops now ask them, at cli.py's `input()`
+    # prompt, swept by `test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt`.
+    "render_turn_state": "render_understanding plus the readiness verdict -- schema slot labels and "
+                          "a fixed verdict string, no model-authored prose",
 }
 
 
@@ -651,7 +657,7 @@ def test_an_ordinary_question_still_reads_at_the_input_prompt():
 
     prompts = _drive_converse(disco, "a request")
 
-    assert "1. How are approvals routed today?" in prompts[0]
+    assert "[1/1] How are approvals routed today?" in prompts[0]
     assert "\\" not in prompts[0]
 
 

@@ -88,8 +88,13 @@ def render_readiness(out: EngineOutput) -> None:
         print(_labeled("Remaining gaps", ", ".join(gaps), lw=20))
 
 
-def render_turn(out: EngineOutput) -> None:
-    """Lightweight per-turn view: what's understood + what's being asked."""
+def render_turn_state(out: EngineOutput) -> None:
+    """What is understood and whether it is enough — a turn's checkpoint, without the questions.
+
+    The interactive loops render this and then ask one question at a time at the prompt, so a turn
+    boundary and a checkpoint are the same event and the cadence needs no renderer of its own. A
+    batch printed up front is what made a turn read as a form (#592). Pinned by
+    `test_the_interactive_loop_asks_one_question_per_prompt`."""
     print()
     render_understanding(out)
     blockers = [slot_label(b) for b in readiness_blockers(out)]
@@ -97,6 +102,13 @@ def render_turn(out: EngineOutput) -> None:
     # is what the deleted "nearly" arm branched on, and the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
+
+
+def render_turn(out: EngineOutput) -> None:
+    """The checkpoint plus the questions, for the verbs with nobody at a prompt to be asked them one
+    at a time — `discover`, `answer`, `status`, `demo`. The interactive loops render the checkpoint
+    alone and ask through `_prompt_answers` instead (#592)."""
+    render_turn_state(out)
     if out.questions:
         print("\nPRIORITY QUESTIONS")
         for i, q in enumerate(out.questions, 1):
