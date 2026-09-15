@@ -139,6 +139,13 @@ def render_grounding(cards: list[str] | None) -> None:
     instance of a card diluting its neighbour funds automatic relevance routing, per the golden
     harness's own known-limit note. Two are on record.
 
+    **Something has changed, and this readout has not** (as of #593 being opened, not landed).
+    `decision: the-engine-writes-the-missing-card` reopens the paragraph above for the *first
+    discovery*, where the human this appoints as the detector has not yet heard of context cards.
+    It does not reopen it here: `status` is offline and decidable, this stays a naming rather than a
+    verdict, and the routing the trigger above gates is a different feature from writing a missing
+    card. Correct this paragraph when #593 lands, not before.
+
     `None` is not "no cards" -- it is *every card in the install*, re-resolved on each turn, so the
     names are read now rather than stored. That is why the two branches word it differently: an
     explicit selection was fixed at creation and is true of every turn this session has taken, and
