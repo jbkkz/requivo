@@ -716,6 +716,34 @@ def test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout()
     assert "\\n" in text, "the embedded newline was removed instead of being made visible"
 
 
+def test_a_written_card_renders_in_full_in_the_judgment_readout():
+    """The `uncovered` half of #598: `GeneratedCard`'s own single-line validators are the trust
+    boundary (invariant 3), not an escape at this print site -- so what this must-fire control pins
+    is that the card actually reaches the terminal, not that it was neutralized on the way (that
+    class is `test_a_generated_card_field_with_an_embedded_newline_is_refused`, one layer down, in
+    tests/test_contracts.py)."""
+    from requivo.core.contracts import ContextJudgment, GeneratedCard
+    from requivo.render.terminal import render_context_judgment
+    from requivo.services.discovery import Grounding
+
+    card = GeneratedCard.model_validate({
+        "stem": "dentistry", "business_domain": "dentistry", "product_type": "one_shot",
+        "typical_users": ["front desk"], "what_it_does": "tracks patient appointments",
+        "entities": ["patient"], "domain_concepts": ["co-pay"], "regulatory": "HIPAA",
+        "technical_constraints": "", "traps": [], "configurability": "",
+    })
+    judgment = ContextJudgment(decision="uncovered", reason="dentistry has licensing rules")
+
+    text = _render(render_context_judgment, Grounding(judgment, "", written_card=card))
+
+    assert "dentistry" in text and "HIPAA" in text
+    assert "# Context card — dentistry" in text
+    # Must-not-fire control, in the same fixture: the unwritten path still reads as a warning with
+    # no card body, so the branch above is not simply always-on.
+    unwritten = _render(render_context_judgment, Grounding(judgment, ""))
+    assert "# Context card" not in unwritten
+
+
 def test_the_four_grounding_outcomes_read_as_four_different_answers():
     """The control, and the reason the renderer exists at all: *nobody looked*, *nothing special
     applies*, *these cards cover it* and *nothing covers it* are four facts. Two of them ending with

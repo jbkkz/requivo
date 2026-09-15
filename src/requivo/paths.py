@@ -115,3 +115,14 @@ def user_context_dir() -> Path:
     A user card whose stem matches a bundled one overrides it (see `load_context`)."""
     override = os.getenv("REQUIVO_CONTEXT_DIR")
     return Path(override) if override else Path.home() / ".config" / "requivo" / "context"
+
+
+def workspace_context_dir() -> Path:
+    """`<workspace>/.requivo/context/` — where the engine writes a context card it generated
+    itself (`decision: the-engine-writes-the-missing-card`, #598). A sibling of `session_root()`
+    and `lock_root()` under `store_root()`, not `user_context_dir()`: writing straight into the
+    user's config dir would land outside the workspace and let a generated card silently shadow a
+    bundled one for every later session on the machine, invisibly (see that decision's Alternatives
+    section). May not exist — `_card_paths()` checks, the way it already does for `user_context_dir()`.
+    Evaluated per call, like every other root."""
+    return store_root() / "context"

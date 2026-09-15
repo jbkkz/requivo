@@ -27,6 +27,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GeneratedCard,
     ModelProposal,
     ReleaseNotes,
     Stories,
@@ -105,6 +106,22 @@ def judge_context(client, request: str, cards: list[CardSummary], *,
     return _complete(client, system, [{"role": "user", "content": "Judge this request's grounding."}],
                      ContextJudgment, validate=_names_only_installed_cards,
                      reuse_system=False, model=model, operation="judge_context")
+
+
+def write_card(client, request: str, *, model: str | None = None) -> GeneratedCard:
+    """Write a context card for a domain no installed card describes -- the `uncovered` half of
+    `decision: the-engine-writes-the-missing-card` (#598), asked once, right after the judgment
+    says so. One cheap call, like `judge_context` beside it and for the same reason:
+    `build_standalone_prompt`, not `build_system_prompt` -- this call must not carry the schema and
+    every card -- and `reuse_system=False`, since there is no second call of this operation to read
+    the cache it would write.
+
+    Every field's own single-line shape and size cap live on `GeneratedCard` itself (invariant 4),
+    so a reply that violates either rides the retry loop as a Pydantic `ValidationError` with no
+    extra `validate=` hook needed here."""
+    system = build_standalone_prompt("card_writer.md", {"{{REQUEST}}": request})
+    return _complete(client, system, [{"role": "user", "content": "Write the missing context card."}],
+                     GeneratedCard, reuse_system=False, model=model, operation="write_card")
 
 
 def answer_turn(client, out: EngineOutput, request: str, answers: str,
@@ -265,7 +282,7 @@ _OP_PROMPTS = {
 # produce no revision to stamp provenance onto. A second table rather than an exemption, so
 # `test_every_prompt_asset_belongs_to_an_operation` keeps accounting for every file on disk --
 # unclaimed is still dead weight, there are simply two ways to claim one now (#593).
-_STANDALONE_PROMPTS = {"judge_context": "context_judgment.md"}
+_STANDALONE_PROMPTS = {"judge_context": "context_judgment.md", "write_card": "card_writer.md"}
 
 
 def prompt_version(op: str, only: list[str] | None = None) -> str:

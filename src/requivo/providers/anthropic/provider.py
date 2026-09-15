@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from requivo.core.context import CardSummary
-from requivo.core.contracts import ContextJudgment, EngineOutput
+from requivo.core.contracts import ContextJudgment, EngineOutput, GeneratedCard
 from requivo.providers.anthropic.client import current_model_name, new_client
-from requivo.providers.anthropic.generators import _GENERATORS, answer_turn, judge_context, prompt_version, run
+from requivo.providers.anthropic.generators import (
+    _GENERATORS,
+    answer_turn,
+    judge_context,
+    prompt_version,
+    run,
+    write_card,
+)
 from requivo.providers.errors import EngineError
 
 
@@ -50,6 +57,11 @@ class AnthropicProvider:
         it asks about the grounding rather than from it -- see that protocol for why a provider is
         allowed not to have this at all."""
         return judge_context(self.client, request, cards, model=self._model)
+
+    def write_card(self, request: str) -> GeneratedCard:
+        """`CardWriter`, the third protocol this class satisfies -- see that protocol for why a
+        provider is allowed not to have this at all."""
+        return write_card(self.client, request, model=self._model)
 
     def generate(self, artifact_type: str, model: EngineOutput, *, only: list[str] | None = None,
                  **kwargs):

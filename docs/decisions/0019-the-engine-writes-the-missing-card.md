@@ -2,9 +2,10 @@
 
 **Slug:** `the-engine-writes-the-missing-card`
 
-> **Partly landed.** The judgment and the ordering below are in the tree; writing the card is not.
-> The *Ordering* section was corrected in place once building it revealed a step this record had not
-> foreseen — see the paragraph marked there. The Context section describes the tree as of 3.3.0.
+> **Fully landed.** #593 shipped the judgment and the ordering below; #598 shipped writing the
+> card, the `uncovered` path, and corrected two paragraphs this record had not foreseen — the
+> storage route, and the render-time neutralizer that turned out not to be needed — each marked
+> where it was corrected. The Context section describes the tree as of 3.3.0.
 
 ## Context
 
@@ -55,11 +56,27 @@ jurisdictional or heavy legislation, an accredited or licensed profession, a saf
 money-critical obligation, frontier tech with unsettled conventions, a niche vertical with its own
 object vocabulary. That is the same test the engine already applies to everything else.
 
-A written card is **session-scoped, shown, and frozen**: written into the session, rendered to the
-user in full, applied to every subsequent turn of that session, and never re-derived mid-session —
-the same rule `converse()` already holds for `only`, for the same reason (#258). Promotion to
-`user_context_dir()` is a separate, explicit act, offered afterwards, which names a stem collision
-before causing one.
+**Corrected in place, after building #598.** A written card is not session-scoped, as this
+paragraph first said: it is written into `workspace_context_dir()`
+(`<workspace>/.requivo/context/`), a third root `core/context.py`'s `_card_paths()` reads alongside
+the bundled and user roots. That makes it an **ordinary** card rather than a fourth kind of thing —
+`--context`, `render_grounding`, `doctor`, `session verify` and `session rescope` all work on it for
+free, and it outlives the session that earned it instead of being threaded through `load_context()`
+as a session-scoped argument, which would have meant adding an `extra` parameter through
+`load_context` → `build_system_prompt` → `provider.analyze` → the `ReasoningProvider` protocol —
+breaking roughly 17 test stubs that satisfy it, since `test_the_stub_satisfies_the_provider_protocol`
+compares signatures, not just presence.
+
+It is still **shown and frozen** for the session that generates it: rendered to the user in full
+before it grounds that session's first turn, and the selection itself never re-derived mid-session —
+the same rule `converse()` already holds for `only`, for the same reason (#258).
+
+**Promotion to `user_context_dir()` is deferred, not built.** The obvious shape is a deterministic
+verb copying a workspace card into the user directory, refusing the same stem collision
+`write_generated_card` already refuses for the workspace write. #598 scoped it out to keep that
+change reviewable on its own; the trigger for building it is a second workspace independently
+wanting the same card, or a direct request for it — until then, a card earned in one workspace stays
+in that workspace, reusable by every session there.
 
 ### Why this survives #492, which refused the neighbouring thing
 
@@ -114,13 +131,26 @@ destructive step on the discovery path does not get two implementations (invaria
 
 Today every context card is a file an operator installed. A generated one is authored from an
 **untrusted client request** and then lands in the **system** block. That is a real widening and is
-named here rather than discovered later. Three things hold it, and #593 owes all three:
+named here rather than discovered later. Three things hold it, and #598 owes all three:
 
 - the card is rendered to the user before it influences a subsequent turn;
-- its shape is the template's sections, not free prose — a reply that does not parse as the template
-  is **refused, not trimmed** (invariant 3);
-- it is neutralised at every interpretation site the way a question already is (`display_text`), and
-  its name never reaches a filesystem call unvalidated (invariant 14, `normalize_tokens`).
+- its shape is **fields on a typed contract** (`GeneratedCard`), never free prose the model writes
+  straight into a document — a reply that does not parse, or that carries a newline or control
+  character in any field, is **refused, not trimmed** (invariant 3, `core/contracts.py`'s
+  `_single_line`);
+- its `stem` is constrained to lowercase kebab-case by the contract's own field pattern before it is
+  ever built into a path (`write_generated_card`), so a name never reaches that filesystem call
+  unvalidated (invariant 14) — the same shape `core/persistence`'s own slug pattern holds for a
+  session slug, restated here rather than imported, to keep `core/contracts.py` and
+  `core/persistence` uncoupled.
+
+**Corrected in place, once more, after building #598.** This record originally named `display_text`
+as the render-time neutralizer, the way `Question.q` is escaped at the point it is printed. That is
+not how it shipped: every `GeneratedCard` field is refused outright at the contract boundary if it
+carries a newline or control character, so by the time `render_context_judgment` prints one there is
+nothing left for a render-time escaper to catch — the trust boundary sits at construction, not at
+the print statement, and that call site says so in a comment rather than calling `display_text` on
+an already-safe value.
 
 ## What breaking it cost
 

@@ -53,6 +53,7 @@ STATUS_BY_CODE = {
     "import_destination_occupied": 409,
     "context_unreadable": 500,
     "no_context_cards": 500,
+    "context_card_collision": 409,
     "provider_output_invalid": 502,
     "session_locked": 503,
     "artifact_write_failed": 500,

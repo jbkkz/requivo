@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from requivo.core.context import CardSummary
-from requivo.core.contracts import ContextJudgment, EngineOutput
+from requivo.core.contracts import ContextJudgment, EngineOutput, GeneratedCard
 
 
 @runtime_checkable
@@ -104,4 +104,22 @@ class ContextJudge(Protocol):
         `cards` is passed rather than read, because the summaries are a deterministic read of the
         install and `core` already owns it — a provider re-deriving them could answer about a
         different set than the one the session will actually load."""
+        ...
+
+
+@runtime_checkable
+class CardWriter(Protocol):
+    """Write a context card for a domain no installed card describes — the `uncovered` half of
+    `decision: the-engine-writes-the-missing-card`, asked once, only when `ContextJudge` says
+    `uncovered` (#598).
+
+    A separate protocol for the same reason `ContextJudge` is: a provider — or a test stub — that
+    cannot write one simply does not implement it, and the service falls back to the report-only
+    warning `judge_grounding` already produces rather than inventing a card.
+    """
+
+    def write_card(self, request: str) -> GeneratedCard:
+        """One cheap call: the untrusted request in, a typed `GeneratedCard` out — fields only,
+        never raw Markdown. `render.markdown.generated_card_markdown` is the sole writer that turns
+        the reply into the file the engine reads back."""
         ...

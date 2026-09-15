@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 from enum import Enum
 from typing import Annotated, Optional, TypeVar
 
@@ -207,6 +208,76 @@ class ContextJudgment(StrictModel):
             raise ValueError(
                 f"decision {self.decision.value!r} names cards {self.cards!r}; only 'installed' "
                 f"selects, so this reply's verdict and its payload disagree")
+        return self
+
+
+# `GeneratedCard` -- the `uncovered` half of the same decision. A card written for a domain no
+# installed one describes, authored from an **untrusted client request** and read into the
+# **system** block of every later call this session makes (#598). Every field is therefore a single
+# line, refused rather than trimmed on a newline or a control character (invariant 3): a newline in
+# a field could open a `## heading` or a fresh `- bullet` inside `{{CONTEXT}}` that was never part
+# of the card. The caps below are sized so a worst-case card stays in the same ballpark as a
+# hand-written one (docs/context-cards.md's own measured ~7k bytes) rather than a generous limit
+# nobody has thought through.
+_CARD_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # same class core/selectors.py's _CONTROL_CHARS guards
+MAX_CARD_LIST_ITEMS = 8
+MAX_CARD_LINE_CHARS = 160
+MAX_CARD_PARAGRAPH_CHARS = 400
+
+
+def _single_line(value: str, *, field: str, max_chars: int = MAX_CARD_LINE_CHARS) -> str:
+    """One line, capped, or refused -- never trimmed (invariant 3). Guarded by
+    `test_a_generated_card_field_with_an_embedded_newline_is_refused` and
+    `test_a_generated_card_list_item_with_a_newline_is_refused`."""
+    if _CARD_UNSAFE_RE.search(value):
+        raise ValueError(f"{field} carries a newline or control character and is refused, not "
+                         f"trimmed: {value!r}")
+    if len(value) > max_chars:
+        raise ValueError(f"{field} exceeds {max_chars} characters -- keep it to one concise line")
+    return value
+
+
+class CardProductType(str, Enum):
+    """The template's own two-way choice (`framework`-free here: this is the card template's
+    vocabulary, not the slot schema's)."""
+
+    one_shot = "one_shot"
+    platform = "platform"
+
+
+class GeneratedCard(StrictModel):
+    """A context card the engine writes when the grounding judgment finds the request's domain
+    uncovered. The engine fills **fields**; `generated_card_markdown()` in `render/markdown.py` is
+    the one deterministic writer, so a restatement of these fields can never drift from them --
+    never raw Markdown from the model into a system block. Mirrors
+    `assets/context/_template.md`'s sections, minus "The existing surface": a request cannot say
+    what is already built, and inventing it would poison impact estimation (`decision:
+    the-engine-writes-the-missing-card`)."""
+
+    stem: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    business_domain: NonEmpty
+    product_type: CardProductType
+    typical_users: list[str] = Field(default_factory=list, max_length=MAX_CARD_LIST_ITEMS)
+    what_it_does: NonEmpty
+    entities: list[str] = Field(default_factory=list, max_length=MAX_CARD_LIST_ITEMS)
+    domain_concepts: list[str] = Field(default_factory=list, max_length=MAX_CARD_LIST_ITEMS)
+    regulatory: str = ""
+    technical_constraints: str = ""
+    traps: list[str] = Field(default_factory=list, max_length=MAX_CARD_LIST_ITEMS)
+    configurability: str = ""
+
+    @model_validator(mode="after")
+    def _every_field_is_one_line(self) -> GeneratedCard:
+        _single_line(self.business_domain, field="business_domain")
+        _single_line(self.what_it_does, field="what_it_does", max_chars=MAX_CARD_PARAGRAPH_CHARS)
+        _single_line(self.regulatory, field="regulatory", max_chars=MAX_CARD_PARAGRAPH_CHARS)
+        _single_line(self.technical_constraints, field="technical_constraints",
+                     max_chars=MAX_CARD_PARAGRAPH_CHARS)
+        _single_line(self.configurability, field="configurability", max_chars=MAX_CARD_PARAGRAPH_CHARS)
+        for label, items in (("typical_users", self.typical_users), ("entities", self.entities),
+                             ("domain_concepts", self.domain_concepts), ("traps", self.traps)):
+            for item in items:
+                _single_line(item, field=f"{label} item")
         return self
 
 

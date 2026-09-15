@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
-from requivo.core.context import card_summaries, resolve_cards
+from requivo.core.context import card_summaries, resolve_cards, write_generated_card
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -46,12 +46,14 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GeneratedCard,
     ReleaseNotes,
     Stories,
 )
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
     ArtifactWriteFailedError,
+    ContextCardCollisionError,
     InvalidSlugError,
     RevisionConflictError,
     SessionLockedError,
@@ -67,12 +69,13 @@ from requivo.core.persistence import (
 )
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
-from requivo.providers.base import ContextJudge
+from requivo.providers.base import CardWriter, ContextJudge
 from requivo.render.markdown import (
     brief_markdown,
     criteria_markdown,
     epic_markdown,
     estimate_markdown,
+    generated_card_markdown,
     prd_markdown,
     release_markdown,
     stories_markdown,
@@ -358,10 +361,17 @@ class Grounding(NamedTuple):
     state that makes it honest: `judgment is None` means nobody looked, and `why_not` says why.
 
     A caller that renders `judgment is None` the same as `ContextDecision.none` has turned "we did
-    not ask" into "nothing is needed", which is the exact shape #492 refused to ship."""
+    not ask" into "nothing is needed", which is the exact shape #492 refused to ship.
+
+    `written_card` is set only when `claim_and_ground` acted on an `uncovered` verdict by writing
+    and selecting a card for this session (#598) — never when the write was skipped, refused, or
+    landed too late to be used. A caller renders it to show the card in full before it grounds
+    anything, the same "shown before it influences" rule `decision:
+    the-engine-writes-the-missing-card` states for the `installed` path."""
 
     judgment: ContextJudgment | None
     why_not: str
+    written_card: GeneratedCard | None = None
 
 
 class DiscoveryService:
@@ -503,30 +513,42 @@ class DiscoveryService:
                          ) -> tuple[Any, Grounding, list[str] | None]:
         """Claim the session, judge its grounding, and act on the judgment when acting is safe.
 
-        The whole sequence lives here rather than in a surface, because acting on the verdict means
-        *deleting a session*, and a destructive step on the discovery path is exactly the kind of
-        thing that must have one implementation with one set of preconditions (invariant 14).
+        The whole sequence lives here rather than in a surface, because acting on either verdict
+        means *deleting a session*, and a destructive step on the discovery path is exactly the
+        kind of thing that must have one implementation with one set of preconditions (invariant
+        14).
 
         **Claim first** — the free gate stays ahead of every paid call, so a repeat discovery is
         refused before the judgment is billed, not after (invariant 13, #133).
 
         **Then judge, and re-claim only when every one of these holds:**
 
-        - the verdict is `installed`, so there is a narrower selection to move to;
+        - the verdict is `installed` (narrow to what was named) or `uncovered` (write a card and
+          narrow to it alone) — `none` and "not asked" never re-claim;
         - the caller named no cards, so nothing is overriding a human's own choice;
         - **this call created the session** (`create_session_report`'s boolean), so an idempotent
           re-entry onto somebody else's session can never be the thing deleted;
-        - it is *still* at revision 0 when re-read under the lock, because the judgment call takes
-          real time and the check that authorises a delete must be held across it (invariant 9).
+        - it is *still* at revision 0 when re-read under the lock, because the judgment (and, on
+          `uncovered`, the card-writing call after it) takes real time and the check that
+          authorises a delete must be held across it (invariant 9).
 
         The delete-then-create is not atomic across the two slugs, and does not need to be: what is
         deleted is a session this call made moments ago and nothing has been applied to, so a crash
         between them loses a claim rather than any work.
 
+        **`uncovered` costs a *third* paid call on a first discovery with no `--context`** — the
+        judgment, the card write, and then the discovery turn itself — when the provider is a
+        `CardWriter` and every precondition above holds; a provider that is not one, or a stem
+        collision (`write_generated_card` refuses rather than shadows), falls back to the
+        report-only warning unchanged, the same as a provider that cannot judge at all.
+
         Returns the session to discover against, what was judged, and the card selection to reason
         with. Pinned by `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
-        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
-        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`."""
+        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`,
+        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`, and their
+        `uncovered` siblings `test_an_uncovered_verdict_writes_a_card_and_reclaims_under_it_alone`,
+        `test_a_session_this_call_did_not_create_is_never_written_a_card_by_an_uncovered_verdict` and
+        `test_a_session_that_moved_off_revision_zero_during_the_card_write_is_left_alone`."""
         provider = self._need_provider()
         meta, created = self.sessions.create_session_report(
             request, context_cards=cards, slug=slug,
@@ -535,10 +557,23 @@ class DiscoveryService:
 
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment
-        if judgment is None or judgment.decision is not ContextDecision.installed:
+        if judgment is None:
             return meta, grounding, cards
-        narrowed = resolve_cards(judgment.cards)
-        if cards or not created or not narrowed or narrowed == cards:
+        if judgment.decision is ContextDecision.installed:
+            narrowed = resolve_cards(judgment.cards)
+            if cards or not created or not narrowed or narrowed == cards:
+                return meta, grounding, cards
+        elif judgment.decision is ContextDecision.uncovered:
+            if cards or not created or not isinstance(provider, CardWriter):
+                return meta, grounding, cards
+            card = provider.write_card(request)
+            try:
+                write_generated_card(card.stem, generated_card_markdown(card))
+            except ContextCardCollisionError:
+                return meta, grounding, cards
+            narrowed = [card.stem]
+            grounding = grounding._replace(written_card=card)
+        else:
             return meta, grounding, cards
 
         with self.sessions.repo.lock(meta.slug):

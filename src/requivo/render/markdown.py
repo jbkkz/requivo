@@ -5,10 +5,12 @@ from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    CardProductType,
     Confidence,
     EngineOutput,
     Epic,
     EstimateDraft,
+    GeneratedCard,
     ReleaseNotes,
     ScenarioKind,
     Stories,
@@ -335,4 +337,49 @@ def release_markdown(rn: ReleaseNotes) -> str:
     section("Not included yet", [f"- {lim}" for lim in rn.known_limitations])
     section("Before you start", [f"- {n}" for n in rn.notes])
 
+    return "\n".join(out).rstrip() + "\n"
+
+
+_CARD_PRODUCT_TYPE_LABEL = {
+    CardProductType.one_shot: "one-shot app",
+    CardProductType.platform: "configurable multi-client platform",
+}
+
+
+def generated_card_markdown(card: GeneratedCard) -> str:
+    """Render a `GeneratedCard` into `assets/context/_template.md`'s own section shape --
+    deterministic and field-by-field, never a restatement the model wrote itself (#598, the same
+    reasoning as `brief_markdown`'s projected sections). Every field is already single-line
+    (`GeneratedCard`'s own validators), so no `_line`/`_cell` flattening is needed here.
+
+    **"The existing surface" section is left with empty bullets, on purpose**: a request cannot
+    tell the engine what is already built, and inventing it would poison impact estimation for
+    every session that loads this card afterwards."""
+    users = "; ".join(card.typical_users)
+    entities = "; ".join(card.entities)
+    concepts = "; ".join(card.domain_concepts)
+    traps = "; ".join(card.traps)
+    out: list[str] = [
+        f"# Context card — {card.stem}", "",
+        "> Written by Requivo from a client request during discovery "
+        "(`decision: the-engine-writes-the-missing-card`). Review it like any hand-written card.", "",
+        "## Who",
+        f"- Business domain: {card.business_domain}",
+        f"- Product type: {_CARD_PRODUCT_TYPE_LABEL[card.product_type]}",
+        f"- Typical users / roles: {users}", "",
+        "## The product / module",
+        f"- What it does: {card.what_it_does}",
+        f"- Main business objects (entities): {entities}",
+        f"- Key domain concepts: {concepts}", "",
+        "## The existing surface (already built)",
+        "> A generated card cannot know this — nothing here is inferred from the request.",
+        "- Major features:",
+        "- Sensitive modules / areas:", "",
+        "## Sensitivities & constraints",
+        f"- Regulatory (labor law, GDPR, country…): {card.regulatory}",
+        f"- Known technical constraints: {card.technical_constraints}",
+        f"- Recurring traps / frequent blind spots for this client: {traps}", "",
+        "## Configurability (platforms only)",
+        f"- What is standard for all vs client-specific: {card.configurability}",
+    ]
     return "\n".join(out).rstrip() + "\n"

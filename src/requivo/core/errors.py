@@ -216,6 +216,13 @@ class ArtifactWriteFailedError(RequivoError):
     code = "artifact_write_failed"
 
 
+class ContextCardCollisionError(RequivoError):
+    """A generated context card's stem already names an installed card -- refused rather than
+    silently shadowing it (`decision: the-engine-writes-the-missing-card`). `details`: `{stem, path}`."""
+
+    code = "context_card_collision"
+
+
 class SpendCeilingReachedError(RequivoError):
     """An injected `SpendPolicy` refused the next call: the ledger shows spend at or above the ceiling
     (#427, `decision: the-http-api-facade`). `details`: `{ceiling_usd, spent_usd, calls, reason}`; `reason` is

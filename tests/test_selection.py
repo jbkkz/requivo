@@ -52,16 +52,19 @@ def zero_cards(tmp_path, monkeypatch):
     """An install with **no context cards at all** — issue #33, and the scenario #12 was filed about:
     a wheel or container layer that ships `assets/` but loses `assets/context/`.
 
-    Both roots exist and are readable; they are simply empty. That is what makes this distinct from
-    `context_unreadable` (we could not look) — here we looked, and there is nothing. Every test that
-    uses this fixture pairs its refusal with a card dropped into the same fixture, so a refusal can
-    never pass because the harness is blind rather than because the install is empty.
+    All three roots exist and are readable; they are simply empty (#598 added the third,
+    `workspace_context_dir()`, isolated the same way via `REQUIVO_WORKSPACE`). That is what makes
+    this distinct from `context_unreadable` (we could not look) — here we looked, and there is
+    nothing. Every test that uses this fixture pairs its refusal with a card dropped into the same
+    fixture, so a refusal can never pass because the harness is blind rather than because the
+    install is empty.
     """
     bundled, user = tmp_path / "bundled-cards", tmp_path / "user-cards"
     bundled.mkdir()
     user.mkdir()
     monkeypatch.setattr(context_mod, "CONTEXT", bundled)
     monkeypatch.setenv("REQUIVO_CONTEXT_DIR", str(user))
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path / "workspace"))
     assert available_cards() == [], "fixture is not empty: it still sees cards"
     return user
 
@@ -351,7 +354,7 @@ def test_load_context_refuses_an_install_with_no_cards_at_all(zero_cards):
     with pytest.raises(NoContextCardsError) as ei:
         load_context(None)
     assert ei.value.details["roots"], "the refusal must name where it looked"
-    assert len(ei.value.details["roots"]) == 2, "both card roots are reported, not just the bundled one"
+    assert len(ei.value.details["roots"]) == 3, "all three card roots are reported (#598 added the workspace one)"
 
     # must fire: one card dropped into the same fixture and the same call succeeds — so the refusal
     # above is about the empty install, not about a harness that cannot read anything at all

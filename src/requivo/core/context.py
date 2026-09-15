@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from requivo.core.errors import (
+    ContextCardCollisionError,
     ContextUnreadableError,
     EmptySelectionError,
     EmptySelectorTokenError,
@@ -32,8 +33,9 @@ from requivo.core.errors import (
     UnknownContextCardError,
     UnsafeSelectorTokenError,
 )
+from requivo.core.persistence import _atomic_write, ensure_store_dir
 from requivo.core.selectors import normalize_tokens
-from requivo.paths import CONTEXT, FRAMEWORK, PROMPTS, user_context_dir
+from requivo.paths import CONTEXT, FRAMEWORK, PROMPTS, user_context_dir, workspace_context_dir
 
 # Every refusal `load_context` can produce, so `check_selection` can report exactly what the loader
 # would raise without listing them twice. `ContextUnreadableError` is deliberately absent: "we could
@@ -50,13 +52,16 @@ _SELECTION_REFUSALS = (
 
 
 def _card_paths() -> dict[str, Path]:
-    """Loadable context cards keyed by stem: the bundled cards in the package, plus any the user drops
-    in `user_context_dir()` (so a pip-installed setup is extensible without a source checkout). A user
-    card whose stem matches a bundled one **overrides** it — you can tweak a built-in without editing
-    the package. `_`-prefixed files are skipped. Emitted in sorted-stem order so the assembled system
-    is deterministic and the prompt cache holds."""
+    """Loadable context cards keyed by stem: the bundled cards in the package, any the engine wrote
+    itself into `workspace_context_dir()` (`decision: the-engine-writes-the-missing-card`, #598),
+    and any the user drops in `user_context_dir()` (so a pip-installed setup is extensible without a
+    source checkout). Later roots win a stem clash — a user card overrides a generated one, which
+    overrides a bundled one — so a hand-written override always has the last word, the same
+    reasoning that already applied to the two roots below it. `_`-prefixed files are skipped.
+    Emitted in sorted-stem order so the assembled system is deterministic and the prompt cache
+    holds."""
     paths: dict[str, Path] = {}
-    for directory in (CONTEXT, user_context_dir()):  # user dir second → its cards win on stem clash
+    for directory in (CONTEXT, workspace_context_dir(), user_context_dir()):
         if not directory.exists():
             continue
         # `Path.glob` swallows `PermissionError` and yields nothing, so a directory that cannot be
@@ -267,13 +272,35 @@ def _require_any_card(paths: dict[str, Path]) -> None:
     """
     if paths:
         return
-    roots = [str(CONTEXT), str(user_context_dir())]
+    roots = [str(CONTEXT), str(workspace_context_dir()), str(user_context_dir())]
     raise NoContextCardsError(
         "no context cards are installed, so there is no product context to reason from — impact "
         "estimation is the product's central idea and it runs on these cards. Looked in: "
         f"{' and '.join(roots)}. This install is incomplete: reinstall requivo, or point "
         "REQUIVO_CONTEXT_DIR at a directory holding your cards.",
         details={"roots": roots})
+
+
+def write_generated_card(stem: str, content: str) -> Path:
+    """Persist a machine-generated context card into `workspace_context_dir()`, refusing a stem
+    that already resolves through `_card_paths()` rather than silently shadowing it (invariant 3,
+    `decision: the-engine-writes-the-missing-card`, #598). `stem` is trusted here — it already
+    passed `GeneratedCard.stem`'s own pattern-constrained field before this is ever called.
+    `content` is the already-rendered Markdown (`render.markdown.generated_card_markdown`); this
+    module never renders one itself, the way it never calls a provider. Guarded by
+    `test_a_generated_card_refuses_a_colliding_stem` and
+    `test_a_generated_card_is_written_where_card_paths_will_find_it`."""
+    existing = _card_paths()
+    if stem in existing:
+        raise ContextCardCollisionError(
+            f"a context card named {stem!r} already exists at {existing[stem]} — a generated card "
+            "must not silently shadow it. Remove or rename the existing card, or discover again so "
+            "the engine can choose a different name.",
+            details={"stem": stem, "path": str(existing[stem])})
+    target = workspace_context_dir() / f"{stem}.md"
+    ensure_store_dir(target.parent)
+    _atomic_write(target, content)
+    return target
 
 
 def _selection_keys(only: list[str], paths: dict[str, Path]) -> set[str]:

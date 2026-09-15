@@ -502,3 +502,129 @@ def test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alon
     assert svc.exists(meta.slug), "a session with a model in it was deleted on a verdict"
     assert cards is None, "the narrowing went ahead over a session that had moved on"
     assert svc.list_sessions()[0].current_revision == 1, "the concurrent write was lost"
+
+
+# ── the uncovered verdict writes a card and reclaims under it alone (#598) ─────────────────────────
+
+
+def _generated_card(**overrides):
+    from requivo.core.contracts import GeneratedCard
+
+    base = dict(stem="dentistry", business_domain="dentistry", product_type="one_shot",
+               typical_users=["front desk"], what_it_does="tracks patient appointments",
+               entities=["patient", "appointment"], domain_concepts=["co-pay"],
+               regulatory="HIPAA", technical_constraints="", traps=[], configurability="")
+    base.update(overrides)
+    return GeneratedCard.model_validate(base)
+
+
+class _CardWritingJudge(_Judge):
+    """A `_Judge` that also implements `CardWriter` -- the stand-in for a provider that can both
+    judge and write (#598). `card=None` leaves `write_card` unimplemented via a plain `_Judge`
+    instead, which is what `isinstance(provider, CardWriter)` is testing."""
+
+    def __init__(self, judgment=None, card=None):
+        super().__init__(judgment)
+        self.card = card
+        self.write_calls: list[str] = []
+
+    def write_card(self, request):
+        self.write_calls.append(request)
+        return self.card
+
+
+def test_an_uncovered_verdict_writes_a_card_and_reclaims_under_it_alone(workspace):
+    """The `uncovered` mirror of the `installed` reclaim above: the empty session this call just
+    made is deleted and re-claimed selecting the card just written, alone -- the other cards are
+    irrelevant, and removing them is the entire point of the lot."""
+    from requivo.core.contracts import ContextJudgment
+
+    card = _generated_card()
+    judge = _CardWritingJudge(ContextJudgment(decision="uncovered", reason="dentistry has "
+                                              "licensing rules"), card=card)
+    meta, grounding, cards = _disco(judge).claim_and_ground(
+        "a dental clinic scheduler", cards=None, slug=None)
+
+    assert cards == ["dentistry"]
+    assert meta.context_cards == ["dentistry"]
+    assert grounding.written_card == card
+    assert len(SessionService().list_sessions()) == 1, "the widened claim was left behind"
+    assert (workspace / ".requivo" / "context" / "dentistry.md").exists()
+
+
+def test_a_provider_that_cannot_write_a_card_falls_back_to_the_report_only_warning(workspace):
+    """`CardWriter` is a protocol a provider may simply not implement -- the `uncovered` mirror of
+    `test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_needed`."""
+    from requivo.core.contracts import ContextJudgment
+
+    judge = _Judge(ContextJudgment(decision="uncovered", reason="dentistry has licensing rules"))
+    meta, grounding, cards = _disco(judge).claim_and_ground(
+        "a dental clinic scheduler", cards=None, slug=None)
+
+    assert cards is None, "a provider that cannot write a card narrowed the selection anyway"
+    assert grounding.written_card is None
+    assert not (workspace / ".requivo" / "context").exists()
+
+
+def test_a_colliding_stem_falls_back_to_the_report_only_warning(workspace):
+    """`write_generated_card` refuses rather than shadows (invariant 3); the service must fall back
+    to the report-only warning rather than raise the discovery itself, the same way a provider that
+    cannot judge falls back rather than aborting."""
+    from requivo.core.contracts import ContextJudgment
+
+    existing = workspace / ".requivo" / "context"
+    existing.mkdir(parents=True)
+    (existing / "dentistry.md").write_text("ORIGINAL", encoding="utf-8")
+
+    judge = _CardWritingJudge(ContextJudgment(decision="uncovered", reason="dentistry has "
+                                              "licensing rules"), card=_generated_card())
+    meta, grounding, cards = _disco(judge).claim_and_ground(
+        "a dental clinic scheduler", cards=None, slug=None)
+
+    assert cards is None, "a colliding stem narrowed the selection anyway"
+    assert grounding.written_card is None
+    assert (existing / "dentistry.md").read_text(encoding="utf-8") == "ORIGINAL"
+
+
+def test_a_session_this_call_did_not_create_is_never_written_a_card_by_an_uncovered_verdict(workspace):
+    """The `uncovered` mirror of the `installed` non-creator test: an idempotent re-entry onto
+    somebody else's session must not spend the card-writing call at all, let alone act on it."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+    first = svc.create_session("a dental clinic scheduler")
+
+    judge = _CardWritingJudge(ContextJudgment(decision="uncovered", reason="dentistry has "
+                                              "licensing rules"), card=_generated_card())
+    meta, _grounding, cards = _disco(judge).claim_and_ground(
+        "a dental clinic scheduler", cards=None, slug=None)
+
+    assert meta.slug == first.slug, "an idempotent re-entry landed somewhere else"
+    assert cards is None, "a session this call did not create was narrowed anyway"
+    assert judge.write_calls == [], "the card-writing call was billed for a verdict it cannot act on"
+
+
+def test_a_session_that_moved_off_revision_zero_during_the_card_write_is_left_alone(workspace):
+    """The `uncovered` mirror of the judgment-race test above, at its own paid call: the
+    authorisation is re-read under the lock, and a stale one does not delete a session with a model
+    in it. The card is left on disk regardless -- it is reusable by a later session either way, and
+    what is unsafe is only the *delete*, not the write (invariant 9)."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+
+    class _WritesMidCardWrite(_CardWritingJudge):
+        def write_card(self, request):
+            svc.update_model(svc.list_sessions()[0].slug, _full_model())
+            return super().write_card(request)
+
+    judge = _WritesMidCardWrite(ContextJudgment(decision="uncovered", reason="dentistry has "
+                                                "licensing rules"), card=_generated_card())
+    meta, _grounding, cards = _disco(judge).claim_and_ground(
+        "a dental clinic scheduler", cards=None, slug=None)
+
+    assert svc.exists(meta.slug), "a session with a model in it was deleted on a verdict"
+    assert cards is None, "the narrowing went ahead over a session that had moved on"
+    assert svc.list_sessions()[0].current_revision == 1, "the concurrent write was lost"
+    assert (workspace / ".requivo" / "context" / "dentistry.md").exists(), (
+        "the card is reusable later even though this session did not select it")

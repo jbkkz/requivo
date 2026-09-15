@@ -40,7 +40,8 @@ NOT_A_CARD = "no-such-card"  # a name that is wrong even on a healthy install
 
 @pytest.fixture
 def zero_cards(tmp_path, monkeypatch):
-    """An install with no context cards at all: both roots exist, both are readable, both are empty.
+    """An install with no context cards at all: all three roots exist, are readable, and empty
+    (#598 added the third, `workspace_context_dir()`, isolated via `REQUIVO_WORKSPACE`).
 
     That is what separates this from `context_unreadable` — here we looked, and there is nothing.
     """
@@ -49,6 +50,7 @@ def zero_cards(tmp_path, monkeypatch):
     user.mkdir()
     monkeypatch.setattr(context_mod, "CONTEXT", bundled)
     monkeypatch.setenv("REQUIVO_CONTEXT_DIR", str(user))
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path / "workspace"))
     assert available_cards() == [], "fixture is not empty: it still sees cards"
     return user
 
@@ -71,7 +73,7 @@ def test_resolve_cards_on_a_zero_card_install_names_the_install_not_the_card(zer
     with pytest.raises(NoContextCardsError) as ei:
         resolve_cards([A_NAME])
     assert ei.value.to_dict()["code"] == "no_context_cards"
-    assert len(ei.value.details["roots"]) == 2, "the refusal names both roots it looked in"
+    assert len(ei.value.details["roots"]) == 3, "the refusal names all three roots it looked in"
 
     # must fire: put one card in the same roots and an unknown name is an unknown name again, so the
     # refusal above is about the empty install and not about a fixture that can see nothing at all.

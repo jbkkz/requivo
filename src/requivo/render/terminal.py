@@ -17,6 +17,7 @@ from requivo.core.contracts import (
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.selectors import display_text, display_token
+from requivo.render.markdown import generated_card_markdown
 from requivo.usage import CallRecord, UsageLedger
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
@@ -149,9 +150,21 @@ def render_context_judgment(grounding) -> None:
                            f"discovery; this session reasons against every card.", lw=14))
     elif judgment.decision is ContextDecision.uncovered:
         print(_labeled("Grounding", f"⚠ no installed card describes this domain — {reason}", lw=14))
-        print(_labeled("", "Impact is being estimated against products this request has nothing to "
-                           "do with, so the questions below are weaker than they look. Writing a "
-                           "card for this domain is the lever (docs/context-cards.md).", lw=14))
+        if grounding.written_card is not None:
+            # `written_card`'s fields are all validated single-line (invariant 3, GeneratedCard's
+            # own refusal), so there is no embedded newline or control character left for
+            # display_text to neutralize here -- the trust boundary already moved upstream, to the
+            # contract that produced this object, rather than to this print statement.
+            print(_labeled("", f"Wrote a new context card ({grounding.written_card.stem}) and "
+                               "grounded this discovery on it alone — read it below before "
+                               "continuing.", lw=14))
+            print()
+            print(generated_card_markdown(grounding.written_card))
+        else:
+            print(_labeled("", "Impact is being estimated against products this request has "
+                               "nothing to do with, so the questions below are weaker than they "
+                               "look. Writing a card for this domain is the lever "
+                               "(docs/context-cards.md).", lw=14))
     else:
         print(_labeled("Grounding", f"no special domain constraints — {reason}", lw=14))
 

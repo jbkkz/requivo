@@ -195,3 +195,38 @@ def test_the_shipped_judgment_prompt_is_standalone_and_names_both_its_placeholde
     text = build_standalone_prompt("context_judgment.md", {"{{REQUEST}}": "R", "{{CARDS}}": "- c: d"})
     assert "R" in text and "- c: d" in text
     assert "{{" not in text, "a placeholder reached the provider unsubstituted"
+
+
+# ── the generated card is written where _card_paths() will find it (#598) ──────────────────────────
+
+
+def test_a_generated_card_is_written_where_card_paths_will_find_it(workspace):
+    """`write_generated_card` writes into `workspace_context_dir()`, the third root `_card_paths()`
+    now reads -- so a card written this way is loadable and selectable exactly like an installed
+    one, with no separate registration."""
+    from requivo.core.context import _card_paths, write_generated_card
+
+    target = write_generated_card("new-domain", "# Context card — new-domain\n\ncontent\n")
+
+    assert target == workspace / ".requivo" / "context" / "new-domain.md"
+    assert target.read_text(encoding="utf-8").startswith("# Context card — new-domain")
+    assert _card_paths()["new-domain"] == target
+
+
+def test_a_generated_card_refuses_a_colliding_stem(workspace):
+    """Invariant 3: a stem already resolving through `_card_paths()` is refused, never silently
+    shadowed -- so a stray or reused name cannot overwrite an existing card, bundled or generated."""
+    from requivo.core import context as ctx
+    from requivo.core.errors import ContextCardCollisionError
+
+    existing = workspace / ".requivo" / "context"
+    existing.mkdir(parents=True)
+    (existing / "financial-reporting.md").write_text("ORIGINAL", encoding="utf-8")
+
+    with pytest.raises(ContextCardCollisionError) as ei:
+        ctx.write_generated_card("financial-reporting", "OVERWRITE ATTEMPT")
+
+    assert ei.value.details == {
+        "stem": "financial-reporting", "path": str(existing / "financial-reporting.md")}
+    # must fire: the refusal did not touch the file it refused to shadow
+    assert (existing / "financial-reporting.md").read_text(encoding="utf-8") == "ORIGINAL"
