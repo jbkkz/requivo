@@ -536,6 +536,29 @@ class Requirement(StrictModel):
     priority: Priority
 
 
+class EnvelopeOrigin(str, Enum):
+    slot = "slot"
+    assumption = "assumption"
+
+
+class EnvelopeElement(StrictModel):
+    # One resource constraint an artifact worked within -- budget, deadline, capacity, horizon (#603).
+    # `origin` draws the same honesty split `confidence` already draws for slots: a value read off the
+    # model names the slot it came from; one the generator had to assume to write the document does not.
+    kind: NonEmpty
+    value: NonEmpty
+    origin: EnvelopeOrigin
+    source_slot: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _source_slot_matches_origin(self):
+        if self.origin is EnvelopeOrigin.slot and not self.source_slot:
+            raise ValueError("an envelope element read from the model must name its source slot")
+        if self.origin is EnvelopeOrigin.assumption and self.source_slot:
+            raise ValueError("an assumed envelope element must not name a source slot")
+        return self
+
+
 class PRD(StrictModel):
     title: NonEmpty
     summary: str = ""
@@ -554,10 +577,23 @@ class PRD(StrictModel):
     assumptions: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    # The envelope this document was planned within (#603) -- empty on a model with no constraint
+    # content; never invented. See EnvelopeElement above for how each entry states its own provenance.
+    envelope: list[EnvelopeElement] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_unique_requirement_ids(self):
         _reject_duplicate_ids("requirements", [r.id for r in self.requirements])
+        return self
+
+    @model_validator(mode="after")
+    def _validate_envelope_slot_vocabulary(self):
+        # Same rule ModelProposal._validate_slot_vocabulary applies to DAG edges: a source_slot
+        # pointing at nothing the schema defines would let the envelope look grounded while it isn't.
+        allowed, _ = schema_slot_ids()
+        bad = sorted({e.source_slot for e in self.envelope if e.source_slot and e.source_slot not in allowed})
+        if bad:
+            raise ValueError(f"envelope references unknown slots (not in schema): {bad}")
         return self
 
 
