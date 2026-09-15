@@ -53,13 +53,15 @@ this same filled model.
 > #608 lands there is no plural schema, no perimeter field, and no router — "the model" below means
 > this one perimeter.
 
-A perimeter owns its slot schema, its elicitation spec, and the discovery guidance specific to it; it
-ships exactly one artifact — software scoping's is the six named below, in *Dependencies and
-staleness*. What is **Core**, unchanged across every perimeter, is the *mechanism* the rest of this
-page describes: the driver, evidence and coverage, decisions/challenges/opportunities, the dependency
-graph and its staleness rule, readiness. Where a section below names a concrete artifact type (`prd`,
-`stories`, `estimate`, `criteria`, `epic`, `release`) or a software-specific slot, that is this one
-perimeter's own content riding on the shared mechanism, not the mechanism itself.
+A perimeter owns its slot schema, its elicitation spec, and the discovery guidance specific to it. A
+new one ships a single artifact, its equivalent of the decision brief; software scoping carries the
+larger set named below, in *Dependencies and staleness*, because it grew them one at a time and not
+because a perimeter is entitled to them. What is **Core**, unchanged across every perimeter, is the
+*mechanism* the rest of this page describes: the driver, evidence and coverage,
+decisions/challenges/opportunities, the dependency graph and its staleness rule, readiness. Where a
+section below names a concrete artifact type (`prd`, `stories`, `estimate`, `criteria`, `epic`,
+`release`) or a software-specific slot, that is this one perimeter's own content riding on the shared
+mechanism, not the mechanism itself.
 
 ## The driver: information value = uncertainty × impact
 
