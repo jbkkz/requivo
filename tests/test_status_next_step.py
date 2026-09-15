@@ -34,13 +34,14 @@ from requivo.render.terminal import next_command
 _SLUG = "leave-approval"
 
 
-def _payload(*, questions=0, ready=True, artifacts=None) -> dict:
+def _payload(*, questions=0, ready=True, artifacts=None, perimeter=None) -> dict:
     return {
         "slug": _SLUG,
         "readiness": {"ready": ready, "blocking_slots": []},
         "questions": [{"q": f"Q{i}", "slot": "problem", "label": "L", "why": "w"}
                       for i in range(questions)],
         "artifacts": artifacts if artifacts is not None else {},
+        "perimeter": perimeter,
     }
 
 
@@ -68,6 +69,16 @@ def test_a_stale_artifact_points_at_the_verb_that_regenerates_it():
 def test_a_ready_session_with_no_brief_points_at_brief():
     """Third: converged, nothing stale, and the deliverable has never been generated."""
     assert next_command(_payload(questions=0, ready=True)) == f"requivo brief {_SLUG}"
+
+
+def test_a_ready_go_to_market_session_is_not_pointed_at_a_brief_it_does_not_have():
+    """[found in review, #608] A perimeter that owns no "brief" generator (go-to-market, #609's own
+    scope) never has one in `artifacts` either -- this used to read that absence the same as
+    software's "never generated yet" and suggested a command that fails outright the moment it is
+    run (`_require_owned_artifact_type`). Gated on the perimeter actually owning one."""
+    from requivo.core.perimeters import GO_TO_MARKET
+
+    assert next_command(_payload(questions=0, ready=True, perimeter=GO_TO_MARKET)) is None
 
 
 def test_a_finished_session_is_pointed_nowhere_rather_than_at_a_menu():

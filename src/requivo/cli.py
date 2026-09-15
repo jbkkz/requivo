@@ -28,7 +28,7 @@ from requivo.core.context import available_cards, average_card_byte_size, resolv
 from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
 from requivo.core.errors import RequivoError, SessionNotFoundError
-from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
@@ -214,12 +214,12 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         # The checkpoint, and the questions are *not* printed here: `_prompt_answers` asks them one
         # at a time below. A turn boundary and a checkpoint are the same event, so the cadence the
         # user sees is `QUESTIONS_PER_CHECKPOINT` questions and then this (#592).
-        render_turn_state(out)
+        render_turn_state(out, perimeter)
 
         if not out.questions:
             break
 
-        answers = _prompt_answers(out.questions)
+        answers = _prompt_answers(out.questions, perimeter)
         if answers is None:
             return Drafted(out, stopped=True)
     else:
@@ -228,7 +228,7 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
     return Drafted(out, stopped=False)
 
 
-def _prompt_answers(questions: list[Question]) -> str | None:
+def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETER) -> str | None:
     """Prompt for one turn's answers at the terminal, folding them into the
     `[slot: ...] Q: ... → A: ...` shape both `converse()` and `run`'s resume loop send back to the
     provider. `None` means the user stopped -- quit, Ctrl-C/EOF, or answered nothing -- and this
@@ -258,7 +258,7 @@ def _prompt_answers(questions: list[Question]) -> str | None:
             # carry that line and the interactive loops no longer print the block (#592).
             ans = input(
                 f"\n  [{i}/{len(asked)}] {safe_q}\n"
-                f"        ({slot_label(q.slot)})\n"
+                f"        ({slot_label(q.slot, perimeter)})\n"
                 f"      > "
             ).strip()
             if ans.lower() == "q":
@@ -469,7 +469,7 @@ def _cmd_discover(a, client) -> None:
             _say_nothing_drafted(meta.slug)
             raise
         out = disco.sessions.load_model(slug)
-        render_turn(out)
+        render_turn(out, perimeter)
         _say_saved(slug)
         if out.questions:
             print(f'\n→ Answer and refine: requivo answer {slug} "<your answers>"')
@@ -522,6 +522,13 @@ def _cmd_discover(a, client) -> None:
     slug = disco.finalize_discovery(request, out, cards=only, slug=slug,
                                     brief=None, surface="cli-discover", perimeter=perimeter)
     _say_saved(slug)
+    # A perimeter with no "brief" generator (go-to-market, #609's own scope) has nothing to finish
+    # with: generate() would raise past the discovery already saved above. Pinned by
+    # `test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_traceback`.
+    if "brief" not in get_perimeter(perimeter).artifact_types:
+        out = disco.sessions.load_model(slug)
+        render_turn(out, perimeter)
+        return
     print("\nGenerating the decision brief…")
     try:
         gen = disco.generate(slug, "brief", surface="cli-discover")
@@ -554,11 +561,12 @@ def _cmd_answer(a, client) -> None:
     if not svc.exists(slug):
         raise svc.no_session(slug)
     result = disco.answer(slug, a.answers, surface="cli-answer")
+    perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
-    render_turn(out)
+    render_turn(out, perimeter)
     if result.stale_artifacts:
         pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
-        render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
+        render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
     # Every invalidated collection is counted here, or a change that unseats only one kind of
     # reasoning reports nothing on this path while `impact`, --json and the Web all report it — the
     # half-registered shape invariant 1 fails through. Guarded by
@@ -633,20 +641,24 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     `answer` inside a loop, never a second discovery. Shares `_prompt_answers` with `converse()`
     rather than reimplementing the terminal side of a turn."""
     svc = disco.sessions
+    perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
     for _turn in range(1, MAX_TURNS + 1):
-        render_turn_state(out)
+        render_turn_state(out, perimeter)
         if not out.questions:
-            print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
+            if "brief" in get_perimeter(perimeter).artifact_types:
+                print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
+            else:
+                print("\n✅ Discovery converged.")
             return
-        answers = _prompt_answers(out.questions)
+        answers = _prompt_answers(out.questions, perimeter)
         if answers is None:
             print(f"\nSaved session → {store.canonical_dir(slug)}")
             return
         result = disco.answer(slug, answers, surface="cli-run")
         if result.stale_artifacts:
             pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
-            render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
+            render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
         out = svc.load_model(slug)
     else:
         print(f"\n⚠️  Reached the {MAX_TURNS}-turn limit.")
@@ -752,7 +764,7 @@ def _cmd_status(a, client) -> None:
         # fix to it.
         print_json(payload)
         return
-    render_turn(out)
+    render_turn(out, payload.get("perimeter") or DEFAULT_PERIMETER)
     # What the impact estimates above were scored against (#492). After the model rather than before
     # it, deliberately: the reader came here for where the session stands, and the grounding is what
     # they check that answer *against* -- it is evidence about the readout, not a preamble to it.
@@ -874,16 +886,20 @@ def _cmd_impact(a, client) -> None:
     # model whose review would print as this file's. Pinned by
     # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
     evidence = None if Path(ref).is_file() else svc.thinner_evidence(slug)
+    # `perimeter` (#608): the session's own, or software for a bare model.json -- the same
+    # fallback `_status_payload` uses, or a go-to-market model renders under the wrong vocabulary.
+    perimeter = (resolve_perimeter(svc.meta(slug).perimeter) if svc.exists_meta(slug)
+                else DEFAULT_PERIMETER)
     if not a.slots:
-        render_dependency_map(out)
+        render_dependency_map(out, perimeter)
         render_evidence(evidence)
         return
-    resolved, unmatched = resolve_slots(a.slots)
+    resolved, unmatched = resolve_slots(a.slots, perimeter)
     if unmatched:
         print(f"Unknown slot(s): {', '.join(unmatched)} — use a slot id or a label word "
               f"(e.g. 'permissions', 'workflow', 'reporting').")
     if resolved:
-        render_impact(propagate(out, resolved))
+        render_impact(propagate(out, resolved, perimeter))
         render_evidence(evidence)
     if unmatched:
         # A wrong probe used to be indistinguishable from an empty result -- both exited 0 -- so a
