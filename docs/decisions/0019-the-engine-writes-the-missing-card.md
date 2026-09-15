@@ -2,8 +2,9 @@
 
 **Slug:** `the-engine-writes-the-missing-card`
 
-> **Forward-looking as written.** This record argues the decision; #593 builds it. Nothing below
-> describes the tree as it stands except the Context section, which describes it as of 3.3.0.
+> **Partly landed.** The judgment and the ordering below are in the tree; writing the card is not.
+> The *Ordering* section was corrected in place once building it revealed a step this record had not
+> foreseen — see the paragraph marked there. The Context section describes the tree as of 3.3.0.
 
 ## Context
 
@@ -96,6 +97,19 @@ card is an *output* of the discovery, like the model itself, and outputs do not 
 It is recorded on the revision instead (invariant 6), where a provenance field that is populated is
 the rule.
 
+**Corrected in place, after building it.** The paragraph above is true of a card the engine *writes*
+and says nothing about the outcome where the judgment **selects an installed card** — and that one
+does change the selection, which *is* identity, after the slug has already been claimed. The
+resolution, and it is part of this decision rather than an implementation detail: when the verdict
+narrows, the empty session this call just made is **deleted and re-claimed** under the narrowed
+identity. Four preconditions authorise the delete, and all four are required — the verdict narrows,
+the caller named no cards, `create_session_report` says *this call created it*, and it is **still**
+at revision 0 when re-read under the lock, because the judgment takes real time and an
+authorisation held across a paid call is a stale one (invariant 9). What is destroyed is a claim
+this call made moments ago with nothing applied to it; a crash between the delete and the create
+loses that claim and no work. `DiscoveryService.claim_and_ground` owns the whole sequence, because a
+destructive step on the discovery path does not get two implementations (invariant 14).
+
 ### The trust boundary this widens, and what holds it
 
 Today every context card is a file an operator installed. A generated one is authored from an
@@ -153,8 +167,12 @@ is the one to watch.
   same reply as the model it was supposed to inform, so the first turn — the one that builds the
   model — would be the one turn it could not ground. The saving is also smaller than it looks, since
   the judgment call carries no shared prefix.
-- **Judge before `claim_session`, so a generated card can join identity.** Rejected on invariant 13,
-  which is the more expensive of the two to bend: #133's lesson was nine paid calls thrown away by a
-  correct refusal in the wrong place, and this ordering would make a repeat discovery pay for a
-  judgment before being refused. Identity excluding an engine-authored output is defensible on its
-  own terms anyway, as argued above.
+- **Judge before `claim_session`, so a selection can join identity first time.** Rejected on
+  invariant 13, which is the more expensive of the two to bend: #133's lesson was nine paid calls
+  thrown away by a correct refusal in the wrong place, and this ordering would make a repeat
+  discovery pay for a judgment before being refused. The delete-and-re-claim above buys the same
+  outcome without moving the free gate.
+- **Report the narrowing and let the user re-run with `--context`.** Considered seriously, and it is
+  what the first working version did — it touches no invariant at all. Rejected because the re-run
+  throws away a session the user has already claimed and leaves it behind at revision 0, and because
+  a product that knows the right answer and asks the user to retype it has not finished the job.

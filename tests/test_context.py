@@ -8,6 +8,8 @@ trusting a literal anyone could forget to update after adding or resizing a card
 import re
 from pathlib import Path
 
+import pytest
+
 from requivo.core.context import available_cards, card_byte_size
 from requivo.paths import CONTEXT
 
@@ -118,3 +120,78 @@ def test_the_docs_stated_prompt_weight_range_matches_a_live_measurement():
         f"docs/context-cards.md says {documented_low}-{documented_high}%; a live measurement across "
         f"the eight generator prompts gives {low}-{high}% (from {list(zip(names, percentages))}). "
         "Re-measure and update the doc.")
+
+
+# ── the grounding judgment's deterministic half (#593) ────────────────────────────────────────────
+
+
+def test_one_unreadable_card_degrades_its_own_summary_row(tmp_path, monkeypatch):
+    """Invariant 15, one listing further along: a card that cannot be read reports itself as
+    unreadable and the other rows still arrive. Raising instead would make one bad file
+    indistinguishable from an install with no cards at all -- the state `load_context` refuses."""
+    from requivo.core import context as ctx
+
+    good, bad = tmp_path / "good.md", tmp_path / "bad.md"
+    good.write_text("# Card\n\n- Business domain: dentistry\n", encoding="utf-8")
+    bad.write_text("unreadable", encoding="utf-8")
+    monkeypatch.setattr(ctx, "_card_paths", lambda: {"good": good, "bad": bad})
+
+    real_read = type(bad).read_text
+
+    def refuse_one(self, *a, **kw):
+        if self == bad:
+            raise PermissionError("nope")
+        return real_read(self, *a, **kw)
+
+    monkeypatch.setattr(type(bad), "read_text", refuse_one)
+    rows = {c.stem: c for c in ctx.card_summaries()}
+
+    assert rows["bad"].unreadable is True and rows["bad"].domain == ""
+    assert rows["good"].unreadable is False, "a readable neighbour was dragged down with it"
+    assert rows["good"].domain == "dentistry"
+
+
+def test_a_business_domain_is_joined_across_the_lines_it_wraps_onto(tmp_path, monkeypatch):
+    """The bundled cards wrap their long domain lines, and a domain cut at the wrap reads as a
+    different domain to the judgment that has to recognise it."""
+    from requivo.core import context as ctx
+
+    card = tmp_path / "wrapped.md"
+    card.write_text("- Business domain: financial reporting — consolidating operational\n"
+                    "  data into figures a finance team acts on\n"
+                    "- Product type: platform\n", encoding="utf-8")
+    monkeypatch.setattr(ctx, "_card_paths", lambda: {"wrapped": card})
+
+    domain = ctx.card_summaries()[0].domain
+    assert domain.endswith("a finance team acts on"), domain
+    assert "Product type" not in domain, "the join ran past the field it was reading"
+
+
+def test_a_standalone_prompt_that_carries_the_shared_head_is_refused(tmp_path, monkeypatch):
+    """The mirror of `build_system_prompt`'s own refusal. A standalone template that opens with the
+    shared block would send the schema and every context card on the one call whose entire reason to
+    exist is that it sends neither -- and it would look, from the ledger, like a call that merely
+    cost more than expected."""
+    from requivo.core import context as ctx
+
+    bad = tmp_path / "carries_head.md"
+    bad.write_text(ctx.SHARED_PROMPT_HEAD + "then some instructions\n", encoding="utf-8")
+    monkeypatch.setattr(ctx, "PROMPTS", tmp_path)
+
+    with pytest.raises(ValueError, match="shared leading block"):
+        ctx.build_standalone_prompt("carries_head.md", {})
+
+    # Must fire: an ordinary standalone template still builds, and substitutes.
+    ok = tmp_path / "ok.md"
+    ok.write_text("Judge this: {{REQUEST}}\n", encoding="utf-8")
+    assert ctx.build_standalone_prompt("ok.md", {"{{REQUEST}}": "a leave system"}) == (
+        "Judge this: a leave system\n")
+
+
+def test_the_shipped_judgment_prompt_is_standalone_and_names_both_its_placeholders():
+    """The asset itself, not a fixture: it has to be buildable by the builder the generator uses."""
+    from requivo.core.context import build_standalone_prompt
+
+    text = build_standalone_prompt("context_judgment.md", {"{{REQUEST}}": "R", "{{CARDS}}": "- c: d"})
+    assert "R" in text and "- c: d" in text
+    assert "{{" not in text, "a placeholder reached the provider unsubstituted"

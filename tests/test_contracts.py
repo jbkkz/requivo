@@ -219,3 +219,35 @@ def test_a_prd_requirement_cannot_be_an_empty_row():
 
     with pytest.raises(ValidationError):
         Requirement(id="", requirement="", priority="must")
+
+
+# ── the grounding judgment (#593) ─────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("payload, why", [
+    ({"decision": "installed", "reason": "r"},
+     "installed with no cards selects nothing, which reads as every card downstream"),
+    ({"decision": "none", "reason": "r", "cards": ["b2b-platform"]},
+     "none names a card, so the verdict and the payload disagree"),
+    ({"decision": "uncovered", "reason": "r", "cards": ["b2b-platform"]},
+     "uncovered names a card it has just said covers nothing"),
+])
+def test_a_judgment_whose_payload_contradicts_its_decision_is_refused(payload, why):
+    """A verdict and a payload that disagree is what this contract exists to catch. The empty-
+    `installed` case is invariant 3's "refuse, don't filter" one call earlier: an empty selection
+    widens the context to everything instead of narrowing it (#593)."""
+    from requivo.core.contracts import ContextJudgment
+
+    with pytest.raises(ValidationError):
+        ContextJudgment.model_validate(payload)
+
+
+def test_the_three_judgments_that_agree_with_themselves_all_validate():
+    """The must-fire control: a validator that refused everything would pass the test above."""
+    from requivo.core.contracts import ContextDecision, ContextJudgment
+
+    assert ContextJudgment.model_validate({"decision": "none", "reason": "r"}).cards == []
+    assert ContextJudgment.model_validate({"decision": "uncovered", "reason": "r"}).cards == []
+    installed = ContextJudgment.model_validate(
+        {"decision": "installed", "reason": "r", "cards": ["b2b-platform"]})
+    assert installed.decision is ContextDecision.installed

@@ -267,6 +267,11 @@ _SWEPT_RENDERERS = {
     # class as the two above. Swept by
     # `test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu` (#544).
     "render_docs_menu",
+    # render_context_judgment's untrusted field is `ContextJudgment.reason` -- LLM-authored prose
+    # over an untrusted request, like `Question.q`, but it does not fit the model/brief/stories
+    # fixture shape the big sweep is built from. Swept by
+    # `test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout` (#593).
+    "render_context_judgment",
 }
 
 # `render_*` functions in `render/terminal.py` that render no model-authored prose, named with a
@@ -686,3 +691,51 @@ def test_a_forged_question_cannot_break_the_answer_folded_back_to_the_provider()
         "the folded structure itself must survive -- a dropped prefix would also satisfy the "
         "assertions above"
     )
+
+
+# -- #593: the grounding judgment's own prose, and the fourth state it must not collapse ----------
+
+
+def test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout():
+    """`ContextJudgment.reason` is LLM-authored prose over an untrusted request and is printed
+    verbatim, so it is the same threat as `Question.q` one readout along."""
+    from requivo.core.contracts import ContextJudgment
+    from requivo.render.terminal import render_context_judgment
+    from requivo.services.discovery import Grounding
+
+    forged = Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")
+    text = _render(render_context_judgment, forged)
+
+    assert not _forged_lines(text), text
+    assert _raw_controls(text) == ""
+    # Must fire: neutralized means escaped and still readable, never dropped. Asserted on tokens
+    # rather than the whole phrase, because this renderer wraps at 80 columns and a wrap is not a
+    # drop -- the same reason `test_ordinary_prose_renders_byte_for_byte_unchanged` keeps its
+    # fixtures short.
+    assert "FORGED" in text and "ZERO" in text, "the reason was dropped rather than neutralized"
+    assert "\\n" in text, "the embedded newline was removed instead of being made visible"
+
+
+def test_the_four_grounding_outcomes_read_as_four_different_answers():
+    """The control, and the reason the renderer exists at all: *nobody looked*, *nothing special
+    applies*, *these cards cover it* and *nothing covers it* are four facts. Two of them ending with
+    no card selected is what makes collapsing them tempting and wrong (#492, #593)."""
+    from requivo.core.contracts import ContextJudgment
+    from requivo.render.terminal import render_context_judgment
+    from requivo.services.discovery import Grounding
+
+    texts = {
+        "not asked": _render(render_context_judgment, Grounding(None, "this provider cannot")),
+        "none": _render(render_context_judgment,
+                        Grounding(ContextJudgment(decision="none", reason="ordinary software"), "")),
+        "installed": _render(render_context_judgment,
+                             Grounding(ContextJudgment(decision="installed", reason="finance",
+                                                       cards=["financial-reporting"]), "")),
+        "uncovered": _render(render_context_judgment,
+                             Grounding(ContextJudgment(decision="uncovered", reason="dentistry"), "")),
+    }
+    assert len(set(texts.values())) == 4, texts
+    assert "not checked" in texts["not asked"]
+    assert "financial-reporting" in texts["installed"]
+    assert "⚠" in texts["uncovered"], "the one outcome a reader must act on reads like the others"
+    assert "⚠" not in texts["none"]

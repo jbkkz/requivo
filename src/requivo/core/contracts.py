@@ -163,6 +163,53 @@ class Question(StrictModel):
     why: NonEmpty
 
 
+class ContextDecision(str, Enum):
+    """What a first discovery decided about its own grounding (`decision:
+    the-engine-writes-the-missing-card`). Three values because there are three answers, and the
+    expensive mistake is collapsing the first two: *no card is warranted* and *a card is warranted
+    and none is installed* are opposite verdicts that both end with no card selected."""
+
+    none = "none"
+    installed = "installed"
+    uncovered = "uncovered"
+
+
+# A judgment names installed cards by stem; more than the install can hold is a reply that has
+# stopped selecting. The ceiling is generous on purpose -- this is a shape check, not a policy.
+MAX_JUDGED_CARDS = 16
+
+
+class ContextJudgment(StrictModel):
+    """Whether the installed context cards cover this request's domain.
+
+    `reason` is shown to the user verbatim and is the whole protection against a silent verdict:
+    #492 refused a relevance status precisely because it would be wrong *invisibly*, and this is
+    admissible only because a human reads the sentence before it grounds anything."""
+
+    decision: ContextDecision
+    reason: NonEmpty
+    cards: list[str] = Field(default_factory=list, max_length=MAX_JUDGED_CARDS)
+
+    @model_validator(mode="after")
+    def _shape_matches_the_decision(self) -> ContextJudgment:
+        """A decision and a payload that disagree is the failure this contract exists to refuse.
+
+        `installed` with no cards selects nothing and reads, downstream, as *every card* -- the exact
+        widening invariant 3 refuses ("refuse, don't filter"). The other two naming cards would have
+        a reader believe a selection was made that the verdict says was not. Both ride the JSON retry
+        loop as a `ValueError` rather than reaching a caller. Guarded by
+        `test_a_judgment_whose_payload_contradicts_its_decision_is_refused`."""
+        if self.decision is ContextDecision.installed and not self.cards:
+            raise ValueError(
+                "decision 'installed' names no cards; an empty selection means *every* card "
+                "downstream, which is the opposite of what this decision claims")
+        if self.decision is not ContextDecision.installed and self.cards:
+            raise ValueError(
+                f"decision {self.decision.value!r} names cards {self.cards!r}; only 'installed' "
+                f"selects, so this reply's verdict and its payload disagree")
+        return self
+
+
 class Summary(StrictModel):
     objective: str = ""
     scope: str = ""

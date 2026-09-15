@@ -34,12 +34,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Generic, Literal, TypeVar, cast, overload
+from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
+from requivo.core.context import card_summaries, resolve_cards
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    ContextDecision,
+    ContextJudgment,
     EngineOutput,
     Epic,
     EstimateDraft,
@@ -64,6 +67,7 @@ from requivo.core.persistence import (
 )
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
+from requivo.providers.base import ContextJudge
 from requivo.render.markdown import (
     brief_markdown,
     criteria_markdown,
@@ -349,6 +353,17 @@ def _usage_since(before: int) -> dict:
     return usage
 
 
+class Grounding(NamedTuple):
+    """The answer to *is this session grounded in anything that knows its domain?*, and the third
+    state that makes it honest: `judgment is None` means nobody looked, and `why_not` says why.
+
+    A caller that renders `judgment is None` the same as `ContextDecision.none` has turned "we did
+    not ask" into "nothing is needed", which is the exact shape #492 refused to ship."""
+
+    judgment: ContextJudgment | None
+    why_not: str
+
+
 class DiscoveryService:
     """Provider-backed orchestration over the session/artifact services.
 
@@ -446,6 +461,98 @@ class DiscoveryService:
         """Persist a request as a session with no model yet — no LLM call. The 'Create session only'
         path: capture the request now, run discovery later."""
         return self.sessions.create_session(request, context_cards=cards, slug=slug).slug
+
+    def judge_grounding(self, request: str, *, cards: list[str] | None) -> Grounding:
+        """Ask whether any installed context card describes this request's domain.
+
+        **Report-only in this slice, and that is a scoping decision rather than the finished
+        feature** (#593, `decision: the-engine-writes-the-missing-card`): the verdict is handed to
+        the caller to render and changes no card selection. Acting on `installed` would narrow the
+        selection, and the selection is half a session's identity (invariant 11), so it cannot be
+        changed after `claim_session` has already claimed the slug -- see the issue for the three
+        ways out and which one the record picked.
+
+        Three things make this return rather than raise, each a state a caller must be able to tell
+        from the others:
+
+        - **Not asked, because the user chose.** An explicit `--context` is a human decision; paying
+          to second-guess it would either agree at cost or disagree with nothing to do about it.
+        - **Not asked, because this provider cannot.** `ContextJudge` is a protocol a provider may
+          not implement, and a stub in a test is the common case. *Nobody looked* must never render
+          as *no card is needed* -- that is the silent verdict #492 refused a status for.
+        - **Asked, and here is the verdict.**
+
+        Pinned by `test_an_explicit_card_selection_is_not_second_guessed`,
+        `test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_needed` and
+        `test_the_judgment_reaches_the_provider_with_one_line_per_installed_card`."""
+        if cards:
+            return Grounding(None, "the cards for this session were chosen with --context")
+        provider = self._need_provider()
+        if not isinstance(provider, ContextJudge):
+            return Grounding(None, f"the {getattr(provider, 'name', 'current')} provider does not "
+                                   f"answer grounding questions")
+        summaries = card_summaries()
+        if not summaries:
+            # `load_context` refuses this install outright a moment later, and with a remedy this
+            # method has no better version of. Saying "no card is needed" here would be the one
+            # wrong answer. `test_an_install_with_no_cards_is_not_judged_as_needing_none`.
+            return Grounding(None, "this install has no context cards to judge against")
+        return Grounding(provider.judge_context(request, cards=summaries), "")
+
+    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None
+                         ) -> tuple[Any, Grounding, list[str] | None]:
+        """Claim the session, judge its grounding, and act on the judgment when acting is safe.
+
+        The whole sequence lives here rather than in a surface, because acting on the verdict means
+        *deleting a session*, and a destructive step on the discovery path is exactly the kind of
+        thing that must have one implementation with one set of preconditions (invariant 14).
+
+        **Claim first** — the free gate stays ahead of every paid call, so a repeat discovery is
+        refused before the judgment is billed, not after (invariant 13, #133).
+
+        **Then judge, and re-claim only when every one of these holds:**
+
+        - the verdict is `installed`, so there is a narrower selection to move to;
+        - the caller named no cards, so nothing is overriding a human's own choice;
+        - **this call created the session** (`create_session_report`'s boolean), so an idempotent
+          re-entry onto somebody else's session can never be the thing deleted;
+        - it is *still* at revision 0 when re-read under the lock, because the judgment call takes
+          real time and the check that authorises a delete must be held across it (invariant 9).
+
+        The delete-then-create is not atomic across the two slugs, and does not need to be: what is
+        deleted is a session this call made moments ago and nothing has been applied to, so a crash
+        between them loses a claim rather than any work.
+
+        Returns the session to discover against, what was judged, and the card selection to reason
+        with. Pinned by `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
+        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
+        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`."""
+        provider = self._need_provider()
+        meta, created = self.sessions.create_session_report(
+            request, context_cards=cards, slug=slug,
+            provider=provider.name, model_name=provider.model_name())
+        _require_revision_zero(meta.slug, meta.current_revision)
+
+        grounding = self.judge_grounding(request, cards=cards)
+        judgment = grounding.judgment
+        if judgment is None or judgment.decision is not ContextDecision.installed:
+            return meta, grounding, cards
+        narrowed = resolve_cards(judgment.cards)
+        if cards or not created or not narrowed or narrowed == cards:
+            return meta, grounding, cards
+
+        with self.sessions.repo.lock(meta.slug):
+            # Re-read under the lock: `created` was true a call ago, and a call ago is long enough
+            # for the session to have been written to. A stale authorisation is how a delete stops
+            # being safe.
+            if self.sessions.repo.read_meta(meta.slug).current_revision != 0:
+                return meta, grounding, cards
+            self.sessions.delete_session(meta.slug)
+        meta = self.sessions.create_session(
+            request, context_cards=narrowed, slug=slug,
+            provider=provider.name, model_name=provider.model_name())
+        _require_revision_zero(meta.slug, meta.current_revision)
+        return meta, grounding, narrowed
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None):
         """Create (or reuse) the session a first discovery will land on, and hold it to revision 0.

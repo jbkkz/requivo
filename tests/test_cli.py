@@ -18,7 +18,7 @@ import shutil
 import sys
 
 import pytest
-from _fakes import _ENGINE_REPLY, FakeClient, _model_in_out, _run_app, full_slots, slot
+from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, FakeClient, _model_in_out, _run_app, full_slots, slot
 from _fakes import out as _built_model
 
 from requivo.cli import app
@@ -468,7 +468,7 @@ def test_pc_release_stamps_version():
 
 def test_pc_discover_once_saves_model():
     slug = "clitest-discover-probe-xyz"
-    _run_app(["discover", "clitest discover probe xyz", "--once"], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", "clitest discover probe xyz", "--once"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     folder = store.canonical_dir(slug)
     assert (folder / "model.json").exists()
     assert (folder / "request.md").exists()   # saved so `requivo answer` can resume
@@ -485,7 +485,7 @@ def test_pc_discover_prints_the_default_cards_before_the_paid_call():
     from requivo.services.sessions import SessionService
 
     output = _run_app(["discover", "clitest discover default cards", "--once"],
-                       client=FakeClient(_ENGINE_REPLY))
+                       client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     cards = available_cards()
     assert cards, "no bundled context cards found -- this test is not exercising anything"
     for name in cards:
@@ -504,7 +504,7 @@ def test_pc_discover_names_the_fallback_weight_when_the_average_cannot_be_measur
 
     monkeypatch.setattr(cli_module, "average_card_byte_size", lambda: None)
     output = _run_app(["discover", "clitest discover no measurable weight", "--once"],
-                       client=FakeClient(_ENGINE_REPLY))
+                       client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert "measurable weight" in output
     assert "bytes each" not in output
 
@@ -515,7 +515,7 @@ def test_pc_discover_with_explicit_context_does_not_also_print_the_all_cards_lin
     # things about what was loaded.
     output = _run_app(["discover", "clitest discover explicit cards", "--once",
                        "--context", "b2b-platform"],
-                      client=FakeClient(_ENGINE_REPLY))
+                      client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert "Context cards: b2b-platform" in output
     assert "document-management" not in output  # a card that was NOT selected must not be named
 
@@ -555,7 +555,7 @@ def test_discover_from_a_file_slugifies_its_name(tmp_path, monkeypatch):
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
     req = tmp_path / "Leave Approval v2.md"
     req.write_text("We would like a leave approval system.")
-    _run_app(["discover", str(req), "--once"], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", str(req), "--once"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert [m.slug for m in SessionService().list_sessions()] == ["leave-approval-v2"]
 
 
@@ -599,7 +599,7 @@ def _only_slug() -> str:
 
 def test_discover_reads_the_request_from_stdin_when_the_argument_is_a_dash(monkeypatch):
     monkeypatch.setattr(sys, "stdin", io.StringIO("We would like a leave approval system."))
-    fake = FakeClient(_ENGINE_REPLY)
+    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
     _run_app(["discover", "-"], client=fake)
     assert "leave approval system" in _saved_request(_only_slug())
     # The bug is not only that the text was wrong -- it is that a paid call went out carrying it.
@@ -611,7 +611,7 @@ def test_a_one_character_request_that_is_not_a_dash_is_still_literal_text(monkey
     hijack an ordinary short request -- and CI itself runs with a non-tty stdin, so that mistake
     would be invisible in exactly the environment that grades it."""
     monkeypatch.setattr(sys, "stdin", io.StringIO("PIPED TEXT THAT MUST NOT BE READ"))
-    _run_app(["discover", "x"], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", "x"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert _saved_request(_only_slug()).strip() == "x"
 
 
@@ -620,7 +620,7 @@ def test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on(mo
     assertion that matters is the second one: the refusal has to arrive *before* the provider call,
     or the fix has only changed which wrong request got paid for."""
     monkeypatch.setattr(sys, "stdin", _Tty(""))
-    fake = FakeClient(_ENGINE_REPLY)
+    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
     with pytest.raises(SystemExit) as e:
         _run_app(["discover", "-"], client=fake)
     assert e.value.code == 1
@@ -631,7 +631,7 @@ def test_an_empty_stdin_is_refused_rather_than_discovered_on(monkeypatch):
     """`printf "" | requivo discover -` is the same nothing-to-discover-from case the blank literal
     request above already refuses; it must reach the same refusal rather than the provider."""
     monkeypatch.setattr(sys, "stdin", io.StringIO("   \n "))
-    fake = FakeClient(_ENGINE_REPLY)
+    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
     with pytest.raises(SystemExit) as e:
         _run_app(["discover", "-"], client=fake)
     assert e.value.code == 2
@@ -649,7 +649,7 @@ def test_a_dash_is_stdin_even_when_a_file_of_that_name_exists(monkeypatch, tmp_p
     (cwd / "-").write_text("FILE CONTENT THAT MUST NOT BE READ", encoding="utf-8")
     monkeypatch.chdir(cwd)
     monkeypatch.setattr(sys, "stdin", io.StringIO("We would like a leave approval system."))
-    _run_app(["discover", "-"], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", "-"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     slug = _only_slug()
     assert "leave approval system" in _saved_request(slug)
     assert "MUST NOT BE READ" not in _saved_request(slug)
@@ -673,7 +673,7 @@ def test_a_path_that_merely_ends_in_a_dash_is_still_a_file(monkeypatch, tmp_path
     (cwd / "-").write_text("We would like a leave approval system.", encoding="utf-8")
     monkeypatch.chdir(cwd)
     monkeypatch.setattr(sys, "stdin", io.StringIO("STDIN THAT MUST NOT BE READ"))
-    _run_app(["discover", "./-"], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", "./-"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert "leave approval system" in _saved_request(_only_slug())
 
 
@@ -683,7 +683,7 @@ def test_a_file_path_argument_still_behaves_exactly_as_before(monkeypatch, tmp_p
     monkeypatch.setattr(sys, "stdin", io.StringIO("PIPED TEXT THAT MUST NOT BE READ"))
     req = tmp_path / "Leave Approval v3.md"
     req.write_text("We would like a leave approval system.", encoding="utf-8")
-    _run_app(["discover", str(req)], client=FakeClient(_ENGINE_REPLY))
+    _run_app(["discover", str(req)], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
     assert _only_slug() == "leave-approval-v3"
     assert "leave approval system" in _saved_request("leave-approval-v3")
 

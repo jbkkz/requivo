@@ -18,11 +18,12 @@ from __future__ import annotations
 import hashlib
 
 from requivo.core.analysis import estimate_confidence, soft_slots
-from requivo.core.context import build_prompt, build_system_prompt
+from requivo.core.context import CardSummary, build_prompt, build_standalone_prompt, build_system_prompt
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    ContextJudgment,
     EngineOutput,
     Epic,
     EstimateDraft,
@@ -71,6 +72,39 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
                          validate=_require_complete_model, reuse_system=reuse_system, model=model,
                          operation="analyze")
     return proposal.resolve(carry_from)
+
+
+def judge_context(client, request: str, cards: list[CardSummary], *,
+                  model: str | None = None) -> ContextJudgment:
+    """Does any installed card describe this request's domain? One cheap call, before a session has
+    a card selection at all (`decision: the-engine-writes-the-missing-card`).
+
+    `build_standalone_prompt`, not `build_system_prompt`: this is the one call that must NOT carry
+    the schema and every card, since its whole economy is asking about ~9k of text for the price of
+    a few hundred tokens. `reuse_system=False` for the same reason a one-call verb takes it (#9) --
+    there is no second call of this operation to read the cache it would write.
+
+    The card names are validated against the install here rather than trusted, because an invented
+    name is not inert: it would reach `resolve_cards` as a selection and refuse the discovery the
+    judgment was supposed to ground. Guarded by
+    `test_a_judgment_naming_a_card_the_install_does_not_have_is_refused`."""
+    known = {c.stem for c in cards}
+
+    def _names_only_installed_cards(judgment: ContextJudgment) -> None:
+        unknown = sorted(set(judgment.cards) - known)
+        if unknown:
+            raise ValueError(
+                f"cards {unknown} are not installed; name only the cards listed in the prompt, "
+                f"spelled exactly, or use decision 'uncovered' if none of them describes this domain")
+
+    listing = "\n".join(
+        f"- {c.stem}: " + ("(this card could not be read)" if c.unreadable else c.domain or "(no domain stated)")
+        for c in cards)
+    system = build_standalone_prompt(
+        "context_judgment.md", {"{{REQUEST}}": request, "{{CARDS}}": listing})
+    return _complete(client, system, [{"role": "user", "content": "Judge this request's grounding."}],
+                     ContextJudgment, validate=_names_only_installed_cards,
+                     reuse_system=False, model=model, operation="judge_context")
 
 
 def answer_turn(client, out: EngineOutput, request: str, answers: str,
@@ -224,6 +258,14 @@ _OP_PROMPTS = {
     "analyze": "engine.md", "brief": "brief.md", "stories": "stories.md", "estimate": "estimate.md",
     "prd": "prd.md", "criteria": "criteria.md", "epic": "epic.md", "release": "release.md",
 }
+
+
+# The prompts that are deliberately NOT operations in `_OP_PROMPTS`' sense: they carry no shared
+# leading block, so `build_prompt` (and therefore `prompt_version`) cannot assemble them, and they
+# produce no revision to stamp provenance onto. A second table rather than an exemption, so
+# `test_every_prompt_asset_belongs_to_an_operation` keeps accounting for every file on disk --
+# unclaimed is still dead weight, there are simply two ways to claim one now (#593).
+_STANDALONE_PROMPTS = {"judge_context": "context_judgment.md"}
 
 
 def prompt_version(op: str, only: list[str] | None = None) -> str:
