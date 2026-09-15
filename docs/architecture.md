@@ -110,6 +110,14 @@ written from.
   validates and applies it. No API key. Lives in `plugins/claude-code/` (not shipped in the wheel).
 - **Web** — `requivo web`, a local single-user UI over the services. See [web.md](web.md).
 
+One asymmetry is deliberate rather than a gap: a first Claude Code session grounds itself in the
+repository it runs in — a manifest, a README, what already exists — before it asks its first
+question, using file tools that session already holds at no extra cost. `discover` on the CLI does
+not, and does not get a scanner of its own in this pass; building one is real infrastructure (a
+token budget, `.gitignore`, secrets, vendored trees, monorepos) that should be funded by proof the
+grounding is worth it, not assumed. `decision: plugin-first-repo-grounding` names the graduation
+trigger.
+
 ## Building on Requivo as a library
 
 The package ships a [PEP 561 marker](https://peps.python.org/pep-0561/) (`py.typed`) and declares a

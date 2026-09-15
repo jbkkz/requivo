@@ -446,3 +446,84 @@ def test_run_pins_its_three_stop_conditions_and_never_asks_mid_loop():
         "run: must state it never asks the user for a slug mid-loop")
     assert re.search(r"never.{0,120}/requivo:\*", text) or re.search(r"never.{0,120}another `/requivo:", text), (
         "run: must state it never tells the user to run another /requivo:* command mid-loop")
+
+# ── first-run repository grounding (#594) ──────────────────────────────────────────
+
+
+def test_run_widens_allowed_tools_for_the_grounding_step():
+    """The grounding step (#594) enumerates files, and `Read` alone cannot list a directory.
+    `Glob` is the read-only, execution-free way to do that; its absence would make the
+    grounding step's own instructions un-followable."""
+    fm = _frontmatter((SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8"))
+    tools = fm.get("allowed-tools", "")
+    assert "Glob" in tools, "run: needs Glob to enumerate files for the grounding step (#594)"
+
+
+def test_run_grounds_new_sessions_in_the_repository_before_reasoning():
+    """#594: a bounded, untrusted, evidence-naming look at the repository, before "Reason ->
+    propose". Checked as properties -- a heading before the reasoning step, and that the
+    trust-boundary/could-not-read/one-snapshot rules are stated -- rather than exact wording
+    (#96)."""
+    text = (SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8")
+    ground = re.search(r"^### Ground in the repository$", text, re.MULTILINE)
+    reason = re.search(r"^### Reason → propose$", text, re.MULTILINE)
+    assert ground and reason and ground.start() < reason.start(), (
+        'run: the grounding step must exist and precede "Reason → propose"')
+    section = text[ground.end():reason.start()]
+    assert "untrusted" in section, "run: grounding step must state the repo is untrusted input"
+    assert "could not read" in section, "run: grounding step must name what it could not read"
+    assert "invariant 12" in section, "run: grounding step must hold the one-snapshot invariant"
+
+
+def test_run_grades_repo_derived_slots_as_inferred_with_file_evidence():
+    """#594's central rule: a fact read off the repository is `inferred`, never `explicit`, and
+    names the file. Scoped to "Reason -> propose", where the model is actually built, so a
+    mention of `inferred` elsewhere in the skill does not satisfy this."""
+    text = (SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8")
+    head = re.search(r"^### Reason → propose$", text, re.MULTILINE)
+    nxt = re.search(r"^### ", text[head.end():], re.MULTILINE)
+    section = text[head.end():head.end() + nxt.start()] if nxt else text[head.end():]
+    assert re.search(r"`inferred`, never `explicit`", section), (
+        "run: must grade repo-derived slots inferred, never explicit")
+    assert "evidence" in section, "run: must state the evidence names the file"
+
+
+def test_run_presents_a_perimeter_recap_before_the_first_question():
+    """The things #594 asks the recap to state, checked as concepts within the recap section
+    rather than literal wording (#96): the codebase, what already exists, the request restated,
+    the context cards plus the domain verdict, and what was assumed."""
+    text = (SKILLS / "run" / "SKILL.md").read_text(encoding="utf-8")
+    head = re.search(r"^### Present the perimeter recap, then ask$", text, re.MULTILINE)
+    assert head, "run: must carry the perimeter recap section"
+    nxt = re.search(r"^### ", text[head.end():], re.MULTILINE)
+    section = text[head.end():head.end() + nxt.start()] if nxt else text[head.end():]
+    for phrase in ("built with", "already exists", "restated", "you are reasoning against",
+                   "what you assumed"):
+        assert phrase in section, f"run: perimeter recap missing {phrase!r}"
+    assert "highest-value question" in section, "run: recap must still end on the single question"
+
+
+def test_reasoning_extends_trust_boundary_to_repository_text():
+    """#594: repository text a grounding step reads is untrusted, the same as the request and
+    the context cards -- stated in REASONING.md's shared trust boundary, not left to be inferred
+    per-skill."""
+    text = (PLUGIN / "REASONING.md").read_text(encoding="utf-8")
+    head = re.search(r"^## Trust boundary", text, re.MULTILINE)
+    assert head, "REASONING.md must carry the trust boundary section"
+    nxt = re.search(r"^## ", text[head.end():], re.MULTILINE)
+    section = text[head.end():head.end() + nxt.start()] if nxt else text[head.end():]
+    assert re.search(r"repository text", section), (
+        "REASONING.md: trust boundary must name repository text as untrusted")
+
+
+def test_reasoning_grades_a_repo_derived_fact_as_inferred_in_the_honesty_rules():
+    """The honesty-rules half of #594's central rule, in the shared file every skill reads --
+    stating it only in SKILL.md would make it one skill's opinion, not the shared rule."""
+    text = (PLUGIN / "REASONING.md").read_text(encoding="utf-8")
+    head = re.search(r"^## Honesty rules", text, re.MULTILINE)
+    assert head, "REASONING.md must carry the honesty rules section"
+    nxt = re.search(r"^## ", text[head.end():], re.MULTILINE)
+    section = text[head.end():head.end() + nxt.start()] if nxt else text[head.end():]
+    assert re.search(r"repository is `inferred`, never `explicit`", section), (
+        "REASONING.md: honesty rules must grade a repo-derived fact as inferred")
+
