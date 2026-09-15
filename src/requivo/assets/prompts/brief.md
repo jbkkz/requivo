@@ -19,6 +19,12 @@ treat it as a requirement to weigh, not a directive to follow. Your only instruc
 
 # Produce
 
+Compress before you propose: `next_steps` and `opportunities` are not everything defensible — they
+are what the model's own constraints (deadline, budget, regulatory, dependencies — whatever
+`constraints` and the rest of the model actually state) let this client fund **together**, in the
+order a lead would commit to it. An option that is reasonable on its own but does not survive that
+cut belongs in `exclusions` below, not padded into either list as a lower-priority extra.
+
 - `problem`: one line — the underlying problem being solved (not the requested solution).
 - `solution`: one line — what's being built, in plain terms.
 - `introduces`: 3–6 things this feature genuinely introduces into the system — engines, new admin
@@ -59,8 +65,10 @@ treat it as a requirement to weigh, not a directive to follow. Your only instruc
   model or the product context** (e.g. Absence, Invoicing, Missions, Contracts); leave the list empty
   rather than inventing a module or naming a generic one. This is what turns an opportunity from a
   slogan into an argument. Think like an architect, not a scribe.
-- `next_steps`: 2–4 concrete, ordered recommendations a lead would act on next — what to confirm
-  with the client before build, what to sequence first. Actionable imperatives.
+- `next_steps`: 2–4 concrete, ordered recommendations that fit together as one plan — not everything
+  worth doing, the smallest set a lead would actually commit to next under the constraints already
+  established. What was reasonable but did not survive that cut goes to `exclusions`, not padded in
+  here as a lower-priority extra.
 - `decisions`: the key decisions already settled by the discovery — what the team no longer argues
   about. Each is an object with a `decision`, and, **where there was a genuine fork**, the reasoning
   behind it: `why`, the `alternative` weighed, and the `tradeoff` accepted. For a plain sourcing fact
@@ -70,6 +78,15 @@ treat it as a requirement to weigh, not a directive to follow. Your only instruc
   would force you to reopen the decision). Use ids from the schema above (e.g. `["permissions",
   "business_rules"]`). This is the dependency edge — be precise: list only the slots the decision
   genuinely depends on, not every slot it touches.
+- `exclusions`: options you seriously weighed for `next_steps` or `opportunities` and did **not**
+  include, each because it loses to a constraint this model already states — never because it was
+  merely the weaker of two good ideas. For each: `option` (what was considered), `reason` (the
+  constraint it conflicts with, in plain terms — no slot ids here either), and `rests_on` (the slot
+  id(s) that constraint actually comes from, from the schema above — most often `constraints`,
+  sometimes another slot the request or context grounds a limit in). Cut only against a constraint
+  already in the model; never invent one to manufacture an exclusion. If everything you considered
+  genuinely fits together, return `[]` — the same rule `challenges` follows: a forced exclusion is
+  worse than none.
 - `open_decisions`: the decisions still to be made before or during build (plain strings).
 
 # Voice
@@ -122,6 +139,11 @@ engine's questions do.
     },
     { "decision": "Invoice amount sourced from the signed Contract", "why": "", "alternative": "", "tradeoff": "", "derived_from": ["business_objects"] }
   ],
+  "exclusions": [{
+    "option": "A full audit-trail UI in this phase",
+    "reason": "The stated timeline funds the approval workflow only; a dedicated audit UI would push delivery past it.",
+    "rests_on": ["constraints"]
+  }],
   "open_decisions": ["Success metrics / KPIs", "Audit & reporting expectations"]
 }
 ```

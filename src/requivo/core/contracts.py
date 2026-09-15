@@ -519,6 +519,10 @@ class Brief(StrictModel):
     opportunities: list[Opportunity] = Field(default_factory=list)  # ranked by leverage
     next_steps: list[str] = Field(default_factory=list)
     decisions: list[DesignDecision] = Field(default_factory=list)  # settled decisions, with tradeoffs
+    # Options next_steps/opportunities did not survive the compression against an existing
+    # constraint (#600) — typed like its `EngineOutput` sibling so a generator hands #599's model
+    # item somewhere real, rather than prose: guarded by `test_brief_carries_typed_exclusions_it_can_propose_600`.
+    exclusions: list[Exclusion] = Field(default_factory=list)
     open_decisions: list[str] = Field(default_factory=list)  # decisions still to make
 
 

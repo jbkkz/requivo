@@ -725,6 +725,31 @@ the current model rather than assuming it, which is what this test pins. See #28
     assert saved["stale"] is True        # …and the workflow change it never saw makes it stale
 
 
+def test_a_generated_briefs_exclusions_are_absorbed_into_the_persisted_model(workspace):
+    """#600: `absorb_reasoning` now carries `Brief.exclusions` into the model the same way it
+    already carries decisions/challenges/opportunities, so an excluded option lands in
+    `model.json` — #599's typed model content — not only in the rendered brief."""
+    from requivo.core.contracts import Brief, Exclusion
+    from requivo.services.discovery import DiscoveryService
+
+    class _BriefProvider(_FakeProvider):
+        def generate(self, artifact_type, model, *, only=None, **kwargs):
+            assert artifact_type == "brief"
+            return Brief(complexity="low", solution="S", exclusions=[Exclusion(
+                option="A full audit-trail UI", reason="The stated timeline funds the approval "
+                "workflow only", rests_on=["constraints"])])
+
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", _full_model())
+
+    DiscoveryService(_BriefProvider()).generate("s", "brief")
+
+    exclusions = svc.load_model("s").exclusions
+    assert [e.option for e in exclusions] == ["A full audit-trail UI"]
+    assert exclusions[0].rests_on == ["constraints"]
+
+
 # ── misc ──────────────────────────────────────────────────────────────────────
 
 
