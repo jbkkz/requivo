@@ -260,8 +260,9 @@ files anywhere:
    again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
    `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
    (shape/JSON). On `revision_conflict`, see the revision contract above.
-4. Read back the structured result (revision, changed_slots, changed_decisions, stale_artifacts,
-   readiness) and relay it.
+4. Read back the structured result (revision, changed_slots, changed_decisions,
+   changed_challenges, changed_opportunities, changed_exclusions, stale_artifacts, readiness) and
+   relay it.
 
 **A refused apply changed nothing, so there is nothing to undo.** `update_model` validates the
 proposal inside the session lock *before* it writes, so a proposal that fails validation leaves no
