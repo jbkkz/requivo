@@ -355,3 +355,150 @@ def test_session_service_runs_unchanged_on_a_non_file_repository():
     assert st["revision"] == 2 and "understanding" in st
     # provenance is recorded per revision on the non-file backing
     assert [rr.surface for rr in svc.meta("leave-mem").revisions] == ["cli-discover", None]
+
+
+# ── the grounding judgment, through the service (#593) ────────────────────────────────────────────
+# `decision: the-engine-writes-the-missing-card`. These drive `DiscoveryService` over stubs, because
+# what they pin is which of four states the service reports and whether it is allowed to delete a
+# session -- neither is visible from the provider function alone.
+
+
+class _Judge:
+    """A `ReasoningProvider` that also answers grounding questions. Records what it was asked."""
+
+    name = "judging-stub"
+
+    def __init__(self, judgment=None):
+        from requivo.core.contracts import ContextJudgment
+        self.judgment = judgment or ContextJudgment(decision="none", reason="ordinary software")
+        self.asked: list[list] = []
+
+    def judge_context(self, request, *, cards):
+        self.asked.append(cards)
+        return self.judgment
+
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+        return _full_model_out()
+
+    def generate(self, artifact_type, model, *, only=None, **kwargs):
+        raise AssertionError("no generation in these tests")
+
+    def model_name(self):
+        return "stub-model"
+
+    def provenance(self, op, *, only=None):
+        return {"provider": self.name, "model_name": "stub-model", "prompt_version": "sha256:0"}
+
+
+def _full_model_out():
+    return out({"problem": slot(80, "explicit", "high")})
+
+
+def _disco(provider):
+    from requivo.services.discovery import DiscoveryService
+    return DiscoveryService(provider)
+
+
+def test_an_explicit_card_selection_is_not_second_guessed(workspace):
+    """A `--context` is a human decision. Paying to re-examine it would either agree at cost or
+    disagree with nothing the service is allowed to do about it."""
+    judge = _Judge()
+    grounding = _disco(judge).judge_grounding("a request", cards=["b2b-platform"])
+
+    assert judge.asked == [], "the judgment was billed over a selection the user had already made"
+    assert grounding.judgment is None
+    assert "--context" in grounding.why_not
+
+
+def test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_needed(workspace):
+    """`ContextJudge` is a protocol a provider may simply not implement. *Nobody looked* and *no card
+    is needed* must never be the same answer -- that is the silent verdict #492 refused a status for."""
+    grounding = _disco(_FakeProvider()).judge_grounding("a request", cards=None)
+
+    assert grounding.judgment is None, "a provider that cannot judge produced a verdict anyway"
+    assert grounding.why_not, "not asked, and it did not say why"
+
+
+def test_the_judgment_reaches_the_provider_with_one_line_per_installed_card(workspace):
+    """The summaries are read in `core` and passed down, so the provider cannot answer about a
+    different set of cards than the session would actually load."""
+    from requivo.core.context import available_cards
+
+    judge = _Judge()
+    _disco(judge).judge_grounding("a request", cards=None)
+
+    assert len(judge.asked) == 1
+    assert [c.stem for c in judge.asked[0]] == sorted(available_cards())
+
+
+def test_an_install_with_no_cards_is_not_judged_as_needing_none(workspace, monkeypatch):
+    """`load_context` refuses this install outright a moment later, with a remedy this method has no
+    better version of. Answering "no card is needed" here would be the one wrong answer."""
+    from requivo.services import discovery as disco_mod
+
+    monkeypatch.setattr(disco_mod, "card_summaries", list)
+    judge = _Judge()
+    grounding = _disco(judge).judge_grounding("a request", cards=None)
+
+    assert judge.asked == [], "an install with nothing to judge against was still billed"
+    assert grounding.judgment is None and "no context cards" in grounding.why_not
+
+
+def test_a_narrowing_verdict_reclaims_under_the_narrowed_identity(workspace):
+    """The selection is half a session's identity (invariant 11), so acting on `installed` cannot be
+    an edit -- the empty session this call just made is deleted and re-claimed under the narrower
+    identity, leaving exactly one session that records the cards it will actually reason against."""
+    from requivo.core.contracts import ContextJudgment
+
+    judge = _Judge(ContextJudgment(decision="installed", reason="finance",
+                                   cards=["financial-reporting"]))
+    disco = _disco(judge)
+    meta, grounding, cards = disco.claim_and_ground("a billing request", cards=None, slug=None)
+
+    assert cards == ["financial-reporting"]
+    assert meta.context_cards == ["financial-reporting"], (
+        "the session records a selection it was not created with")
+    assert grounding.judgment.decision.value == "installed"
+    assert len(SessionService().list_sessions()) == 1, "the widened claim was left behind"
+
+
+def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict(workspace):
+    """`create_session_report`'s boolean is the whole authorisation for the delete. Re-entering an
+    existing session idempotently and then deleting it on a verdict would destroy somebody's claim
+    on the strength of a judgment about a request they never re-ran."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+    first = svc.create_session("a billing request")
+
+    judge = _Judge(ContextJudgment(decision="installed", reason="finance",
+                                   cards=["financial-reporting"]))
+    meta, _grounding, cards = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
+
+    assert meta.slug == first.slug, "an idempotent re-entry landed somewhere else"
+    assert cards is None, "a session this call did not create was narrowed anyway"
+    assert svc.exists(first.slug), "a session this call did not create was deleted"
+
+
+def test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone(workspace):
+    """`created` was true a call ago, and a call ago is long enough for a model to have landed. The
+    authorisation is re-read under the lock (invariant 9), because a stale one is how a delete stops
+    being safe."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+
+    class _WritesMidJudgment(_Judge):
+        def judge_context(self, request, *, cards):
+            # A concurrent writer, at the only moment that matters: after the claim, before the
+            # verdict is acted on.
+            svc.update_model(svc.list_sessions()[0].slug, _full_model())
+            return super().judge_context(request, cards=cards)
+
+    judge = _WritesMidJudgment(ContextJudgment(decision="installed", reason="finance",
+                                              cards=["financial-reporting"]))
+    meta, _grounding, cards = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
+
+    assert svc.exists(meta.slug), "a session with a model in it was deleted on a verdict"
+    assert cards is None, "the narrowing went ahead over a session that had moved on"
+    assert svc.list_sessions()[0].current_revision == 1, "the concurrent write was lost"

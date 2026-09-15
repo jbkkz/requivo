@@ -36,11 +36,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
-from requivo.core.context import card_summaries
+from requivo.core.context import card_summaries, resolve_cards
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    ContextDecision,
     ContextJudgment,
     EngineOutput,
     Epic,
@@ -497,6 +498,61 @@ class DiscoveryService:
             # wrong answer. `test_an_install_with_no_cards_is_not_judged_as_needing_none`.
             return Grounding(None, "this install has no context cards to judge against")
         return Grounding(provider.judge_context(request, cards=summaries), "")
+
+    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None
+                         ) -> tuple[Any, Grounding, list[str] | None]:
+        """Claim the session, judge its grounding, and act on the judgment when acting is safe.
+
+        The whole sequence lives here rather than in a surface, because acting on the verdict means
+        *deleting a session*, and a destructive step on the discovery path is exactly the kind of
+        thing that must have one implementation with one set of preconditions (invariant 14).
+
+        **Claim first** — the free gate stays ahead of every paid call, so a repeat discovery is
+        refused before the judgment is billed, not after (invariant 13, #133).
+
+        **Then judge, and re-claim only when every one of these holds:**
+
+        - the verdict is `installed`, so there is a narrower selection to move to;
+        - the caller named no cards, so nothing is overriding a human's own choice;
+        - **this call created the session** (`create_session_report`'s boolean), so an idempotent
+          re-entry onto somebody else's session can never be the thing deleted;
+        - it is *still* at revision 0 when re-read under the lock, because the judgment call takes
+          real time and the check that authorises a delete must be held across it (invariant 9).
+
+        The delete-then-create is not atomic across the two slugs, and does not need to be: what is
+        deleted is a session this call made moments ago and nothing has been applied to, so a crash
+        between them loses a claim rather than any work.
+
+        Returns the session to discover against, what was judged, and the card selection to reason
+        with. Pinned by `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
+        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
+        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`."""
+        provider = self._need_provider()
+        meta, created = self.sessions.create_session_report(
+            request, context_cards=cards, slug=slug,
+            provider=provider.name, model_name=provider.model_name())
+        _require_revision_zero(meta.slug, meta.current_revision)
+
+        grounding = self.judge_grounding(request, cards=cards)
+        judgment = grounding.judgment
+        if judgment is None or judgment.decision is not ContextDecision.installed:
+            return meta, grounding, cards
+        narrowed = resolve_cards(judgment.cards)
+        if cards or not created or not narrowed or narrowed == cards:
+            return meta, grounding, cards
+
+        with self.sessions.repo.lock(meta.slug):
+            # Re-read under the lock: `created` was true a call ago, and a call ago is long enough
+            # for the session to have been written to. A stale authorisation is how a delete stops
+            # being safe.
+            if self.sessions.repo.read_meta(meta.slug).current_revision != 0:
+                return meta, grounding, cards
+            self.sessions.delete_session(meta.slug)
+        meta = self.sessions.create_session(
+            request, context_cards=narrowed, slug=slug,
+            provider=provider.name, model_name=provider.model_name())
+        _require_revision_zero(meta.slug, meta.current_revision)
+        return meta, grounding, narrowed
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None):
         """Create (or reuse) the session a first discovery will land on, and hold it to revision 0.

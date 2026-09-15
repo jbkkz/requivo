@@ -17,11 +17,12 @@ Driven directly against the services with a stub `ReasoningProvider` -- no CLI, 
 from __future__ import annotations
 
 import io
+import json
 import logging
 from contextlib import redirect_stderr, redirect_stdout
 
 import pytest
-from _fakes import out, slot
+from _fakes import FakeClient, out, slot
 
 from requivo.core.contracts import Brief
 from requivo.core.errors import RevisionConflictError
@@ -257,3 +258,43 @@ def test_removing_the_null_handler_reproduces_the_leak_the_test_above_guards_aga
         requivo_logger.handlers = requivo_before[0]
         requivo_logger.level = requivo_before[1]
         requivo_logger.propagate = requivo_before[2]
+
+
+def test_a_judgment_naming_a_card_the_install_does_not_have_is_refused():
+    """An invented card name is not inert: it would reach `resolve_cards` as a selection and refuse
+    the very discovery the judgment was supposed to ground. The check rides `_complete`'s retry loop
+    as a `ValueError`, so the model is told what it got wrong rather than the run failing (#593)."""
+    from requivo.core.context import CardSummary
+    from requivo.core.errors import ProviderOutputError
+    from requivo.providers.anthropic.generators import judge_context
+
+    cards = [CardSummary(stem="b2b-platform", domain="enterprise management")]
+    invented = json.dumps({"decision": "installed", "reason": "r", "cards": ["dentistry-es"]})
+    client = FakeClient(invented, invented, invented)
+
+    # `ProviderOutputError`, a `RequivoError` *sibling* of `EngineError` rather than a subclass --
+    # the distinction CLAUDE.md names and `converse()`'s own catch was once wrong about.
+    with pytest.raises(ProviderOutputError):
+        judge_context(client, "a request", cards)
+    assert len(client.calls) == 3, "the correction did not ride the retry loop"
+
+    # Must fire: the same shape naming a card that *is* installed comes straight back.
+    good = json.dumps({"decision": "installed", "reason": "r", "cards": ["b2b-platform"]})
+    judged = judge_context(FakeClient(good), "a request", cards)
+    assert judged.cards == ["b2b-platform"]
+
+
+def test_the_judgment_prompt_carries_neither_the_schema_nor_the_cards():
+    """Its whole economy is asking about ~9k of context for the price of a few hundred tokens, and
+    nothing else in the provider sends a system prompt that is not the shared block (#593)."""
+    from requivo.core.context import SHARED_PROMPT_HEAD, CardSummary
+    from requivo.providers.anthropic.generators import judge_context
+
+    client = FakeClient(json.dumps({"decision": "none", "reason": "r"}))
+    judge_context(client, "a leave approval system", [CardSummary(stem="b2b-platform", domain="d")])
+
+    system = client.calls[0]["system"]
+    text = system if isinstance(system, str) else "".join(b["text"] for b in system)
+    assert not text.startswith(SHARED_PROMPT_HEAD[:40])
+    assert "# Model schema" not in text, "the judgment call is paying for the schema"
+    assert "a leave approval system" in text and "b2b-platform" in text

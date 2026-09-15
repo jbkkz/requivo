@@ -94,6 +94,14 @@ _ENGINE_REPLY = json.dumps(
 )
 
 
+# Since #593 a first `discover` with no `--context` judges its grounding *before* the discovery
+# turn, so every fixture that drives that path scripts this reply first. Written at the call sites
+# rather than prepended inside `FakeClient`, because how many calls a first discovery costs is
+# precisely what several of those tests are for -- hiding the extra one in the fake would make them
+# pass while measuring nothing. `none` is the ordinary verdict and changes no card selection.
+_JUDGMENT_REPLY = json.dumps({"decision": "none", "reason": "ordinary software, nothing special"})
+
+
 # ── The `requivo` subcommand CLI ──────────────────────────────────────────────
 # The modern surface is a thin layer over the same core; app() takes an injected
 # client so API-backed verbs run offline against a FakeClient.
