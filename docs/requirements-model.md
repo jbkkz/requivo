@@ -57,11 +57,11 @@ A perimeter owns its slot schema, its elicitation spec, and the discovery guidan
 new one ships a single artifact, its equivalent of the decision brief; software scoping carries the
 larger set named below, in *Dependencies and staleness*, because it grew them one at a time and not
 because a perimeter is entitled to them. What is **Core**, unchanged across every perimeter, is the
-*mechanism* the rest of this page describes: the driver, evidence and coverage,
-decisions/challenges/opportunities, the dependency graph and its staleness rule, readiness. Where a
-section below names a concrete artifact type (`prd`, `stories`, `estimate`, `criteria`, `epic`,
-`release`) or a software-specific slot, that is this one perimeter's own content riding on the shared
-mechanism, not the mechanism itself.
+*mechanism* the rest of this page describes: the driver, evidence and coverage, the reasoning items
+(decisions, challenges, opportunities, exclusions), the dependency graph and its staleness rule,
+readiness. Where a section below names a concrete artifact type (`prd`, `stories`, `estimate`,
+`criteria`, `epic`, `release`) or a software-specific slot, that is this one perimeter's own content
+riding on the shared mechanism, not the mechanism itself.
 
 ## The driver: information value = uncertainty × impact
 
@@ -148,11 +148,11 @@ the objective, the current understanding, each slot's stated value under *What i
 first half of *Important assumptions*, and — since #599 — *Out of scope*, are the model's own words,
 copied through. Those words are on the mirroring side, so a French request produces a
 `solution-assessment.md` whose judgment — problem, solution, complexity, decisions, challenges,
-risks — is English and whose five projected sections are French.
+risks — is English and whose projected sections are French.
 
 That is not a defect to render away, and since #491 it is not an open question either:
 `decision: the-decision-briefs-quoted-half` settles it. **The saved brief stays on the English
-anchor side, and its five projected sections are quotations** — the client's own words about their
+anchor side, and its projected sections are quotations** — the client's own words about their
 own problem, which is the one kind of text not improved by being rendered into the document's
 language. What decides it is the reader: a *saved* `solution-assessment.md` is read by the build
 side and stands as the trail behind a commitment, the same audience the anchor exists for, while the
