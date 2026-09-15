@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from requivo.core.context import CardSummary
 from requivo.core.contracts import ContextJudgment, EngineOutput
+from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.providers.anthropic.client import current_model_name, new_client
 from requivo.providers.anthropic.generators import _GENERATORS, answer_turn, judge_context, prompt_version, run
 from requivo.providers.errors import EngineError
@@ -32,7 +33,7 @@ class AnthropicProvider:
 
     def analyze(self, request: str, *, current_model: EngineOutput | None = None,
                 answers: str | None = None, only: list[str] | None = None,
-                reuse_system: bool = False) -> EngineOutput:
+                reuse_system: bool = False, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
         """One reasoning turn, on either branch — **one call per operation by default**, hence
         `reuse_system=False`. The caching question is decidable only per *operation*, not per
         function: `DiscoveryService.start`/`run_discovery`/`answer` each reach this once, while the
@@ -41,9 +42,9 @@ class AnthropicProvider:
         `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
         if current_model is not None and answers is not None:
             return answer_turn(self.client, current_model, request, answers, only=only,
-                               reuse_system=reuse_system, model=self._model)
+                               reuse_system=reuse_system, model=self._model, perimeter=perimeter)
         return run(self.client, [{"role": "user", "content": request}], only=only,
-                   reuse_system=reuse_system, model=self._model)
+                   reuse_system=reuse_system, model=self._model, perimeter=perimeter)
 
     def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
         """`ContextJudge`, the second protocol this class satisfies. Separate from `analyze` because
@@ -70,9 +71,10 @@ class AnthropicProvider:
     def model_name(self) -> str:
         return self._model if self._model is not None else current_model_name()
 
-    def provenance(self, op: str, *, only: list[str] | None = None) -> dict:
+    def provenance(self, op: str, *, only: list[str] | None = None,
+                   perimeter: str = DEFAULT_PERIMETER) -> dict:
         """Who reasoned, with what, against which prompt — the fields a revision records. The service
         asks the provider for this instead of assembling it, so a second provider cannot silently
         stamp revisions as `anthropic`, and the prompt identity comes from the layer that owns it."""
         return {"provider": self.name, "model_name": self.model_name(),
-                "prompt_version": prompt_version(op, only)}
+                "prompt_version": prompt_version(op, only, perimeter=perimeter)}

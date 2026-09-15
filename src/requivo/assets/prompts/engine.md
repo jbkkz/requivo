@@ -46,13 +46,7 @@ conversation.
 3. **Ask only the right questions**: 3 to 6 max, sorted by descending information value.
    Each question names the target slot and the *why* (the stake). Aim for the **blind spot** — the
    question the client did not anticipate and that changes the dev effort.
-   - **Primary objects first.** For every core object the request names (a Job, an Invoice, a
-     Mission…), its lifecycle is usually the highest-value blind spot: **where it is created, who
-     assigns/owns it, who updates it, under what conditions it completes, and where it goes
-     afterward.** When the request describes work *on* an object without saying where that object comes
-     from upstream, that origin question almost always outranks downstream detail — ask it in the
-     first turn, not after the peripheral slots. A missing upstream (e.g. "who creates and dispatches
-     the jobs?") can silently expand the scope into a whole subsystem.
+   - {{PERIMETER_GUIDANCE}}
    - **Ask the stakeholder to confirm behaviour, not to design the mechanism.** The reader is a
      business owner, not an engineer. Surface the *expected behaviour or policy* to confirm ("a sync
      retry must never double-count a completion — is that right?"), never the technical mechanism to

@@ -52,7 +52,8 @@ from pydantic import ValidationError
 
 from requivo.core.contracts import PersistedEngineOutput
 from requivo.core.dependencies import ARTIFACT_FILENAMES
-from requivo.core.errors import InvalidFilenameError, RequivoError
+from requivo.core.errors import InvalidFilenameError, RequivoError, UnknownPerimeterError
+from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import (
     canonical_dir,
     content_hash,
@@ -142,18 +143,22 @@ class ReadableRevision:
     payload: str
 
 
-def _try_revision(d: Path, i: int, expected_hashes: dict[int, str] | None) -> ReadableRevision | None:
+def _try_revision(d: Path, i: int, expected_hashes: dict[int, str] | None,
+                  perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
     """One candidate: does `revisions/NNNN-model.json` exist, parse under the permissive contract,
     and — when `expected_hashes` names a hash for it — match it? Shared by `newest_readable_revision`
     (searching) and `readable_revision` (checking one specific number), so the two never state the
     same three-part check twice. `expected` absent or empty is unconfirmed rather than refused, the
-    same tolerance `inspect_session_dir` gives a legacy revision record with no recorded hash."""
+    same tolerance `inspect_session_dir` gives a legacy revision record with no recorded hash.
+    `perimeter` (#608) defaults to software -- a caller repairing a session it already knows the
+    perimeter of should pass it, the same way `inspect_session_dir` resolves it from session.json."""
     f = d / "revisions" / f"{i:04d}-model.json"
     if not f.is_file():
         return None
     try:
         payload = f.read_text(encoding="utf-8")
-        PersistedEngineOutput.model_validate_json(payload)  # permissive, as inspect_session_dir below
+        # permissive, as inspect_session_dir below
+        PersistedEngineOutput.model_validate_json(payload, context={"perimeter": perimeter})
     except (OSError, ValidationError, ValueError):
         return None
     expected = (expected_hashes or {}).get(i)
@@ -162,18 +167,18 @@ def _try_revision(d: Path, i: int, expected_hashes: dict[int, str] | None) -> Re
     return ReadableRevision(i, payload)
 
 
-def readable_revision(d: Path, revision: int, *,
-                      expected_hashes: dict[int, str] | None = None) -> ReadableRevision | None:
+def readable_revision(d: Path, revision: int, *, expected_hashes: dict[int, str] | None = None,
+                      perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
     """Is this one specific revision readable and trustworthy? `None` if the file is missing, does
     not parse, or does not match its recorded hash — the check `session restore`'s explicit
     `--revision N` runs before touching anything, so a caller-named target is refused on exactly the
     same grounds `newest_readable_revision`'s search would have skipped it on, never on a looser one.
     See `_try_revision` for what "readable and trustworthy" means."""
-    return _try_revision(d, revision, expected_hashes)
+    return _try_revision(d, revision, expected_hashes, perimeter)
 
 
-def newest_readable_revision(d: Path, n: int, *,
-                             expected_hashes: dict[int, str] | None = None) -> ReadableRevision | None:
+def newest_readable_revision(d: Path, n: int, *, expected_hashes: dict[int, str] | None = None,
+                             perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
     """The highest revision number in `1..n` whose `revisions/NNNN-model.json` exists, parses under
     the same permissive contract `inspect_session_dir` checks it against, and — when
     `expected_hashes` names one — matches the hash `session.json`'s own revision log recorded for
@@ -197,7 +202,7 @@ def newest_readable_revision(d: Path, n: int, *,
     revisions parsed" in a form a caller could use without re-deriving this same loop.
     """
     for i in range(n, 0, -1):
-        found = _try_revision(d, i, expected_hashes)
+        found = _try_revision(d, i, expected_hashes, perimeter)
         if found is not None:
             return found
     return None
@@ -233,11 +238,19 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
         return findings
     try:
         meta = migrate_session(raw)
+    except UnknownPerimeterError as e:
+        # Named separately from the generic RequivoError arm below (#608): a `session verify`/`doctor`
+        # reader needs `unknown_perimeter` to tell "this session names a perimeter we don't have" apart
+        # from every other way session.json can be malformed, and the two are otherwise the identical
+        # exception family.
+        bad("unknown_perimeter", str(e))
+        return findings
     except (RequivoError, ValidationError) as e:
         # Both are expected here and neither should escape as a traceback: a *future* format is a
         # RequivoError by design, and a structurally wrong session.json is a Pydantic ValidationError.
         bad("invalid_session_json", f"session.json is not valid session metadata: {e}")
         return findings
+    perimeter = resolve_perimeter(meta.perimeter)
 
     if expected_slug is not None and meta.slug != expected_slug:
         bad("slug_mismatch",
@@ -280,8 +293,10 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
             # The permissive contract, matching `load_revision_model`: a field a newer Requivo added
             # is legal on disk, so a checker that refused it would report a defect in a session that
             # opens perfectly well — the diagnostic disagreeing with the loader about the same file
-            # is worse than either answer on its own (#14).
-            PersistedEngineOutput.model_validate_json(payload)
+            # is worse than either answer on its own (#14). Validated against the session's own
+            # perimeter (#608), resolved above — a go-to-market revision checked against the software
+            # schema would report every one of its slots as unknown.
+            PersistedEngineOutput.model_validate_json(payload, context={"perimeter": perimeter})
         except (ValidationError, ValueError) as e:
             bad("invalid_revision_model", f"revisions/{i:04d}-model.json is not a valid model: {e}")
 
@@ -304,7 +319,8 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
     else:
         payload = model_path.read_text(encoding="utf-8")
         try:
-            PersistedEngineOutput.model_validate_json(payload)  # permissive, as above
+            PersistedEngineOutput.model_validate_json(
+                payload, context={"perimeter": perimeter})  # permissive, as above
         except (ValidationError, ValueError) as e:
             bad("invalid_model", f"model.json is not a valid model: {e}")
         last_hash = seen_hashes.get(n)
