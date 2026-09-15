@@ -579,7 +579,10 @@ card dilutes its neighbours. Measured once, strongly: adding `financial-reportin
 its sharpest question (3/3 runs → 1/3, displaced by that card's audit-trail emphasis).
 `requivo discover --context <cards>` lets a session opt into a subset, held constant across its turns
 so the cached prefix survives — but there is still no *automatic* relevance routing, which a third such
-instance would justify.
+instance would justify. A neighbouring decision is taken and not yet built:
+`decision: the-engine-writes-the-missing-card` has a first discovery judge the domain and *write* the
+card none of the installed ones covers (#593) — synthesis, which is not the routing this paragraph
+gates, and which leaves the third-instance trigger standing.
 
 ## Extending
 
