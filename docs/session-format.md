@@ -184,7 +184,7 @@ Two kinds of dependency feed that judgment:
 
 Reasoning that a turn simply *omits* is not a removal — a refinement turn answers a question rather
 than re-deriving the brief, so its reply routinely carries no decisions at all. That is resolved when
-the proposal is validated, not when it is diffed: the three collections are tri-state in a proposal
+the proposal is validated, not when it is diffed: the four collections are tri-state in a proposal
 (absent = keep, `[]` = delete, a list = replace), and `ModelProposal.resolve` collapses them against
 the model being refined. The diff itself is symmetric, so an explicit deletion *is* reported and does
 mark what rested on it stale.

@@ -56,10 +56,11 @@ def _excluded(out: EngineOutput) -> list[str]:
     """Excluded options, projected off the model rather than written by the provider (#599) — the
     same split `_stated()` draws: a restatement of "what we are not doing" can drift from the model
     it restates, and a projection cannot. Each option names what it rests on by label, never by id
-    (the Voice rule)."""
+    (the Voice rule). `_line()`-flattened like every other reasoning-item field below, so a newline
+    in a model-supplied option or reason cannot open a forged heading (audit finding on #599)."""
     lines = []
     for ex in out.exclusions:
-        line = f"- **{ex.option}** — {ex.reason}"
+        line = f"- **{_line(ex.option)}** — {_line(ex.reason)}"
         if ex.rests_on:
             line += f" _(rests on: {', '.join(slot_label(sid) for sid in ex.rests_on)})_"
         lines.append(line)
@@ -113,16 +114,21 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
                    "build._"]
     section("Important assumptions", assumed)
 
+    # `_line()`-flattened, like `_excluded()` below and `stories_markdown`/`estimate_markdown` --
+    # a newline in a provider-supplied decision could otherwise open a forged heading a step later
+    # (`markdown_to_html`'s heading regex re-parses every physical line). Sibling audit finding on
+    # #599, fixed here alongside the new `_excluded()` since it is the identical defect in the same
+    # function, over the same reasoning layer.
     decisions: list[str] = []
     for d in brief.decisions:
-        line = f"- **{d.decision}**"
+        line = f"- **{_line(d.decision)}**"
         if d.why:
-            line += f" — {d.why}"
+            line += f" — {_line(d.why)}"
         decisions.append(line)
         if d.alternative:
-            decisions.append(f"  - _Alternative weighed:_ {d.alternative}")
+            decisions.append(f"  - _Alternative weighed:_ {_line(d.alternative)}")
         if d.tradeoff:
-            decisions.append(f"  - _Trade-off accepted:_ {d.tradeoff}")
+            decisions.append(f"  - _Trade-off accepted:_ {_line(d.tradeoff)}")
     section("Decisions made", decisions)
 
     section("Scope implications", [f"- {i}" for i in brief.introduces])
@@ -131,11 +137,11 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     challenges: list[str] = []
     for c in brief.challenges:
-        challenges += [f"### {c.headline}",
-                       f"- **Premise:** {c.premise}",
-                       f"- **Alternative:** {c.alternative}",
-                       f"- **Consequence:** {c.consequence}",
-                       f"- **Recommendation:** {c.recommendation}", ""]
+        challenges += [f"### {_line(c.headline)}",
+                       f"- **Premise:** {_line(c.premise)}",
+                       f"- **Alternative:** {_line(c.alternative)}",
+                       f"- **Consequence:** {_line(c.consequence)}",
+                       f"- **Recommendation:** {_line(c.recommendation)}", ""]
     section("Assumptions worth contesting", challenges)
 
     section("Main risks", [f"- {r}" for r in brief.risks])
@@ -148,7 +154,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     section("Unresolved questions", open_items)
 
     section("Opportunities", [
-        f"- **{o.text}** (leverage: {o.leverage.value})"
+        f"- **{_line(o.text)}** (leverage: {o.leverage.value})"
         + (f" — reaches {', '.join(o.modules)}" if o.modules else "")
         for o in brief.opportunities])
 
