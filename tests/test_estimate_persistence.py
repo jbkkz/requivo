@@ -153,7 +153,7 @@ class _AnalysisProvider:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
 

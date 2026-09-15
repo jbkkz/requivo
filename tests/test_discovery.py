@@ -50,7 +50,8 @@ class _StubProvider:
         self.analyze_calls = 0
         self.generate_calls = 0
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         self.analyze_calls += 1
         if self._analyze_error is not None:
             raise self._analyze_error
@@ -66,7 +67,7 @@ class _StubProvider:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
 

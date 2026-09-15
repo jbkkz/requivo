@@ -573,7 +573,7 @@ def test_watched_paths_cover_both_funding_instances():
     is reproduced) is exactly the "reads as covering the whole mechanism" trap the brief names."""
     assert "src/requivo/assets/prompts" in WATCHED_PATHS
     assert "src/requivo/assets/context" in WATCHED_PATHS
-    assert "src/requivo/assets/framework" in WATCHED_PATHS
+    assert "src/requivo/assets/perimeters" in WATCHED_PATHS
     assert "src/requivo/providers/anthropic/generators.py" in WATCHED_PATHS
 
 

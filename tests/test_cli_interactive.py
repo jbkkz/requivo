@@ -80,7 +80,8 @@ class StubProvider:
         self.analyze_calls: list[dict] = []
         self.generate_calls: list[dict] = []
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         self.analyze_calls.append({
             "request": request, "current_model": current_model, "answers": answers,
             "only": only, "reuse_system": reuse_system,
@@ -97,7 +98,7 @@ class StubProvider:
     def model_name(self) -> str:
         return "stub-model"
 
-    def provenance(self, op, *, only=None) -> dict:
+    def provenance(self, op, *, only=None, perimeter=None) -> dict:
         return {"provider": self.name, "model_name": self.model_name(), "prompt_version": "sha256:0"}
 
 
