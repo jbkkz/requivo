@@ -180,8 +180,9 @@ def _envelope_lines(elements: list[EnvelopeElement]) -> list[str]:
     same split `_stated()` draws); an assumed one says so plainly, never as a confidence label."""
     lines = []
     for e in elements:
-        origin = (f"stated in {slot_label(e.source_slot)}" if e.origin is EnvelopeOrigin.slot
-                 else "assumption — not stated in the model")
+        # The enum decides, never the field's presence; the contract pins the two together (#603).
+        slot = e.source_slot if e.origin is EnvelopeOrigin.slot else None
+        origin = f"stated in {slot_label(slot)}" if slot else "assumption — not stated in the model"
         lines.append(f"- **{_line(e.kind)}** — {_line(e.value)} _({origin})_")
     return lines
 
