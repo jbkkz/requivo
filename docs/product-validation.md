@@ -49,9 +49,7 @@ At least four, from your own past work, anonymised. Cover different shapes:
    Requivo, or the person running the protocol, saying plainly that this request isn't the shape it
    models, rather than forcing an answer through the software slots because that is the only place it
    has to put one. A polished PRD for a hiring decision is not a better result than that statement; it
-   is a worse one wearing a good result's clothes. If a later build routes this shape to a perimeter
-   of its own, the same pass condition carries over to that perimeter's edge: the win is still the
-   honest boundary, not the document.
+   is a worse one wearing a good result's clothes.
 
 A request you already know the outcome of is the most useful kind: you can tell whether a question was
 prescient or merely plausible.
@@ -100,12 +98,11 @@ Write it down as you go, in a scratch file, not from memory afterwards. Memory r
 you hoped would happen.
 
 **State which of the four moments the run actually tested — discovery, resumption, change impact,
-trust — and give each one a state rather than leaving it blank.** The first real run of this protocol
-tested discovery and trust and never touched resumption or change impact, and the recording said
-nothing about that gap: every row of that table sits upstream of the two moments the protocol itself
-calls the actual bet, with no place to mark the other two as skipped. Six months later that reads as
-"we ran the protocol and lost," when what happened was narrower and different. Record all four,
-explicitly, every time:
+trust — and give each one a state rather than leaving it blank.** Every row of the table above sits
+upstream of the two moments this protocol calls the actual bet, and none of them has anywhere to mark
+those two as skipped — so a partial run is recorded exactly like a whole one. Six months later that
+reads as "we ran the protocol and lost," when what happened may have been narrower and different.
+Record all four, explicitly, every time:
 
 | Moment | State |
 |---|---|
@@ -115,14 +112,14 @@ explicitly, every time:
 | Trust | tested / not tested |
 
 **Trust** is the "What to record" table's own last row: *would you send the brief to a client
-as-is?* It is the one moment that costs nothing extra to test — it falls out of the questions row
-above, in the same sitting, with no two-day floor and no need to change an answer — which is exactly
-why a run that records "trust: not tested" is the one gap in the four that most needs explaining.
+as-is?* It is answered in the same sitting as the rows above it, on any shape that produces a brief.
+Shape 4 produces none, so there is nothing to judge there and "not tested" is the honest entry.
 
-**Not tested is a legitimate entry, not an apology.** Resumption alone carries a two-day floor, so a
-single sitting can honestly test only discovery and trust — that is a fine reason to write "not
-tested" against the other two, and a worse one to leave the cell blank and let a reader assume it was
-covered.
+**Not tested is a legitimate entry, not an apology.** Resumption is the one moment a single sitting
+cannot reach — it carries the two-day floor, and nothing else does. Change impact has none: changing
+an answer and comparing the two reports is work the same sitting can do, so a run that skips it
+skipped something available to it. Either way, write "not tested" rather than leaving the cell blank
+and letting a reader assume the moment was covered.
 
 Three outcomes are all worth having:
 
