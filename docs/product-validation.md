@@ -102,10 +102,10 @@ you hoped would happen.
 **State which of the four moments the run actually tested — discovery, resumption, change impact,
 trust — and give each one a state rather than leaving it blank.** The first real run of this protocol
 tested discovery and trust and never touched resumption or change impact, and the recording said
-nothing about that gap: six rows, all upstream of the two moments the protocol itself calls the actual
-bet, with no place to mark the other two as skipped. Six months later that reads as "we ran the
-protocol and lost," when what happened was narrower and different. Record all four, explicitly, every
-time:
+nothing about that gap: every row of that table sits upstream of the two moments the protocol itself
+calls the actual bet, with no place to mark the other two as skipped. Six months later that reads as
+"we ran the protocol and lost," when what happened was narrower and different. Record all four,
+explicitly, every time:
 
 | Moment | State |
 |---|---|
