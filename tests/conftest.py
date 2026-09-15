@@ -89,7 +89,7 @@ class FakeProvider:
 
     name = "fake"
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
         from requivo.core.contracts import EngineOutput
         return EngineOutput.model_validate({**full_model(), "summary": {"objective": "A leave system"}})
 
@@ -99,7 +99,7 @@ class FakeProvider:
     def model_name(self):
         return "fake-model-1"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "prompt_version": "sha256:fake"}
 
 
@@ -109,7 +109,7 @@ class CountingProvider(FakeProvider):
     def __init__(self):
         self.calls = 0
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
         self.calls += 1
         return super().analyze(request, current_model=current_model, answers=answers, only=only)
 

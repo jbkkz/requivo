@@ -226,6 +226,33 @@ trusted — it is always recomputed, so neither a model nor a hand-edited sessio
 identity. A
 reworded statement gets a new id; nothing in the data says the rewording preserved the intent.
 
+## Perimeter
+
+`session.json` carries `perimeter` — which decision structure this session reasons in (`software`,
+`go-to-market`, …), frozen the moment the session is created alongside the request and the card
+selection (invariant 11). It never moves afterward: every turn's system prompt has to stay
+byte-identical for the prompt cache to hold (#258), and a session's own slot vocabulary — what a
+model, a `Question.slot` and every DAG edge (`derived_from`, `contests`, `rests_on`) may name — comes
+entirely from it.
+
+**A session with no `perimeter` at all** — the shape every session had before #608 — reads as the
+**software** perimeter, the only one that existed. That is a default, not a guess: there was only
+ever one vocabulary, so there is nothing to infer.
+
+**A session naming a perimeter this install does not have is refused, by name**, and this is the one
+place this page's own "unknown vocabulary is tolerated" rule (see compatibility.md) is deliberately
+inverted. Every other unrecognised value a session can carry — an extra key, an artifact type this
+build has no generator for — is carried through untouched, because tolerating it costs nothing: the
+value is preserved, never interpreted. A perimeter is interpreted. A reader that opened a session
+under the wrong vocabulary would validate its slots against the wrong schema, report readiness from
+the wrong required set, and compute a blast radius over edges whose ids mean something else —
+confident, wrong answers that look exactly like right ones. So `unknown_perimeter` is raised by the
+loader itself (`migrate_session`), before a `SessionMeta` is even built, and reported the same way by
+`doctor`'s per-session health scan and `session verify`, rather than tolerated by any of them.
+
+Which perimeters an install has is itself observable: `requivo doctor` (`--json`'s `perimeters` key)
+lists them, and `requivo schema --perimeter <id>` prints any one of their schemas.
+
 ## Slugs
 
 A slug names the session directory, so it is validated in the Core: strict kebab-case

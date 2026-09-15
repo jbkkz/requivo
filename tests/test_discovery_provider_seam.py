@@ -107,7 +107,7 @@ class _NamelessProvider:
     thing a discovery does, so an object without one is not a provider; whether anything can *tell*
     is what this pins."""
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
         raise AssertionError("a provider missing `name` must fail before it is asked to reason")
 
     def generate(self, artifact_type, model, *, only=None):
@@ -116,7 +116,7 @@ class _NamelessProvider:
     def model_name(self):
         return "nameless-1"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": "nameless", "model_name": self.model_name(), "prompt_version": "sha256:x"}
 
 
@@ -223,7 +223,8 @@ class InMemorySessionRepository:
         if slug not in self._meta:
             raise _NotFound(f"no session '{slug}'", details={"slug": slug})
 
-    def create(self, slug, request, *, provider=None, model_name=None, context_cards=None):
+    def create(self, slug, request, *, provider=None, model_name=None, context_cards=None,
+              perimeter=None):
         # Invariant 11, at this backing's own layer: the claim is a dict-key collision check rather
         # than a rename, but it owes the same answer -- a second create() on a slug already in the
         # store must not silently overwrite it. Added for the conformance suite (#424); before it
@@ -232,7 +233,8 @@ class InMemorySessionRepository:
         if slug in self._meta:
             raise _SessionExists(f"session '{slug}' already exists", details={"slug": slug})
         meta = SessionMeta(session_id="mem-" + slug, slug=slug, created_at="t", updated_at="t",
-                           provider=provider, model_name=model_name, context_cards=context_cards)
+                           provider=provider, model_name=model_name, context_cards=context_cards,
+                           perimeter=perimeter)
         self._meta[slug] = meta
         self._req[slug] = request
         self._art[slug] = {}
@@ -377,7 +379,8 @@ class _Judge:
         self.asked.append(cards)
         return self.judgment
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         return _full_model_out()
 
     def generate(self, artifact_type, model, *, only=None, **kwargs):
@@ -386,7 +389,7 @@ class _Judge:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": "stub-model", "prompt_version": "sha256:0"}
 
 

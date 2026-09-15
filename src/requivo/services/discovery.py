@@ -57,6 +57,7 @@ from requivo.core.errors import (
     SessionLockedError,
     SessionUnreadableError,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import (
     ArtifactStatus,
     Store,
@@ -205,6 +206,22 @@ def _require_no_conflict_yet(slug: str, expected_revision: int | None, snap: Ses
             f"session '{slug}' is at revision {snap.revision}, not the expected "
             f"{expected_revision} — reload the page and re-submit your answers",
             details={"slug": slug, "expected": expected_revision, "actual": snap.revision})
+
+
+def _require_owned_artifact_type(perimeter: str, artifact_type: str) -> None:
+    """A generation call must name an artifact type its own perimeter actually produces (#608).
+
+    Go-to-market ships none yet -- its one artifact is #609's own scope -- so every `generate()` or
+    `reason()` call against a go-to-market session refuses here, with the perimeter named, rather than
+    validating the reply against the wrong (software) schema and surfacing a confusing Pydantic error
+    two layers down. Mirrors the existing `ValueError` a caller gets for an artifact type this build
+    has no generator for at all -- one style of refusal for "not a real type" and "not this
+    perimeter's type"."""
+    owned = get_perimeter(perimeter).artifact_types
+    if artifact_type not in owned:
+        raise ValueError(
+            f"{artifact_type!r} is not produced by the {perimeter!r} perimeter this session runs "
+            f"under -- it can produce: {sorted(owned) or '(none yet)'}")
 
 
 def _require_a_model(slug: str, snap: SessionSnapshot) -> EngineOutput:
@@ -453,21 +470,25 @@ class DiscoveryService:
                        operation, int((time.perf_counter() - started) * 1000))
 
     def _provenance(self, op: str, *, cards: list[str] | None, surface: str,
-                    usage: dict | None = None) -> dict:
+                    usage: dict | None = None, perimeter: str = DEFAULT_PERIMETER) -> dict:
         """The provenance for a revision: what the provider says about itself, which of our surfaces
         asked for it (the one thing the provider cannot know), and — when the caller has it — what
         the call(s) behind this apply actually spent (`_usage_since`, #292)."""
-        prov = {**self._need_provider().provenance(op, only=cards), "surface": surface}
+        prov = {**self._need_provider().provenance(op, only=cards, perimeter=perimeter),
+               "surface": surface}
         if usage:
             prov.update(usage)
         return prov
 
     # ── discovery ────────────────────────────────────────────────────────────────
     def create_only(self, request: str, *, cards: list[str] | None = None,
-                    slug: str | None = None) -> str:
+                    slug: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> str:
         """Persist a request as a session with no model yet — no LLM call. The 'Create session only'
-        path: capture the request now, run discovery later."""
-        return self.sessions.create_session(request, context_cards=cards, slug=slug).slug
+        path: capture the request now, run discovery later. `perimeter` (#608) is frozen here, the
+        one moment a session's decision structure is chosen -- defaults to software, the only one
+        before #608."""
+        return self.sessions.create_session(request, context_cards=cards, slug=slug,
+                                            perimeter=perimeter).slug
 
     def judge_grounding(self, request: str, *, cards: list[str] | None) -> Grounding:
         """Ask whether any installed context card describes this request's domain.
@@ -506,7 +527,8 @@ class DiscoveryService:
             return Grounding(None, "this install has no context cards to judge against")
         return Grounding(provider.judge_context(request, cards=summaries), "")
 
-    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None
+    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
+                         perimeter: str = DEFAULT_PERIMETER
                          ) -> tuple[Any, Grounding, list[str] | None]:
         """Claim the session, judge its grounding, and act on the judgment when acting is safe.
 
@@ -537,7 +559,7 @@ class DiscoveryService:
         provider = self._need_provider()
         meta, created = self.sessions.create_session_report(
             request, context_cards=cards, slug=slug,
-            provider=provider.name, model_name=provider.model_name())
+            provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
 
         grounding = self.judge_grounding(request, cards=cards)
@@ -557,11 +579,12 @@ class DiscoveryService:
             self.sessions.delete_session(meta.slug)
         meta = self.sessions.create_session(
             request, context_cards=narrowed, slug=slug,
-            provider=provider.name, model_name=provider.model_name())
+            provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
         return meta, grounding, narrowed
 
-    def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None):
+    def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
+                      perimeter: str = DEFAULT_PERIMETER):
         """Create (or reuse) the session a first discovery will land on, and hold it to revision 0.
 
         Idempotent creation and "a discovery replaces the model" are each reasonable alone and unsafe
@@ -577,13 +600,13 @@ class DiscoveryService:
         provider = self._need_provider()
         meta = self.sessions.create_session(
             request, context_cards=cards, slug=slug,
-            provider=provider.name, model_name=provider.model_name())
+            provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
         return meta
 
     def finalize_discovery(self, request: str, out: EngineOutput, *, cards: list[str] | None = None,
                            slug: str | None = None, brief=None, surface: str = "discover",
-                           usage: dict | None = None) -> str:
+                           usage: dict | None = None, perimeter: str = DEFAULT_PERIMETER) -> str:
         """Create the session and apply a discovered model through the validated path. When a `brief` is
         given (a finalized discovery), its reasoning is absorbed into the model first. Shared by the
         CLI's interactive loop (which produced `out` itself) and `start()`.
@@ -593,19 +616,24 @@ class DiscoveryService:
         first-turn one. A `revision_conflict` is recoverable; a silent replacement is not. Pinned by
         `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
 
+        `perimeter` (#608) must be the one `out` was actually reasoned against -- the interactive loop
+        passes the perimeter it drove `draft_turn` with, `start()` its own.
+
         `usage` is threaded through rather than computed here — this method makes no provider call of
         its own, so it has no `before` index to measure from. A caller that passes none produces a
         revision with no usage provenance: absent rather than wrong, per invariant 6."""
-        meta = self.claim_session(request, cards=cards, slug=slug)
+        meta = self.claim_session(request, cards=cards, slug=slug, perimeter=perimeter)
         if brief is not None:
             absorb_reasoning(out, brief)
         self.sessions.update_model(
             meta.slug, out.model_dump_json(), expected_revision=0,
-            provenance=self._provenance("analyze", cards=cards, surface=surface, usage=usage))
+            provenance=self._provenance("analyze", cards=cards, surface=surface, usage=usage,
+                                        perimeter=perimeter))
         return meta.slug
 
     def start(self, request: str, *, cards: list[str] | None = None, slug: str | None = None,
-              finalize: bool = False, surface: str = "discover") -> str:
+              finalize: bool = False, surface: str = "discover",
+              perimeter: str = DEFAULT_PERIMETER) -> str:
         """Run one discovery turn on a fresh request and apply it, returning the session slug. With
         `finalize`, also produce and absorb the solution assessment's reasoning.
 
@@ -626,16 +654,17 @@ class DiscoveryService:
         folded in through the ordinary `generate(slug, "brief")` path -- never a total loss of the
         `analyze()` spend. Pinned by `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467`."""
         provider = self._need_provider()
-        meta = self.claim_session(request, cards=cards, slug=slug)
+        meta = self.claim_session(request, cards=cards, slug=slug, perimeter=perimeter)
         with _discovery_guard(meta.slug, self._store_for_repo()):
             _require_revision_zero(meta.slug, self.sessions.repo.read_meta(meta.slug).current_revision)
             ledger = current_ledger()
             before = len(ledger.calls) if ledger is not None else 0
             self._check_spend()
             with self._provider_call("analyze"):
-                out = provider.analyze(request, only=cards)
+                out = provider.analyze(request, only=cards, perimeter=perimeter)
             slug_out = self.finalize_discovery(request, out, cards=cards, slug=meta.slug,
-                                               surface=surface, usage=_usage_since(before))
+                                               surface=surface, usage=_usage_since(before),
+                                               perimeter=perimeter)
             if finalize:
                 self.generate(slug_out, "brief", surface=surface)
             return slug_out
@@ -655,7 +684,8 @@ class DiscoveryService:
     # Nothing here writes, so there is no revision, provenance or lock to get wrong.
 
     def draft_turn(self, request: str, *, current_model: EngineOutput | None = None,
-                   answers: str | None = None, cards: list[str] | None = None) -> EngineOutput:
+                   answers: str | None = None, cards: list[str] | None = None,
+                   perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
         """One un-persisted discovery turn: the request alone on the first call, then the model so far
         plus the answers just given.
 
@@ -681,7 +711,8 @@ class DiscoveryService:
         self._check_spend()
         with self._provider_call("analyze"):
             return self._need_provider().analyze(
-                request, current_model=current_model, answers=answers, only=cards, reuse_system=True)
+                request, current_model=current_model, answers=answers, only=cards, reuse_system=True,
+                perimeter=perimeter)
 
     def run_discovery(self, slug: str, *, surface: str = "discover") -> UpdateResult:
         """Run the first discovery turn on an already-created session (the 'create session only' path
@@ -712,11 +743,12 @@ class DiscoveryService:
             before = len(ledger.calls) if ledger is not None else 0
             self._check_spend()
             with self._provider_call("analyze"):
-                out = self._need_provider().analyze(snap.request, only=snap.context_cards)
+                out = self._need_provider().analyze(snap.request, only=snap.context_cards,
+                                                    perimeter=snap.perimeter)
             return self.sessions.update_model(
                 slug, out.model_dump_json(), expected_revision=snap.revision,
                 provenance=self._provenance("analyze", cards=snap.context_cards, surface=surface,
-                                            usage=_usage_since(before)))
+                                            usage=_usage_since(before), perimeter=snap.perimeter))
 
     # ── refinement ───────────────────────────────────────────────────────────────
     def answer(self, slug: str, answers: str, *, expected_revision: int | None = None,
@@ -756,12 +788,13 @@ class DiscoveryService:
         self._check_spend()
         with self._provider_call("analyze"):
             out = self._need_provider().analyze(
-                snap.request, current_model=model, answers=answers, only=snap.context_cards)
+                snap.request, current_model=model, answers=answers, only=snap.context_cards,
+                perimeter=snap.perimeter)
         return self.sessions.update_model(
             slug, out.model_dump_json(),
             expected_revision=expected_revision if expected_revision is not None else snap.revision,
             provenance=self._provenance("analyze", cards=snap.context_cards, surface=surface,
-                                        usage=_usage_since(before)))
+                                        usage=_usage_since(before), perimeter=snap.perimeter))
 
     # ── generation ───────────────────────────────────────────────────────────────
     def reason(self, slug: str, artifact_type: str, **kwargs):
@@ -790,6 +823,7 @@ class DiscoveryService:
         names no revision. A caller that renders between the two calls needs the snapshot rather than
         a combined operation, and the snapshot carries its own slug so the two cannot disagree (#135).
         Pinned by `test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot`."""
+        _require_owned_artifact_type(snap.perimeter, artifact_type)
         model = _require_a_model(snap.slug, snap)
         self._check_spend()
         with self._provider_call(artifact_type):
@@ -850,6 +884,7 @@ class DiscoveryService:
         is perfectly plausible."""
         self.sessions.ensure_canonical(slug)  # migrate a legacy session before its first artifact write
         snap = self.sessions.snapshot(slug)
+        _require_owned_artifact_type(snap.perimeter, artifact_type)
         source_revision, cards = snap.revision, snap.context_cards
         out = _require_a_model(slug, snap)
         provider = self._need_provider()

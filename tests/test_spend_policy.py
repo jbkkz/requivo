@@ -52,7 +52,8 @@ class _CountingProvider:
         record_call(CallRecord(model="stub-model", input_tokens=input_tokens,
                                rate_per_mtok=self._rate, priced_as_of="2026-09-01"))
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         self._bill()
         return out({"problem": slot(80, "explicit", "high")})
 
@@ -69,7 +70,7 @@ class _CountingProvider:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
 

@@ -29,7 +29,8 @@ class _SpendingProvider:
     def __init__(self, *records: CallRecord):
         self._records = list(records)
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         record_call(self._records.pop(0))
         return out({"problem": slot(80, "explicit", "high")})
 
@@ -39,7 +40,7 @@ class _SpendingProvider:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
 

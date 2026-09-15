@@ -23,11 +23,12 @@ from typing import Optional
 
 from requivo.core.analysis import slot_label, slot_meta
 from requivo.core.contracts import Confidence, EngineOutput
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.selectors import normalize_tokens
 
 
-def _all_slot_ids() -> set[str]:
-    return set(slot_meta()[1])  # (pillars, labels) — labels is keyed by every slot id
+def _all_slot_ids(perimeter: str = DEFAULT_PERIMETER) -> set[str]:
+    return set(slot_meta(perimeter)[1])  # (pillars, labels) — labels is keyed by every slot id
 
 
 # Which slots materially shape each artifact. Deliberate, not "everything": an over-broad map makes
@@ -86,14 +87,17 @@ ARTIFACT_FILENAMES: dict[str, str] = {
 REASONING_CONSUMERS: frozenset[str] = frozenset(_ARTIFACT_SLOTS_RAW)
 
 
-def artifact_slots() -> dict[str, set[str]]:
-    """Resolve the artifact→slots map, expanding `*` to every slot id."""
-    every = _all_slot_ids()
+def artifact_slots(perimeter: str = DEFAULT_PERIMETER) -> dict[str, set[str]]:
+    """Resolve the artifact→slots map, expanding `*` to every slot id, narrowed to the artifact types
+    `perimeter` may produce (#608, #607's cost rule) -- go-to-market ships none yet, so this is `{}`
+    for it until #609 registers its one artifact."""
+    every = _all_slot_ids(perimeter)
+    owned = get_perimeter(perimeter).artifact_types
     return {name: (set(every) if slots == "*" else set(slots))
-            for name, slots in _ARTIFACT_SLOTS_RAW.items()}
+            for name, slots in _ARTIFACT_SLOTS_RAW.items() if name in owned}
 
 
-def resolve_slots(tokens: list[str]) -> tuple[list[str], list[str]]:
+def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tuple[list[str], list[str]]:
     """Map user-typed tokens (slot ids OR label substrings, PM-friendly) to slot ids.
     Returns (resolved ids in schema order, unmatched tokens).
 
@@ -107,7 +111,7 @@ def resolve_slots(tokens: list[str]) -> tuple[list[str], list[str]]:
     reads as a precise answer to a specific question rather than as a failure. The refusal is
     `normalize_tokens`, shared with the context-card selectors so the rule is stated once.
     """
-    _, labels = slot_meta()
+    _, labels = slot_meta(perimeter)
     # Materialised before the helper iterates it: a generator handed in here would be exhausted by
     # `normalize_tokens` and the `zip` below would then pair nothing, returning ([], []) — no slots
     # and no complaint, which is the same silent absence this function is being fixed for.
@@ -210,37 +214,43 @@ class ImpactReport:
                 "evidence": None if self.evidence is None else self.evidence.to_dict()}
 
 
-def propagate(out: EngineOutput, changed: list[str]) -> ImpactReport:
+def propagate(out: EngineOutput, changed: list[str], perimeter: str = DEFAULT_PERIMETER) -> ImpactReport:
     """Given slot ids that changed (or are being probed), report what rests on them: the design
     decisions to re-validate, the challenges whose premise is now in question, the excluded options
     worth reconsidering, the thresholds worth reconsidering, and the artifacts that go stale.
     Decisions rest on slots via `derived_from`; challenges contest slots via `contests`; exclusions
-    and thresholds rest on slots via `rests_on` — the same DAG edge, four directions of reasoning."""
+    and thresholds rest on slots via `rests_on` — the same DAG edge, four directions of reasoning.
+    `perimeter` (#608) narrows the artifact set to the ones that perimeter may produce -- see
+    `artifact_slots`."""
     changed_set = set(changed)
-    report = ImpactReport(changed=[slot_label(sid) for sid in changed])
+    report = ImpactReport(changed=[slot_label(sid, perimeter) for sid in changed])
 
     for d in out.decisions:
         hit = [sid for sid in d.derived_from if sid in changed_set]
         if hit:
-            report.decisions.append(DecisionImpact(d.decision, [slot_label(sid) for sid in hit]))
+            report.decisions.append(
+                DecisionImpact(d.decision, [slot_label(sid, perimeter) for sid in hit]))
 
     for c in out.challenges:
         hit = [sid for sid in c.contests if sid in changed_set]
         if hit:
-            report.challenges.append(ChallengeImpact(c.headline, [slot_label(sid) for sid in hit]))
+            report.challenges.append(
+                ChallengeImpact(c.headline, [slot_label(sid, perimeter) for sid in hit]))
 
     for e in out.exclusions:
         hit = [sid for sid in e.rests_on if sid in changed_set]
         if hit:
-            report.exclusions.append(ExclusionImpact(e.option, [slot_label(sid) for sid in hit]))
+            report.exclusions.append(
+                ExclusionImpact(e.option, [slot_label(sid, perimeter) for sid in hit]))
 
     for t in out.thresholds:
         hit = [sid for sid in t.rests_on if sid in changed_set]
         if hit:
-            report.thresholds.append(ThresholdImpact(t.condition, [slot_label(sid) for sid in hit]))
+            report.thresholds.append(
+                ThresholdImpact(t.condition, [slot_label(sid, perimeter) for sid in hit]))
 
-    amap = artifact_slots()
-    report.artifacts = [name for name in _ARTIFACT_SLOTS_RAW if amap[name] & changed_set]
+    amap = artifact_slots(perimeter)
+    report.artifacts = [name for name in amap if amap[name] & changed_set]
     return report
 
 
@@ -386,7 +396,8 @@ class EvidenceReport:
                 "could_not_tell": [u.to_dict() for u in self.could_not_tell]}
 
 
-def thinner_evidence(then: EngineOutput, now: EngineOutput) -> EvidenceReport:
+def thinner_evidence(then: EngineOutput, now: EngineOutput,
+                     perimeter: str = DEFAULT_PERIMETER) -> EvidenceReport:
     """Decisions in `now` that were recorded, in `then`, against thinner evidence than `now` holds.
 
     Pure: two models in, a report out. `then` is the model at the revision the decisions were
@@ -427,9 +438,9 @@ def thinner_evidence(then: EngineOutput, now: EngineOutput) -> EvidenceReport:
                 thickened.append(sid)
         if thickened:
             report.flagged.append(ThinnerEvidence(
-                d.decision, d.id, [slot_label(sid) for sid in thickened]))
+                d.decision, d.id, [slot_label(sid, perimeter) for sid in thickened]))
         elif unresolved:
             report.could_not_tell.append(EvidenceUnknown(
                 d.decision, d.id,
-                "not in both models: " + ", ".join(slot_label(sid) for sid in unresolved)))
+                "not in both models: " + ", ".join(slot_label(sid, perimeter) for sid in unresolved)))
     return report

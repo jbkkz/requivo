@@ -6,9 +6,9 @@ import json
 from enum import Enum
 from typing import Annotated, Optional, TypeVar, Union
 
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, ValidationInfo, field_validator, model_validator
 
-from requivo.paths import FRAMEWORK
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 
 SOFT_COMPLETENESS = 70  # below this a slot is "soft" (tunable)
 
@@ -74,6 +74,17 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}_{digest[:10]}"
 
 
+def _context_perimeter(info: Optional[ValidationInfo]) -> str:
+    """The perimeter a validation call is running against, from `model_validate(..., context=...)`
+    -- the software default when no context was given (every constructor call, and every test that
+    predates #608). This is the one place a `mode="after"` validator reads it, so every slot-
+    vocabulary check below asks the same question the same way."""
+    ctx = info.context if info is not None else None
+    if isinstance(ctx, dict) and ctx.get("perimeter"):
+        return ctx["perimeter"]
+    return DEFAULT_PERIMETER
+
+
 def _reject_duplicate_ids(label: str, ids: list[str]) -> None:
     """Ids are pointers — a story id is cited by an estimate, an issue id by a `depends_on`, a scenario
     id by a test run. A repeated one does not read as a duplicate downstream; it reads as one item,
@@ -83,9 +94,9 @@ def _reject_duplicate_ids(label: str, ids: list[str]) -> None:
         raise ValueError(f"{label} repeat the same id: {dupes}")
 
 
-@functools.lru_cache(maxsize=1)
-def schema_slots() -> tuple[dict, ...]:
-    """`framework/model_schema.json`'s `slots` list, parsed once and cached.
+@functools.cache
+def schema_slots(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict, ...]:
+    """One perimeter's `model_schema.json` `slots` list, parsed once per perimeter and cached (#608).
 
     Public since #301: this file and `core/analysis.py` each read and `json.loads`'d the same file
     independently, at four call sites (`schema_slot_ids`/`_schema_order` here, `slot_meta`/
@@ -95,38 +106,43 @@ def schema_slots() -> tuple[dict, ...]:
     shape, because they slice the same rows differently and a caller wanting `_schema_order()`'s
     tuple should not have to reconstruct it from `slot_meta()`'s dicts.
 
+    `perimeter` defaults to the software perimeter -- the only one every call site but a discovery
+    turn against a different perimeter needs, so this default is what keeps every pre-#608 caller
+    unchanged. `get_perimeter` raises `UnknownPerimeterError` by name for one this install lacks.
+
     Returned as a tuple of the raw dicts, in file order -- not keyed by id -- because two of the
     four projections need that order preserved, and a dict comprehension would have already lost it.
     """
-    return tuple(json.loads((FRAMEWORK / "model_schema.json").read_text(encoding="utf-8"))["slots"])
+    schema_path = get_perimeter(perimeter).schema_path
+    return tuple(json.loads(schema_path.read_text(encoding="utf-8"))["slots"])
 
 
-@functools.lru_cache(maxsize=1)
-def schema_slot_ids() -> tuple[frozenset[str], frozenset[str]]:
-    """(allowed, required) slot ids from framework/model_schema.json. `required` excludes any slot
-    flagged `optional`. Cached — the schema is read once. This is the single source of the slot
-    vocabulary the model must speak; the contract and readiness both defer to it."""
-    slots = schema_slots()
+@functools.cache
+def schema_slot_ids(perimeter: str = DEFAULT_PERIMETER) -> tuple[frozenset[str], frozenset[str]]:
+    """(allowed, required) slot ids from `perimeter`'s model_schema.json. `required` excludes any
+    slot flagged `optional`. Cached per perimeter — each schema is read once. This is the single
+    source of the slot vocabulary the model must speak; the contract and readiness both defer to it."""
+    slots = schema_slots(perimeter)
     allowed = frozenset(s["id"] for s in slots)
     required = frozenset(s["id"] for s in slots if not s.get("optional", False))
     return allowed, required
 
 
-def missing_required_slots(present: set[str]) -> list[str]:
+def missing_required_slots(present: set[str], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """Required slot ids absent from `present`, in schema order — what a complete model still owes."""
-    _, required = schema_slot_ids()
-    return [sid for sid in _schema_order() if sid in required and sid not in present]
+    _, required = schema_slot_ids(perimeter)
+    return [sid for sid in _schema_order(perimeter) if sid in required and sid not in present]
 
 
-def unknown_slots(present: set[str]) -> list[str]:
+def unknown_slots(present: set[str], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """Slot ids in `present` that the schema does not define — hallucinated / typo'd keys."""
-    allowed, _ = schema_slot_ids()
+    allowed, _ = schema_slot_ids(perimeter)
     return sorted(present - allowed)
 
 
-@functools.lru_cache(maxsize=1)
-def _schema_order() -> tuple[str, ...]:
-    return tuple(s["id"] for s in schema_slots())
+@functools.cache
+def _schema_order(perimeter: str = DEFAULT_PERIMETER) -> tuple[str, ...]:
+    return tuple(s["id"] for s in schema_slots(perimeter))
 
 
 class Confidence(str, Enum):
@@ -286,7 +302,8 @@ class ModelProposal(StrictModel):
     exclusions: Optional[list[SerializeAsAny[Exclusion]]] = None
     thresholds: Optional[list[SerializeAsAny[Threshold]]] = None
 
-    def resolve(self, current: Optional[EngineOutput] = None) -> EngineOutput:
+    def resolve(self, current: Optional[EngineOutput] = None, *,
+               perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
         """Collapse the proposal onto the model it refines, yielding a complete `EngineOutput`.
 
         Every collection the proposal left unstated is carried forward from `current`; every one it
@@ -300,6 +317,11 @@ class ModelProposal(StrictModel):
         at the cost of one extra validation on the rare path. Dropping it here would turn the refusal
         #14 removed into a silent loss on the first refinement turn —
         `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save` is the guard.
+
+        `perimeter` (#608) is threaded to `model_validate` as validation context, not passed to the
+        constructor: pydantic only reads `context` off `model_validate`/`model_validate_json`, so
+        this is what lets `_validate_slot_vocabulary` below check the *right* schema for a session
+        running a non-default perimeter, on a model built from already-validated field values.
 
         What is *not* carried, and is a real narrowing rather than an oversight: the slots, the
         summary and the questions come from the proposal, which replaces them wholesale. An unknown
@@ -315,32 +337,41 @@ class ModelProposal(StrictModel):
         def keep(stated: Optional[list[_Item]], established: list[_Item]) -> list[_Item]:
             return list(established) if stated is None else list(stated)
 
-        resolved = EngineOutput(
-            model=self.model,
-            questions=self.questions,
-            summary=self.summary,
-            decisions=keep(self.decisions, prior.decisions),
-            challenges=keep(self.challenges, prior.challenges),
-            opportunities=keep(self.opportunities, prior.opportunities),
-            exclusions=keep(self.exclusions, prior.exclusions),
-            thresholds=keep(self.thresholds, prior.thresholds),
+        resolved = EngineOutput.model_validate(
+            {
+                "model": self.model,
+                "questions": self.questions,
+                "summary": self.summary,
+                "decisions": keep(self.decisions, prior.decisions),
+                "challenges": keep(self.challenges, prior.challenges),
+                "opportunities": keep(self.opportunities, prior.opportunities),
+                "exclusions": keep(self.exclusions, prior.exclusions),
+                "thresholds": keep(self.thresholds, prior.thresholds),
+            },
+            context={"perimeter": perimeter},
         )
         carried = getattr(prior, "__pydantic_extra__", None) or {}
         if not carried:
             return resolved
-        return PersistedEngineOutput.model_validate({**resolved.model_dump(), **carried})
+        return PersistedEngineOutput.model_validate(
+            {**resolved.model_dump(), **carried}, context={"perimeter": perimeter})
 
     @model_validator(mode="after")
-    def _validate_slot_vocabulary(self):
+    def _validate_slot_vocabulary(self, info: ValidationInfo):
         # Every slot id the output names — in the model AND in the questions it targets — must be one
         # the schema defines. A hallucinated or typo'd key would otherwise sit unseen by every
         # schema-driven view, or point a question at a slot that doesn't exist. Completeness (the full
         # required set) is enforced at the discovery boundary, not here, so internal partial
         # projections (diff/propagate) stay constructable; the vocabulary check is safe everywhere.
-        bad_model = unknown_slots(set(self.model))
+        #
+        # `perimeter` (#608) comes from `model_validate(..., context={"perimeter": ...})` -- the
+        # software default otherwise, so this check is byte-for-byte what it was before #608 for
+        # every caller that does not know perimeters exist.
+        perimeter = _context_perimeter(info)
+        bad_model = unknown_slots(set(self.model), perimeter)
         if bad_model:
             raise ValueError(f"unknown slots (not in schema): {bad_model}")
-        allowed, _ = schema_slot_ids()
+        allowed, _ = schema_slot_ids(perimeter)
         bad_questions = sorted({q.slot for q in self.questions if q.slot not in allowed})
         if bad_questions:
             raise ValueError(f"questions target unknown slots (not in schema): {bad_questions}")
@@ -400,8 +431,8 @@ class Story(StrictModel):
     slots: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_slot_references(self):
-        allowed, _ = schema_slot_ids()
+    def _validate_slot_references(self, info: ValidationInfo):
+        allowed, _ = schema_slot_ids(_context_perimeter(info))
         bad = sorted({sid for sid in self.slots if sid not in allowed})
         if bad:
             raise ValueError(f"story {self.id!r} references unknown slots (not in schema): {bad}")
@@ -640,10 +671,10 @@ class PRD(StrictModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_envelope_slot_vocabulary(self):
+    def _validate_envelope_slot_vocabulary(self, info: ValidationInfo):
         # Same rule ModelProposal._validate_slot_vocabulary applies to DAG edges: a source_slot
         # pointing at nothing the schema defines would let the envelope look grounded while it isn't.
-        allowed, _ = schema_slot_ids()
+        allowed, _ = schema_slot_ids(_context_perimeter(info))
         bad = sorted({e.source_slot for e in self.envelope if e.source_slot and e.source_slot not in allowed})
         if bad:
             raise ValueError(f"envelope references unknown slots (not in schema): {bad}")

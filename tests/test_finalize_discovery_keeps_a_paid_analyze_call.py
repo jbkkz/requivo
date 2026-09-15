@@ -42,7 +42,8 @@ class _AnalyzeSucceedsBriefFailsProvider:
         self.analyze_calls = 0
         self.generate_calls = 0
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         self.analyze_calls += 1
         return out({"problem": slot(80, "explicit", "high")})
 
@@ -54,7 +55,7 @@ class _AnalyzeSucceedsBriefFailsProvider:
     def model_name(self):
         return "stub-model"
 
-    def provenance(self, op, *, only=None):
+    def provenance(self, op, *, only=None, perimeter=None):
         return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
 
@@ -113,7 +114,7 @@ def test_a_successful_finalize_still_applies_both_the_discovery_and_the_brief():
             self.generate_calls = 0
 
         def analyze(self, request, *, current_model=None, answers=None, only=None,
-                   reuse_system=False):
+                   reuse_system=False, perimeter=None):
             self.analyze_calls += 1
             return out({"problem": slot(80, "explicit", "high")})
 
@@ -126,7 +127,7 @@ def test_a_successful_finalize_still_applies_both_the_discovery_and_the_brief():
         def model_name(self):
             return "stub-model"
 
-        def provenance(self, op, *, only=None):
+        def provenance(self, op, *, only=None, perimeter=None):
             return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
 
     provider = _AlwaysSucceeds()

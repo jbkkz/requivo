@@ -102,7 +102,7 @@ def test_the_split_is_exactly_the_end_of_the_leading_block():
         assert p.text == build_prompt(name, None), "build_prompt is the same string, unsplit"
         assert p.shared.endswith("\n\n") and not p.specific.startswith("\n")
         assert p.shared == SHARED_PROMPT_HEAD.replace(
-            "{{SCHEMA}}", (paths.FRAMEWORK / "model_schema.json").read_text(encoding="utf-8")
+            "{{SCHEMA}}", (paths.PERIMETERS / "software" / "model_schema.json").read_text(encoding="utf-8")
         ).replace("{{CONTEXT}}", ctx.load_context(None))
 
 

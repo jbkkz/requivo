@@ -712,7 +712,10 @@ def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None) -
 WATCHED_PATHS: tuple[str, ...] = (
     "src/requivo/assets/prompts",
     "src/requivo/assets/context",
-    "src/requivo/assets/framework",
+    # `framework/` was the software perimeter's schema before #608 turned it plural; the baseline
+    # is now per-perimeter data, one directory per installed perimeter under here, and this whole
+    # tree is watched so a schema move for *either* perimeter invalidates the baseline that reads it.
+    "src/requivo/assets/perimeters",
     "src/requivo/providers/anthropic/generators.py",
 )
 

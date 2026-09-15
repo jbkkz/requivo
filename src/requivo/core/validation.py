@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from requivo.core.contracts import MAX_INPUT_CHARS, EngineOutput, ModelProposal, missing_required_slots, unknown_slots
 from requivo.core.errors import InputTooLargeError, InvalidModelError, MissingRequiredSlotError, UnknownSlotError
+from requivo.core.perimeters import DEFAULT_PERIMETER
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class Incompleteness:
     details: dict = field(default_factory=dict)
 
 
-def completeness_gap(out: ModelProposal) -> Incompleteness | None:
+def completeness_gap(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> Incompleteness | None:
     """The first completeness rule `out` breaks, or None if it is a complete model.
 
     One definition of "complete", shared by the two boundaries that enforce it: the provider's retry
@@ -43,7 +44,7 @@ def completeness_gap(out: ModelProposal) -> Incompleteness | None:
     to readiness and to every view, so a high-impact gap can pass as 'ready'; an empty objective leaves
     a set of slots with nothing naming what they are about, and renders as a blank heading everywhere.
     """
-    missing = missing_required_slots(set(out.model))
+    missing = missing_required_slots(set(out.model), perimeter)
     if missing:
         return Incompleteness(
             f"model is missing required slots: {missing}. Emit every schema slot.",
@@ -74,7 +75,8 @@ def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT
 
 
 def validate_proposal(data: dict | str, *, require_complete: bool = True,
-                      current: EngineOutput | None = None) -> EngineOutput:
+                      current: EngineOutput | None = None,
+                      perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Validate a proposed model (a dict or a JSON string) into an `EngineOutput`, raising a
     structured `RequivoError` on any failure.
 
@@ -99,7 +101,7 @@ def validate_proposal(data: dict | str, *, require_complete: bool = True,
     # with the offending ids rather than a generic validation dump.
     model_slots = data.get("model")
     if isinstance(model_slots, dict):
-        bad = unknown_slots(set(model_slots))
+        bad = unknown_slots(set(model_slots), perimeter)
         if bad:
             raise UnknownSlotError(
                 f"model names slots the schema does not define: {bad}",
@@ -108,15 +110,15 @@ def validate_proposal(data: dict | str, *, require_complete: bool = True,
             )
 
     try:
-        proposal = ModelProposal.model_validate(data)
+        proposal = ModelProposal.model_validate(data, context={"perimeter": perimeter})
         # Resolve against what is already there *before* the completeness check, so the rules judge the
         # model that would actually be stored, not the delta that was sent.
-        out = proposal.resolve(current)
+        out = proposal.resolve(current, perimeter=perimeter)
     except ValidationError as e:
         raise InvalidModelError(f"proposal does not match the schema: {e}", path="model") from e
 
     if require_complete:
-        gap = completeness_gap(out)
+        gap = completeness_gap(out, perimeter)
         if gap is not None:
             error = MissingRequiredSlotError if gap.details.get("slots") else InvalidModelError
             raise error(gap.message, path=gap.path, details=gap.details)

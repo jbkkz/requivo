@@ -2,10 +2,13 @@
 
 **Slug:** `the-job-not-the-artifact-type`
 
-> **Not yet built.** This record settles the argument #607 asks for before its machinery lands. The
-> product today still implements exactly one decision structure — software scoping — and every
-> mention below of a perimeter mechanism, a plural schema, or a router describes what #608, #609 and
-> #601 are for, not what runs today. Correct this note in place once they land.
+> **Partially built.** This record settled the argument #607 asked for before its machinery landed.
+> #608 has since landed the mechanism and its second instance: `model_schema.json`/`elicitation.md`
+> are plural (`assets/perimeters/<id>/`), a session's perimeter is frozen at creation and refused by
+> name when unrecognised, and go-to-market exists as an installed perimeter with its own twelve-slot
+> schema. What has **not** landed: go-to-market's one artifact (#609's own scope — it ships no
+> generator yet) and the router that would choose a perimeter automatically (#601). Every mention
+> below of "not yet built" refers only to those two remaining pieces.
 
 ## Context
 

@@ -107,10 +107,10 @@ its row."""
 
 
 def test_every_arm_of_the_family_names_a_distinct_fact():
-    """Ten arms, ten codes, and none of them the base. Named individually rather than counted: a test
-asserting `len(subclasses) == 10` would pass just as well if two arms were merged and a third
-invented, which is a different vocabulary answering the same number. `invalid_archive` is the
-tenth, added by #101."""
+    """Eleven arms, eleven codes, and none of them the base. Named individually rather than counted: a
+test asserting `len(subclasses) == 11` would pass just as well if two arms were merged and a third
+invented, which is a different vocabulary answering the same number. `invalid_archive` was the
+tenth (#101); `unknown_perimeter` is the eleventh (#608)."""
     from requivo.core.errors import InvalidSessionError
     from requivo.services import artifacts  # noqa: F401  - registers the two service-layer arms
 
@@ -124,7 +124,7 @@ tenth, added by #101."""
         "unsupported_format_version", "unsupported_schema_version", "session_unreadable",
         "model_unreadable", "artifact_revision_out_of_range", "unstated_source_revision",
         "unreadable_source_revision", "inconsistent_archive", "unreadable_archive",
-        "invalid_archive", "import_move_failed",
+        "invalid_archive", "import_move_failed", "unknown_perimeter",
     }
     assert "invalid_session" not in codes, "the base is the family, not an arm"
 

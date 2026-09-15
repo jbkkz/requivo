@@ -17,6 +17,7 @@ from typing import Protocol, runtime_checkable
 
 from requivo.core.context import CardSummary
 from requivo.core.contracts import ContextJudgment, EngineOutput
+from requivo.core.perimeters import DEFAULT_PERIMETER
 
 
 @runtime_checkable
@@ -45,9 +46,13 @@ class ReasoningProvider(Protocol):
         answers: str | None = None,
         only: list[str] | None = None,
         reuse_system: bool = False,
+        perimeter: str = DEFAULT_PERIMETER,
     ) -> EngineOutput:
         """A discovery turn: request (+ optional prior model and new answers) → a filled model.
         `only` restricts the context cards, held constant across a session's turns.
+
+        `perimeter` (#608) selects the vocabulary this turn reasons against -- the session's own,
+        frozen at creation. Defaults to the software perimeter, the only one before #608.
 
         `reuse_system` is the caller saying *this call is one of a series that will send the
         identical system prompt* — a drafting loop rather than a one-shot operation. It is a hint
@@ -74,11 +79,13 @@ class ReasoningProvider(Protocol):
         """The reasoning model this provider will call — recorded on the session it produces."""
         ...
 
-    def provenance(self, op: str, *, only: list[str] | None = None) -> dict:
+    def provenance(self, op: str, *, only: list[str] | None = None,
+                   perimeter: str = DEFAULT_PERIMETER) -> dict:
         """Who reasoned, with what, and against which prompt, for one operation (`analyze` or an
         artifact type). The service records this on the revision rather than assembling it itself —
         provider identity and prompt identity belong to the layer that owns them, so a second provider
-        cannot end up stamping its revisions with another's name."""
+        cannot end up stamping its revisions with another's name. `perimeter` (#608) moves the prompt
+        hash for `analyze` -- see `prompt_version`."""
         ...
 
 
