@@ -7,9 +7,9 @@
 
 > Find what could change the solution before you commit to the scope.
 
-Paste a client or stakeholder request. Requivo identifies the assumptions and missing decisions that
-could change the workflow, integrations, permissions, timeline or effort — then produces one brief you
-can review before estimating.
+Start from a client request, a stakeholder ask, or your own half-formed idea for what to build.
+Requivo identifies the assumptions and missing decisions that could change the workflow, integrations,
+permissions, timeline or effort — then produces one brief you can review before estimating.
 
 **The shared understanding is the source of truth. Every document is generated from it.**
 
