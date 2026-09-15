@@ -15,9 +15,23 @@ conversation.
 # Method
 
 1. **Fill the schema slots** above from the request + the product context.
-   For each slot: `completeness` (0-100), `confidence` (explicit|inferred|empty), `impact`
-   (low|medium|high, estimated using the context), `value`, `evidence`.
-   - `explicit` = stated by the client. `inferred` = deduced by you (= assumption to confirm). `empty` = unknown.
+   For each slot: `completeness` (0-100), `confidence` (explicit|inferred|empty|testable), `impact`
+   (low|medium|high, estimated using the context), `value`, `evidence`, `test_plan` (required, and
+   only meaningful, when `confidence` is `testable`).
+   - `explicit` = the requester committed to this. A third party's own word always qualifies; with no
+     third party (a solo builder describing their own idea) only their own **intent** qualifies —
+     what they want, will build, will spend, have decided. Their unconfirmed **belief about the
+     world** (what users want, what a channel yields, what a system does) is never `explicit`,
+     however confidently stated — grade it `inferred` or `testable` instead. See `confidence` in the
+     schema above for the full definition; this restates it, and the two must agree.
+   - `inferred` = deduced by you, or the requester's own unconfirmed belief about the world — an
+     assumption to confirm.
+   - `empty` = unknown, and answerable by asking the person in front of you.
+   - `testable` = unknown, and **not** answerable by asking — only a real test would settle it. This
+     is the default state of a half-formed idea, not an edge case: propose it for a slot that is high
+     impact, genuinely uncertain, and not something further questions would resolve (a go-to-market
+     bet, "will anyone pay for this"). Always pair it with `test_plan`, naming what would settle it —
+     a slot with none is refused.
    - `impact` is **not** frozen to the slot's `impact_default`: that is only a baseline. Raise it when
      the request or context names a driver (see each slot's `impact_signals`). Example: `reporting`
      defaults to low, but a compliance / audit / traceability / regulatory need named anywhere —
@@ -54,6 +68,10 @@ From the 2nd turn on, the history contains your previous model (your JSON) + the
 You do **not** start over: you **update** the existing model.
 - An answer confirming an `inferred` slot → flip it to `explicit` and raise its `completeness`;
   fold the info into `value` / `evidence`.
+- An answer reporting a test's result on a `testable` slot → grade the outcome (`explicit` if it
+  conclusively settles the slot, `inferred` if it only narrows it) and clear `test_plan`; fold the
+  result into `value` / `evidence` like any other confirmation. A test result is a real model change,
+  not a formality — treat it exactly like an answer that confirmed an `inferred` slot.
 - Recompute `information_value` and re-ask ONLY the questions still worth it. Drop resolved ones,
   add ones a fresh answer just revealed.
 - **Stop signal**: when no slot is both uncertain AND high-impact, return `"questions": []`.

@@ -9,9 +9,15 @@ These are the names the product uses, in Requivo Web and in the documents it wri
 page is the same ideas in the engine's own, more precise vocabulary — which is what `--json` and the
 technical docs speak.
 
-- **What we know** — stated directly by the client.
-- **What we are assuming** — inferred from context; confirm before building.
+- **What we know** — stated directly by the client, or, with no client, the builder's own committed
+  intent (what they want, will build, will spend) — never their unconfirmed belief about the world.
+- **What we are assuming** — inferred from context, or the builder's own unconfirmed belief about the
+  world (will users want this, will they pay); confirm before building.
 - **Open question** — not yet known, and worth asking when the answer would move the build.
+- **To test** — not yet known, and **not** worth asking: only a real test would settle it. The
+  default state of a half-formed idea, not an edge case — it names what would settle it and does not
+  block readiness, because a named test still to run is compatible with "precise enough to build
+  from."
 - **How we know it vs how fully** — whether something was stated or inferred is separate from whether
   it has been covered in enough detail. Both have to hold before a topic stops blocking.
 - **Decision and assumption to review** — a settled choice with its trade-off; a premise worth
@@ -24,7 +30,7 @@ technical docs speak.
 
 | The product says | The engine says |
 |---|---|
-| what we know / what we are assuming | evidence (`explicit` / `inferred` / `unknown`) |
+| what we know / what we are assuming / to test | evidence (`explicit` / `inferred` / `unknown` / `testable`) |
 | how fully a topic is covered | coverage (completeness) |
 | topic | slot |
 | assumption to review | challenge |
@@ -74,10 +80,32 @@ it's given.
 
 Two independent signals, deliberately not collapsed:
 
-- **Evidence** — *how we know* a slot: `explicit` (stated by the client), `inferred` (assumed from
-  context), or `unknown`.
+- **Evidence** — *how we know* a slot: `explicit`, `inferred`, `unknown`, or `testable`.
 - **Coverage** — *how fully* a slot is covered (its completeness). A slot can be `explicit` yet thinly
   covered — stated in one word. That still blocks readiness; it reads as "partial", not "confirmed".
+
+**`explicit` needs an authority, not just confidence** (`decision: confidence-stays-one-axis`). It
+means whoever said it can actually commit to it — a client's own word always qualifies. Requivo's
+target user is now as often a solo builder as a PM relaying a client's request, and with no client
+only the builder's own *intent* is an authority on itself: what they want, will build, will spend.
+Their unconfirmed *belief about the world* — will users want this, will they pay for it — is never
+`explicit`, however plainly they state it; it is `inferred` (an assumption to confirm) or `testable`
+(below), the same rule a fact read out of a repository already answers to: it is `inferred`, never
+`explicit`, because it is the artifact speaking and not the client (#611). A model graded on how much
+a solo builder typed, rather than on what is actually settled, would report "ready" on nothing but
+their own guesses — this rule is what keeps readiness meaning something once there is no client to
+hold it to.
+
+**`testable` is a fourth kind of unknown, and a different one from `unknown`.** Both name a gap; they
+carry opposite remedies. `unknown` is a gap someone could close by answering — ask it, and it blocks
+readiness correctly until it is asked. `testable` is a gap **no amount of asking closes** — a
+go-to-market bet, whether anyone wants the feature — and it is the default shape of a half-formed
+idea, not an edge case for it. A `testable` slot must name what would settle it, or it is refused
+outright (the same rule a `Challenge`'s five required parts already enforce); named, it does **not**
+block readiness (see below), because a known unknown deliberately deferred to a real test is
+compatible with "precise enough to build from" in a way an unasked question is not. Settling one — a
+test's result folded back in — is an ordinary model change and propagates through `requivo impact`
+like any other.
 
 ## Decisions, challenges, opportunities
 
@@ -122,6 +150,14 @@ new one.
 Readiness is binary: a high-impact slot must be both `explicit` **and** covered above the soft
 boundary to stop blocking the build. A high-impact gap — empty, unknown, or stated-but-thin — keeps a
 session out of "ready". Requivo does not invent graded "nearly ready" levels; it shows what blocks.
+
+One high-impact state does **not** block: a slot graded `testable` (above), because it already names
+what would settle it and readiness means "precise enough to build from", not "nothing left unproven".
+A session can reach "ready" carrying testable slots in plain view — that is the honest outcome for
+the target persona's half-formed idea, not a loophole. What still blocks, exactly as before, is a
+high-impact slot that is merely `inferred` — an unconfirmed belief nobody has flagged as worth a real
+test — which is exactly what stops a model built entirely of a solo builder's untested guesses from
+reading as settled.
 
 ## The language of the outputs
 

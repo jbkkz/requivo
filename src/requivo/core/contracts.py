@@ -6,7 +6,7 @@ import json
 from enum import Enum
 from typing import Annotated, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, field_validator, model_validator
 
 from requivo.paths import FRAMEWORK
 
@@ -133,6 +133,11 @@ class Confidence(str, Enum):
     explicit = "explicit"
     inferred = "inferred"
     empty = "empty"
+    # Unknown, and NOT answerable by asking -- only a real test would settle it (#610). The default
+    # state of a builder's own idea, not an edge case: readiness exempts it (core/analysis.py) and
+    # `Slot._testable_names_its_settlement` refuses one with no `test_plan`, mirroring `Challenge`'s
+    # five required parts. `docs/requirements-model.md` "Evidence vs coverage" states the rule.
+    testable = "testable"
 
 
 class Impact(str, Enum):
@@ -153,6 +158,21 @@ class Slot(StrictModel):
     impact: Impact
     value: str = ""
     evidence: str = ""
+    # What would settle this slot -- required (non-empty) exactly when `confidence` is `testable`,
+    # and meaningless otherwise. Presence of `testable` with no `test_plan` is "empty with better
+    # manners" (#610); refused below rather than accepted, mirroring `Challenge`'s five required parts.
+    test_plan: str = ""
+
+    @model_validator(mode="after")
+    def _testable_names_its_settlement(self) -> Slot:
+        # Cost of skipping this: a slot flagged unknowable-until-tested with nothing saying how it
+        # would ever be known -- indistinguishable from `empty` except by the label. Guarded by
+        # `test_a_testable_slot_with_no_test_plan_is_refused`.
+        if self.confidence is Confidence.testable and not self.test_plan.strip():
+            raise ValueError(
+                "confidence 'testable' names no test_plan -- state what would settle this slot, or "
+                "grade it inferred/empty instead")
+        return self
 
 
 class Question(StrictModel):
@@ -732,6 +752,24 @@ EngineOutput.model_rebuild()
 
 class PersistedSlot(Slot):
     model_config = ConfigDict(extra="allow")
+    # Confidence is a closed vocabulary too (#610), and pydantic enums are not made permissive by
+    # `extra="allow"` -- that policy is about unknown *keys*, not an unrecognised *value* for a known
+    # one. A value beyond the four this build defines must still load (invariant 8) and must never be
+    # silently read as `explicit`, so the raw string survives instead of being refused. Recognised
+    # values still resolve to the real `Confidence` member -- `_confidence_or_raw` runs before field
+    # validation, so the union below never has to arbitrate the ambiguous case itself. Guarded by
+    # `test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit`.
+    confidence: Confidence | str
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _confidence_or_raw(cls, v):
+        if isinstance(v, str):
+            try:
+                return Confidence(v)
+            except ValueError:
+                return v
+        return v
 
 
 class PersistedQuestion(Question):
