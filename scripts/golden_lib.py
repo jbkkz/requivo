@@ -29,6 +29,7 @@ sys.path.insert(0, str(REPO / "src"))
 
 from requivo.core.analysis import slot_label, state_of  # noqa: E402
 from requivo.core.contracts import Brief, EngineOutput  # noqa: E402
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 from requivo.core.selectors import display_token  # noqa: E402
 from requivo.streams import configure_streams, safe_write  # noqa: E402
 
@@ -74,24 +75,29 @@ def configure_output() -> None:
 
 
 def parse_requests(path: Path) -> list[dict]:
-    """Parse requests.md into ``[{slug, form, card, request, answers}, …]`` (see the file's own header).
+    """Parse requests.md into ``[{slug, form, card, perimeter, request, answers}, …]`` (see the
+    file's own header).
 
     ``answers`` maps a slot id to the *layers* the fixture client will volunteer about it, in order,
     one per ``answer.<slot>:`` line. A block with no such line is a single-pass request and captures
     exactly as it always did; a block with one is an interactive request and captures a multi-turn
     conversation instead. Repeating a slot is deliberate, not a mistake to reject — it is what keeps
-    a capture running past turn 2 (#137). Guarded by `test_parse_requests_collects_a_layered_answer_sheet`."""
+    a capture running past turn 2 (#137). Guarded by `test_parse_requests_collects_a_layered_answer_sheet`.
+
+    ``perimeter`` (#621, #608) defaults to ``DEFAULT_PERIMETER`` (software) when the block carries no
+    `perimeter:` line — every request written before #621 is unchanged. Guarded by
+    `test_perimeter_defaults_to_software_and_reads_an_explicit_value`."""
     runs: list[dict] = []
     current: dict | None = None
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("### "):
-            current = {"slug": line[4:].strip(), "form": "", "card": "", "request": "",
-                       "answers": {}}
+            current = {"slug": line[4:].strip(), "form": "", "card": "",
+                       "perimeter": DEFAULT_PERIMETER, "request": "", "answers": {}}
             runs.append(current)
         elif current is not None and ":" in line and not line.startswith("#"):
             key, _, value = line.partition(":")
             key = key.strip()
-            if key in ("form", "card", "request"):
+            if key in ("form", "card", "perimeter", "request"):
                 current[key] = value.strip()
             elif key.startswith("answer."):
                 current["answers"].setdefault(key[len("answer."):], []).append(value.strip())
@@ -109,7 +115,8 @@ def runs_path(slug: str) -> Path:
 
 
 def dump_runs(slug: str, request: str, models: list[EngineOutput],
-              briefs: list[Brief] | None = None, *, model: str) -> Path:
+              briefs: list[Brief] | None = None, *, model: str,
+              perimeter: str = DEFAULT_PERIMETER) -> Path:
     """Persist the K captured models for one request as a single JSON envelope.
 
     ``briefs`` is optional and captured only for the requests we watch the *assessment* on — it costs
@@ -117,9 +124,15 @@ def dump_runs(slug: str, request: str, models: list[EngineOutput],
 
     ``model`` is **keyword-only and required**: pass the id the call was actually given, never
     `current_model_name()` re-read here, so a capture that cannot say what it ran on cannot be
-    written (#515). Guarded by `test_dump_runs_requires_the_model_it_ran_on`."""
+    written (#515). Guarded by `test_dump_runs_requires_the_model_it_ran_on`.
+
+    ``perimeter`` (#621) defaults to software rather than being required like ``model`` -- unlike a
+    model id, there is a genuinely correct default: every capture before #621 ran under the one
+    perimeter that existed, the same migration `resolve_perimeter(None)` already makes for a session
+    (#608). Guarded by `test_captured_perimeter_round_trips_and_defaults_to_software`."""
     import json
-    payload = {"request": request, "model": model, "runs": [m.model_dump() for m in models]}
+    payload = {"request": request, "model": model, "perimeter": perimeter,
+               "runs": [m.model_dump() for m in models]}
     if briefs is not None:
         payload["briefs"] = [b.model_dump() for b in briefs]
     path = runs_path(slug)
@@ -145,19 +158,41 @@ def captured_model(text: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def load_runs(text: str) -> list[EngineOutput]:
+def captured_perimeter(text: str) -> str:
+    """The perimeter id a `.runs.json` envelope was captured under -- or software for a baseline
+    written before #621 added the key.
+
+    Deliberately **not** a third `None` state the way `captured_model` above is: a model swap has no
+    correct guess, but a perimeter does -- there was only one perimeter before #608, so a missing key
+    is the same migration `resolve_perimeter(None)` already makes for a session, not a guess. Both
+    envelope shapes carry the key at the same top level. Guarded by
+    `test_captured_perimeter_round_trips_and_defaults_to_software`."""
+    import json
+    value = json.loads(text).get("perimeter")
+    return value if isinstance(value, str) and value else DEFAULT_PERIMETER
+
+
+def load_runs(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[EngineOutput]:
     """Parse a `.runs.json` envelope (from disk or `git show`) into its list of models.
 
     An interactive capture stores the whole conversation under `turns` and no `runs` key at all: the
     model a run *ends* on is the last turn's, so duplicating it would put the same 16 KB on disk
     twice and give a later edit two places to disagree. Reading it back here rather than at each call
     site is what lets `consensus`, `movements`, `stability` and `--questions` treat an interactive
-    baseline as an ordinary one without knowing it is (#137)."""
+    baseline as an ordinary one without knowing it is (#137).
+
+    ``perimeter`` (#621, must-fire P1) must be the envelope's own -- read via `captured_perimeter`
+    at the call site, never left to the software default -- or a genuine go-to-market capture's own
+    valid slots (`icp`, `capacity`, …) raise `ValidationError` against a schema they were never
+    reasoned against. `EngineOutput`'s slot vocabulary check reads it off pydantic's `context`.
+    Guarded by `test_a_same_perimeter_comparison_actually_compares` and
+    `test_a_first_go_to_market_capture_is_read_back_and_reported_honestly`."""
     import json
     payload = json.loads(text)
+    ctx = {"perimeter": perimeter}
     if "runs" in payload:
-        return [EngineOutput.model_validate(r) for r in payload["runs"]]
-    return [EngineOutput.model_validate(run[-1]["model"]) for run in payload["turns"]]
+        return [EngineOutput.model_validate(r, context=ctx) for r in payload["runs"]]
+    return [EngineOutput.model_validate(run[-1]["model"], context=ctx) for run in payload["turns"]]
 
 
 def load_briefs(text: str) -> list[Brief]:
@@ -182,13 +217,17 @@ def _mode(values: list) -> tuple[object, int]:
     return Counter(values).most_common(1)[0]
 
 
-def consensus(models: list[EngineOutput]) -> dict:
+def consensus(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """Per-slot consensus over K runs: for each of `impact` and `state`, the modal value and the
     agreement count (how many of K runs share it). Agreement == K means unanimous — the only case a
-    later change can be attributed to a real cause rather than sampling noise."""
+    later change can be attributed to a real cause rather than sampling noise.
+
+    ``perimeter`` (#621) reaches `_stable_themes`, the only place this function labels a slot rather
+    than only reading its id -- an unlabeled id would fall back to the raw id, not crash, but a
+    go-to-market capture is owed the label its own schema actually gives it."""
     n = len(models)
     slot_ids = list(models[0].model.keys())
-    out = {"n": n, "slots": {}, "themes": _stable_themes(models)}
+    out = {"n": n, "slots": {}, "themes": _stable_themes(models, perimeter=perimeter)}
     for sid in slot_ids:
         impacts = [str(getattr(m.model[sid].impact, "value", m.model[sid].impact))
                    for m in models if sid in m.model]
@@ -200,21 +239,21 @@ def consensus(models: list[EngineOutput]) -> dict:
     return out
 
 
-def _stable_themes(models: list[EngineOutput]) -> set[str]:
+def _stable_themes(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Question-target labels that appear in a majority of the K runs — the stable focus of the
     engine on this request, as opposed to a theme that showed up in a single noisy run."""
     n = len(models)
     counts: Counter = Counter()
     for m in models:
-        for lab in {slot_label(q.slot) for q in m.questions}:
+        for lab in {slot_label(q.slot, perimeter) for q in m.questions}:
             counts[lab] += 1
     return {lab for lab, c in counts.items() if c > n / 2}
 
 
-def stability(models: list[EngineOutput]) -> dict:
+def stability(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """The empirical noise floor for one request: how much of the model is stable enough to diff on.
     Returns counts of unanimous vs jittery slots per dimension, plus the stable question themes."""
-    con = consensus(models)
+    con = consensus(models, perimeter=perimeter)
     n = con["n"]
     unan = {"impact": 0, "state": 0}
     jitter = {"impact": 0, "state": 0}
@@ -315,6 +354,10 @@ def _challenge_themes(briefs: list[Brief]) -> dict[str, int]:
         for challenge in brief.challenges:
             for slot_id in challenge.contests:
                 runs_per_slot.setdefault(slot_id, set()).add(run_idx)
+    # No perimeter passed, so this labels against the software schema — correct only because
+    # `capture()` structurally refuses `--brief` for any non-software perimeter, so no assessment of
+    # another perimeter's model ever reaches here. Give a perimeter its own assessment artifact and
+    # this line starts printing raw slot ids; thread the capture's perimeter through then (#621).
     return {slot_label(slot_id): len(runs) for slot_id, runs in runs_per_slot.items()}
 
 
@@ -364,7 +407,8 @@ def brief_movements(old: list[Brief], new: list[Brief]) -> dict:
     }
 
 
-def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
+def movements(old: list[EngineOutput], new: list[EngineOutput], *,
+             perimeter: str = DEFAULT_PERIMETER) -> dict:
     """Changes between two K-run baselines that clear the noise floor, split by how much they can be
     trusted. Both tiers need the OLD baseline unanimous on that dimension (a reliable reference):
 
@@ -375,8 +419,10 @@ def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
 
     Reading only the strong tier is the default; the weak tier is worth watching when several land on
     the same slot or the same request. Also reports stable question themes that appeared or vanished.
-    """
-    co, cn = consensus(old), consensus(new)
+
+    One ``perimeter`` for both sides (#621): by the time a caller reaches this function the two
+    already agree -- `diff_one` refuses a mismatched pair before either side is loaded at all."""
+    co, cn = consensus(old, perimeter=perimeter), consensus(new, perimeter=perimeter)
     n_new = cn["n"]
     majority = n_new // 2 + 1
     strong, weak = [], []
@@ -391,7 +437,7 @@ def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
                 continue
             if n_agree < majority:                     # the new runs don't even agree — pure noise
                 continue
-            entry = {"slot": slot_label(sid), "dim": dim, "from": o_val, "to": n_val,
+            entry = {"slot": slot_label(sid, perimeter), "dim": dim, "from": o_val, "to": n_val,
                      "old_agree": o_agree, "new_agree": n_agree, "n": n_new}
             (strong if n_agree == n_new else weak).append(entry)
     return {
@@ -511,17 +557,19 @@ def answers_for_turn(questions, sheet: AnswerSheet) -> tuple[str | None, list[st
 
 
 def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Turn]],
-                  *, model: str) -> str:
+                  *, model: str, perimeter: str = DEFAULT_PERIMETER) -> str:
     """Serialize an interactive capture. The answer sheet is stored alongside the turns because it is
     *input*: a diff whose sheet changed is not a diff about the engine, and without the sheet on disk
     there is no way to tell those apart. ``model`` is required for the reason `dump_runs` states at
     length (#515) — the two writers are the two places a capture's conditions can be recorded, so a
     key present in one and absent from the other would make the readout's third state depend on
-    which shape of request you happened to capture."""
+    which shape of request you happened to capture. ``perimeter`` (#621) is the same pairing, on the
+    same rule `dump_runs` gives for its own default."""
     import json
     return json.dumps({
         "request": request,
         "model": model,
+        "perimeter": perimeter,
         "answers": {sid: list(vals) for sid, vals in layers.items()},
         "turns": [[{"index": t.index, "answered": t.answered, "model": t.model.model_dump()}
                    for t in run] for run in runs],
@@ -529,42 +577,49 @@ def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Tu
 
 
 def dump_turn_runs(slug: str, request: str, layers: dict[str, list[str]],
-                   runs: list[list[Turn]], *, model: str) -> Path:
+                   runs: list[list[Turn]], *, model: str,
+                   perimeter: str = DEFAULT_PERIMETER) -> Path:
     """Persist an interactive capture. Explicitly UTF-8 for the reason `dump_runs` gives (#11)."""
     path = runs_path(slug)
-    path.write_text(turn_envelope(request, layers, runs, model=model), encoding="utf-8")
+    path.write_text(turn_envelope(request, layers, runs, model=model, perimeter=perimeter),
+                    encoding="utf-8")
     return path
 
 
-def load_turns(text: str) -> list[list[Turn]] | None:
+def load_turns(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[list[Turn]] | None:
     """The captured conversations, or **None** when this baseline is single-pass.
 
     None is a third state and not an empty result: a single-pass capture has nothing to say about
     turn 3, and every caller has to render that differently from a multi-turn capture that found
-    nothing wrong. Returning `[]` here would make the two indistinguishable."""
+    nothing wrong. Returning `[]` here would make the two indistinguishable.
+
+    ``perimeter`` (#621, must-fire P1): the same reason `load_runs` takes it -- a go-to-market
+    conversation's own turns must validate against go-to-market's schema, not software's."""
     import json
     payload = json.loads(text)
     raw = payload.get("turns")
     if raw is None:
         return None
+    ctx = {"perimeter": perimeter}
     return [[Turn(index=t["index"], answered=list(t["answered"]),
-                  model=EngineOutput.model_validate(t["model"])) for t in run] for run in raw]
+                  model=EngineOutput.model_validate(t["model"], context=ctx)) for t in run]
+            for run in raw]
 
 
-def _reasked_in(run: list[Turn]) -> set[str]:
+def _reasked_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots the engine asked about at `DEEP_TURN` or later having already been answered."""
     covered: set[str] = set()
     out: set[str] = set()
     for turn in run:
         if turn.index >= DEEP_TURN:
-            out |= {slot_label(q.slot) for q in turn.model.questions if q.slot in covered}
+            out |= {slot_label(q.slot, perimeter) for q in turn.model.questions if q.slot in covered}
         # after, not before: a turn's `answered` is the reply *to* that turn's questions, so it is
         # only "already covered" from the following turn on.
         covered.update(turn.answered)
     return out
 
 
-def _lost_in(run: list[Turn]) -> set[str]:
+def _lost_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots the client answered before `DEEP_TURN` that the final model no longer calls confirmed.
 
     A slot the client spoke to directly is explicit evidence. If it reads inferred or unknown at the
@@ -572,23 +627,24 @@ def _lost_in(run: list[Turn]) -> set[str]:
     difference between the two grounding shapes, stated as an outcome."""
     early = {s for t in run if t.index < DEEP_TURN for s in t.answered}
     final = run[-1].model.model
-    return {slot_label(sid) for sid in early
+    return {slot_label(sid, perimeter) for sid in early
             if sid not in final or state_of(final[sid]) != "confirmed"}
 
 
-def _regressed_in(run: list[Turn]) -> set[str]:
+def _regressed_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots whose completeness fell back across a turn boundary at `DEEP_TURN` or later."""
     out: set[str] = set()
     for before, after in zip(run, run[1:]):
         if after.index < DEEP_TURN:
             continue
         later = after.model.model
-        out |= {slot_label(sid) for sid, slot in before.model.model.items()
+        out |= {slot_label(sid, perimeter) for sid, slot in before.model.model.items()
                 if sid in later and later[sid].completeness < slot.completeness}
     return out
 
 
-def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]]) -> dict[str, int]:
+def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]], *,
+                     perimeter: str = DEFAULT_PERIMETER) -> dict[str, int]:
     """How much of the answer sheet this capture's K runs never got to, per slot, labeled.
 
     The #163 diagnosis for a capture that stayed SHALLOW: a run that converged early may have done
@@ -613,11 +669,12 @@ def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]]) -> di
     for sid in layers:
         left = min(r.get(sid, 0) for r in per_run) if per_run else 0
         if left:
-            out[slot_label(sid)] = left
+            out[slot_label(sid, perimeter)] = left
     return out
 
 
-def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None = None) -> dict:
+def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None = None, *,
+             perimeter: str = DEFAULT_PERIMETER) -> dict:
     """What the K captured conversations say about grounding from `DEEP_TURN` onward.
 
     With nothing to read it returns `{"measured": False, "reason": …}` and **no finding keys at
@@ -638,7 +695,7 @@ def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None
     found = {"reasked": Counter(), "lost": Counter(), "regressed": Counter()}
     for run in runs:
         for key, fn in (("reasked", _reasked_in), ("lost", _lost_in), ("regressed", _regressed_in)):
-            for label in fn(run):
+            for label in fn(run, perimeter=perimeter):
                 found[key][label] += 1
     out = {
         "measured": True,
@@ -654,23 +711,25 @@ def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None
                       for key, counter in found.items()},
     }
     if layers:
-        out["unreached_layers"] = unreached_layers(layers, runs)
+        out["unreached_layers"] = unreached_layers(layers, runs, perimeter=perimeter)
     return out
 
 
-def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None) -> dict:
+def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None, *,
+                   perimeter: str = DEFAULT_PERIMETER) -> dict:
     """What changed between two interactive baselines, on the unanimous tier.
 
     `measured: False` when either side is single-pass. That is the ordinary state the first time an
     interactive request is captured, and it has to say so rather than report an empty diff — a
     request that has just become interactive and a request whose deep turns are clean would otherwise
-    print the same thing."""
+    print the same thing. One ``perimeter`` for both sides, on `movements`'s own rule (#621)."""
     if not old or not new:
         missing = "the baseline in HEAD" if not old else "the working-tree capture"
         return {"measured": False,
                 "reason": f"{missing} has no turns — an interactive capture can only be compared "
                           f"against another interactive capture"}
-    lens_old, lens_new = turn_lens(old), turn_lens(new)
+    lens_old = turn_lens(old, perimeter=perimeter)
+    lens_new = turn_lens(new, perimeter=perimeter)
     out = {"measured": True, "depths": {"from": lens_old["depths"], "to": lens_new["depths"]}}
     for key in ("reasked", "lost", "regressed"):
         before = set(lens_old["unanimous"][key])

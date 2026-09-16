@@ -16,6 +16,11 @@ attributable to.
 
 Format (parsed by `golden_run.py`): each run is a `### <slug>` heading followed by `key: value`
 lines. `request:` holds the single-line discovery input; `form:` and `card:` are metadata.
+`perimeter:` names which installed perimeter (`core/perimeters.py`) the discovery call runs under --
+it defaults to `software` when the line is absent, so every request written before #621 is unchanged
+byte-for-byte. The captured baseline records which perimeter it ran under, and `golden_diff.py`
+refuses to compare two captures taken under different perimeters rather than diff slot ids that mean
+different things in each (see "The go-to-market request" below).
 
 ## Interactive requests
 
@@ -48,6 +53,21 @@ It is single-pass, so a bare `golden_run.py` picks it up with the rest of the se
 `K` calls. Nothing in the harness reads the language: `golden_diff`'s lenses compare slots,
 questions and the assessment exactly as they do for the English blocks, and the language claim is
 read off `--questions` by a person.
+
+## The go-to-market request
+
+`expand-into-new-segment` is the one block that varies the **perimeter** (`core/perimeters.py`,
+#608) rather than the problem form, so it is single-pass like the rest of the set but carries an
+explicit `perimeter: go-to-market` line -- every other block omits the line and runs under the
+`software` default unchanged. It is invented for #621 and describes no real company, person, product
+or figure: a generic B2B vendor taking an add-on it has already built to a customer segment it has
+not sold into before.
+
+There is no committed baseline for it yet. #621 makes the capture *possible* -- `golden_run.py`
+threading `perimeter:` through to the discovery call and the envelope recording which perimeter it
+ran under -- it does not spend the API calls to capture one; that is the maintainer's call, the same
+way every other first capture in this file was. Until then `golden_diff.py` reports it the same way
+it reports any request with no baseline in HEAD: the noise floor of a fresh capture, not a diff.
 
 ### leave-approval
 form: approval
@@ -148,3 +168,9 @@ answer.reporting: The auditor asks for the state of an envelope as it stood on a
 answer.acceptance: It is accepted when a full year can be replayed from the audit trail and matches the accounting system to the cent.
 answer.risks: The main risk is that department heads keep booking with the vendor first, and the tool then records fiction.
 answer.risks: The second is that we roll it out mid-year and nobody can say what the opening balances should be.
+
+### expand-into-new-segment
+perimeter: go-to-market
+form: launch-plan
+card: b2b-platform
+request: We've built a reporting add-on for our existing B2B product and want a go-to-market plan for selling it into a customer segment we've never targeted before.

@@ -27,6 +27,7 @@ from golden_lib import (  # noqa: E402
     brief_consensus,
     brief_movements,
     captured_model,
+    captured_perimeter,
     consensus,
     dump_runs,
     is_interactive,
@@ -53,6 +54,7 @@ from requivo.core.contracts import (  # noqa: E402
     Slot,
     Summary,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 
 # ── builders ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -258,6 +260,16 @@ def test_a_request_without_an_answer_sheet_is_single_pass(tmp_path):
     p.write_text("### s\nform: f\ncard: c\nrequest: r\n", encoding="utf-8")
     req = parse_requests(p)[0]
     assert req["answers"] == {} and is_interactive(req) is False
+
+
+def test_perimeter_defaults_to_software_and_reads_an_explicit_value(tmp_path):
+    """#621: a block with no `perimeter:` line reads `DEFAULT_PERIMETER` -- unchanged byte-for-byte
+    from before this landed -- and one with the line reads it back exactly."""
+    p = tmp_path / "requests.md"
+    p.write_text("### s\nform: f\ncard: c\nrequest: r\n", encoding="utf-8")
+    assert parse_requests(p)[0]["perimeter"] == DEFAULT_PERIMETER
+    p.write_text("### s\nperimeter: go-to-market\nform: f\ncard: c\nrequest: r\n", encoding="utf-8")
+    assert parse_requests(p)[0]["perimeter"] == "go-to-market"
 
 
 def test_the_answer_sheet_hands_each_layer_out_once():
@@ -486,6 +498,25 @@ def test_a_baseline_written_before_the_model_was_recorded_reads_as_unknown():
 def test_load_answers_is_empty_for_a_single_pass_capture():
     text = json.dumps({"request": "r", "runs": [_model(problem=Impact.high).model_dump()]})
     assert load_answers(text) == {}
+
+
+# -- #621: which perimeter a capture ran under -----------------------------------------------------
+
+def test_captured_perimeter_round_trips_and_defaults_to_software(tmp_path, monkeypatch):
+    """Mirrors #515's `model` pairing (unlike `model`, not required -- default software, since
+    there was only one perimeter before #608), for both writers and a key-less baseline alike."""
+    monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
+    interactive = turn_envelope("r", {}, [[_turn(1, [])]], model="m", perimeter="go-to-market")
+    assert captured_perimeter(interactive) == "go-to-market"
+    default = dump_runs("r", "a request", [_model(problem=Impact.high)], model="m")
+    assert captured_perimeter(default.read_text(encoding="utf-8")) == DEFAULT_PERIMETER
+    gtm = dump_runs("r2", "a request", [_model(problem=Impact.high)], model="m",
+                    perimeter="go-to-market")
+    assert captured_perimeter(gtm.read_text(encoding="utf-8")) == "go-to-market"
+    assert captured_perimeter(json.dumps({"request": "r", "runs": []})) == DEFAULT_PERIMETER
+    assert captured_perimeter(json.dumps({"request": "r", "perimeter": "", "runs": []})) == \
+        DEFAULT_PERIMETER
+
 
 # -- #405/#410: baseline freshness -- a committed baseline predating a real commit that changes what
 # a capture measures must be visible, without a control run, before any lens output is read ---------

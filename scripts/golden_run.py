@@ -81,6 +81,7 @@ from golden_lib import (  # noqa: E402
 )
 
 sys.path.insert(0, str(REPO / "src"))
+from requivo.core.perimeters import DEFAULT_PERIMETER, SOFTWARE  # noqa: E402
 from requivo.providers.anthropic import advise, run  # noqa: E402
 from requivo.providers.anthropic.client import current_model_name  # noqa: E402
 from requivo.providers.anthropic.provider import AnthropicProvider  # noqa: E402
@@ -118,13 +119,18 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
     # Constructed with the resolved id rather than left to resolve per call (#515, #434). Guarded by
     # test_the_interactive_capture_records_the_model_it_reasoned_on.
     disco = DiscoveryService(provider=AnthropicProvider(client, model=model))
+    # `.get(..., DEFAULT_PERIMETER)` rather than `req["perimeter"]`: a synthetic request dict built
+    # by a test fixture that predates #621 carries no key at all, and the correct read of that is the
+    # same one `parse_requests` gives a `requests.md` block with no `perimeter:` line.
+    perimeter = req.get("perimeter", DEFAULT_PERIMETER)
     runs: list[list[Turn]] = []
     for i in range(K):
         sheet = AnswerSheet(req["answers"])
         turns: list[Turn] = []
         out, answers = None, None
         for index in range(1, TURNS + 1):
-            out = disco.draft_turn(req["request"], current_model=out, answers=answers, cards=None)
+            out = disco.draft_turn(req["request"], current_model=out, answers=answers, cards=None,
+                                   perimeter=perimeter)
             print(f"    run {i + 1}/{K}  turn {index}/{TURNS}", end="\r", flush=True)
             # `answered` records what was actually sent onward, so the last turn's is empty even
             # where the sheet still had something to say. Recording an answer the engine never saw
@@ -137,13 +143,14 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
                 break
             answers = block
         runs.append(turns)
-    dump_turn_runs(req["slug"], req["request"], req["answers"], runs, model=model)
+    dump_turn_runs(req["slug"], req["request"], req["answers"], runs, model=model,
+                   perimeter=perimeter)
 
-    lens = turn_lens(runs, req["answers"])
+    lens = turn_lens(runs, req["answers"], perimeter=perimeter)
     depth = "/".join(str(d) for d in lens["depths"])
     verdict = "deep enough" if lens["deep_enough"] else f"SHALLOW — under {MEASURABLE_DEPTH} turns"
     print(f"  ✓ {req['slug']:<20} interactive · turns {depth} across {lens['n']} runs · {verdict}")
-    st = stability([run[-1].model for run in runs])
+    st = stability([run[-1].model for run in runs], perimeter=perimeter)
     print(f"    final model         {st['unanimous']['impact']}/{st['total_slots']} slots unanimous "
           f"on impact · {st['unanimous']['state']}/{st['total_slots']} on confidence")
     for key, caption in (("reasked", "re-asked after the client answered"),
@@ -162,6 +169,10 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
 def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             model: str | None = None) -> None:
     model = model or capture_model()
+    # See `capture_interactive`'s own comment on this default: a synthetic request dict from a test
+    # fixture written before #621 carries no key, and software is the correct read of that, not a
+    # guess (#608's own migration for the same absence).
+    perimeter = req.get("perimeter", DEFAULT_PERIMETER)
     if is_interactive(req):
         if with_brief:
             # Said rather than silently dropped: --brief doubles the calls, and on a request that
@@ -172,13 +183,23 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
                   file=sys.stderr)
         return capture_interactive(client, req, model)
 
+    if with_brief and perimeter != SOFTWARE:
+        # `advise()` reasons `brief.md` -- software's own assessment prompt -- and is not threaded a
+        # perimeter at all, so it would ground a go-to-market model in the wrong schema rather than
+        # raise. Per #607's cost rule each perimeter ships exactly the one artifact it needs
+        # (go-to-market's is `gtm_plan`, generated elsewhere); the assessment lens simply does not
+        # exist here yet, the same refusal shape as the interactive arm just above.
+        print(f"  ! {req['slug']:<20} --brief is not captured for a {perimeter!r} request "
+              f"(the assessment lens is software-only)", file=sys.stderr)
+        with_brief = False
+
     models, briefs = [], ([] if with_brief else None)
     for i in range(K):
         # `reuse_system=True` explicitly: this loop sends engine.md's system prompt K times, so the
         # breakpoint is genuinely re-read here — the same declaration the `advise` call below makes,
         # now stated rather than left to `run()`'s default (#58).
         out = run(client, [{"role": "user", "content": req["request"]}], reuse_system=True,
-                  model=model)
+                  model=model, perimeter=perimeter)
         models.append(out)
         if with_brief:
             # `reuse_system=True`: unlike the CLI, this loop sends brief.md's system prompt K times, so
@@ -186,8 +207,8 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             briefs.append(advise(client, out, reuse_system=True,
                                  model=model))  # see --brief in the header
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
-    dump_runs(req["slug"], req["request"], models, briefs, model=model)
-    st = stability(models)
+    dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter)
+    st = stability(models, perimeter=perimeter)
     # Show the noise floor up front: how much of the model was stable across the K runs.
     print(f"  ✓ {req['slug']:<20} {st['unanimous']['impact']}/{st['total_slots']} slots "
           f"unanimous on impact · {st['unanimous']['state']}/{st['total_slots']} on confidence "
@@ -206,8 +227,11 @@ def planned_calls(runs: list[dict], with_brief: bool) -> int:
     An interactive request costs a call per turn, so the total is per-request rather than a single
     multiplication -- and it is an upper bound, because a conversation that runs out of answers stops
     early. Stating it as "up to" is the honest form: the number that matters before spending is the
-    ceiling, not the average. ``--brief`` doubles a single-pass request and leaves an interactive one
-    alone, because `capture` refuses `--brief` there and says so.
+    ceiling, not the average. ``--brief`` doubles a single-pass request and leaves an interactive
+    one alone, because `capture` refuses `--brief` there and says so -- and, since #621, the ceiling
+    for a non-software single-pass request is an overestimate on the same grounds: `capture` refuses
+    `--brief` there too (the assessment lens is software-only), but this function counts it at 2x
+    regardless, "up to" rather than exact being the honest form either way.
 
     This exists as a function, and no file states a total, because a total is a count in prose that
     nothing goes red for: two sites said "18" for a set of six single-pass requests, correct the day

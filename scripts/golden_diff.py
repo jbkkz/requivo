@@ -26,6 +26,12 @@ that once made the assessment lens unreachable behind a flat slot consensus (#16
 `test_the_verdict_is_the_union_of_the_lenses_that_ran` and
 `test_the_assessment_lens_runs_when_the_slot_consensus_held_still`.
 
+A baseline and a fresh capture taken under **different perimeters** (#608, #621) never reach any of
+the three lenses above: a slot id means a different thing in each perimeter's own schema, so nothing
+would be a real comparison. `diff_one` refuses it before loading either side, names both perimeters,
+and moves no verdict — the same shape as a lens that could not look. Guarded by
+`test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`.
+
 Workflow: golden_run.py (re-capture) → golden_diff.py (read the signal) → commit if intended.
 
 Usage:
@@ -49,6 +55,7 @@ from golden_lib import (  # noqa: E402
     brief_consensus,
     brief_movements,
     captured_model,
+    captured_perimeter,
     configure_output,
     load_answers,
     load_briefs,
@@ -62,6 +69,7 @@ from golden_lib import (  # noqa: E402
 )
 
 sys.path.insert(0, str(REPO / "src"))
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 from requivo.core.selectors import display_token  # noqa: E402
 
 
@@ -144,9 +152,42 @@ def _show_model(old_text: str | None, new_text: str | None) -> None:
           f"prompt or context edit")
 
 
+def _perimeters_comparable(old_text: str, new_text: str) -> bool:
+    """Print which perimeter each side of this comparison ran under, and say whether a comparison is
+    even possible (#621).
+
+    Unlike a model swap (`_show_model` above, named but not gating -- two models can still be read as
+    opinions on the same question), a perimeter swap is not: a slot id means a different thing in
+    each perimeter's own schema, so `movements()` would silently diff unrelated concepts and print a
+    confident-looking result over a comparison that was never valid. Refused here, before either side
+    is loaded into `EngineOutput`s -- the same shape as a lens that could not look: it says so on its
+    own line and moves no verdict. Guarded by
+    `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
+    old_p, new_p = captured_perimeter(old_text), captured_perimeter(new_text)
+    if old_p == new_p:
+        print(f"  · captured under perimeter {display_token(old_p)} (baseline and candidate agree)")
+        return True
+    print(f"  ! cannot compare — baseline captured under perimeter {display_token(old_p)}, this "
+          f"capture under {display_token(new_p)}; a slot id means a different thing in each, so "
+          f"nothing below would be a real comparison (commit this as a first capture for "
+          f"{display_token(new_p)} instead)")
+    return False
+
+
 def diff_one(slug: str) -> str:
-    """Print the signal for one request. Returns its status: ``moved``, ``flat``, or ``stale``
-    (no capture on disk, or a capture that is byte-identical to HEAD and so never landed)."""
+    """Print the signal for one request. Returns its status: ``moved``, ``flat``, ``stale`` (no
+    capture on disk, or a capture that is byte-identical to HEAD and so never landed), or
+    ``perimeter_mismatch`` (#621: baseline and candidate were captured under different perimeters, so
+    nothing below them is a real comparison).
+
+    **Ordering is load-bearing (#621, must-fire P1, Codex on #622).** The perimeter comparability
+    check runs on the two envelopes' raw text -- `captured_perimeter`, never an `EngineOutput` -- and
+    it runs *before* either side is parsed into one. The first cut of this guard checked after `new`
+    was already loaded unconditionally at the top of the function: a genuine go-to-market capture's
+    own valid slots (`icp`, `capacity`, …) then raised `ValidationError` against the software default
+    every `EngineOutput.model_validate` call here used to carry, so the one path this function exists
+    to take was unreachable through a real capture -- it crashed before the refusal ever ran. Guarded
+    by `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
     path = runs_path(slug)
     rel_path = f"fixtures/golden/{slug}.runs.json"
     old_text = _head_version(rel_path)
@@ -162,12 +203,15 @@ def diff_one(slug: str) -> str:
         print("  ! no working-tree capture (run golden_run.py first)")
         return "stale"
 
-    new = load_runs(path.read_text(encoding="utf-8"))
     new_text = path.read_text(encoding="utf-8")
+    new_perimeter = captured_perimeter(new_text)
 
     if old_text is None:
         # No baseline yet — report the noise floor so we know how trustworthy future diffs will be.
-        st = stability(new)
+        # Nothing to compare against, so nothing to gate: `new_perimeter` is this capture's own, and
+        # every reader below is told it explicitly rather than assuming software.
+        new = load_runs(new_text, perimeter=new_perimeter)
+        st = stability(new, perimeter=new_perimeter)
         print("  ⊕ NEW (no baseline in HEAD)")
         print(f"  noise floor  {st['unanimous']['impact']}/{st['total_slots']} slots unanimous on "
               f"impact, {st['unanimous']['state']}/{st['total_slots']} on confidence, across "
@@ -176,7 +220,8 @@ def diff_one(slug: str) -> str:
         # On a first capture these readouts *are* the finding — there is nothing to diff against,
         # and what the deep turns did is the whole reason an interactive request exists (#137). The
         # assessment gets the same treatment for the same reason (#162).
-        _show_turns(None, load_turns(new_text), load_answers(new_text))
+        _show_turns(None, load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
+                   perimeter=new_perimeter)
         _show_assessment(None, load_briefs(new_text))
         return "moved"
 
@@ -187,8 +232,14 @@ def diff_one(slug: str) -> str:
         print("  ! capture identical to HEAD — not re-captured (re-run golden_run.py)")
         return "stale"
 
-    old = load_runs(old_text)
-    m = movements(old, new)
+    # The gate: envelope metadata only, no `EngineOutput` built on either side yet.
+    if not _perimeters_comparable(old_text, new_text):
+        return "perimeter_mismatch"
+
+    # Reachable only once both sides are confirmed to agree, so `perimeter` below is unambiguous.
+    old = load_runs(old_text, perimeter=new_perimeter)
+    new = load_runs(new_text, perimeter=new_perimeter)
+    m = movements(old, new, perimeter=new_perimeter)
 
     # Every lens runs, and the verdict is the union of what the ones that ran found. Independence is
     # the point, not the ordering: each watches something the others cannot see, so a null result
@@ -203,7 +254,9 @@ def diff_one(slug: str) -> str:
     # `test_the_assessment_lens_runs_when_the_slot_consensus_held_still` is what fails if the
     # short-circuit comes back.
     signals = [
-        _show_turns(load_turns(old_text), load_turns(new_text), load_answers(new_text)),
+        _show_turns(load_turns(old_text, perimeter=new_perimeter),
+                   load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
+                   perimeter=new_perimeter),
         _show_slots(m),
         _show_assessment(load_briefs(old_text), load_briefs(new_text)),
     ]
@@ -238,7 +291,8 @@ def _show_slots(m: dict) -> str | None:
     return "strong" if m["strong"] else "weak"
 
 
-def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None) -> str | None:
+def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None, *,
+                perimeter: str = DEFAULT_PERIMETER) -> str | None:
     """Print what the interactive capture says about turn 3 and beyond. Returns its tier — `strong`
     for a finding every run agrees on, None for no signal or no measurement.
 
@@ -266,7 +320,7 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
               "lens is gone, which is not the same as clean")
         return "strong"
 
-    lens = turn_lens(new_turns, layers)
+    lens = turn_lens(new_turns, layers, perimeter=perimeter)
     depth = "/".join(str(d) for d in lens["depths"])
     print(f"  interactive  turns {depth} across {lens['n']} run(s)"
           + ("" if lens["deep_enough"]
@@ -282,7 +336,7 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
         detail = ", ".join(f"{lab} ({c})" for lab, c in sorted(lens["unreached_layers"].items()))
         print(f"               {'sheet layers never reached':<38} {detail}")
 
-    move = turn_movements(old_turns, new_turns)
+    move = turn_movements(old_turns, new_turns, perimeter=perimeter)
     if not move["measured"]:
         print(f"               no comparison: {move['reason']}")
         return None
@@ -403,9 +457,18 @@ def questions_one(slug: str) -> None:
     _show_freshness(rel_path)
     new_text = path.read_text(encoding="utf-8")
     _show_model(old_text, new_text)
+    # Informational only here, unlike `diff_one`: this view lists each side's questions side by side
+    # rather than diffing slot ids, so a mismatch doesn't invalidate it the way it would a real
+    # comparison -- but a reader piecing together why the headlines read completely differently
+    # deserves the same fact `diff_one` would have refused on (#621).
+    _perimeters_comparable(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
-        turns = load_turns(text)
+        # Each side reads against its *own* recorded perimeter, not a shared one -- unlike `diff_one`,
+        # this view never gates on the two agreeing, so a mismatched pair must still parse cleanly on
+        # both sides rather than crash the half that happens not to be software (#621).
+        text_perimeter = captured_perimeter(text)
+        turns = load_turns(text, perimeter=text_perimeter)
         if turns is not None:
             # An interactive capture: the question that settles this issue is *when* something was
             # asked, not whether it was, so the turn number leads and an already-answered slot is
@@ -423,7 +486,7 @@ def questions_one(slug: str) -> None:
                         print(f"      answered: {', '.join(map(display_token, turn.answered))}")
                     covered.update(turn.answered)
             continue
-        for i, m in enumerate(load_runs(text), 1):
+        for i, m in enumerate(load_runs(text, perimeter=text_perimeter), 1):
             print(f"  run {i}")
             for q in m.questions:
                 print(f"    [{display_token(q.slot)}] {display_token(q.q)}")
@@ -457,12 +520,20 @@ def main(argv: list[str]) -> int:
 
     print("Golden diff — working tree vs HEAD (strong = every run agrees, before and after)")
     results = [diff_one(slug) for slug in slugs]
-    moved, weak, stale = (results.count(k) for k in ("moved", "weak", "stale"))
+    moved, weak, stale, mismatched = (
+        results.count(k) for k in ("moved", "weak", "stale", "perimeter_mismatch"))
     line = f"{moved}/{len(slugs)} request(s) moved on strong signal."
     if weak:
         line += f"  {weak} moved on weak signal only (watch, don't act)."
     if stale:
         line += f"  ⚠ {stale} not re-captured — that is not a clean bill of health."
+    if mismatched:
+        # A perimeter change is a different situation from either of the two above — it was
+        # re-captured, and it may be byte-different from HEAD — so it earns its own count rather than
+        # folding into `stale`, the same "three genuinely different situations" rule
+        # `tests/test_golden_baselines.py` already applies to drift (#621).
+        line += (f"  ⚠ {mismatched} could not be compared — captured under a different perimeter "
+                 f"than its baseline.")
     print(f"\n{'─' * 60}\n{line}")
     return 0
 
