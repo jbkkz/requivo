@@ -146,11 +146,11 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
     dump_turn_runs(req["slug"], req["request"], req["answers"], runs, model=model,
                    perimeter=perimeter)
 
-    lens = turn_lens(runs, req["answers"])
+    lens = turn_lens(runs, req["answers"], perimeter=perimeter)
     depth = "/".join(str(d) for d in lens["depths"])
     verdict = "deep enough" if lens["deep_enough"] else f"SHALLOW — under {MEASURABLE_DEPTH} turns"
     print(f"  ✓ {req['slug']:<20} interactive · turns {depth} across {lens['n']} runs · {verdict}")
-    st = stability([run[-1].model for run in runs])
+    st = stability([run[-1].model for run in runs], perimeter=perimeter)
     print(f"    final model         {st['unanimous']['impact']}/{st['total_slots']} slots unanimous "
           f"on impact · {st['unanimous']['state']}/{st['total_slots']} on confidence")
     for key, caption in (("reasked", "re-asked after the client answered"),
@@ -208,7 +208,7 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
                                  model=model))  # see --brief in the header
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
     dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter)
-    st = stability(models)
+    st = stability(models, perimeter=perimeter)
     # Show the noise floor up front: how much of the model was stable across the K runs.
     print(f"  ✓ {req['slug']:<20} {st['unanimous']['impact']}/{st['total_slots']} slots "
           f"unanimous on impact · {st['unanimous']['state']}/{st['total_slots']} on confidence "

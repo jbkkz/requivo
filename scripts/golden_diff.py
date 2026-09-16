@@ -30,7 +30,7 @@ A baseline and a fresh capture taken under **different perimeters** (#608, #621)
 the three lenses above: a slot id means a different thing in each perimeter's own schema, so nothing
 would be a real comparison. `diff_one` refuses it before loading either side, names both perimeters,
 and moves no verdict — the same shape as a lens that could not look. Guarded by
-`test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict`.
+`test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`.
 
 Workflow: golden_run.py (re-capture) → golden_diff.py (read the signal) → commit if intended.
 
@@ -69,6 +69,7 @@ from golden_lib import (  # noqa: E402
 )
 
 sys.path.insert(0, str(REPO / "src"))
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 from requivo.core.selectors import display_token  # noqa: E402
 
 
@@ -161,7 +162,7 @@ def _perimeters_comparable(old_text: str, new_text: str) -> bool:
     confident-looking result over a comparison that was never valid. Refused here, before either side
     is loaded into `EngineOutput`s -- the same shape as a lens that could not look: it says so on its
     own line and moves no verdict. Guarded by
-    `test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict`."""
+    `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
     old_p, new_p = captured_perimeter(old_text), captured_perimeter(new_text)
     if old_p == new_p:
         print(f"  · captured under perimeter {display_token(old_p)} (baseline and candidate agree)")
@@ -177,7 +178,16 @@ def diff_one(slug: str) -> str:
     """Print the signal for one request. Returns its status: ``moved``, ``flat``, ``stale`` (no
     capture on disk, or a capture that is byte-identical to HEAD and so never landed), or
     ``perimeter_mismatch`` (#621: baseline and candidate were captured under different perimeters, so
-    nothing below them is a real comparison)."""
+    nothing below them is a real comparison).
+
+    **Ordering is load-bearing (#621, must-fire P1, Codex on #622).** The perimeter comparability
+    check runs on the two envelopes' raw text -- `captured_perimeter`, never an `EngineOutput` -- and
+    it runs *before* either side is parsed into one. The first cut of this guard checked after `new`
+    was already loaded unconditionally at the top of the function: a genuine go-to-market capture's
+    own valid slots (`icp`, `capacity`, …) then raised `ValidationError` against the software default
+    every `EngineOutput.model_validate` call here used to carry, so the one path this function exists
+    to take was unreachable through a real capture -- it crashed before the refusal ever ran. Guarded
+    by `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
     path = runs_path(slug)
     rel_path = f"fixtures/golden/{slug}.runs.json"
     old_text = _head_version(rel_path)
@@ -193,12 +203,15 @@ def diff_one(slug: str) -> str:
         print("  ! no working-tree capture (run golden_run.py first)")
         return "stale"
 
-    new = load_runs(path.read_text(encoding="utf-8"))
     new_text = path.read_text(encoding="utf-8")
+    new_perimeter = captured_perimeter(new_text)
 
     if old_text is None:
         # No baseline yet — report the noise floor so we know how trustworthy future diffs will be.
-        st = stability(new)
+        # Nothing to compare against, so nothing to gate: `new_perimeter` is this capture's own, and
+        # every reader below is told it explicitly rather than assuming software.
+        new = load_runs(new_text, perimeter=new_perimeter)
+        st = stability(new, perimeter=new_perimeter)
         print("  ⊕ NEW (no baseline in HEAD)")
         print(f"  noise floor  {st['unanimous']['impact']}/{st['total_slots']} slots unanimous on "
               f"impact, {st['unanimous']['state']}/{st['total_slots']} on confidence, across "
@@ -207,7 +220,8 @@ def diff_one(slug: str) -> str:
         # On a first capture these readouts *are* the finding — there is nothing to diff against,
         # and what the deep turns did is the whole reason an interactive request exists (#137). The
         # assessment gets the same treatment for the same reason (#162).
-        _show_turns(None, load_turns(new_text), load_answers(new_text))
+        _show_turns(None, load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
+                   perimeter=new_perimeter)
         _show_assessment(None, load_briefs(new_text))
         return "moved"
 
@@ -218,11 +232,14 @@ def diff_one(slug: str) -> str:
         print("  ! capture identical to HEAD — not re-captured (re-run golden_run.py)")
         return "stale"
 
+    # The gate: envelope metadata only, no `EngineOutput` built on either side yet.
     if not _perimeters_comparable(old_text, new_text):
         return "perimeter_mismatch"
 
-    old = load_runs(old_text)
-    m = movements(old, new)
+    # Reachable only once both sides are confirmed to agree, so `perimeter` below is unambiguous.
+    old = load_runs(old_text, perimeter=new_perimeter)
+    new = load_runs(new_text, perimeter=new_perimeter)
+    m = movements(old, new, perimeter=new_perimeter)
 
     # Every lens runs, and the verdict is the union of what the ones that ran found. Independence is
     # the point, not the ordering: each watches something the others cannot see, so a null result
@@ -237,7 +254,9 @@ def diff_one(slug: str) -> str:
     # `test_the_assessment_lens_runs_when_the_slot_consensus_held_still` is what fails if the
     # short-circuit comes back.
     signals = [
-        _show_turns(load_turns(old_text), load_turns(new_text), load_answers(new_text)),
+        _show_turns(load_turns(old_text, perimeter=new_perimeter),
+                   load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
+                   perimeter=new_perimeter),
         _show_slots(m),
         _show_assessment(load_briefs(old_text), load_briefs(new_text)),
     ]
@@ -272,7 +291,8 @@ def _show_slots(m: dict) -> str | None:
     return "strong" if m["strong"] else "weak"
 
 
-def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None) -> str | None:
+def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None, *,
+                perimeter: str = DEFAULT_PERIMETER) -> str | None:
     """Print what the interactive capture says about turn 3 and beyond. Returns its tier — `strong`
     for a finding every run agrees on, None for no signal or no measurement.
 
@@ -300,7 +320,7 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
               "lens is gone, which is not the same as clean")
         return "strong"
 
-    lens = turn_lens(new_turns, layers)
+    lens = turn_lens(new_turns, layers, perimeter=perimeter)
     depth = "/".join(str(d) for d in lens["depths"])
     print(f"  interactive  turns {depth} across {lens['n']} run(s)"
           + ("" if lens["deep_enough"]
@@ -316,7 +336,7 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
         detail = ", ".join(f"{lab} ({c})" for lab, c in sorted(lens["unreached_layers"].items()))
         print(f"               {'sheet layers never reached':<38} {detail}")
 
-    move = turn_movements(old_turns, new_turns)
+    move = turn_movements(old_turns, new_turns, perimeter=perimeter)
     if not move["measured"]:
         print(f"               no comparison: {move['reason']}")
         return None
@@ -444,7 +464,11 @@ def questions_one(slug: str) -> None:
     _perimeters_comparable(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
-        turns = load_turns(text)
+        # Each side reads against its *own* recorded perimeter, not a shared one -- unlike `diff_one`,
+        # this view never gates on the two agreeing, so a mismatched pair must still parse cleanly on
+        # both sides rather than crash the half that happens not to be software (#621).
+        text_perimeter = captured_perimeter(text)
+        turns = load_turns(text, perimeter=text_perimeter)
         if turns is not None:
             # An interactive capture: the question that settles this issue is *when* something was
             # asked, not whether it was, so the turn number leads and an already-answered slot is
@@ -462,7 +486,7 @@ def questions_one(slug: str) -> None:
                         print(f"      answered: {', '.join(map(display_token, turn.answered))}")
                     covered.update(turn.answered)
             continue
-        for i, m in enumerate(load_runs(text), 1):
+        for i, m in enumerate(load_runs(text, perimeter=text_perimeter), 1):
             print(f"  run {i}")
             for q in m.questions:
                 print(f"    [{display_token(q.slot)}] {display_token(q.q)}")

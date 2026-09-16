@@ -49,21 +49,32 @@ from requivo.core.contracts import (  # noqa: E402
     Slot,
     Summary,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 
 K = 3  # runs per captured baseline, matching the harness default
 
 
 # ── builders ─────────────────────────────────────────────────────────────────────────────────────
 
-def _model(impact: Impact = Impact.medium, completeness: int = 80) -> dict:
+def _model(impact: Impact = Impact.medium, completeness: int = 80, *,
+          slot_id: str = "problem", perimeter: str = DEFAULT_PERIMETER) -> dict:
     """One captured run. `completeness` is what varies between two otherwise identical baselines:
     `movements()` grades impact and confidence only, so moving it makes the two files differ in bytes
     -- which is what stops `diff_one` reporting `stale` -- while leaving the slot consensus flat.
-    That is the exact situation #162 is about."""
+    That is the exact situation #162 is about.
+
+    `slot_id`/`perimeter` (#621) default to software's own `problem`, unchanged for every existing
+    caller. Construction itself validates `slot_id` against `perimeter`'s real schema -- via
+    `model_validate(..., context=...)` rather than the bare constructor -- so a fixture naming a
+    slot its own perimeter does not define fails here, at the builder, rather than producing the
+    exact defect Codex found on #622: a forged capture whose envelope claims one perimeter while
+    its content is quietly another's."""
     slot = Slot(value="v", completeness=completeness, confidence=Confidence.explicit,
                 impact=impact, evidence="e")
-    return EngineOutput(model={"problem": slot}, questions=[],
-                        summary=Summary()).model_dump(mode="json")
+    return EngineOutput.model_validate(
+        {"model": {slot_id: slot}, "questions": [], "summary": Summary()},
+        context={"perimeter": perimeter},
+    ).model_dump(mode="json")
 
 
 def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
@@ -77,15 +88,23 @@ def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
 
 def _capture(*, impact: Impact = Impact.medium, completeness: int = 80,
              briefs: list[dict] | None = None, model: str | None = None,
-             perimeter: str | None = None) -> str:
+             perimeter: str | None = None, slot_id: str = "problem") -> str:
     """A `.runs.json` envelope with K identical runs, and optionally K assessments.
 
     `model` defaults to **absent**, which is what every baseline written before #515 looks like --
     so the lens tests above keep exercising the third state incidentally, the way a reader's own
     checkout does today. `perimeter` (#621) defaults to absent on the same principle, and
     `captured_perimeter` reads that as `software` rather than as a third unknown state -- see its
-    own docstring for why that default differs from `model`'s."""
-    body: dict = {"request": "r", "runs": [_model(impact, completeness) for _ in range(K)]}
+    own docstring for why that default differs from `model`'s.
+
+    `slot_id` (#621) is what the K runs actually carry, and `_model` refuses it if it does not
+    belong to `perimeter`'s real schema -- so, unlike Codex's #622 finding, this builder can never
+    write an envelope whose recorded perimeter disagrees with its own content. A caller building a
+    go-to-market fixture must name one of that schema's own ids (`icp`, `capacity`, …)."""
+    content_perimeter = perimeter if perimeter is not None else DEFAULT_PERIMETER
+    body: dict = {"request": "r",
+                  "runs": [_model(impact, completeness, slot_id=slot_id, perimeter=content_perimeter)
+                          for _ in range(K)]}
     if model is not None:
         body["model"] = model
     if perimeter is not None:
@@ -175,25 +194,35 @@ def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
 # ── #621: a comparison across perimeters is refused, not diffed ──────────────────────────────────
 
 
-def test_two_captures_under_the_same_perimeter_say_so(diff):
-    """must not fire -- the positive control: an explicit, matching perimeter on both sides is an
-    ordinary comparison and must reach the slot lens exactly as it did before #621."""
-    verdict, lines = diff(_capture(perimeter="go-to-market"),
-                          _capture(completeness=70, perimeter="go-to-market"))
+def test_a_same_perimeter_comparison_actually_compares(diff):
+    """#621, must-fire (Codex, #622). Both captures are genuinely go-to-market -- a real `icp` slot,
+    not software's `problem` under a relabelled envelope -- so this is the positive control that
+    would have caught the original defect: `load_runs` failing to thread `perimeter` crashes here
+    with a `ValidationError` on construction alone, before the assertions below even run. Beyond not
+    crashing, the movement must actually be found and labeled with go-to-market's own schema label
+    (`slot_label("icp", "go-to-market")`), not a raw id or software's fallback."""
+    verdict, lines = diff(
+        _capture(perimeter="go-to-market", slot_id="icp", impact=Impact.medium),
+        _capture(perimeter="go-to-market", slot_id="icp", impact=Impact.high))
     line = _line(lines, "captured under perimeter")
-    assert line is not None, lines
-    assert "go-to-market" in line and "agree" in line
-    assert verdict != "perimeter_mismatch", lines
+    assert line is not None and "go-to-market" in line and "agree" in line, lines
+    assert verdict == "moved", lines
+    move_line = _line(lines, slot_label("icp", "go-to-market"))
+    assert move_line is not None, lines
+    assert "medium" in move_line and "high" in move_line, move_line
 
 
-def test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict(diff):
-    """The defect this issue exists to close: a baseline and a candidate reasoned under different
-    perimeters must never reach `movements()`, because a slot id means a different thing in each
-    schema. `diff_one` must refuse before the slot lens runs at all -- not run it and then discard
-    the result, which would still risk a `KeyError`/`AttributeError` from `consensus()` walking a
-    schema the other side's ids do not belong to."""
-    verdict, lines = diff(_capture(perimeter="software"),
-                          _capture(completeness=70, perimeter="go-to-market"))
+def test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed(diff):
+    """#621, must-fire (Codex, #622's exact finding). The baseline is genuinely software (a real
+    `problem` slot) and the candidate is genuinely go-to-market (a real `icp` slot) -- disjoint
+    schemas, not one relabelled copy of the other. If `diff_one`'s comparability gate ran after
+    either side was parsed into an `EngineOutput`, THIS fixture raises `ValidationError` rather than
+    returning `perimeter_mismatch` cleanly -- the exact crash Codex found, and the fixture a
+    same-schema mismatch (the shape this test used before #622) cannot expose, because it happens to
+    validate against the wrong schema by accident."""
+    verdict, lines = diff(
+        _capture(perimeter="software", slot_id="problem"),
+        _capture(perimeter="go-to-market", slot_id="icp", completeness=70))
     assert verdict == "perimeter_mismatch", lines
     refusal = _line(lines, "cannot compare")
     assert refusal is not None, lines
@@ -203,6 +232,17 @@ def test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict(diff):
     assert _line(lines, "no change above the noise floor") is None, lines
     assert _line(lines, "strong") is None, lines
     assert _line(lines, "weak") is None, lines
+
+
+def test_a_first_go_to_market_capture_is_read_back_and_reported_honestly(diff):
+    """#621, must-fire. No baseline yet, and the working-tree capture is genuinely go-to-market (a
+    real `icp` slot). The ⊕ NEW branch must read it back against its own schema -- not the software
+    default every `EngineOutput.model_validate` call used to carry -- or a first go-to-market capture
+    could never even be looked at, the readout Codex named on #622."""
+    verdict, lines = diff(None, _capture(perimeter="go-to-market", slot_id="icp"))
+    assert verdict == "moved", lines
+    assert _line(lines, "NEW") is not None, lines
+    assert _line(lines, "noise floor") is not None, lines
 
 
 def test_a_baseline_with_no_perimeter_key_is_comparable_with_an_explicit_software_capture(diff):

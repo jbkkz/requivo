@@ -172,19 +172,27 @@ def captured_perimeter(text: str) -> str:
     return value if isinstance(value, str) and value else DEFAULT_PERIMETER
 
 
-def load_runs(text: str) -> list[EngineOutput]:
+def load_runs(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[EngineOutput]:
     """Parse a `.runs.json` envelope (from disk or `git show`) into its list of models.
 
     An interactive capture stores the whole conversation under `turns` and no `runs` key at all: the
     model a run *ends* on is the last turn's, so duplicating it would put the same 16 KB on disk
     twice and give a later edit two places to disagree. Reading it back here rather than at each call
     site is what lets `consensus`, `movements`, `stability` and `--questions` treat an interactive
-    baseline as an ordinary one without knowing it is (#137)."""
+    baseline as an ordinary one without knowing it is (#137).
+
+    ``perimeter`` (#621, must-fire P1) must be the envelope's own -- read via `captured_perimeter`
+    at the call site, never left to the software default -- or a genuine go-to-market capture's own
+    valid slots (`icp`, `capacity`, …) raise `ValidationError` against a schema they were never
+    reasoned against. `EngineOutput`'s slot vocabulary check reads it off pydantic's `context`.
+    Guarded by `test_a_same_perimeter_comparison_actually_compares` and
+    `test_a_first_go_to_market_capture_is_read_back_and_reported_honestly`."""
     import json
     payload = json.loads(text)
+    ctx = {"perimeter": perimeter}
     if "runs" in payload:
-        return [EngineOutput.model_validate(r) for r in payload["runs"]]
-    return [EngineOutput.model_validate(run[-1]["model"]) for run in payload["turns"]]
+        return [EngineOutput.model_validate(r, context=ctx) for r in payload["runs"]]
+    return [EngineOutput.model_validate(run[-1]["model"], context=ctx) for run in payload["turns"]]
 
 
 def load_briefs(text: str) -> list[Brief]:
@@ -209,13 +217,17 @@ def _mode(values: list) -> tuple[object, int]:
     return Counter(values).most_common(1)[0]
 
 
-def consensus(models: list[EngineOutput]) -> dict:
+def consensus(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """Per-slot consensus over K runs: for each of `impact` and `state`, the modal value and the
     agreement count (how many of K runs share it). Agreement == K means unanimous — the only case a
-    later change can be attributed to a real cause rather than sampling noise."""
+    later change can be attributed to a real cause rather than sampling noise.
+
+    ``perimeter`` (#621) reaches `_stable_themes`, the only place this function labels a slot rather
+    than only reading its id -- an unlabeled id would fall back to the raw id, not crash, but a
+    go-to-market capture is owed the label its own schema actually gives it."""
     n = len(models)
     slot_ids = list(models[0].model.keys())
-    out = {"n": n, "slots": {}, "themes": _stable_themes(models)}
+    out = {"n": n, "slots": {}, "themes": _stable_themes(models, perimeter=perimeter)}
     for sid in slot_ids:
         impacts = [str(getattr(m.model[sid].impact, "value", m.model[sid].impact))
                    for m in models if sid in m.model]
@@ -227,21 +239,21 @@ def consensus(models: list[EngineOutput]) -> dict:
     return out
 
 
-def _stable_themes(models: list[EngineOutput]) -> set[str]:
+def _stable_themes(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Question-target labels that appear in a majority of the K runs — the stable focus of the
     engine on this request, as opposed to a theme that showed up in a single noisy run."""
     n = len(models)
     counts: Counter = Counter()
     for m in models:
-        for lab in {slot_label(q.slot) for q in m.questions}:
+        for lab in {slot_label(q.slot, perimeter) for q in m.questions}:
             counts[lab] += 1
     return {lab for lab, c in counts.items() if c > n / 2}
 
 
-def stability(models: list[EngineOutput]) -> dict:
+def stability(models: list[EngineOutput], *, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """The empirical noise floor for one request: how much of the model is stable enough to diff on.
     Returns counts of unanimous vs jittery slots per dimension, plus the stable question themes."""
-    con = consensus(models)
+    con = consensus(models, perimeter=perimeter)
     n = con["n"]
     unan = {"impact": 0, "state": 0}
     jitter = {"impact": 0, "state": 0}
@@ -391,7 +403,8 @@ def brief_movements(old: list[Brief], new: list[Brief]) -> dict:
     }
 
 
-def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
+def movements(old: list[EngineOutput], new: list[EngineOutput], *,
+             perimeter: str = DEFAULT_PERIMETER) -> dict:
     """Changes between two K-run baselines that clear the noise floor, split by how much they can be
     trusted. Both tiers need the OLD baseline unanimous on that dimension (a reliable reference):
 
@@ -402,8 +415,10 @@ def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
 
     Reading only the strong tier is the default; the weak tier is worth watching when several land on
     the same slot or the same request. Also reports stable question themes that appeared or vanished.
-    """
-    co, cn = consensus(old), consensus(new)
+
+    One ``perimeter`` for both sides (#621): by the time a caller reaches this function the two
+    already agree -- `diff_one` refuses a mismatched pair before either side is loaded at all."""
+    co, cn = consensus(old, perimeter=perimeter), consensus(new, perimeter=perimeter)
     n_new = cn["n"]
     majority = n_new // 2 + 1
     strong, weak = [], []
@@ -418,7 +433,7 @@ def movements(old: list[EngineOutput], new: list[EngineOutput]) -> dict:
                 continue
             if n_agree < majority:                     # the new runs don't even agree — pure noise
                 continue
-            entry = {"slot": slot_label(sid), "dim": dim, "from": o_val, "to": n_val,
+            entry = {"slot": slot_label(sid, perimeter), "dim": dim, "from": o_val, "to": n_val,
                      "old_agree": o_agree, "new_agree": n_agree, "n": n_new}
             (strong if n_agree == n_new else weak).append(entry)
     return {
@@ -567,35 +582,40 @@ def dump_turn_runs(slug: str, request: str, layers: dict[str, list[str]],
     return path
 
 
-def load_turns(text: str) -> list[list[Turn]] | None:
+def load_turns(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[list[Turn]] | None:
     """The captured conversations, or **None** when this baseline is single-pass.
 
     None is a third state and not an empty result: a single-pass capture has nothing to say about
     turn 3, and every caller has to render that differently from a multi-turn capture that found
-    nothing wrong. Returning `[]` here would make the two indistinguishable."""
+    nothing wrong. Returning `[]` here would make the two indistinguishable.
+
+    ``perimeter`` (#621, must-fire P1): the same reason `load_runs` takes it -- a go-to-market
+    conversation's own turns must validate against go-to-market's schema, not software's."""
     import json
     payload = json.loads(text)
     raw = payload.get("turns")
     if raw is None:
         return None
+    ctx = {"perimeter": perimeter}
     return [[Turn(index=t["index"], answered=list(t["answered"]),
-                  model=EngineOutput.model_validate(t["model"])) for t in run] for run in raw]
+                  model=EngineOutput.model_validate(t["model"], context=ctx)) for t in run]
+            for run in raw]
 
 
-def _reasked_in(run: list[Turn]) -> set[str]:
+def _reasked_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots the engine asked about at `DEEP_TURN` or later having already been answered."""
     covered: set[str] = set()
     out: set[str] = set()
     for turn in run:
         if turn.index >= DEEP_TURN:
-            out |= {slot_label(q.slot) for q in turn.model.questions if q.slot in covered}
+            out |= {slot_label(q.slot, perimeter) for q in turn.model.questions if q.slot in covered}
         # after, not before: a turn's `answered` is the reply *to* that turn's questions, so it is
         # only "already covered" from the following turn on.
         covered.update(turn.answered)
     return out
 
 
-def _lost_in(run: list[Turn]) -> set[str]:
+def _lost_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots the client answered before `DEEP_TURN` that the final model no longer calls confirmed.
 
     A slot the client spoke to directly is explicit evidence. If it reads inferred or unknown at the
@@ -603,23 +623,24 @@ def _lost_in(run: list[Turn]) -> set[str]:
     difference between the two grounding shapes, stated as an outcome."""
     early = {s for t in run if t.index < DEEP_TURN for s in t.answered}
     final = run[-1].model.model
-    return {slot_label(sid) for sid in early
+    return {slot_label(sid, perimeter) for sid in early
             if sid not in final or state_of(final[sid]) != "confirmed"}
 
 
-def _regressed_in(run: list[Turn]) -> set[str]:
+def _regressed_in(run: list[Turn], *, perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     """Slots whose completeness fell back across a turn boundary at `DEEP_TURN` or later."""
     out: set[str] = set()
     for before, after in zip(run, run[1:]):
         if after.index < DEEP_TURN:
             continue
         later = after.model.model
-        out |= {slot_label(sid) for sid, slot in before.model.model.items()
+        out |= {slot_label(sid, perimeter) for sid, slot in before.model.model.items()
                 if sid in later and later[sid].completeness < slot.completeness}
     return out
 
 
-def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]]) -> dict[str, int]:
+def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]], *,
+                     perimeter: str = DEFAULT_PERIMETER) -> dict[str, int]:
     """How much of the answer sheet this capture's K runs never got to, per slot, labeled.
 
     The #163 diagnosis for a capture that stayed SHALLOW: a run that converged early may have done
@@ -644,11 +665,12 @@ def unreached_layers(layers: dict[str, list[str]], runs: list[list[Turn]]) -> di
     for sid in layers:
         left = min(r.get(sid, 0) for r in per_run) if per_run else 0
         if left:
-            out[slot_label(sid)] = left
+            out[slot_label(sid, perimeter)] = left
     return out
 
 
-def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None = None) -> dict:
+def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None = None, *,
+             perimeter: str = DEFAULT_PERIMETER) -> dict:
     """What the K captured conversations say about grounding from `DEEP_TURN` onward.
 
     With nothing to read it returns `{"measured": False, "reason": …}` and **no finding keys at
@@ -669,7 +691,7 @@ def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None
     found = {"reasked": Counter(), "lost": Counter(), "regressed": Counter()}
     for run in runs:
         for key, fn in (("reasked", _reasked_in), ("lost", _lost_in), ("regressed", _regressed_in)):
-            for label in fn(run):
+            for label in fn(run, perimeter=perimeter):
                 found[key][label] += 1
     out = {
         "measured": True,
@@ -685,23 +707,25 @@ def turn_lens(runs: list[list[Turn]] | None, layers: dict[str, list[str]] | None
                       for key, counter in found.items()},
     }
     if layers:
-        out["unreached_layers"] = unreached_layers(layers, runs)
+        out["unreached_layers"] = unreached_layers(layers, runs, perimeter=perimeter)
     return out
 
 
-def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None) -> dict:
+def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None, *,
+                   perimeter: str = DEFAULT_PERIMETER) -> dict:
     """What changed between two interactive baselines, on the unanimous tier.
 
     `measured: False` when either side is single-pass. That is the ordinary state the first time an
     interactive request is captured, and it has to say so rather than report an empty diff — a
     request that has just become interactive and a request whose deep turns are clean would otherwise
-    print the same thing."""
+    print the same thing. One ``perimeter`` for both sides, on `movements`'s own rule (#621)."""
     if not old or not new:
         missing = "the baseline in HEAD" if not old else "the working-tree capture"
         return {"measured": False,
                 "reason": f"{missing} has no turns — an interactive capture can only be compared "
                           f"against another interactive capture"}
-    lens_old, lens_new = turn_lens(old), turn_lens(new)
+    lens_old = turn_lens(old, perimeter=perimeter)
+    lens_new = turn_lens(new, perimeter=perimeter)
     out = {"measured": True, "depths": {"from": lens_old["depths"], "to": lens_new["depths"]}}
     for key in ("reasked", "lost", "regressed"):
         before = set(lens_old["unanimous"][key])
