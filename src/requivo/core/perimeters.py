@@ -29,13 +29,17 @@ DEFAULT_PERIMETER = SOFTWARE
 
 # Which artifact types each perimeter may produce, per #607's cost rule ("each new perimeter ships
 # with exactly one artifact... a second is added when a user asks"). Software carries every generator
-# that exists today; go-to-market ships none yet -- its one artifact is #609's own scope, and an
-# empty set here is what keeps its registries trivially agreeing with every other table until #609
-# adds a row to all of them together (`test_the_real_artifact_registries_agree_on_their_key_sets`).
+# that exists today; go-to-market ships exactly its one (#609: `gtm_brief`), registered the same way
+# in every table `test_the_real_artifact_registries_agree_on_their_key_sets` cross-checks.
 _ARTIFACT_TYPES: dict[str, frozenset[str]] = {
     SOFTWARE: frozenset(
         {"brief", "prd", "stories", "estimate", "criteria", "epic", "release"}),
-    GO_TO_MARKET: frozenset(),
+    # #609: go-to-market's one artifact, per #607's cost rule -- its equivalent of the decision
+    # brief, over its own twelve slots. A distinct key from "brief" on purpose: the two are
+    # different contracts (`GoToMarketBrief` vs `Brief`) reasoned from different schemas, and the
+    # registries below (`_GENERATORS`, `_WRITERS`, `ARTIFACT_FILENAMES`, ...) are keyed globally,
+    # not per perimeter -- reusing "brief" here would collide with software's own entry.
+    GO_TO_MARKET: frozenset({"gtm_brief"}),
 }
 
 

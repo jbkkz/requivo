@@ -48,7 +48,7 @@ from requivo.paths import DEMO
 # directions — an unexpected import fails, and so does an entry here that nothing imports.
 from requivo.providers.anthropic import new_client
 from requivo.providers.errors import EngineError
-from requivo.render.markdown import criteria_markdown, epic_markdown, prd_markdown, release_markdown
+from requivo.render.markdown import criteria_markdown, epic_markdown, gtm_brief_markdown, prd_markdown, release_markdown
 from requivo.render.terminal import (
     DOC_TYPES,
     docs_menu_rows,
@@ -576,15 +576,15 @@ def _cmd_answer(a, client) -> None:
              (result.invalidated_exclusions, "exclusion(s)"),
              (result.invalidated_thresholds, "threshold(s)")]
     n_reasoning = sum(len(items) for items, _ in parts)
-    if n_reasoning:
+    reasoning_type = next((t for t in ("brief", "gtm_brief") if t in get_perimeter(perimeter).artifact_types), None)
+    if n_reasoning and reasoning_type:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
-        print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the decision brief's reasoning "
-              f"({breakdown}) — regenerate the brief to refresh it.")
+        print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}`.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")
-    if not out.questions:
-        print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
-    else:
+    if out.questions:
         print(f'\n→ Keep going: requivo answer {slug} "<your answers>"')
+    else:
+        print(f"\n✅ Discovery converged — run `requivo {reasoning_type} {slug}` for the {_LABEL[reasoning_type]}." if reasoning_type else "\n✅ Discovery converged.")
 
 
 def _is_existing_session(svc: SessionService, ref: str) -> bool:
@@ -951,6 +951,10 @@ def _render_brief(slug: str, result) -> None:
     render_brief(result.model, result.artifact)
 
 
+def _render_gtm_brief(slug: str, result) -> None:  # plain-document pattern, like every non-`brief` generator below
+    print(display_document(gtm_brief_markdown(result.model, result.artifact)))
+
+
 def _render_prd(slug: str, result) -> None:
     # `display_document`, not `display_text` (#449): a multi-paragraph document -- headings, lists, a
     # table -- whose newlines and tabs are its layout. Print time only; the string `_wrote` saves to
@@ -986,17 +990,14 @@ def _render_release(slug: str, result) -> None:
 # the file went; `estimate` also writes the stories file it saved alongside itself, the same order
 # the seven bodies this replaces used.
 _RENDER: dict[str, Callable[[str, object], None]] = {
-    "brief": _render_brief, "prd": _render_prd, "stories": _render_stories,
-    "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic,
-    "release": _render_release,
+    "brief": _render_brief, "gtm_brief": _render_gtm_brief, "prd": _render_prd, "stories": _render_stories, "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic, "release": _render_release,
 }
 
 # type → the label `_wrote` prints. "Decision brief" is the caption a reader sees everywhere; the
 # type, the verb and the file on disk stay `brief`/`solution-assessment.md` (#166) -- only the label
 # lookup moved here.
 _LABEL: dict[str, str] = {
-    "brief": "decision brief", "prd": "PRD", "stories": "user stories", "estimate": "estimate",
-    "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
+    "brief": "decision brief", "gtm_brief": "go-to-market plan", "prd": "PRD", "stories": "user stories", "estimate": "estimate", "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
 }
 
 
@@ -1049,19 +1050,19 @@ def _doc_generation_order(selected: list[str]) -> list[str]:
     return [t for t in DOC_TYPES if t in chosen]
 
 
-def _resolve_doc_types(tokens: list[str]) -> list[str]:
+def _resolve_doc_types(tokens: list[str], types: tuple[str, ...] = DOC_TYPES) -> list[str]:
     """`docs <slug> <type...>`: names only, refused before any call rather than filtered
     (invariant 3). Pinned by `test_resolve_doc_types_refuses_an_unknown_type_before_any_call`."""
-    unknown = [t for t in tokens if t not in DOC_TYPES]
+    unknown = [t for t in tokens if t not in types]
     if unknown:
         raise RequivoError(
             f"neither a document type nor a session in this workspace: "
             f"{', '.join(display_token(t) for t in unknown)} -- choose a type from "
-            f"{', '.join(DOC_TYPES)}, or a slug from `requivo session list`.")
+            f"{', '.join(types)}, or a slug from `requivo session list`.")
     return tokens
 
 
-def _prompt_doc_selection() -> list[str] | None:
+def _prompt_doc_selection(types: tuple[str, ...] = DOC_TYPES) -> list[str] | None:
     """The menu's own prompt: numbers, names, `all`, or nothing to cancel. An unknown token is
     refused before any generator runs, never silently dropped (invariant 3). Pinned by
     `test_prompt_doc_selection_refuses_an_unknown_token_before_any_call`."""
@@ -1075,20 +1076,20 @@ def _prompt_doc_selection() -> list[str] | None:
         print("Cancelled.")
         return None
     if raw.lower() == "all":
-        return list(DOC_TYPES)
+        return list(types)
     selected: list[str] = []
     unknown: list[str] = []
     for tok in (t for t in _DOC_SELECTION_RE.split(raw) if t):
-        if tok.isdigit() and 1 <= int(tok) <= len(DOC_TYPES):
-            selected.append(DOC_TYPES[int(tok) - 1])
-        elif tok.lower() in DOC_TYPES:
+        if tok.isdigit() and 1 <= int(tok) <= len(types):
+            selected.append(types[int(tok) - 1])
+        elif tok.lower() in types:
             selected.append(tok.lower())
         else:
             unknown.append(tok)
     if unknown:
         raise RequivoError(
             f"unknown selection: {', '.join(display_token(t) for t in unknown)} -- use a number "
-            f"1-{len(DOC_TYPES)}, a document name, or 'all'.")
+            f"1-{len(types)}, a document name, or 'all'.")
     return selected
 
 
@@ -1112,13 +1113,14 @@ def _cmd_docs(a, client) -> None:
         print(f"Session '{display_token(slug)}' has no model yet -- run `requivo run {slug}` to "
               "start the conversation before generating a document.")
         return
+    owned_types = tuple(t for t in DOC_TYPES if t in get_perimeter(resolve_perimeter(meta.perimeter)).artifact_types)
     # Validated before the `--all` branch, not only on the explicit-types path: a token that
     # matched no session above (invalid slug or typo) falls through to here as a stray type token,
     # and `--all` used to discard it unchecked -- generating every document against the *default*
     # session instead of refusing (invariant 3). Pinned by
     # `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session` (#544).
     if type_tokens:
-        type_tokens = _resolve_doc_types(type_tokens)
+        type_tokens = _resolve_doc_types(type_tokens, owned_types)
     if a.all:
         if type_tokens:
             # `--all` and explicit types together are ambiguous rather than additive -- refused
@@ -1127,12 +1129,12 @@ def _cmd_docs(a, client) -> None:
             raise RequivoError(
                 f"--all takes no types ({', '.join(display_token(t) for t in type_tokens)} given) "
                 "-- drop the type names, or drop --all and name only the ones you want.")
-        selected = list(DOC_TYPES)
+        selected = list(owned_types)
     elif type_tokens:
         selected = type_tokens
     else:
-        render_docs_menu(docs_menu_rows(meta.artifact_status))
-        selected = _prompt_doc_selection()
+        render_docs_menu(docs_menu_rows(meta.artifact_status, owned_types))
+        selected = _prompt_doc_selection(owned_types)
         if selected is None:
             return
     ns = argparse.Namespace(session=slug, export_json=False, github=False, gitlab=False, version="")
@@ -1266,8 +1268,7 @@ EPILOG = (
 # `test_every_registered_verb_appears_in_exactly_one_help_group`.
 _HELP_GROUP_START = ("demo", "run", "docs", "status", "web")
 _HELP_GROUP_SCRIPTS = (
-    "discover", "answer", "brief", "prd", "stories", "estimate", "criteria", "epic", "release",
-    "impact",
+    "discover", "answer", "brief", "gtm_brief", "prd", "stories", "estimate", "criteria", "epic", "release", "impact",
 )
 _HELP_GROUP_PLUMBING = ("doctor", "schema", "context", "session", "model", "artifact", "api")
 
@@ -1455,6 +1456,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
               accepts_path=True, session_required=False)
     model_cmd("brief", "generate the decision brief — what to review before estimating (API)",
               _generator_verb("brief"))
+    model_cmd("gtm_brief", "generate go-to-market's one artifact (API)", _generator_verb("gtm_brief"))
     model_cmd("prd", "generate the PRD (API)", _generator_verb("prd"))
     model_cmd("stories", "derive user stories (API)", _generator_verb("stories"))
     model_cmd("estimate", "derive stories and estimate them, in day ranges (API)",

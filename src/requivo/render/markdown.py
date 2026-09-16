@@ -11,10 +11,12 @@ from requivo.core.contracts import (
     EnvelopeOrigin,
     Epic,
     EstimateDraft,
+    GoToMarketBrief,
     ReleaseNotes,
     ScenarioKind,
     Stories,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET
 
 _KIND_TAG = {
     ScenarioKind.happy_path: "Happy path",
@@ -40,46 +42,51 @@ def _line(text: str) -> str:
     return " ".join(text.split())
 
 
-def _stated(out: EngineOutput, confidence: Confidence) -> list[str]:
+def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """The topics carrying a stated value at a given provenance, in schema order, as `**Label** — value`.
 
     This separates what the client actually said from what the engine filled in on their behalf — the
     single most useful distinction a scope review can be handed, and one nobody has to take on trust,
     because it is read off the model rather than written by the provider. The Voice rule holds: the
-    label is the human one and the numbers behind it never appear."""
-    order = slot_meta()[1]
-    return [f"- **{slot_label(sid)}** — {out.model[sid].value.strip()}"
+    label is the human one and the numbers behind it never appear.
+
+    `perimeter` (#609) is what keeps this projecting the *right* schema's labels — `gtm_brief_markdown`
+    passes `GO_TO_MARKET`; every pre-#609 caller (`brief_markdown`) is unchanged by the default."""
+    order = slot_meta(perimeter)[1]
+    return [f"- **{slot_label(sid, perimeter)}** — {out.model[sid].value.strip()}"
             for sid in order
             if sid in out.model and out.model[sid].confidence is confidence
             and out.model[sid].value.strip()]
 
 
-def _excluded(out: EngineOutput) -> list[str]:
+def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """Excluded options, projected off the model rather than written by the provider (#599) — the
     same split `_stated()` draws: a restatement of "what we are not doing" can drift from the model
     it restates, and a projection cannot. Each option names what it rests on by label, never by id
     (the Voice rule). `_line()`-flattened like every other reasoning-item field below, so a newline
-    in a model-supplied option or reason cannot open a forged heading (audit finding on #599)."""
+    in a model-supplied option or reason cannot open a forged heading (audit finding on #599).
+    `perimeter` (#609) is threaded the same way `_stated()`'s is."""
     lines = []
     for ex in out.exclusions:
         line = f"- **{_line(ex.option)}** — {_line(ex.reason)}"
         if ex.rests_on:
-            line += f" _(rests on: {', '.join(slot_label(sid) for sid in ex.rests_on)})_"
+            line += f" _(rests on: {', '.join(slot_label(sid, perimeter) for sid in ex.rests_on)})_"
         lines.append(line)
     return lines
 
 
-def _thresholds(out: EngineOutput) -> list[str]:
+def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """Decision thresholds — "at X, do Y" (#604) — projected off the model, the same split
     `_excluded()` draws for exclusions: a restatement can drift from the model it restates, and a
     projection cannot. Each names what it rests on by label, never by id (the Voice rule).
     `_line()`-flattened for the same reason as every other reasoning-item field here — a newline in
-    a model-supplied condition or action cannot open a forged heading."""
+    a model-supplied condition or action cannot open a forged heading. `perimeter` (#609) is
+    threaded the same way `_stated()`'s is."""
     lines = []
     for th in out.thresholds:
         line = f"- **{_line(th.condition)}** → {_line(th.action)}"
         if th.rests_on:
-            line += f" _(rests on: {', '.join(slot_label(sid) for sid in th.rests_on)})_"
+            line += f" _(rests on: {', '.join(slot_label(sid, perimeter) for sid in th.rests_on)})_"
         lines.append(line)
     return lines
 
@@ -192,15 +199,79 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     return "\n".join(md).rstrip() + "\n"
 
 
-def _envelope_lines(elements: list[EnvelopeElement]) -> list[str]:
-    """Render the resource envelope a PRD was planned within (#603), each element naming its own
-    provenance. A slot-sourced element shows the slot's human label (Voice rule — never the raw id,
-    same split `_stated()` draws); an assumed one says so plainly, never as a confidence label."""
+def gtm_brief_markdown(out: EngineOutput, brief: GoToMarketBrief) -> str:
+    """Render the go-to-market perimeter's one artifact (#609) — its equivalent of `brief_markdown`,
+    over its own twelve slots. Follows the identical split: what is confirmed, what is assumed, the
+    resource envelope, the excluded options and the decision thresholds are read straight off the
+    model, never restated by the provider (the same reasons `brief_markdown` gives for the software
+    perimeter); the plan and its rationale are the provider's judgment. Every projection below is
+    called with `GO_TO_MARKET` explicitly — none of the software perimeter's vocabulary is reachable
+    from this function, by construction rather than by care."""
+    blockers = [slot_label(sid, GO_TO_MARKET) for sid in readiness_blockers(out, GO_TO_MARKET)]
+    draft = " — Draft: unresolved topics remain" if blockers else ""
+    md: list[str] = [f"# Go-to-Market Plan{draft}", "",
+                     "> What to review before committing to this push — generated by Requivo", ""]
+
+    def section(heading: str, lines: list[str]) -> None:
+        if lines:
+            md.extend([f"## {heading}", "", *lines, ""])
+
+    summary = []
+    if out.summary.objective:
+        summary.append(f"**Objective:** {out.summary.objective}")
+    section("Objective", summary)
+
+    section("Current understanding", [out.summary.scope] if out.summary.scope else [])
+    section("What is confirmed", _stated(out, Confidence.explicit, GO_TO_MARKET))
+
+    assumed = _stated(out, Confidence.inferred, GO_TO_MARKET)
+    if out.summary.assumptions:
+        assumed += [f"- {a}" for a in out.summary.assumptions]
+    if assumed:
+        assumed = [*assumed, "",
+                   "_Each of these was inferred, not stated. Confirm the ones that would change the "
+                   "plan._"]
+    section("Important assumptions", assumed)
+
+    section("Resource envelope", _envelope_lines(brief.envelope, GO_TO_MARKET))
+
+    plan: list[str] = [f"- {_line(p)}" for p in brief.plan]
+    if brief.rationale:
+        plan += ["", _line(brief.rationale)]
+    section("The plan", plan)
+
+    section("Out of scope", _excluded(out, GO_TO_MARKET))
+    section("Decision thresholds", _thresholds(out, GO_TO_MARKET))
+    section("Main risks", [f"- {r}" for r in brief.risks])
+
+    open_items = [f"- {d}" for d in brief.open_decisions]
+    if blockers:
+        open_items.append(f"- Unresolved and blocking: {' · '.join(blockers)}")
+    if out.summary.blind_spot:
+        open_items.append(f"- Least explored: {out.summary.blind_spot}")
+    section("Unresolved questions", open_items)
+
+    # Not a second readiness question, the same reason `brief_markdown`'s own section gives — see
+    # its comment there. Pinned there by `test_every_surface_asks_the_same_readiness_question`.
+    section("Are we ready?",
+            [f"**Not ready.** This plan is a draft: these topics are still unconfirmed and can move "
+             f"it — {' · '.join(blockers)}." if blockers
+             else "**Ready.** No high-impact topic is still unresolved."])
+
+    return "\n".join(md).rstrip() + "\n"
+
+
+def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+    """Render the resource envelope an artifact was planned within (#603), each element naming its
+    own provenance. A slot-sourced element shows the slot's human label (Voice rule — never the raw
+    id, same split `_stated()` draws); an assumed one says so plainly, never as a confidence label.
+    `perimeter` (#609) is threaded the same way `_stated()`'s is — `prd_markdown` (software) is
+    unchanged by the default, `gtm_brief_markdown` passes `GO_TO_MARKET`."""
     lines = []
     for e in elements:
         # The enum decides, never the field's presence; the contract pins the two together (#603).
         slot = e.source_slot if e.origin is EnvelopeOrigin.slot else None
-        origin = f"stated in {slot_label(slot)}" if slot else "assumption — not stated in the model"
+        origin = f"stated in {slot_label(slot, perimeter)}" if slot else "assumption — not stated in the model"
         lines.append(f"- **{_line(e.kind)}** — {_line(e.value)} _({origin})_")
     return lines
 

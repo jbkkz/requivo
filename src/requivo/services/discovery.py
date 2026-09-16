@@ -46,6 +46,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GoToMarketBrief,
     ReleaseNotes,
     Stories,
 )
@@ -74,6 +75,7 @@ from requivo.render.markdown import (
     criteria_markdown,
     epic_markdown,
     estimate_markdown,
+    gtm_brief_markdown,
     prd_markdown,
     release_markdown,
     stories_markdown,
@@ -120,7 +122,9 @@ _WRITERS: dict[str, Callable[[Any], str]] = {
 # Everything `generate()` can produce, in the order a user meets them. This is the source every
 # interface asks — the CLI's verbs, the Web's buttons — so a new generator becomes available
 # everywhere by being registered here, rather than by each surface keeping its own list and drifting.
-GENERATABLE: tuple[str, ...] = ("brief", *_WRITERS)
+# `gtm_brief` (#609) is not in `_WRITERS`: it takes the same reasoning-absorbing path `brief` does
+# (see `_ASSESSMENT_ARTIFACTS` below), never the generic model→writer dispatch `_WRITERS` serves.
+GENERATABLE: tuple[str, ...] = ("brief", "gtm_brief", *_WRITERS)
 
 _A = TypeVar("_A")
 
@@ -211,12 +215,12 @@ def _require_no_conflict_yet(slug: str, expected_revision: int | None, snap: Ses
 def _require_owned_artifact_type(perimeter: str, artifact_type: str) -> None:
     """A generation call must name an artifact type its own perimeter actually produces (#608).
 
-    Go-to-market ships none yet -- its one artifact is #609's own scope -- so every `generate()` or
-    `reason()` call against a go-to-market session refuses here, with the perimeter named, rather than
-    validating the reply against the wrong (software) schema and surfacing a confusing Pydantic error
-    two layers down. Mirrors the existing `ValueError` a caller gets for an artifact type this build
-    has no generator for at all -- one style of refusal for "not a real type" and "not this
-    perimeter's type"."""
+    Software's seven types are refused on a go-to-market session and `gtm_brief` (#609) is refused
+    on a software one -- every `generate()` or `reason()` call refuses here, with the perimeter
+    named, rather than validating the reply against the wrong schema and surfacing a confusing
+    Pydantic error two layers down. Mirrors the existing `ValueError` a caller gets for an artifact
+    type this build has no generator for at all -- one style of refusal for "not a real type" and
+    "not this perimeter's type"."""
     owned = get_perimeter(perimeter).artifact_types
     if artifact_type not in owned:
         raise ValueError(
@@ -253,6 +257,39 @@ def absorb_reasoning(out: EngineOutput, brief) -> None:
     # test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model.
     out.exclusions = brief.exclusions
     out.thresholds = brief.thresholds
+
+
+def absorb_gtm_reasoning(out: EngineOutput, brief: GoToMarketBrief) -> None:
+    """Persist the go-to-market plan's reasoning into the model (#609) -- the same role
+    `absorb_reasoning` plays for the software brief, narrowed to the two typed items
+    `GoToMarketBrief` carries: `exclusions` (#599) and `thresholds` (#604). It has no
+    decisions/challenges/opportunities of its own (see the contract's own docstring)."""
+    out.exclusions = brief.exclusions
+    out.thresholds = brief.thresholds
+
+
+@dataclass(frozen=True)
+class _AssessmentArtifact:
+    """One artifact type whose generation absorbs reasoning back into the model before it is saved
+    -- what `generate()` below used to special-case for `"brief"` alone until #609 gave the
+    perimeter mechanism its second instance of the same shape. `cli_verb`/`label` are what the
+    revision-conflict messages in `generate()` need: the retry command to name and the reader-facing
+    noun for the artifact."""
+    writer: Callable[[EngineOutput, Any], str]
+    absorb: Callable[[EngineOutput, Any], None]
+    cli_verb: str
+    label: str
+
+
+# Every artifact type that takes the reasoning-absorbing generation path, keyed the same way every
+# other registry in this module is (see CLAUDE.md's "Adding a generator" checklist). `brief` is
+# software's; `gtm_brief` is go-to-market's (#609) -- a second instance is what tells this
+# generalisation apart from an accident of "brief" being the first and only one.
+_ASSESSMENT_ARTIFACTS: dict[str, _AssessmentArtifact] = {
+    "brief": _AssessmentArtifact(brief_markdown, absorb_reasoning, "brief", "decision brief"),
+    "gtm_brief": _AssessmentArtifact(gtm_brief_markdown, absorb_gtm_reasoning, "gtm_brief",
+                                     "go-to-market plan"),
+}
 
 
 def _discovery_guard_path(slug: str, store: Store) -> Path:
@@ -830,15 +867,18 @@ class DiscoveryService:
             return self._need_provider().generate(artifact_type, model, only=snap.context_cards,
                                                   **kwargs)
 
-    # `generate()`'s public signature is these eight overloads, not the implementation below. Seven
+    # `generate()`'s public signature is these nine overloads, not the implementation below. Eight
     # are `Literal`-keyed so a call site written with a literal string gets that type's contract back;
-    # the eighth takes a plain `str` for a caller holding the name in a variable (a route parameter,
+    # the ninth takes a plain `str` for a caller holding the name in a variable (a route parameter,
     # e.g. `web/routes/artifacts.py`'s `generate_artifact`). `decision: typed-generation-seam`
     # `estimate` is the one whose extra keyword is not forwarded to the provider: `on_stories` is
     # the caller's hook for the first of its two calls (see `_generate_estimate`).
     @overload
     def generate(self, slug: str, artifact_type: Literal["brief"], *, surface: str = "generate",
                 **kwargs) -> Generated[Brief]: ...
+    @overload
+    def generate(self, slug: str, artifact_type: Literal["gtm_brief"], *, surface: str = "generate",
+                **kwargs) -> Generated[GoToMarketBrief]: ...
     @overload
     def generate(self, slug: str, artifact_type: Literal["prd"], *, surface: str = "generate",
                 **kwargs) -> Generated[PRD]: ...
@@ -866,9 +906,10 @@ class DiscoveryService:
         revision. Every interface goes through here, so a given artifact is produced, saved and tracked
         identically whether it was asked for from the terminal, the browser, or Claude Code.
 
-        `brief` (the solution assessment) is the one with an extra step: its reasoning is absorbed back
-        into the model as a revision, so downstream artifacts inherit the decisions and challenges, not
-        just the facts. `estimate` is the one with two calls — see `_generate_estimate`.
+        `brief` and `gtm_brief` (#609) are the ones with an extra step, one per perimeter: each
+        artifact's reasoning is absorbed back into the model as a revision (`_ASSESSMENT_ARTIFACTS`),
+        so downstream artifacts inherit the decisions/exclusions/thresholds, not just the facts.
+        `estimate` is the one with two calls — see `_generate_estimate`.
 
         **Generation is not atomic.** A provider call runs for seconds to minutes, and the session can
         move underneath it — a second browser tab folding in answers, a CLI apply, a Claude Code turn.
@@ -889,20 +930,22 @@ class DiscoveryService:
         out = _require_a_model(slug, snap)
         provider = self._need_provider()
 
-        if artifact_type == "brief":
+        if artifact_type in _ASSESSMENT_ARTIFACTS:
+            spec = _ASSESSMENT_ARTIFACTS[artifact_type]
             ledger = current_ledger()
             before = len(ledger.calls) if ledger is not None else 0
             self._check_spend()
-            with self._provider_call("brief"):
-                brief = provider.generate("brief", out, only=cards)
-            absorb_reasoning(out, brief)
+            with self._provider_call(artifact_type):
+                brief = provider.generate(artifact_type, out, only=cards)
+            spec.absorb(out, brief)
             usage = _usage_since(before)
             # `out` is the revision-N model plus the reasoning just derived from it. Applying it without
             # the precondition would discard any revision that landed while the provider was reasoning.
             try:
                 applied = self.sessions.update_model(
                     slug, out.model_dump_json(), expected_revision=source_revision,
-                    provenance=self._provenance("brief", cards=cards, surface=surface, usage=usage))
+                    provenance=self._provenance(artifact_type, cards=cards, surface=surface,
+                                                usage=usage, perimeter=snap.perimeter))
             except RevisionConflictError as e:
                 # The paid assessment is not thrown away merely because the apply lost the race:
                 # filing it against an older source revision, flagged stale, is legal by invariant 2.
@@ -911,7 +954,8 @@ class DiscoveryService:
                 # with no special-casing. Pinned by
                 # `test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded`.
                 try:
-                    status = self._save_generated(slug, "brief", brief_markdown(out, brief), source_revision)
+                    status = self._save_generated(
+                        slug, artifact_type, spec.writer(out, brief), source_revision)
                 except ArtifactWriteFailedError as write_err:
                     # Two failures at once: the apply lost the race AND the fallback save that was
                     # meant to preserve the paid content also failed at the filesystem. Both facts are
@@ -920,18 +964,19 @@ class DiscoveryService:
                     # one -- `test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one`.
                     raise ArtifactWriteFailedError(
                         f"{write_err.message} This session also lost a revision race in the same "
-                        f"call: {e.message}. The brief's reasoning was NOT absorbed into the model "
-                        "either way.",
+                        f"call: {e.message}. The {spec.label}'s reasoning was NOT absorbed into the "
+                        "model either way.",
                         details={**write_err.details, "revision_conflict": True,
                                  "revision_conflict_message": e.message}) from e
                 raise RevisionConflictError(
-                    f"{e.message}. The decision brief was still generated and saved against revision "
+                    f"{e.message}. The {spec.label} was still generated and saved against revision "
                     f"{source_revision} (now flagged stale); its reasoning was NOT absorbed into the "
-                    f"model. `requivo brief {slug}` (or the Web's Regenerate) will refresh both.",
-                    details={**e.details, "artifact_saved": True, "artifact_type": "brief",
+                    f"model. `requivo {spec.cli_verb} {slug}` (or the Web's Regenerate) will refresh "
+                    "both.",
+                    details={**e.details, "artifact_saved": True, "artifact_type": artifact_type,
                              "artifact_stale": status.stale}) from e
             # The assessment renders exactly the model that apply just wrote, so it belongs to that revision.
-            status = self._save_generated(slug, "brief", brief_markdown(out, brief), applied.revision)
+            status = self._save_generated(slug, artifact_type, spec.writer(out, brief), applied.revision)
             return Generated(status=status, artifact=brief, model=out)
 
         if artifact_type == "estimate":

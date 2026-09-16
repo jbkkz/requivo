@@ -294,6 +294,7 @@ DOC_TYPES: tuple[str, ...] = tuple(ARTIFACT_FILENAMES)
 
 DOC_BLURBS: dict[str, str] = {
     "brief": "The judgment call to review before estimating or committing to scope.",
+    "gtm_brief": "The go-to-market plan to review before committing capacity to it.",
     "prd": "The requirements document a dev team builds from.",
     "stories": "The backlog, broken into shippable user stories.",
     "estimate": "Day-range estimates per story, reasoned from the stories above.",
@@ -312,12 +313,17 @@ class DocRow(NamedTuple):
     state: str
 
 
-def docs_menu_rows(artifact_status: dict[str, ArtifactStatus]) -> list[DocRow]:
-    """The seven menu rows, in `DOC_TYPES` order -- never `artifact_status`'s own key order, so a
-    forged type key in session.json cannot add or reorder a row. State reads `ArtifactStatus.stale`
-    (invariant 1); `filename` is disk content and is escaped, `revision` is a validated `int`."""
+def docs_menu_rows(artifact_status: dict[str, ArtifactStatus],
+                   types: tuple[str, ...] = DOC_TYPES) -> list[DocRow]:
+    """The menu rows, in `DOC_TYPES` order -- never `artifact_status`'s own key order, so a forged
+    type key in session.json cannot add or reorder a row. State reads `ArtifactStatus.stale`
+    (invariant 1); `filename` is disk content and is escaped, `revision` is a validated `int`.
+
+    `types` (#609) narrows the menu to what the caller's session may actually produce -- every
+    caller before go-to-market's one artifact joined the global type set had exactly one perimeter,
+    so the default (every registered type) is unchanged for them."""
     rows = []
-    for i, doc_type in enumerate(DOC_TYPES, 1):
+    for i, doc_type in enumerate(types, 1):
         status = artifact_status.get(doc_type)
         if status is None:
             state = "not generated"
