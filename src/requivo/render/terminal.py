@@ -272,9 +272,16 @@ def next_command(payload: dict) -> str | None:
     # (found in review, same root as the P1/P2 findings above): a perimeter that owns no "brief"
     # generator (go-to-market, #609's own scope) never has one in `artifacts` either, so this used
     # to suggest a command that fails outright -- gated on ownership, not only on absence.
+    #
+    # Read off `Perimeter.primary_artifact` (#609's follow-up review, Codex + a deliberate sweep
+    # after it), not a bare `"brief"` literal: that literal is exactly what made this the CLI-side
+    # sibling of the Web's `PRIMARY_ARTIFACT` bug -- a converged, plan-less go-to-market session
+    # (whose primary is `gtm_plan`, never `"brief"`) suggested nothing at all, silently, rather than
+    # its own one next step.
     perimeter = payload.get("perimeter") or DEFAULT_PERIMETER
-    if "brief" not in artifacts and "brief" in get_perimeter(perimeter).artifact_types:
-        return f"requivo brief {slug}"
+    primary = get_perimeter(perimeter).primary_artifact
+    if primary and primary not in artifacts:
+        return f"requivo {primary} {slug}"
     return None
 
 

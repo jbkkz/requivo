@@ -202,6 +202,44 @@ def test_a_go_to_market_only_type_on_a_software_session_is_a_clean_refusal_not_a
     assert "internal_error" not in r.text, "the catch-all is what this stopped being"
 
 
+def test_a_go_to_market_sessions_primary_document_is_its_own_plan_not_a_missing_brief(
+        client, with_provider, monkeypatch):
+    """#609's follow-up review (Codex, P2): `session_detail()` picked the primary artifact off the
+    software-only `PRIMARY_ARTIFACT` constant regardless of perimeter, so a go-to-market session --
+    whose only artifact is `gtm_plan`, never `brief` -- had no primary at all: buried under "More
+    documents" while the primary card's own generate form still rendered, bound to `None`, posting
+    to `/sessions/<slug>/artifacts/` (a trailing empty type) with no matching route. Drives a real
+    go-to-market session through the real handler and templates, with a real credential so the
+    generate-buttons block actually renders (the same trap
+    `test_a_go_to_market_only_type_on_a_software_session_is_a_clean_refusal_not_a_500` above caught
+    by hand): the button names the right document, posts to the right, real route, and that route
+    actually works end to end."""
+    import json
+
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+    from requivo.services.sessions import SessionService
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
+    with_provider(json.dumps({"plan": ["Ship one outbound sequence to the existing waitlist."]}))
+    svc = SessionService()
+    meta = svc.create_session("grow the funnel", slug="gtm-primary", perimeter=GO_TO_MARKET)
+    _, required = schema_slot_ids(GO_TO_MARKET)
+    model = {sid: {"completeness": 90, "confidence": "explicit", "impact": "high",
+                   "value": "x", "evidence": "y"} for sid in required}
+    svc.update_model(meta.slug, json.dumps({"model": model, "questions": [],
+                                            "summary": {"objective": "grow"}}), expected_revision=0)
+
+    page = client.get(f"/sessions/{meta.slug}").text
+    assert "Generate go-to-market plan" in page, "must-fire: the primary card's own button did render"
+    assert "Generate decision brief" not in page, "the wrong perimeter's document must not lead the page"
+    assert f'/sessions/{meta.slug}/artifacts/gtm_plan"' in page, "the form must post to a real route"
+    assert f'/sessions/{meta.slug}/artifacts/"' not in page, "must not post to the route that does not exist"
+
+    r = client.post(f"/sessions/{meta.slug}/artifacts/gtm_plan")
+    assert r.status_code == 200, f"the route the button posts to must actually work; got {r.status_code}"
+
+
 def test_a_taken_session_name_is_suffixed_rather_than_refused(client):
     """Why `session_exists` gets a status row but no end-to-end test, recorded where the next
     reader will look. Posting a name already taken by a different request does not raise

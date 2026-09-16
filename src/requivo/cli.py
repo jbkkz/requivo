@@ -576,7 +576,7 @@ def _cmd_answer(a, client) -> None:
              (result.invalidated_exclusions, "exclusion(s)"),
              (result.invalidated_thresholds, "threshold(s)")]
     n_reasoning = sum(len(items) for items, _ in parts)
-    reasoning_type = next((t for t in ("brief", "gtm_plan") if t in get_perimeter(perimeter).artifact_types), None)
+    reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
     if n_reasoning and reasoning_type:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
         print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}`.")
@@ -646,10 +646,9 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     for _turn in range(1, MAX_TURNS + 1):
         render_turn_state(out, perimeter)
         if not out.questions:
-            if "brief" in get_perimeter(perimeter).artifact_types:
-                print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
-            else:
-                print("\n✅ Discovery converged.")
+            primary = get_perimeter(perimeter).primary_artifact  # #609 -- was hardcoded "brief"
+            print(f"\n✅ Discovery converged — run `requivo {primary} {slug}` for the {_LABEL[primary]}."
+                 if primary else "\n✅ Discovery converged.")
             return
         answers = _prompt_answers(out.questions, perimeter)
         if answers is None:

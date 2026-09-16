@@ -42,16 +42,35 @@ _ARTIFACT_TYPES: dict[str, frozenset[str]] = {
     GO_TO_MARKET: frozenset({"gtm_plan"}),
 }
 
+# The one type each perimeter's page/next-step hint leads with -- everything else is available, one
+# click or one command further (a Web "More documents" disclosure, `requivo docs`'s menu). A second,
+# genuinely central fact, not a caption: `web/viewmodels/sessions.py`'s `session_detail()` and
+# `render/terminal.py`'s `next_command()` each used to read it off a software-only local default
+# (`PRIMARY_ARTIFACT = "brief"`, and a bare `"brief"` literal) regardless of which perimeter they
+# were actually serving, so a go-to-market session -- whose only artifact is never `"brief"` -- had
+# no primary on either surface: the Web buried it under "More documents" and posted its generate
+# form to a route that does not exist, and `requivo status` on a converged, plan-less go-to-market
+# session suggested nothing at all (#609's follow-up review, Codex + a deliberate sweep after it).
+# One table, read by both surfaces, so the two cannot drift the way that duplication did.
+_PRIMARY_ARTIFACT: dict[str, str] = {
+    SOFTWARE: "brief",
+    GO_TO_MARKET: "gtm_plan",
+}
+
 
 @dataclass(frozen=True)
 class Perimeter:
-    """One installed perimeter: its id, the directory its assets live under, and the artifact types
-    it may produce. `schema_path`/`elicitation_path`/`engine_guidance_path` are its three owned
-    files -- a directory holding model_schema.json, elicitation.md and engine_guidance.md."""
+    """One installed perimeter: its id, the directory its assets live under, the artifact types it
+    may produce, and which of those leads a reader to it first. `schema_path`/`elicitation_path`/
+    `engine_guidance_path` are its three owned files -- a directory holding model_schema.json,
+    elicitation.md and engine_guidance.md."""
 
     id: str
     dir: Path
     artifact_types: frozenset[str]
+    # `None` for a perimeter this install has not been told a primary for -- every caller must read
+    # that as *nothing leads*, never fall back to another perimeter's primary (#609's follow-up).
+    primary_artifact: str | None = None
 
     @property
     def schema_path(self) -> Path:
@@ -71,7 +90,8 @@ class Perimeter:
 
 @functools.lru_cache(maxsize=1)
 def _registry() -> dict[str, Perimeter]:
-    return {pid: Perimeter(id=pid, dir=PERIMETERS / pid, artifact_types=types)
+    return {pid: Perimeter(id=pid, dir=PERIMETERS / pid, artifact_types=types,
+                           primary_artifact=_PRIMARY_ARTIFACT.get(pid))
             for pid, types in _ARTIFACT_TYPES.items()}
 
 

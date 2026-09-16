@@ -12,7 +12,7 @@ from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_pe
 from requivo.services.discovery import GENERATABLE
 from requivo.services.sessions import SessionService
 from requivo.web.example import is_example
-from requivo.web.viewmodels.labels import PRIMARY_ARTIFACT, UNREADABLE_BADGE, artifact_label, unreadable_hint
+from requivo.web.viewmodels.labels import UNREADABLE_BADGE, artifact_label, unreadable_hint
 from requivo.web.viewmodels.status import (
     PRIORITY_QUESTIONS,
     evidence_view,
@@ -201,7 +201,13 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
     evidence = evidence_view(sessions.thinner_evidence(slug))
     questions = status.get("questions", [])
     artifacts = _artifacts_view(status)
-    generatable = generatable_view(resolve_perimeter(status.get("perimeter")))
+    perimeter = resolve_perimeter(status.get("perimeter"))
+    generatable = generatable_view(perimeter)
+    # #609's follow-up (Codex, P2): this used to be the software-only `PRIMARY_ARTIFACT` constant
+    # regardless of which perimeter the session actually ran under, so a go-to-market session had no
+    # primary at all (its own one artifact, `gtm_plan`, is never `"brief"`) -- buried under "More
+    # documents" while the primary card's generate form still rendered, bound to a `None` type.
+    primary_type = get_perimeter(perimeter).primary_artifact
     request_text = sessions.request_text(slug)
     return {
         "slug": slug,
@@ -229,10 +235,10 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
         # noticing there was one. A dead key on the hottest view model is an invitation, not a
         # spare.
         # The primary document is called out on its own; the rest live under "More documents".
-        "primary_artifact": next((a for a in artifacts if a["type"] == PRIMARY_ARTIFACT), None),
-        "other_artifacts": [a for a in artifacts if a["type"] != PRIMARY_ARTIFACT],
-        "primary_generatable": next((g for g in generatable if g["type"] == PRIMARY_ARTIFACT), None),
-        "more_generatable": [g for g in generatable if g["type"] != PRIMARY_ARTIFACT],
+        "primary_artifact": next((a for a in artifacts if a["type"] == primary_type), None),
+        "other_artifacts": [a for a in artifacts if a["type"] != primary_type],
+        "primary_generatable": next((g for g in generatable if g["type"] == primary_type), None),
+        "more_generatable": [g for g in generatable if g["type"] != primary_type],
         # `mode="json"` so enums arrive as their value. A plain dump leaves `Leverage.high` in the
         # dict, and Jinja renders an enum by its repr — the page read "leverage Leverage.high".
         "decisions": [{**d.model_dump(mode="json"),
