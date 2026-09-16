@@ -27,7 +27,7 @@ from requivo.core.analysis import model_status, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
 from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
-from requivo.core.errors import RequivoError, SessionNotFoundError
+from requivo.core.errors import AmbiguousPerimeterError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
@@ -281,6 +281,29 @@ def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETE
     return "\n".join(replies)
 
 
+def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
+    """The interactive half of the ambiguous-router decline (#601): ask which candidate, one
+    question rather than a guess, `input()`-style like #592's `_prompt_answers`. `None` means
+    declined (EOF/Ctrl-C/empty/unrecognised) -- the caller re-raises `e` rather than guessing.
+    `reason` is untrusted LLM prose, so `display_text` guards this prompt too, not only `e`'s own
+    message."""
+    candidates = e.details.get("candidates", [])
+    reason = display_text(e.details.get("reason", ""))
+    print(f"\nMore than one installed perimeter could fit this request — {reason}")
+    for i, c in enumerate(candidates, 1):
+        print(f"  {i}. {c}")
+    try:
+        ans = input(f"      Which one? [1-{len(candidates)}, Enter to skip] > ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nStopped.")
+        return None
+    if not ans.isdigit() or not (1 <= int(ans) <= len(candidates)):
+        return None
+    chosen = candidates[int(ans) - 1]
+    print(f"→ Continuing under {chosen}.")
+    return chosen
+
+
 # ── Subcommand CLI (`requivo`) ────────────────────────────────────────────────
 # The modern surface. A thin layer over the same core: each handler parses, calls
 # the services, renders, writes — no business logic here.
@@ -477,8 +500,18 @@ def _cmd_discover(a, client) -> None:
     # Invariant 13's gate, here rather than only inside `finalize_discovery`: refusing after the
     # loop meant paying for up to nine provider calls first (#133). Pinned by
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
-    meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                             perimeter=perimeter)
+    try:
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                                 perimeter=perimeter)
+    except AmbiguousPerimeterError as e:
+        # Someone is at a prompt here (`--once`/non-tty took the `quick` return above and never
+        # reach this) -- #601, JB's call over the issue's own wording: ask, don't guess. A chosen
+        # perimeter re-runs explicit, so the router is never asked twice.
+        chosen = _prompt_perimeter_choice(e)
+        if chosen is None:
+            raise
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                                 perimeter=chosen)
     slug = meta.slug
     perimeter = meta.perimeter
     render_context_judgment(grounding, routing)

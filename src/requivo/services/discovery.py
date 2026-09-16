@@ -77,6 +77,7 @@ from requivo.core.persistence import (
     artifact_path,
     is_contained,
 )
+from requivo.core.selectors import display_text
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
 from requivo.providers.base import ContextJudge, PerimeterJudge
@@ -605,6 +606,9 @@ class DiscoveryService:
           not implement.
         - **Asked, and here is the verdict.**
 
+        A second, independent standalone call, deliberately not folded into `judge_grounding`'s own
+        reply -- `decision: two-judgment-calls-not-one`.
+
         Pinned by `test_an_explicit_perimeter_is_not_second_guessed`,
         `test_a_single_installed_perimeter_is_not_judged`,
         `test_a_provider_that_cannot_route_reports_not_asked` and
@@ -642,16 +646,23 @@ class DiscoveryService:
         perimeter, or both call this, so the destructive step has exactly one implementation
         (invariant 14, and #601's instruction not to duplicate #593's four preconditions).
 
-        Returns the (possibly unchanged) session and whether this call now owns it — `False` when
-        `_delete_if_safe` found the fourth precondition no longer held, in which case `meta` is
-        handed back exactly as given and nothing was touched."""
+        Returns the (possibly unchanged) session and whether *this call* now owns it. `False` in two
+        cases: `_delete_if_safe` found the fourth precondition no longer held (`meta` handed back
+        exactly as given, nothing touched), or the recreate landed idempotently on a **different**
+        pre-existing session under the narrowed identity — `create_session_report`'s own boolean,
+        not asserted, because a session under the narrowed identity can already exist (another
+        caller's claim, or this call's own earlier attempt after a failed judgment) and the caller
+        must never read that as a delete this call is authorised to make (#601 P1: a bare `True`
+        here let a routing reclaim's own idempotent re-entry silently authorise the *next*
+        judgment's delete of a session neither call created).
+        Pinned by `test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it`."""
         if not self._delete_if_safe(meta, created=created):
             return meta, False
-        meta = self.sessions.create_session(
+        meta, recreated = self.sessions.create_session_report(
             request, context_cards=cards, slug=slug,
             provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
-        return meta, True
+        return meta, recreated
 
     def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
                          perimeter: str | None = None
@@ -703,19 +714,42 @@ class DiscoveryService:
         if route_judgment is not None:
             if route_judgment.decision is PerimeterDecision.ambiguous:
                 self._delete_if_safe(meta, created=created)
+                # `reason` is LLM-authored prose over an untrusted request (SECURITY.md): escaped
+                # for the message a human reads (the CLI writes `str(error)` to stderr verbatim,
+                # with no renderer between this raise and the terminal), raw in `details` for a
+                # `--json` consumer (#601 P2: a forged reason containing a control sequence must
+                # not reach the terminal unescaped, the same rule invariant 14 holds for a stored
+                # name forging a line of `doctor`).
                 raise AmbiguousPerimeterError(
                     f"more than one installed perimeter could fit this request -- "
-                    f"{route_judgment.reason} Name one explicitly, e.g. --perimeter "
+                    f"{display_text(route_judgment.reason)} Name one explicitly, e.g. --perimeter "
                     f"{route_judgment.candidates[0]} (candidates: "
                     f"{', '.join(route_judgment.candidates)}).",
                     details={"candidates": route_judgment.candidates,
                              "reason": route_judgment.reason})
             if (route_judgment.decision is PerimeterDecision.fits
                     and route_judgment.perimeter != claim_perimeter):
-                meta, created = self._reclaim_under(
+                meta, reclaimed = self._reclaim_under(
                     meta, request=request, slug=slug, cards=cards,
                     perimeter=route_judgment.perimeter, created=created, provider=provider)
-                claim_perimeter = resolve_perimeter(meta.perimeter)
+                created = reclaimed
+                if reclaimed:
+                    claim_perimeter = resolve_perimeter(meta.perimeter)
+                else:
+                    # The route could not be applied -- `meta` stays exactly where it was (under
+                    # `claim_perimeter`), because a prior claim under the narrowed identity already
+                    # existed (#601 P2: a session left behind by an interrupted or failed earlier
+                    # judgment is the reachable case) or the fourth precondition was gone by the
+                    # time we acted. The rendered verdict must say so rather than announce a route
+                    # that did not land -- reasoning under one perimeter while the screen names
+                    # another is a confident wrong answer, the exact failure this router exists to
+                    # remove. Pinned by
+                    # `test_a_route_that_cannot_land_is_not_announced_as_though_it_did`.
+                    routing = Routing(
+                        None,
+                        f"the router found {route_judgment.perimeter!r} a better fit, but this "
+                        f"session was already claimed under {claim_perimeter!r} and could not be "
+                        f"moved there")
 
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment

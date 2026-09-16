@@ -5,7 +5,9 @@ sibling -- same shape of test, one question over.
 """
 from __future__ import annotations
 
+import builtins
 import json
+import sys
 
 import pytest
 from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, _ROUTING_REPLY, FakeClient, _run_app, out, slot
@@ -151,6 +153,24 @@ def test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned(workspace):
     assert SessionService().list_sessions() == [], "an ambiguous verdict left a session behind"
 
 
+def test_an_ambiguous_verdicts_reason_is_neutralized_in_the_message_not_in_details(workspace):
+    """#601 P2 (Codex review): `reason` is LLM-authored prose over an untrusted request, and the
+    exception's message reaches the terminal verbatim -- no renderer sits between this raise and
+    `sys.stderr` (`app()` writes `str(error)` directly). A forged reason carrying a control sequence
+    must not reach the screen unescaped, the same rule invariant 14 holds for a stored card name
+    forging a line of `doctor`. `details['reason']` keeps the raw text, for a `--json` consumer that
+    renders it through its own escaping."""
+    forged = "ordinary\x1b[2Jrequest"
+    router = _Router(PerimeterJudgment(
+        decision="ambiguous", reason=forged, candidates=[SOFTWARE, GO_TO_MARKET]))
+
+    with pytest.raises(AmbiguousPerimeterError) as exc_info:
+        _disco(router).claim_and_ground("an ambiguous request", cards=None, slug=None)
+
+    assert "\x1b" not in str(exc_info.value), "a raw control character reached the human-readable message"
+    assert exc_info.value.details["reason"] == forged, "the raw reason must survive in details"
+
+
 def test_an_explicit_perimeter_is_never_overridden_by_the_router(workspace):
     """A caller that names `--perimeter` explicitly is never re-routed, even when the router (were
     it asked) would have picked something else -- it is never asked at all."""
@@ -187,6 +207,55 @@ def test_a_session_this_call_did_not_create_is_never_deleted_by_a_routing_verdic
     assert meta.slug == first.slug, "an idempotent re-entry landed somewhere else"
     assert meta.perimeter == SOFTWARE, "a session this call did not create was rerouted anyway"
     assert svc.exists(first.slug), "a session this call did not create was deleted"
+
+
+def test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it(workspace):
+    """#601 P1 (Codex review): `_reclaim_under` used to return `True` unconditionally once its own
+    delete succeeded, even when the recreate that followed landed *idempotently* on a session that
+    already existed under the routed perimeter -- so a perimeter reclaim's false "I created this"
+    fed straight into the grounding step's own precondition check, authorising it to delete and
+    recreate a session neither call actually made, silently narrowing its cards. The victim here is
+    created before `claim_and_ground` is even called."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+    victim = svc.create_session("a request", perimeter=GO_TO_MARKET)
+
+    class _RoutesAndGrounds(_Router):
+        def judge_context(self, request, *, cards):
+            return ContextJudgment(decision="installed", reason="finance",
+                                   cards=["financial-reporting"])
+
+    router = _RoutesAndGrounds(PerimeterJudgment(decision="fits", reason="x", perimeter=GO_TO_MARKET))
+    meta, _grounding, cards, _routing = _disco(router).claim_and_ground(
+        "a request", cards=None, slug=None)
+
+    assert meta.slug == victim.slug, "landed on a different session than the pre-existing one"
+    assert svc.exists(victim.slug), "the pre-existing session was deleted"
+    assert svc.meta(victim.slug).context_cards is None, (
+        "cards were narrowed onto a session this call did not create")
+    assert cards is None, "the caller was told cards narrowed when nothing was authorised to narrow"
+
+
+def test_a_route_that_cannot_land_is_not_announced_as_though_it_did(workspace):
+    """#601 P2 (Codex review): a routing call that failed or was interrupted on an earlier run
+    leaves its software claim behind at revision 0. On retry, that leftover is re-entered
+    idempotently (`created=False`) -- correctly refusing the delete, since this call did not make
+    it -- but the router can still succeed this time and say `fits: go-to-market`. The session stays
+    under software (nothing authorised moving it), and the returned `Routing` must say so rather
+    than keep reporting a route that never took effect: reasoning under one perimeter while the
+    screen names another is the exact failure this router exists to remove."""
+    svc = SessionService()
+    leftover = svc.create_session("a request", perimeter=SOFTWARE)   # a prior run's abandoned claim
+
+    router = _Router(PerimeterJudgment(decision="fits", reason="a launch plan", perimeter=GO_TO_MARKET))
+    meta, _grounding, _cards, routing = _disco(router).claim_and_ground(
+        "a request", cards=None, slug=None)
+
+    assert meta.slug == leftover.slug
+    assert meta.perimeter == SOFTWARE, "reasoning proceeded under a perimeter the screen does not name"
+    assert routing.judgment is None, "a route that did not land was still reported as having fit"
+    assert "could not" in routing.why_not
 
 
 # ── the CLI, end to end, with a fake client ────────────────────────────────────
@@ -259,3 +328,43 @@ def test_a_none_routing_verdict_is_shown_and_the_session_continues_under_softwar
     assert len(fake.calls) == 3
     assert "Perimeter" in printed
     assert SessionService().list_sessions()[0].perimeter == SOFTWARE
+
+
+def _at_a_terminal(monkeypatch) -> None:
+    """Mirrors `test_cli_interactive.py`'s own helper, duplicated rather than imported -- a test
+    reaching into a sibling module for a helper breaks when that module reorganises, the rule
+    `test_cli_flag_names.py` states from the other side."""
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+
+def test_an_ambiguous_verdict_asks_interactively_and_continues_under_the_chosen_answer(
+        workspace, monkeypatch):
+    """JB's call over the issue's own wording (#601): interactive discovery asks, one question, not
+    a guess, using the identical `input()` pattern `_prompt_answers` has since #592 -- and the
+    re-run with an explicit perimeter costs no second routing call, so the total stays three: the
+    same count a first-try `fits` verdict would have cost."""
+    _at_a_terminal(monkeypatch)
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "2")   # 1=software, 2=go-to-market
+    fake = FakeClient(_AMBIGUOUS_REPLY, _JUDGMENT_REPLY, _gtm_reply())
+
+    printed = _run_app(["discover", "help with our internal tool rollout"], client=fake)
+
+    assert len(fake.calls) == 3, "asking interactively must not cost a second routing call"
+    assert "could be either a system or a launch plan" in printed
+    assert "Continuing under go-to-market" in printed
+    assert SessionService().list_sessions()[0].perimeter == GO_TO_MARKET
+
+
+def test_an_ambiguous_verdict_with_no_tty_refuses_without_reading_stdin(workspace, capsys):
+    """The other half of the same acceptance criterion: closed stdin (no `_at_a_terminal` patch, and
+    no `--once`) must take the same non-interactive refusal `--once` does, never block on a read
+    that will never return. If this test hangs, that is the failure."""
+    fake = FakeClient(_AMBIGUOUS_REPLY)
+
+    with pytest.raises(SystemExit) as exit_:
+        app(["discover", "an ambiguous request"], client=fake)
+
+    assert exit_.value.code == 1
+    assert len(fake.calls) == 1
+    assert SessionService().list_sessions() == []
+    assert "could be either" in capsys.readouterr().err

@@ -35,7 +35,10 @@
 # separate, already-closed lane. Lowering this ceiling once src/ actually shrinks further is the
 # one-line PR the header above describes.
 prose_share_max = 0.469
-largest_module_max_lines = 1672
+# Raised from 1672 to 1704 for #601's Codex-review follow-up: the interactive ambiguity prompt
+# JB's decision asked for (`_prompt_perimeter_choice` plus its call site in `_cmd_discover`) had
+# nowhere else to land -- it is CLI-only terminal I/O, the one thing `services/` may not touch.
+largest_module_max_lines = 1704
 
 [tests]
 # tests/, .py files. 2.72x test code per line of product code (22,303 test code lines against
