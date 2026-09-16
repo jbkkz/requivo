@@ -428,6 +428,28 @@ class SessionService:
             "with a different request, context selection or perimeter — pass an explicit slug",
             details={"slug": base})
 
+    def find_existing_session(self, request: str, *, context_cards: list[str] | None = None,
+                              perimeter: str | None = None, slug: str | None = None
+                              ) -> SessionMeta | None:
+        """Whether a session already exists under this exact identity (request, cards, perimeter) --
+        a pure, read-only lookup, `None` when nothing matches. Unlike `create_session_report`, this
+        never claims anything: it exists for a caller that must ask *"does a repeat of this identity
+        already exist"* under a perimeter it has not yet settled on, without paying to find out
+        (#601's router -- see `DiscoveryService.claim_and_ground`, which calls this once per
+        installed perimeter before claiming or routing at all).
+
+        Mirrors `create_session_report`'s own slug-candidate derivation (`base`, then the
+        hash-suffixed fallback) so the two agree on which two names an identity could be sitting
+        under — a lookup that checked a different set of names than the writer would silently miss
+        the exact collision the writer exists to catch."""
+        context_cards = resolve_cards(context_cards) if context_cards else None
+        resolved_perimeter = resolve_perimeter(perimeter)
+        base = slug or self.slug_hint(request)
+        for candidate in (base, f"{base}-{self._identity_hash(request, context_cards, resolved_perimeter)}"):
+            if self._same_identity(candidate, request, context_cards, resolved_perimeter):
+                return self.repo.read_meta(candidate)
+        return None
+
     def ensure_canonical(self, slug: str) -> None:
         """Public form of the migrate-on-first-mutation guard — call before writing an artifact to a
         session that may still live only in the legacy `out/` store."""

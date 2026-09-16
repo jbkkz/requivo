@@ -123,6 +123,20 @@ class UnknownPerimeterError(InvalidSessionError):
     code = "unknown_perimeter"
 
 
+class AmbiguousPerimeterError(RequivoError):
+    """A first discovery's own perimeter router (#601) found more than one installed perimeter that
+    plausibly fits the request, and named no session rather than guess between them. `details`:
+    `{candidates, reason}`.
+
+    409, alongside `unknown_perimeter`/`artifact_type_not_owned`: the request itself is not
+    malformed, it conflicts with what the session would need to commit to. Raised before any
+    session is left behind -- the empty claim this call made while judging is deleted first when
+    the same four preconditions that authorise #593's own delete hold, so retrying with an explicit
+    `--perimeter` lands cleanly rather than colliding with a stale one."""
+
+    code = "ambiguous_perimeter"
+
+
 class ArtifactTypeNotOwnedError(RequivoError):
     """A generation call named an artifact type its own perimeter does not produce (#608, #609).
     `details`: `{artifact_type, perimeter, owned}`.

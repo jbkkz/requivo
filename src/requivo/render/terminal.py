@@ -12,6 +12,7 @@ from requivo.core.contracts import (
     EstimateDraft,
     Impact,
     Leverage,
+    PerimeterDecision,
     Stories,
 )
 from requivo.core.dependencies import ARTIFACT_FILENAMES
@@ -131,8 +132,12 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
             print(f"     → {slot_label(q.slot, perimeter)}")   # a schema-validated slot id, not free text
 
 
-def render_context_judgment(grounding) -> None:
-    """What the engine made of this request's grounding, before it reasons from it (#593).
+def render_context_judgment(grounding, routing=None) -> None:
+    """What the engine made of this request's grounding, before it reasons from it (#593), and --
+    when `routing` is given -- which perimeter it routed to first (#601). Both verdicts are shown
+    before either influences anything, #593's own rule, ridden rather than reinvented for the
+    router: a caller passes `routing` only from `claim_and_ground`, so an older call site (or a
+    grounding-only test) that never sees a router keeps rendering exactly as before.
 
     Four outcomes and four sentences, because the expensive collapse is between two of them: *no
     card is needed* and *nobody asked* are not the same fact, and neither is *no card is needed* and
@@ -142,6 +147,8 @@ def render_context_judgment(grounding) -> None:
     `reason` is LLM-authored prose over an untrusted request, so it goes through `display_text` like
     every other field in this module. Swept by
     `test_every_llm_authored_string_the_terminal_renders_is_neutralized`."""
+    if routing is not None:
+        _render_perimeter_route(routing)
     judgment = grounding.judgment
     if judgment is None:
         # Not asked. Said plainly rather than skipped: silence here reads as a clean bill.
@@ -160,6 +167,24 @@ def render_context_judgment(grounding) -> None:
                            "card for this domain is the lever (docs/context-cards.md).", lw=14))
     else:
         print(_labeled("Grounding", f"no special domain constraints — {reason}", lw=14))
+
+
+def _render_perimeter_route(routing) -> None:
+    """What the router (#601) made of this request's shape, before it routes anything. `ambiguous`
+    never reaches here -- the service refuses before a session is even left claimed under it -- so
+    only `fits` and `none` render a verdict; `judgment is None` is the third state `Routing`'s own
+    docstring warns against collapsing into `none`."""
+    judgment = routing.judgment
+    if judgment is None:
+        print(f"\nPerimeter      not routed — {display_text(routing.why_not)}")
+        return
+    reason = display_text(judgment.reason)
+    if judgment.decision is PerimeterDecision.fits:
+        print(_labeled("Perimeter", f"routed to {display_token(judgment.perimeter)} — {reason}",
+                       lw=14))
+    else:
+        print(_labeled("Perimeter", f"no clear fit, continuing under "
+                                    f"{display_token(DEFAULT_PERIMETER)} — {reason}", lw=14))
 
 
 def render_grounding(cards: list[str] | None) -> None:

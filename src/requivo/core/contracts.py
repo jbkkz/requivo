@@ -246,6 +246,56 @@ class ContextJudgment(StrictModel):
         return self
 
 
+class PerimeterDecision(str, Enum):
+    """Which installed perimeter a request's shape belongs to (#601). Three values because there
+    are three answers, and the expensive mistake is collapsing the first two: *one perimeter
+    clearly fits* and *two plausibly fit* are opposite kinds of uncertainty that both end with no
+    perimeter routed."""
+
+    fits = "fits"
+    ambiguous = "ambiguous"
+    none = "none"
+
+
+# A judgment naming more candidates than the install can hold is a reply that has stopped
+# selecting -- generous on purpose, a shape check rather than a policy.
+MAX_JUDGED_PERIMETERS = 8
+
+
+class PerimeterJudgment(StrictModel):
+    """Which installed perimeter, if any, a request's shape belongs to (#601).
+
+    `reason` is shown to the user verbatim before it routes anything -- the same admissibility rule
+    `ContextJudgment` states and this rides rather than reinvents."""
+
+    decision: PerimeterDecision
+    reason: NonEmpty
+    perimeter: str = ""
+    candidates: list[str] = Field(default_factory=list, max_length=MAX_JUDGED_PERIMETERS)
+
+    @model_validator(mode="after")
+    def _shape_matches_the_decision(self) -> PerimeterJudgment:
+        """A decision and a payload that disagree is refused here, the same discipline
+        `ContextJudgment` applies to its own three states. Guarded by
+        `test_a_perimeter_judgment_whose_payload_contradicts_its_decision_is_refused`."""
+        if self.decision is PerimeterDecision.fits and not self.perimeter:
+            raise ValueError(
+                "decision 'fits' names no perimeter; a verdict that fits must say which")
+        if self.decision is not PerimeterDecision.fits and self.perimeter:
+            raise ValueError(
+                f"decision {self.decision.value!r} names perimeter {self.perimeter!r}; only "
+                f"'fits' routes")
+        if self.decision is PerimeterDecision.ambiguous and len(set(self.candidates)) < 2:
+            raise ValueError(
+                "decision 'ambiguous' names fewer than two distinct candidates; ambiguity needs at "
+                "least two different perimeters, not the same one repeated")
+        if self.decision is not PerimeterDecision.ambiguous and self.candidates:
+            raise ValueError(
+                f"decision {self.decision.value!r} names candidates {self.candidates!r}; only "
+                f"'ambiguous' does")
+        return self
+
+
 class Summary(StrictModel):
     objective: str = ""
     scope: str = ""

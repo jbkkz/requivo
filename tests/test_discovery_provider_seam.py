@@ -456,7 +456,7 @@ def test_a_narrowing_verdict_reclaims_under_the_narrowed_identity(workspace):
     judge = _Judge(ContextJudgment(decision="installed", reason="finance",
                                    cards=["financial-reporting"]))
     disco = _disco(judge)
-    meta, grounding, cards = disco.claim_and_ground("a billing request", cards=None, slug=None)
+    meta, grounding, cards, _routing = disco.claim_and_ground("a billing request", cards=None, slug=None)
 
     assert cards == ["financial-reporting"]
     assert meta.context_cards == ["financial-reporting"], (
@@ -476,7 +476,7 @@ def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict(worksp
 
     judge = _Judge(ContextJudgment(decision="installed", reason="finance",
                                    cards=["financial-reporting"]))
-    meta, _grounding, cards = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
+    meta, _grounding, cards, _routing = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
 
     assert meta.slug == first.slug, "an idempotent re-entry landed somewhere else"
     assert cards is None, "a session this call did not create was narrowed anyway"
@@ -500,7 +500,7 @@ def test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alon
 
     judge = _WritesMidJudgment(ContextJudgment(decision="installed", reason="finance",
                                               cards=["financial-reporting"]))
-    meta, _grounding, cards = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
+    meta, _grounding, cards, _routing = _disco(judge).claim_and_ground("a billing request", cards=None, slug=None)
 
     assert svc.exists(meta.slug), "a session with a model in it was deleted on a verdict"
     assert cards is None, "the narrowing went ahead over a session that had moved on"

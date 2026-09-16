@@ -324,7 +324,10 @@ Not a licence to remove a reason attached to a guard or a MUST-FIRE note: those 
 stay on the line. Not applicable to `docs/`, which is narrative's right home.
 
 **Size budget.** The ceilings — prose share per module, test-to-product ratio, the meta-guard estate —
-live in `tests/lean_budget.toml` and only go down (#553); none is written in prose, here or anywhere.
+live in `tests/lean_budget.toml`, never in prose here or anywhere it could go stale (#553). They are a
+floor under today's tree, not a plan for tomorrow's: lowering one is a one-line PR, and raising one is
+legal and visible — a diff on that file — but costs the PR one sentence there saying why the tree
+needed to grow (#601 raised `largest_module_max_lines` for exactly that reason).
 
 **A new guard that does not exercise shipped runtime code is not free.** A source-scanning tier
 (`test_source_form.py` -- the three sections that were `test_boundaries.py`, `test_encoding.py` and
