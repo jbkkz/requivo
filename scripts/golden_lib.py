@@ -354,6 +354,10 @@ def _challenge_themes(briefs: list[Brief]) -> dict[str, int]:
         for challenge in brief.challenges:
             for slot_id in challenge.contests:
                 runs_per_slot.setdefault(slot_id, set()).add(run_idx)
+    # No perimeter passed, so this labels against the software schema — correct only because
+    # `capture()` structurally refuses `--brief` for any non-software perimeter, so no assessment of
+    # another perimeter's model ever reaches here. Give a perimeter its own assessment artifact and
+    # this line starts printing raw slot ids; thread the capture's perimeter through then (#621).
     return {slot_label(slot_id): len(runs) for slot_id, runs in runs_per_slot.items()}
 
 
