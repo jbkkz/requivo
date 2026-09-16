@@ -26,6 +26,7 @@ import golden_run  # noqa: E402
 from golden_lib import captured_model, load_turns  # noqa: E402
 
 from requivo.core.contracts import EngineOutput, Question, Slot, Summary  # noqa: E402
+from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
 
 
@@ -56,12 +57,16 @@ def capture(tmp_path, monkeypatch):
     monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
 
     def run(replies: list[EngineOutput], answers: dict[str, list[str]], *, k: int = 1,
-            turns: int = 5):
+            turns: int = 5, perimeter: str | None = None):
         calls: list[dict] = []
         scripted = list(replies)
         position = {"turn": 0}
 
-        def fake_draft_turn(self, request, *, current_model=None, answers=None, cards=None):
+        def fake_draft_turn(self, request, *, current_model=None, answers=None, cards=None,
+                            perimeter="__UNSET__"):
+            # No real default: a stub that quietly fell back to `DEFAULT_PERIMETER` on its own would
+            # make `test_a_request_with_no_perimeter_key_still_threads_the_software_default` pass even
+            # if `capture_interactive` stopped passing the keyword at all (#621).
             # `current_model is None` is how the loop says "this is turn 1", so the script replays
             # from the top for each of the K runs. A stand-in that indexed on the total call count
             # would hand run 2 the tail of run 1's script and end it immediately — the runs would
@@ -69,7 +74,7 @@ def capture(tmp_path, monkeypatch):
             if current_model is None:
                 position["turn"] = 0
             calls.append({"request": request, "current_model": current_model,
-                          "answers": answers, "cards": cards})
+                          "answers": answers, "cards": cards, "perimeter": perimeter})
             reply = scripted[min(position["turn"], len(scripted) - 1)]
             position["turn"] += 1
             return reply
@@ -79,6 +84,8 @@ def capture(tmp_path, monkeypatch):
         monkeypatch.setattr(golden_run, "TURNS", turns)
         req = {"slug": "scripted", "form": "f", "card": "c", "request": "a request",
                "answers": answers}
+        if perimeter is not None:
+            req["perimeter"] = perimeter
         # `redirect_stdout` to a StringIO, which is the pattern `tests/test_cli_interactive.py`'s
         # `_converse` already uses and for the same reason: `capture_interactive` ends by printing
         # `✓` and `—`, and a StringIO never encodes. Without it these tests write those glyphs to the
@@ -98,6 +105,23 @@ def capture(tmp_path, monkeypatch):
         return calls, captured, buf.getvalue()
 
     return run
+
+
+def test_the_capture_threads_the_requests_own_perimeter_to_draft_turn(capture):
+    """#621: the request's own `perimeter` -- read off the parsed `requests.md` block, or the
+    software default for a fixture that predates the key -- must reach `draft_turn`, not the
+    library's own default read a second time at the call site."""
+    calls, _, _ = capture([_model()], {}, perimeter="go-to-market")
+    assert calls[0]["perimeter"] == "go-to-market"
+
+
+def test_a_request_with_no_perimeter_key_still_threads_the_software_default(capture):
+    """must not fire -- every other test in this module builds a request dict with no `perimeter`
+    key at all, the shape every fixture here had before #621. `capture_interactive` must still pass
+    a perimeter explicitly rather than omitting the keyword, or the stub above would silently fall
+    back to its own default and this would pass even if the production call forgot the argument."""
+    calls, _, _ = capture([_model()], {})
+    assert calls[0]["perimeter"] == DEFAULT_PERIMETER
 
 
 def test_the_interactive_capture_records_the_model_it_reasoned_on(capture, tmp_path):

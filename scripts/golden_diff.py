@@ -26,6 +26,12 @@ that once made the assessment lens unreachable behind a flat slot consensus (#16
 `test_the_verdict_is_the_union_of_the_lenses_that_ran` and
 `test_the_assessment_lens_runs_when_the_slot_consensus_held_still`.
 
+A baseline and a fresh capture taken under **different perimeters** (#608, #621) never reach any of
+the three lenses above: a slot id means a different thing in each perimeter's own schema, so nothing
+would be a real comparison. `diff_one` refuses it before loading either side, names both perimeters,
+and moves no verdict — the same shape as a lens that could not look. Guarded by
+`test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict`.
+
 Workflow: golden_run.py (re-capture) → golden_diff.py (read the signal) → commit if intended.
 
 Usage:
@@ -49,6 +55,7 @@ from golden_lib import (  # noqa: E402
     brief_consensus,
     brief_movements,
     captured_model,
+    captured_perimeter,
     configure_output,
     load_answers,
     load_briefs,
@@ -144,9 +151,33 @@ def _show_model(old_text: str | None, new_text: str | None) -> None:
           f"prompt or context edit")
 
 
+def _perimeters_comparable(old_text: str, new_text: str) -> bool:
+    """Print which perimeter each side of this comparison ran under, and say whether a comparison is
+    even possible (#621).
+
+    Unlike a model swap (`_show_model` above, named but not gating -- two models can still be read as
+    opinions on the same question), a perimeter swap is not: a slot id means a different thing in
+    each perimeter's own schema, so `movements()` would silently diff unrelated concepts and print a
+    confident-looking result over a comparison that was never valid. Refused here, before either side
+    is loaded into `EngineOutput`s -- the same shape as a lens that could not look: it says so on its
+    own line and moves no verdict. Guarded by
+    `test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict`."""
+    old_p, new_p = captured_perimeter(old_text), captured_perimeter(new_text)
+    if old_p == new_p:
+        print(f"  · captured under perimeter {display_token(old_p)} (baseline and candidate agree)")
+        return True
+    print(f"  ! cannot compare — baseline captured under perimeter {display_token(old_p)}, this "
+          f"capture under {display_token(new_p)}; a slot id means a different thing in each, so "
+          f"nothing below would be a real comparison (commit this as a first capture for "
+          f"{display_token(new_p)} instead)")
+    return False
+
+
 def diff_one(slug: str) -> str:
-    """Print the signal for one request. Returns its status: ``moved``, ``flat``, or ``stale``
-    (no capture on disk, or a capture that is byte-identical to HEAD and so never landed)."""
+    """Print the signal for one request. Returns its status: ``moved``, ``flat``, ``stale`` (no
+    capture on disk, or a capture that is byte-identical to HEAD and so never landed), or
+    ``perimeter_mismatch`` (#621: baseline and candidate were captured under different perimeters, so
+    nothing below them is a real comparison)."""
     path = runs_path(slug)
     rel_path = f"fixtures/golden/{slug}.runs.json"
     old_text = _head_version(rel_path)
@@ -186,6 +217,9 @@ def diff_one(slug: str) -> str:
         # all-clear, which is the one failure mode a regression lens must not have.
         print("  ! capture identical to HEAD — not re-captured (re-run golden_run.py)")
         return "stale"
+
+    if not _perimeters_comparable(old_text, new_text):
+        return "perimeter_mismatch"
 
     old = load_runs(old_text)
     m = movements(old, new)
@@ -403,6 +437,11 @@ def questions_one(slug: str) -> None:
     _show_freshness(rel_path)
     new_text = path.read_text(encoding="utf-8")
     _show_model(old_text, new_text)
+    # Informational only here, unlike `diff_one`: this view lists each side's questions side by side
+    # rather than diffing slot ids, so a mismatch doesn't invalidate it the way it would a real
+    # comparison -- but a reader piecing together why the headlines read completely differently
+    # deserves the same fact `diff_one` would have refused on (#621).
+    _perimeters_comparable(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
         turns = load_turns(text)
@@ -457,12 +496,20 @@ def main(argv: list[str]) -> int:
 
     print("Golden diff — working tree vs HEAD (strong = every run agrees, before and after)")
     results = [diff_one(slug) for slug in slugs]
-    moved, weak, stale = (results.count(k) for k in ("moved", "weak", "stale"))
+    moved, weak, stale, mismatched = (
+        results.count(k) for k in ("moved", "weak", "stale", "perimeter_mismatch"))
     line = f"{moved}/{len(slugs)} request(s) moved on strong signal."
     if weak:
         line += f"  {weak} moved on weak signal only (watch, don't act)."
     if stale:
         line += f"  ⚠ {stale} not re-captured — that is not a clean bill of health."
+    if mismatched:
+        # A perimeter change is a different situation from either of the two above — it was
+        # re-captured, and it may be byte-different from HEAD — so it earns its own count rather than
+        # folding into `stale`, the same "three genuinely different situations" rule
+        # `tests/test_golden_baselines.py` already applies to drift (#621).
+        line += (f"  ⚠ {mismatched} could not be compared — captured under a different perimeter "
+                 f"than its baseline.")
     print(f"\n{'─' * 60}\n{line}")
     return 0
 

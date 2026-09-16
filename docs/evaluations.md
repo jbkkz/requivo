@@ -35,6 +35,25 @@ It exists because the interactive loop is grounded differently from turn 3 onwar
 model and no longer re-sends the transcript. Turns 1 and 2 are byte-identical to the loop it
 replaced, so only a capture that runs deep says anything at all about that change.
 
+## The perimeter a request runs under
+
+A request block in `requests.md` may carry a `perimeter:` line naming which installed perimeter
+(`core/perimeters.py`, #608) the discovery call runs under. It defaults to `software` when the line
+is absent, so every request written before #621 is unchanged byte-for-byte. `golden_run.py` threads
+it through to the discovery call, and the captured `.runs.json` envelope records which perimeter it
+ran under, on the same footing `model` (#515) already does — a baseline that does not say which
+perimeter it measured cannot be checked, and a missing key reads as `software` rather than as a
+third unknown state, because there was only one perimeter before #608 (the same migration a session
+without a recorded perimeter already gets).
+
+`golden_diff.py` refuses to compare a baseline and a candidate captured under different perimeters,
+rather than diff slot ids that mean different things in each schema: it names both perimeters, says
+it cannot compare, and moves no verdict — the same shape as a lens that could not look (see "Every
+lens runs" below). The other requests in the same run are unaffected; only the mismatched one is
+refused. `fixtures/golden/requests.md` carries one go-to-market request, `expand-into-new-segment`,
+with no committed baseline yet — capturing one is a deliberate spend the maintainer makes when ready,
+the same as any other first capture in this file.
+
 ## What it reports, and why
 
 - **Consensus over K runs, not a single capture.** A slot dimension is a usable reference only if all

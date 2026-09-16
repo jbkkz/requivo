@@ -76,15 +76,20 @@ def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
 
 
 def _capture(*, impact: Impact = Impact.medium, completeness: int = 80,
-             briefs: list[dict] | None = None, model: str | None = None) -> str:
+             briefs: list[dict] | None = None, model: str | None = None,
+             perimeter: str | None = None) -> str:
     """A `.runs.json` envelope with K identical runs, and optionally K assessments.
 
     `model` defaults to **absent**, which is what every baseline written before #515 looks like --
     so the lens tests above keep exercising the third state incidentally, the way a reader's own
-    checkout does today."""
+    checkout does today. `perimeter` (#621) defaults to absent on the same principle, and
+    `captured_perimeter` reads that as `software` rather than as a third unknown state -- see its
+    own docstring for why that default differs from `model`'s."""
     body: dict = {"request": "r", "runs": [_model(impact, completeness) for _ in range(K)]}
     if model is not None:
         body["model"] = model
+    if perimeter is not None:
+        body["perimeter"] = perimeter
     if briefs is not None:
         body["briefs"] = briefs
     return json.dumps(body, indent=2)
@@ -165,6 +170,50 @@ def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
     assert "claude-sonnet-5" in line, (
         "the half that *is* known should still be stated -- an unknown baseline is not an unknown "
         "candidate")
+
+
+# ── #621: a comparison across perimeters is refused, not diffed ──────────────────────────────────
+
+
+def test_two_captures_under_the_same_perimeter_say_so(diff):
+    """must not fire -- the positive control: an explicit, matching perimeter on both sides is an
+    ordinary comparison and must reach the slot lens exactly as it did before #621."""
+    verdict, lines = diff(_capture(perimeter="go-to-market"),
+                          _capture(completeness=70, perimeter="go-to-market"))
+    line = _line(lines, "captured under perimeter")
+    assert line is not None, lines
+    assert "go-to-market" in line and "agree" in line
+    assert verdict != "perimeter_mismatch", lines
+
+
+def test_a_perimeter_mismatch_refuses_the_comparison_and_moves_no_verdict(diff):
+    """The defect this issue exists to close: a baseline and a candidate reasoned under different
+    perimeters must never reach `movements()`, because a slot id means a different thing in each
+    schema. `diff_one` must refuse before the slot lens runs at all -- not run it and then discard
+    the result, which would still risk a `KeyError`/`AttributeError` from `consensus()` walking a
+    schema the other side's ids do not belong to."""
+    verdict, lines = diff(_capture(perimeter="software"),
+                          _capture(completeness=70, perimeter="go-to-market"))
+    assert verdict == "perimeter_mismatch", lines
+    refusal = _line(lines, "cannot compare")
+    assert refusal is not None, lines
+    assert "software" in refusal and "go-to-market" in refusal
+    # Moves no verdict: none of the slot lens's own lines -- strong/weak tiers or its flat dash --
+    # may appear, because that lens must never have run.
+    assert _line(lines, "no change above the noise floor") is None, lines
+    assert _line(lines, "strong") is None, lines
+    assert _line(lines, "weak") is None, lines
+
+
+def test_a_baseline_with_no_perimeter_key_is_comparable_with_an_explicit_software_capture(diff):
+    """A baseline written before #621 carries no `perimeter` key at all and must read as `software`
+    -- the same migration #608 already gives a session -- so it stays comparable against a candidate
+    that explicitly names `software`, rather than being refused as a mismatch."""
+    verdict, lines = diff(_capture(), _capture(completeness=70, perimeter="software"))
+    line = _line(lines, "captured under perimeter")
+    assert line is not None, lines
+    assert "software" in line and "agree" in line
+    assert verdict != "perimeter_mismatch", lines
 
 
 # ── #162: every lens runs, and the verdict is the union of the ones that did ─────────────────────
