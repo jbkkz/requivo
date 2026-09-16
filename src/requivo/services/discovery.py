@@ -452,6 +452,34 @@ class Routing(NamedTuple):
     why_not: str
 
 
+class Reclaim(NamedTuple):
+    """What `_reclaim_under` actually did, as three independent facts -- a single boolean cannot
+    carry all three, and reusing one flag for two of them produced a defect for each of the two
+    questions it was asked in a row (#601, Codex review rounds two and three): a bare `True`
+    mistaken for ownership authorised deleting a session this call did not create, and `created`
+    read as "did the identity move" mis-reported an idempotent re-entry onto the *correct* identity
+    as though nothing had happened. Every caller now reads the fact it needs off this, never one
+    inferred from another:
+
+    - **`meta`** -- the session to discover against, always the truth about where the claim is now,
+      whichever of the three outcomes below produced it.
+    - **`landed`** -- did the identity actually move to what was asked for: `_delete_if_safe`
+      authorised the delete and the recreate that followed completed, freshly or by matching an
+      **existing** session under the exact same identity (`create_session_report` never returns a
+      session under any other identity than the one requested -- it raises instead). `False` only
+      when the delete itself was refused, in which case `meta` is the untouched prior claim. This is
+      the fact a renderer, or a caller reporting the resulting cards/perimeter, must read -- never
+      `created`.
+    - **`created`** -- did *this call* create the session `meta` now names, as opposed to landing on
+      one that already existed under that identity. The one fact a *later* delete's authorisation
+      (the third of #593's four preconditions) may read; never a proxy for `landed`.
+    """
+
+    meta: Any
+    landed: bool
+    created: bool
+
+
 class DiscoveryService:
     """Provider-backed orchestration over the session/artifact services.
 
@@ -621,6 +649,7 @@ class DiscoveryService:
         if not isinstance(provider, PerimeterJudge):
             return Routing(None, f"the {getattr(provider, 'name', 'current')} provider does not "
                                  f"route perimeters")
+        self._check_spend()
         return Routing(provider.judge_perimeter(request, perimeters=perimeter_summaries()), "")
 
     def _delete_if_safe(self, meta, *, created: bool) -> bool:
@@ -641,28 +670,26 @@ class DiscoveryService:
         return True
 
     def _reclaim_under(self, meta, *, request: str, slug: str | None, cards: list[str] | None,
-                       perimeter: str, created: bool, provider) -> tuple[Any, bool]:
+                       perimeter: str, created: bool, provider) -> Reclaim:
         """Delete the empty session `meta` names and recreate it under a narrower identity — cards,
         perimeter, or both call this, so the destructive step has exactly one implementation
         (invariant 14, and #601's instruction not to duplicate #593's four preconditions).
 
-        Returns the (possibly unchanged) session and whether *this call* now owns it. `False` in two
-        cases: `_delete_if_safe` found the fourth precondition no longer held (`meta` handed back
-        exactly as given, nothing touched), or the recreate landed idempotently on a **different**
-        pre-existing session under the narrowed identity — `create_session_report`'s own boolean,
-        not asserted, because a session under the narrowed identity can already exist (another
-        caller's claim, or this call's own earlier attempt after a failed judgment) and the caller
-        must never read that as a delete this call is authorised to make (#601 P1: a bare `True`
-        here let a routing reclaim's own idempotent re-entry silently authorise the *next*
-        judgment's delete of a session neither call created).
-        Pinned by `test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it`."""
+        Returns a `Reclaim` -- see its own docstring for why a single boolean stopped being enough.
+        `landed` is `False` only when `_delete_if_safe` found the fourth precondition no longer held
+        (`meta` handed back exactly as given, nothing touched); otherwise the recreate always lands
+        under the requested identity, freshly (`created=True`) or by matching an existing session
+        that already had it (`created=False`) -- `create_session_report`'s own boolean, not
+        asserted, because the caller must never read an idempotent re-entry as a delete this call is
+        authorised to make (#601 P1). Pinned by
+        `test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it`."""
         if not self._delete_if_safe(meta, created=created):
-            return meta, False
+            return Reclaim(meta, False, False)
         meta, recreated = self.sessions.create_session_report(
             request, context_cards=cards, slug=slug,
             provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
-        return meta, recreated
+        return Reclaim(meta, True, recreated)
 
     def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
                          perimeter: str | None = None
@@ -700,8 +727,9 @@ class DiscoveryService:
         `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`,
         `test_a_fitting_perimeter_verdict_reroutes_and_reclaims`,
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
-        `test_an_explicit_perimeter_is_never_overridden_by_the_router` and
-        `test_a_none_verdict_continues_under_the_default_perimeter_named`."""
+        `test_an_explicit_perimeter_is_never_overridden_by_the_router`,
+        `test_a_none_verdict_continues_under_the_default_perimeter_named` and
+        `test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one`."""
         provider = self._need_provider()
         claim_perimeter = perimeter or DEFAULT_PERIMETER
         meta, created = self.sessions.create_session_report(
@@ -729,21 +757,26 @@ class DiscoveryService:
                              "reason": route_judgment.reason})
             if (route_judgment.decision is PerimeterDecision.fits
                     and route_judgment.perimeter != claim_perimeter):
-                meta, reclaimed = self._reclaim_under(
+                reclaim = self._reclaim_under(
                     meta, request=request, slug=slug, cards=cards,
                     perimeter=route_judgment.perimeter, created=created, provider=provider)
-                created = reclaimed
-                if reclaimed:
-                    claim_perimeter = resolve_perimeter(meta.perimeter)
-                else:
-                    # The route could not be applied -- `meta` stays exactly where it was (under
-                    # `claim_perimeter`), because a prior claim under the narrowed identity already
-                    # existed (#601 P2: a session left behind by an interrupted or failed earlier
-                    # judgment is the reachable case) or the fourth precondition was gone by the
-                    # time we acted. The rendered verdict must say so rather than announce a route
-                    # that did not land -- reasoning under one perimeter while the screen names
-                    # another is a confident wrong answer, the exact failure this router exists to
-                    # remove. Pinned by
+                # `meta`/`claim_perimeter` are read off `reclaim.meta` unconditionally -- it is
+                # always the truth about where the claim now is, landed or not (#601 P2, round
+                # three: `claim_perimeter` used to be left unmoved only in the `else` arm below,
+                # which happened to be correct only because `meta` was *also* unchanged there; this
+                # reads it the same way in both arms instead of by coincidence). `created` is
+                # `reclaim.created`, never `reclaim.landed` -- the ownership fact the *next*
+                # reclaim's own precondition check needs, not whether this one took effect.
+                meta, created = reclaim.meta, reclaim.created
+                claim_perimeter = resolve_perimeter(meta.perimeter)
+                if not reclaim.landed:
+                    # The route could not be applied -- a prior claim under `claim_perimeter`
+                    # already existed (#601 P2: a session left behind by an interrupted or failed
+                    # earlier judgment is the reachable case) or the fourth precondition was gone by
+                    # the time we acted. The rendered verdict must say so rather than announce a
+                    # route that did not land -- reasoning under one perimeter while the screen
+                    # names another is a confident wrong answer, the exact failure this router
+                    # exists to remove. Pinned by
                     # `test_a_route_that_cannot_land_is_not_announced_as_though_it_did`.
                     routing = Routing(
                         None,
@@ -759,10 +792,16 @@ class DiscoveryService:
         if cards or not created or not narrowed or narrowed == cards:
             return meta, grounding, cards, routing
 
-        meta, reclaimed = self._reclaim_under(
+        reclaim = self._reclaim_under(
             meta, request=request, slug=slug, cards=narrowed, perimeter=claim_perimeter,
             created=created, provider=provider)
-        return meta, grounding, (narrowed if reclaimed else cards), routing
+        # `reclaim.meta.context_cards` is the truth about what this session now records, landed or
+        # not -- reading it directly, rather than inferring the cards from `reclaim.created`, is
+        # exactly the fix for #601 P2 round three: an idempotent re-entry onto a session that
+        # already had the narrowed identity used to report the *pre-narrowing* cards, so `start()`
+        # went on to reason over every card against a session whose own `session.json` said
+        # otherwise.
+        return reclaim.meta, grounding, reclaim.meta.context_cards, routing
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
                       perimeter: str = DEFAULT_PERIMETER):

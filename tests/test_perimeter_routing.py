@@ -237,6 +237,59 @@ def test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it(wor
     assert cards is None, "the caller was told cards narrowed when nothing was authorised to narrow"
 
 
+def test_an_idempotent_perimeter_reclaim_onto_the_correct_identity_is_announced_as_landed(
+        workspace):
+    """The routing branch's own mirror of the test below (#601 P2, round three, Codex review): a
+    perimeter reclaim that lands idempotently on a go-to-market session that already exists must
+    report *that* identity -- not fall back to announcing the software claim retained, which is
+    what reading `created` (False on an idempotent match) as `landed` used to do. Getting this
+    wrong here is worse than the grounding-side mirror: `claim_perimeter` feeds straight into the
+    `perimeter=` this call's own discovery turn reasons under, so a wrong answer here means
+    analysing under one perimeter's schema against a session recorded under another."""
+    svc = SessionService()
+    victim = svc.create_session("a request", perimeter=GO_TO_MARKET)   # the correct identity, already there
+
+    router = _Router(PerimeterJudgment(decision="fits", reason="a launch plan", perimeter=GO_TO_MARKET))
+    meta, _grounding, _cards, routing = _disco(router).claim_and_ground(
+        "a request", cards=None, slug=None)
+
+    assert meta.slug == victim.slug
+    assert meta.perimeter == GO_TO_MARKET, "an idempotent landing on the correct perimeter was not announced"
+    assert routing.judgment is not None and routing.judgment.decision.value == "fits", (
+        "a route that DID land was reported as though it had not")
+
+
+def test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one(
+        workspace):
+    """#601 P2, round three (Codex review): a reclaim that lands *idempotently* on a session that
+    already has the narrowed identity is still a landed reclaim -- `created=False` there means "this
+    call did not make it", never "the identity did not move". The old code read `created` for both
+    questions and reported the pre-narrowing cards (`None`) for a session whose own `session.json`
+    already said `financial-reporting`, so `start()` went on to reason over every card against a
+    session that claimed to be narrowed."""
+    from requivo.core.contracts import ContextJudgment
+
+    svc = SessionService()
+    # A session already sitting under the exact identity grounding is about to narrow onto -- the
+    # reachable shape is a prior call's own abandoned narrowing attempt, same family as the P2 test
+    # above, one call further down the chain.
+    already_narrowed = svc.create_session(
+        "a request", context_cards=["financial-reporting"], perimeter=SOFTWARE)
+
+    class _Grounds(_Router):
+        def judge_context(self, request, *, cards):
+            return ContextJudgment(decision="installed", reason="finance",
+                                   cards=["financial-reporting"])
+
+    meta, _grounding, cards, _routing = _disco(_Grounds()).claim_and_ground(
+        "a request", cards=None, slug=None)
+
+    assert meta.slug == already_narrowed.slug
+    assert cards == ["financial-reporting"], (
+        "an idempotent landing on the correct identity was reported as though nothing narrowed")
+    assert meta.context_cards == ["financial-reporting"]
+
+
 def test_a_route_that_cannot_land_is_not_announced_as_though_it_did(workspace):
     """#601 P2 (Codex review): a routing call that failed or was interrupted on an earlier run
     leaves its software claim behind at revision 0. On retry, that leftover is re-entered

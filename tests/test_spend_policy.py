@@ -13,8 +13,9 @@ the call reads as `calls == 0`, not merely as a raised exception.
 
 Every provider call site inside `DiscoveryService` is exercised once: `start` (both its calls --
 analyze, then generate("brief") when finalizing), `draft_turn`, `run_discovery`, `answer`,
-`reason`/`reason_from`, and `generate` (both its branches -- the brief branch and the ordinary
-writer branch).
+`reason`/`reason_from`, `generate` (both its branches -- the brief branch and the ordinary writer
+branch), and `route_perimeter` (#601: added after review found it was the one paid call in
+`DiscoveryService` that reached the provider with no `_check_spend()` ahead of it).
 """
 
 from __future__ import annotations
@@ -56,6 +57,11 @@ class _CountingProvider:
                 perimeter=None):
         self._bill()
         return out({"problem": slot(80, "explicit", "high")})
+
+    def judge_perimeter(self, request, *, perimeters):
+        self._bill()
+        from requivo.core.contracts import PerimeterJudgment
+        return PerimeterJudgment(decision="none", reason="an ordinary request")
 
     def generate(self, artifact_type, model, *, only=None, **kwargs):
         self._bill()
@@ -202,6 +208,21 @@ def test_draft_turn_refuses_before_reasoning_once_the_ceiling_is_already_reached
         _ledger_at_or_above(0.10)
         with pytest.raises(SpendCeilingReachedError):
             disco.draft_turn("a leave approval system")
+    assert provider.calls == 0
+
+
+def test_route_perimeter_refuses_before_the_provider_call():
+    """#601 P2 (Codex review, third pass): `route_perimeter()` reached the provider with no
+    `_check_spend()` ahead of it -- a new paid call on a first run's own critical path, reachable
+    with `--perimeter` unset and more than one perimeter installed (the repo's own default state).
+    An automated caller could spend past an already-reached ceiling on exactly the call this whole
+    lot exists to price out."""
+    provider = _CountingProvider()
+    disco = DiscoveryService(provider=provider, spend_policy=SpendPolicy(ceiling_usd=0.10))
+    with track_usage():
+        _ledger_at_or_above(0.10)
+        with pytest.raises(SpendCeilingReachedError):
+            disco.route_perimeter("a leave approval system", perimeter=None)
     assert provider.calls == 0
 
 
