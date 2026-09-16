@@ -534,3 +534,45 @@ def test_eof_at_the_perimeter_prompt_still_refuses_cleanly(workspace, monkeypatc
     assert exit_.value.code == 1
     assert len(fake.calls) == 1
     assert "could be either" in capsys.readouterr().err
+
+
+def test_a_failed_routing_call_does_not_lock_the_retry_into_the_default_perimeter(workspace):
+    """#601 P2 (Codex review, round five): round four's own fix traded "pays before refusing" for
+    "never routes again", which is worse. A routing call that fails or is interrupted left its
+    revision-zero software placeholder behind, and the retry's own `find_existing_session` (round
+    four's own check) found it and read the accidental default as a *decision* -- so the router was
+    never consulted again, and the session silently stayed under software while its own `Routing`
+    reported that `--perimeter` had been supplied, which nobody did. The two states genuinely
+    differ (a session whose routing completed vs. a placeholder a routing call never finished) and
+    must not be confused: the placeholder is cleaned up on any failed or interrupted routing call,
+    the same "disposable until routing lands" rule the ambiguous-verdict branch already lives by --
+    never a persisted "routing completed" field, which would touch the public session format for
+    every session, including the ones that never route at all."""
+    from requivo.providers.errors import EngineError
+
+    class _FailsOnce(_Router):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.attempts = 0
+
+        def judge_perimeter(self, request, *, perimeters):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise EngineError("transport failure")
+            return super().judge_perimeter(request, perimeters=perimeters)
+
+    router = _FailsOnce(
+        PerimeterJudgment(decision="fits", reason="a launch plan", perimeter=GO_TO_MARKET))
+    disco = _disco(router)
+
+    with pytest.raises(EngineError):
+        disco.claim_and_ground("a request", cards=None, slug=None)
+    assert SessionService().list_sessions() == [], (
+        "the failed routing call's own placeholder survived")
+
+    meta, _grounding, _cards, routing = disco.claim_and_ground("a request", cards=None, slug=None)
+
+    assert router.attempts == 2, "the retry never asked the router again"
+    assert meta.perimeter == GO_TO_MARKET
+    assert routing.judgment is not None and routing.judgment.decision.value == "fits", (
+        "the retry silently reasoned under the leftover default instead of asking the router")

@@ -58,6 +58,7 @@ from requivo.core.errors import (
     ArtifactTypeNotOwnedError,
     ArtifactWriteFailedError,
     InvalidSlugError,
+    RequivoError,
     RevisionConflictError,
     SessionLockedError,
     SessionUnreadableError,
@@ -480,6 +481,23 @@ class Reclaim(NamedTuple):
     created: bool
 
 
+class ClaimAndGround(NamedTuple):
+    """What `DiscoveryService.claim_and_ground` produced (#601): the session to discover against,
+    what context grounding found, the card selection to reason with, and what the router found.
+
+    **Read it by attribute** (`.meta`, `.grounding`, `.cards`, `.routing`), not by position.
+    Positional unpacking still works today — a `NamedTuple` is a tuple — but it is not the
+    supported form: this shape grew from three fields to four once already (#601 joined `.routing`
+    to #593's three), it is part of the declared Python import seam (`docs/compatibility.md`), and
+    a fact added later is a new field here rather than another arity break for every caller that
+    unpacks. `docs/compatibility.md` declares the 3→4 break this NamedTuple lands on top of."""
+
+    meta: Any
+    grounding: Grounding
+    cards: list[str] | None
+    routing: Routing
+
+
 class DiscoveryService:
     """Provider-backed orchestration over the session/artifact services.
 
@@ -693,7 +711,7 @@ class DiscoveryService:
 
     def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
                          perimeter: str | None = None
-                         ) -> tuple[Any, Grounding, list[str] | None, Routing]:
+                         ) -> ClaimAndGround:
         """Claim the session, route it to the perimeter its shape fits (#601), judge its context
         grounding (#593), and act on each judgment when acting is safe.
 
@@ -732,8 +750,8 @@ class DiscoveryService:
         which perimeter it recreates under can have moved, since routing may already have re-claimed
         once.
 
-        Returns the session to discover against, what context grounding found, the card selection to
-        reason with, and what the router found. Pinned by
+        Returns a `ClaimAndGround` -- see its own docstring for the shape and why attribute access,
+        not positional unpacking, is the supported form. Pinned by
         `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
         `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`,
         `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`,
@@ -741,8 +759,9 @@ class DiscoveryService:
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
         `test_an_explicit_perimeter_is_never_overridden_by_the_router`,
         `test_a_none_verdict_continues_under_the_default_perimeter_named`,
-        `test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one`
-        and `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`."""
+        `test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one`,
+        `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`
+        and `test_a_failed_routing_call_does_not_lock_the_retry_into_the_default_perimeter`."""
         provider = self._need_provider()
         if perimeter is None:
             for pid in known_perimeter_ids():
@@ -757,7 +776,27 @@ class DiscoveryService:
             provider=provider.name, model_name=provider.model_name(), perimeter=claim_perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
 
-        routing = self.route_perimeter(request, perimeter=perimeter)
+        try:
+            routing = self.route_perimeter(request, perimeter=perimeter)
+        except (RequivoError, KeyboardInterrupt):
+            # The routing *call* itself did not complete -- a transport failure, a retry-exhausted
+            # reply, an interrupt, a spend refusal. Left as it was, this placeholder (claimed under
+            # a guessed perimeter, never asked) would be indistinguishable from a session whose
+            # routing genuinely landed on that perimeter -- and a repeat's own `find_existing_session`
+            # (this method's own first move, above) would find it and read the guess as a decision,
+            # never asking the router again (#601 P2, Codex review round five: round four traded
+            # "pays before refusing" for "never routes again", which is worse -- the first costs a
+            # call, the second silently reasons the whole session under the wrong vocabulary and
+            # tells the user they chose it). Cleaned up here rather than marked, deliberately: a
+            # persisted "routing completed" field would touch the public session format (invariant
+            # 8) for every session, including the ones that never route at all (an explicit
+            # `--perimeter`, a single-perimeter install), and would still need to encode *why* a
+            # session sits at the default to avoid re-deriving this same ambiguity one field later --
+            # where the empty claim this call just made is disposable by construction, the same rule
+            # the ambiguous-verdict branch below already lives by. Pinned by
+            # `test_a_failed_routing_call_does_not_lock_the_retry_into_the_default_perimeter`.
+            self._delete_if_safe(meta, created=created)
+            raise
         route_judgment = routing.judgment
         if route_judgment is not None:
             if route_judgment.decision is PerimeterDecision.ambiguous:
@@ -807,10 +846,10 @@ class DiscoveryService:
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment
         if judgment is None or judgment.decision is not ContextDecision.installed:
-            return meta, grounding, cards, routing
+            return ClaimAndGround(meta, grounding, cards, routing)
         narrowed = resolve_cards(judgment.cards)
         if cards or not created or not narrowed or narrowed == cards:
-            return meta, grounding, cards, routing
+            return ClaimAndGround(meta, grounding, cards, routing)
 
         reclaim = self._reclaim_under(
             meta, request=request, slug=slug, cards=narrowed, perimeter=claim_perimeter,
@@ -821,7 +860,7 @@ class DiscoveryService:
         # already had the narrowed identity used to report the *pre-narrowing* cards, so `start()`
         # went on to reason over every card against a session whose own `session.json` said
         # otherwise.
-        return reclaim.meta, grounding, reclaim.meta.context_cards, routing
+        return ClaimAndGround(reclaim.meta, grounding, reclaim.meta.context_cards, routing)
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
                       perimeter: str = DEFAULT_PERIMETER):
