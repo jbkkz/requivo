@@ -24,7 +24,14 @@ from requivo.services.sessions import SessionService
 def test_a_perimeter_judgment_whose_payload_contradicts_its_decision_is_refused():
     """The same discipline `ContextJudgment`'s validator holds, one question over: a decision and a
     payload that disagree is refused rather than reaching a caller. Guarded here rather than only
-    pinned in `discovery.py`'s docstring, since the validator is the thing that must not regress."""
+    pinned in `discovery.py`'s docstring, since the validator is the thing that must not regress.
+
+    The duplicate-candidate case is #601 P2 (Codex review): `len(candidates) < 2` passed a reply
+    naming the *same* perimeter twice, so a non-interactive discovery deleted its claim and refused
+    over an ambiguity nobody stated, and an interactive one offered the identical choice twice. The
+    `none`-with-candidates case is that finding's own instruction to check a validator's neighbours
+    -- same code path as `fits`-with-candidates, asserted in its own right so a future refactor
+    cannot silently cover one arm and not the other."""
     PerimeterJudgment(decision="fits", reason="r", perimeter="software")               # control
     PerimeterJudgment(decision="ambiguous", reason="r", candidates=["software", "go-to-market"])
     PerimeterJudgment(decision="none", reason="r")
@@ -33,10 +40,37 @@ def test_a_perimeter_judgment_whose_payload_contradicts_its_decision_is_refused(
         PerimeterJudgment(decision="fits", reason="r")
     with pytest.raises(Exception, match="only 'fits' routes"):
         PerimeterJudgment(decision="none", reason="r", perimeter="software")
-    with pytest.raises(Exception, match="fewer than two candidates"):
+    with pytest.raises(Exception, match="fewer than two distinct candidates"):
         PerimeterJudgment(decision="ambiguous", reason="r", candidates=["software"])
+    with pytest.raises(Exception, match="fewer than two distinct candidates"):
+        PerimeterJudgment(decision="ambiguous", reason="r", candidates=["software", "software"])
     with pytest.raises(Exception, match="only 'ambiguous' does"):
         PerimeterJudgment(decision="fits", reason="r", perimeter="software", candidates=["software"])
+    with pytest.raises(Exception, match="only 'ambiguous' does"):
+        PerimeterJudgment(decision="none", reason="r", candidates=["software", "go-to-market"])
+
+
+def test_a_judgment_naming_a_perimeter_the_install_does_not_have_is_refused(workspace):
+    """The sibling of `test_a_judgment_naming_a_card_the_install_does_not_have_is_refused` (#593),
+    one call over: an invented perimeter id is not inert -- it would reach `get_perimeter` as a
+    claim and refuse the very discovery the judgment was supposed to route. Rides `_complete`'s
+    retry loop as a `ValueError`, so the model is told what it got wrong rather than the run
+    failing (#601)."""
+    from requivo.core.errors import ProviderOutputError
+    from requivo.core.perimeters import perimeter_summaries
+    from requivo.providers.anthropic.generators import judge_perimeter
+
+    invented = json.dumps({"decision": "fits", "reason": "r", "perimeter": "inventory-management"})
+    client = FakeClient(invented, invented, invented)
+
+    with pytest.raises(ProviderOutputError):
+        judge_perimeter(client, "a request", perimeter_summaries())
+    assert len(client.calls) == 3, "the correction did not ride the retry loop"
+
+    # Must fire: the same shape naming a perimeter that *is* installed comes straight back.
+    good = json.dumps({"decision": "fits", "reason": "r", "perimeter": "go-to-market"})
+    judged = judge_perimeter(FakeClient(good), "a request", perimeter_summaries())
+    assert judged.perimeter == "go-to-market"
 
 
 # ── the service, through a stub provider ───────────────────────────────────────

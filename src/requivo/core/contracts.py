@@ -285,9 +285,10 @@ class PerimeterJudgment(StrictModel):
             raise ValueError(
                 f"decision {self.decision.value!r} names perimeter {self.perimeter!r}; only "
                 f"'fits' routes")
-        if self.decision is PerimeterDecision.ambiguous and len(self.candidates) < 2:
+        if self.decision is PerimeterDecision.ambiguous and len(set(self.candidates)) < 2:
             raise ValueError(
-                "decision 'ambiguous' names fewer than two candidates; ambiguity needs at least two")
+                "decision 'ambiguous' names fewer than two distinct candidates; ambiguity needs at "
+                "least two different perimeters, not the same one repeated")
         if self.decision is not PerimeterDecision.ambiguous and self.candidates:
             raise ValueError(
                 f"decision {self.decision.value!r} names candidates {self.candidates!r}; only "
