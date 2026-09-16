@@ -36,10 +36,16 @@ ARTIFACT_LABELS: dict[str, str] = {
     "criteria": "Acceptance criteria",
     "epic": "Delivery epic",
     "release": "Release notes",
+    "gtm_plan": "Go-to-market plan",  # #609 -- the go-to-market perimeter's one artifact
 }
 
-# The one document the primary flow leads to. Everything else is available, under "More documents".
-PRIMARY_ARTIFACT = "brief"
+# The one document each perimeter's primary flow leads to moved to `core/perimeters.py`'s
+# `Perimeter.primary_artifact` (#609's follow-up review, Codex + a deliberate sweep after it): it is
+# a fact `render/terminal.py`'s CLI-side `next_command()` needs exactly as much as this Web layer
+# does, so it lives once, in `core/`, not as a second, Web-only copy that could drift from a third
+# the CLI would otherwise have needed for itself. `get_perimeter(perimeter).primary_artifact` is the
+# read; this module still owns the *caption* (`artifact_label`), which is the part that is genuinely
+# Web-only vocabulary.
 
 # ── the bundled example (#226) ────────────────────────────────────────────────
 # One word, on the row and on the page, so a session the reader did not create is never mistaken for

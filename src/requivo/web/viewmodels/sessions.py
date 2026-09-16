@@ -8,10 +8,11 @@ what it shows *first*.
 from __future__ import annotations
 
 from requivo.core.errors import SessionNotFoundError
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.services.discovery import GENERATABLE
 from requivo.services.sessions import SessionService
 from requivo.web.example import is_example
-from requivo.web.viewmodels.labels import PRIMARY_ARTIFACT, UNREADABLE_BADGE, artifact_label, unreadable_hint
+from requivo.web.viewmodels.labels import UNREADABLE_BADGE, artifact_label, unreadable_hint
 from requivo.web.viewmodels.status import (
     PRIORITY_QUESTIONS,
     evidence_view,
@@ -34,11 +35,17 @@ def _title(request_text: str, slug: str) -> str:
     return text if len(text) <= TITLE_CHARS else text[:TITLE_CHARS].rstrip() + "…"
 
 
-def generatable_view() -> list[dict]:
-    """Every document the shared service can produce, taken from its vocabulary rather than a list
-    kept in the template — a generator registered once shows up on every surface. The primary one is
-    split out by the caller; this stays the complete set."""
-    return [{"type": t, "label": artifact_label(t)} for t in GENERATABLE]
+def generatable_view(perimeter: str = DEFAULT_PERIMETER) -> list[dict]:
+    """Every document the shared service can produce for a session running `perimeter`, taken from
+    its vocabulary rather than a list kept in the template -- a generator registered once shows up on
+    every surface *its own perimeter owns*, not on every session regardless of perimeter (#609: this
+    used to return the full global `GENERATABLE`, so a software session's page offered `gtm_plan` and
+    a go-to-market session's offered `brief`/`prd`/... -- clicking either reached
+    `_require_owned_artifact_type` and, before that refusal became a `RequivoError`, a bare
+    `ValueError` the Web has no handler for, a 500 on a perfectly ordinary click). The primary one is
+    split out by the caller; this stays the complete set for that perimeter."""
+    owned = get_perimeter(perimeter).artifact_types
+    return [{"type": t, "label": artifact_label(t)} for t in GENERATABLE if t in owned]
 
 
 def _artifacts_view(status: dict) -> list[dict]:
@@ -194,7 +201,13 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
     evidence = evidence_view(sessions.thinner_evidence(slug))
     questions = status.get("questions", [])
     artifacts = _artifacts_view(status)
-    generatable = generatable_view()
+    perimeter = resolve_perimeter(status.get("perimeter"))
+    generatable = generatable_view(perimeter)
+    # #609's follow-up (Codex, P2): this used to be the software-only `PRIMARY_ARTIFACT` constant
+    # regardless of which perimeter the session actually ran under, so a go-to-market session had no
+    # primary at all (its own one artifact, `gtm_plan`, is never `"brief"`) -- buried under "More
+    # documents" while the primary card's generate form still rendered, bound to a `None` type.
+    primary_type = get_perimeter(perimeter).primary_artifact
     request_text = sessions.request_text(slug)
     return {
         "slug": slug,
@@ -222,10 +235,10 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
         # noticing there was one. A dead key on the hottest view model is an invitation, not a
         # spare.
         # The primary document is called out on its own; the rest live under "More documents".
-        "primary_artifact": next((a for a in artifacts if a["type"] == PRIMARY_ARTIFACT), None),
-        "other_artifacts": [a for a in artifacts if a["type"] != PRIMARY_ARTIFACT],
-        "primary_generatable": next((g for g in generatable if g["type"] == PRIMARY_ARTIFACT), None),
-        "more_generatable": [g for g in generatable if g["type"] != PRIMARY_ARTIFACT],
+        "primary_artifact": next((a for a in artifacts if a["type"] == primary_type), None),
+        "other_artifacts": [a for a in artifacts if a["type"] != primary_type],
+        "primary_generatable": next((g for g in generatable if g["type"] == primary_type), None),
+        "more_generatable": [g for g in generatable if g["type"] != primary_type],
         # `mode="json"` so enums arrive as their value. A plain dump leaves `Leverage.high` in the
         # dict, and Jinja renders an enum by its repr — the page read "leverage Leverage.high".
         "decisions": [{**d.model_dump(mode="json"),

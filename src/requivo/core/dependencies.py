@@ -54,6 +54,12 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "epic": {"actors", "business_objects", "business_rules", "workflow", "integrations",
              "permissions", "config_vs_custom", "constraints"},
     "release": {"problem", "success_metrics", "workflow", "risks"},
+    # #609: the go-to-market perimeter's one artifact. Mapped to `*` for the same reason `brief` is
+    # (software's own assessment): the plan, its rationale and its excluded options are a judgment
+    # over the *whole* model -- capacity, budget, icp and channels all shape which actions survive
+    # the compression -- so any slot that materially moves invalidates the saved copy. This is also
+    # what makes `requivo impact <slug> capacity` reach it (#609 acceptance).
+    "gtm_plan": "*",
 }
 
 # type → filename under <session>/artifacts/, for everything that can be *persisted*. Core holds it
@@ -77,6 +83,7 @@ ARTIFACT_FILENAMES: dict[str, str] = {
     "criteria": "acceptance-criteria.md",
     "epic": "epic.md",
     "release": "release-notes.md",
+    "gtm_plan": "go-to-market-plan.md",  # #609
 }
 
 # Artifacts that rest on the *reasoning* layer (decisions / challenges / opportunities), not only on

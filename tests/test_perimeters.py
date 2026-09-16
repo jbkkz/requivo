@@ -13,7 +13,7 @@ import pytest
 
 from requivo.core.contracts import EngineOutput, ModelProposal, schema_slot_ids
 from requivo.core.dependencies import _ARTIFACT_SLOTS_RAW, ARTIFACT_FILENAMES, artifact_slots
-from requivo.core.errors import SessionExistsError, UnknownPerimeterError, UnknownSlotError
+from requivo.core.errors import ArtifactTypeNotOwnedError, SessionExistsError, UnknownPerimeterError, UnknownSlotError
 from requivo.core.integrity import inspect_session_dir
 from requivo.core.perimeters import (
     DEFAULT_PERIMETER,
@@ -254,12 +254,17 @@ def test_doctor_reports_installed_perimeters():
     assert set(r["perimeters"]["installed"]) == {GO_TO_MARKET, SOFTWARE}
 
 
-def test_go_to_market_has_no_registered_artifacts_yet():
+def test_go_to_market_ships_exactly_its_one_artifact():
     """#607's cost rule ("each new perimeter ships with exactly one artifact... a second is added
-    when a user asks") applied to a *first* artifact: go-to-market ships none in #608, so its
-    artifact-type set is empty until #609 registers its one artifact."""
-    assert get_perimeter(GO_TO_MARKET).artifact_types == frozenset()
-    assert artifact_slots(GO_TO_MARKET) == {}
+    when a user asks"), now that #609 has registered it: go-to-market owns exactly `gtm_plan`, and
+    `artifact_slots` expands its `"*"` mapping to the perimeter's own twelve slots -- never
+    software's fifteen, and never empty the way #608 left it."""
+    assert get_perimeter(GO_TO_MARKET).artifact_types == frozenset({"gtm_plan"})
+    slots = artifact_slots(GO_TO_MARKET)
+    assert set(slots) == {"gtm_plan"}
+    allowed, _ = schema_slot_ids(GO_TO_MARKET)
+    assert slots["gtm_plan"] == set(allowed)
+    assert "business_rules" not in slots["gtm_plan"]  # software-only, must not leak in
 
 
 def test_the_real_artifact_registries_agree_on_their_key_sets_per_perimeter():
@@ -286,12 +291,85 @@ def test_the_real_artifact_registries_agree_on_their_key_sets_per_perimeter():
 def test_generate_refuses_an_artifact_type_the_sessions_perimeter_does_not_own():
     """A go-to-market session cannot be handed to a software-only generator (`prd`, `brief`, ...) --
     refused before any provider call, naming the perimeter, rather than validating the reply
-    against the wrong schema two layers down."""
+    against the wrong schema two layers down. A structured `RequivoError` (#609), not the bare
+    `ValueError` this used to be -- reachable by `app()`'s `except RequivoError` on the CLI and by
+    the Web's `RequivoError` handler, rather than a traceback or a 500."""
     svc = SessionService()
     disco = DiscoveryService(provider=_StubProvider(), sessions=svc)
     slug = disco.start("grow the funnel", finalize=False, perimeter=GO_TO_MARKET)
-    with pytest.raises(ValueError, match="go-to-market"):
+    with pytest.raises(ArtifactTypeNotOwnedError, match="go-to-market") as exc_info:
         disco.generate(slug, "prd")
+    assert exc_info.value.code == "artifact_type_not_owned"
+    assert exc_info.value.details == {
+        "artifact_type": "prd", "perimeter": GO_TO_MARKET, "owned": ["gtm_plan"]}
+
+
+def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
+    """#609 acceptance, through the real completion path (`FakeClient` -> `AnthropicProvider` ->
+    `advise_gtm` -> `_complete()`), not a stub -- the same review finding
+    `test_a_go_to_market_discovery_completes_through_the_real_provider_completion_path` documents for
+    discovery applies here too: a stub's own `generate()` would never exercise `advise_gtm`'s prompt
+    assembly or `GoToMarketPlan`'s slot-vocabulary validator at all.
+
+    Covers, in one pass: the artifact saves with its source revision (not stale); its two typed
+    reasoning items (#599, #604) land in `model.json`, not only in the rendered document; its
+    provenance names go-to-market's own prompt hash rather than software's default -- the exact bug
+    a review of this branch found (`_provenance()` called with no `perimeter=`) and this pins by
+    reverting the `perimeter=snap.perimeter` argument in `DiscoveryService.generate` and confirming
+    red; and changing the slot the exclusion rests on goes stale end to end, not merely as an
+    `impact` prediction."""
+    from _fakes import FakeClient
+
+    from requivo.providers.anthropic.generators import prompt_version
+    from requivo.providers.anthropic.provider import AnthropicProvider
+
+    svc = SessionService()
+    meta = svc.create_session("grow the funnel", slug="gtm-e2e", perimeter=GO_TO_MARKET)
+    svc.update_model(meta.slug, _go_to_market_out().model_dump_json(), expected_revision=0)
+
+    reply = json.dumps({
+        "plan": ["Ship a weekly outbound sequence to the existing waitlist."],
+        "exclusions": [{"option": "Paid search", "reason": "No budget for it this quarter.",
+                        "rests_on": ["budget", "capacity"]}],
+        "thresholds": [{"condition": "CAC exceeds the stated ceiling", "measure": "CAC",
+                        "action": "stop the paid channel", "rests_on": ["unit_economics"]}],
+        "envelope": [{"kind": "Capacity", "value": "4h/week", "origin": "slot",
+                     "source_slot": "capacity"}],
+    })
+    provider = AnthropicProvider(client=FakeClient(reply))
+    disco = DiscoveryService(provider=provider, sessions=svc)
+
+    result = disco.generate(meta.slug, "gtm_plan")
+
+    assert result.status.filename == "go-to-market-plan.md"
+    assert result.status.stale is False
+    applied = svc.load_model(meta.slug)
+    assert [e.option for e in applied.exclusions] == ["Paid search"]
+    assert [t.condition for t in applied.thresholds] == ["CAC exceeds the stated ceiling"]
+
+    rec = svc.meta(meta.slug).revisions[-1]
+    assert rec.prompt_version == prompt_version("gtm_plan", perimeter=GO_TO_MARKET)
+    assert rec.prompt_version != prompt_version("gtm_plan")  # software default -- must differ
+
+    # The full staleness path: change the slot the exclusion rests on, not a dry-run `impact` call.
+    changed_capacity = applied.model["capacity"].model_copy(update={"value": "only 2h/week now"})
+    updated = applied.model_copy(update={"model": {**applied.model, "capacity": changed_capacity}})
+    svc.update_model(meta.slug, updated.model_dump_json(),
+                     expected_revision=svc.meta(meta.slug).current_revision)
+    assert svc.meta(meta.slug).artifact_status["gtm_plan"].stale is True
+
+
+def test_impact_on_capacity_reaches_the_go_to_market_artifact():
+    """#609 acceptance: `requivo impact <slug> capacity` (`SessionService.impact`) returns a real
+    blast radius over go-to-market's edges *including this artifact* -- `capacity` carries the
+    binding-constraint impact default, and `artifact_slots(GO_TO_MARKET)["gtm_plan"]` is `"*"`
+    expanded to the perimeter's own twelve slots (core/dependencies.py), so it must appear."""
+    svc = SessionService()
+    disco = DiscoveryService(provider=_StubProvider(), sessions=svc)
+    slug = disco.start("grow the funnel", finalize=False, perimeter=GO_TO_MARKET)
+    report = svc.impact(slug, ["capacity"])
+    assert report.changed == ["Capacity"]
+    assert "gtm_plan" in report.artifacts
 
 
 class _StubProvider:

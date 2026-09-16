@@ -103,6 +103,7 @@ def test_a_looping_caller_can_still_ask_for_the_breakpoint_back():
 # every assertion while writing exactly the cache entry #9 is about. A signature is not a behaviour.
 _GENERATOR_REPLIES = {
     "brief": _BRIEF_REPLY,
+    "gtm_plan": json.dumps({}),  # #609 -- every field on GoToMarketPlan has a default
     "stories": json.dumps({"stories": [{"id": "S1", "title": "T"}]}),
     "prd": json.dumps({"title": "T", "problem": "P"}),
     "criteria": json.dumps({"title": "T", "features": [

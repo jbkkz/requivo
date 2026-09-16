@@ -41,6 +41,34 @@ def test_generate_an_unknown_artifact_type_is_refused(client, with_provider):
     assert fake.calls == []
 
 
+def test_generate_an_artifact_type_the_sessions_perimeter_does_not_own_is_refused_not_a_500(
+        client, with_provider):
+    """#609: the third reader of `GENERATABLE`. `api/routes/artifacts.py`'s own `not in GENERATABLE`
+    check only refuses a type nothing generates at all (`unknown_artifact_type`, 400, the sibling
+    test above); a real type this *session's own perimeter* does not own reaches
+    `DiscoveryService.generate` and used to raise a bare `ValueError` there -- uncaught by this app's
+    `RequivoError` handler, a 500 exactly like the Web's. Fixed at the one root (#609's structured
+    `ArtifactTypeNotOwnedError`, 409): this surface needed no filtering of its own, since it has no
+    button list to hide `gtm_plan` from -- a caller names the type directly."""
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+    from requivo.services.sessions import SessionService
+
+    fake = with_provider()  # a type this perimeter does not own must never reach the provider
+    svc = SessionService()
+    meta = svc.create_session("grow the funnel", slug="gtm-api", perimeter=GO_TO_MARKET)
+    _, required = schema_slot_ids(GO_TO_MARKET)
+    model = {sid: {"completeness": 90, "confidence": "explicit", "impact": "high",
+                   "value": "x", "evidence": "y"} for sid in required}
+    svc.update_model(meta.slug, json.dumps({"model": model, "questions": [],
+                                            "summary": {"objective": "grow"}}), expected_revision=0)
+
+    resp = client.post(f"/api/v1/sessions/{meta.slug}/artifacts/prd")
+    assert resp.status_code == 409, f"a real request must not 500; got {resp.status_code}"
+    assert resp.json()["code"] == "artifact_type_not_owned"
+    assert fake.calls == []
+
+
 def test_save_an_artifact_records_its_source_revision(client):
     slug = seed_session("leave-approval")
     resp = client.put(f"/api/v1/sessions/{slug}/artifacts/prd",

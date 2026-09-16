@@ -27,11 +27,12 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GoToMarketPlan,
     ModelProposal,
     ReleaseNotes,
     Stories,
 )
-from requivo.core.perimeters import DEFAULT_PERIMETER
+from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET
 from requivo.core.validation import completeness_gap
 from requivo.providers.anthropic.completion import _complete
 
@@ -186,6 +187,23 @@ def advise(client, out: EngineOutput, only: list[str] | None = None, *,
                      reuse_system=reuse_system, model=model, operation="brief")
 
 
+def advise_gtm(client, out: EngineOutput, only: list[str] | None = None, *,
+               reuse_system: bool = False, model: str | None = None) -> GoToMarketPlan:
+    """The go-to-market perimeter's one artifact (#609) -- its equivalent of `advise()`, over its
+    own schema and its own prompt. `perimeter=GO_TO_MARKET` is hardcoded, not threaded from a
+    caller: `_require_owned_artifact_type` (services/discovery.py) only ever reaches this function
+    for a session already running that perimeter, so there is no second value it could correctly be
+    called with. Both `build_system_prompt` (which schema/guidance ground the call) and `_complete`'s
+    `context` (which schema the reply's `rests_on`/`source_slot` references are checked against, via
+    `GoToMarketPlan._validate_slot_vocabulary`) have to agree on it, the same pairing `run()` makes
+    for a discovery turn."""
+    system = build_system_prompt("gtm_plan.md", only, perimeter=GO_TO_MARKET)
+    user = "Completed go-to-market model to advise on:\n" + out.model_dump_json()
+    return _complete(client, system, [{"role": "user", "content": user}], GoToMarketPlan,
+                     reuse_system=reuse_system, model=model, operation="gtm_plan",
+                     context={"perimeter": GO_TO_MARKET})
+
+
 def generate_prd(client, out: EngineOutput, only: list[str] | None = None, *,
                  reuse_system: bool = False, model: str | None = None) -> PRD:
     """Artifact generator: a model → a Product Requirements Document."""
@@ -264,6 +282,7 @@ _GENERATORS = {
     "epic": generate_epic,
     "release": generate_release,
     "estimate": estimate,
+    "gtm_plan": advise_gtm,
 }
 
 # The prompt file behind each operation — what `prompt_version()` hashes to identify the reasoning that
@@ -271,6 +290,7 @@ _GENERATORS = {
 _OP_PROMPTS = {
     "analyze": "engine.md", "brief": "brief.md", "stories": "stories.md", "estimate": "estimate.md",
     "prd": "prd.md", "criteria": "criteria.md", "epic": "epic.md", "release": "release.md",
+    "gtm_plan": "gtm_plan.md",
 }
 
 

@@ -71,14 +71,20 @@ def test_a_ready_session_with_no_brief_points_at_brief():
     assert next_command(_payload(questions=0, ready=True)) == f"requivo brief {_SLUG}"
 
 
-def test_a_ready_go_to_market_session_is_not_pointed_at_a_brief_it_does_not_have():
-    """[found in review, #608] A perimeter that owns no "brief" generator (go-to-market, #609's own
-    scope) never has one in `artifacts` either -- this used to read that absence the same as
-    software's "never generated yet" and suggested a command that fails outright the moment it is
-    run (`_require_owned_artifact_type`). Gated on the perimeter actually owning one."""
+def test_a_ready_go_to_market_session_with_no_plan_points_at_its_own_verb():
+    """[found in review, #608; corrected by #609's follow-up review] A perimeter that owns no
+    "brief" generator (go-to-market, when #608 landed) never has one in `artifacts` either -- this
+    used to read that absence the same as software's "never generated yet" and suggested a command
+    that fails outright the moment it is run (`_require_owned_artifact_type`), so #608 gated it to
+    silence instead. #609 gave go-to-market its own artifact, `gtm_plan`, and the gate was still
+    keyed to the literal `"brief"` -- so a converged, plan-less go-to-market session suggested
+    nothing at all rather than its own real next step. Reads `Perimeter.primary_artifact` now, the
+    same fact `session_detail()`'s Web fix reads, so this is `requivo gtm_plan <slug>`, mirroring
+    `test_a_ready_session_with_no_brief_points_at_brief` for software's own primary."""
     from requivo.core.perimeters import GO_TO_MARKET
 
-    assert next_command(_payload(questions=0, ready=True, perimeter=GO_TO_MARKET)) is None
+    assert (next_command(_payload(questions=0, ready=True, perimeter=GO_TO_MARKET))
+            == f"requivo gtm_plan {_SLUG}")
 
 
 def test_a_finished_session_is_pointed_nowhere_rather_than_at_a_menu():

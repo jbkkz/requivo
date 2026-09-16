@@ -35,12 +35,12 @@ def _names() -> list[str]:
     return sorted(set(_OP_PROMPTS.values()))
 
 
-# ── The eight templates share one leading block ──────────────────────────────
+# ── The nine templates share one leading block (#609 added gtm_plan.md) ────
 
 
 def test_every_template_opens_with_the_shared_head_and_places_the_placeholders_only_there():
     names = _names()
-    assert len(names) == 8, names
+    assert len(names) == 9, names
     for name in names:
         raw = (paths.PROMPTS / name).read_text(encoding="utf-8")
         assert raw.startswith(SHARED_PROMPT_HEAD), f"{name} does not open with the shared block"

@@ -643,6 +643,52 @@ class EnvelopeElement(StrictModel):
         return self
 
 
+class GoToMarketPlan(StrictModel):
+    """The go-to-market perimeter's one artifact (#609) -- its equivalent of the decision brief, and
+    only that (#607's cost rule: one artifact per new perimeter). Follows `Brief`'s own split of
+    judgment vs projected fact: `plan`, `rationale`, `risks` and `open_decisions` are what the
+    provider is asked to judge; `exclusions`, `thresholds` and `envelope` are typed reasoning items
+    the writer (`gtm_plan_markdown`) projects straight off the model they are absorbed into, never
+    prose the provider invents -- the same split `_excluded()`/`_thresholds()` already draw for the
+    software brief.
+
+    Deliberately narrow, per the issue's own four load-bearing pieces: `plan` names the smallest
+    coherent SET of actions to pursue now, not a ranking (#600's discipline, reused rather than
+    re-derived); `exclusions` reuses #599's typed item for what was deliberately ruled out;
+    `envelope` reuses #603's typed item for the resource envelope this plan assumed; `thresholds`
+    reuses #604's typed item for the decisions that have not fired yet. No software-only vocabulary
+    belongs here -- this artifact's own slot vocabulary is go-to-market's twelve slots, checked by
+    `_validate_slot_vocabulary` below exactly as `PRD._validate_envelope_slot_vocabulary` checks its
+    own envelope.
+    """
+
+    plan: list[str] = Field(default_factory=list)        # the chosen set -- not a ranking (#600)
+    rationale: str = ""                                    # why this set, given the envelope below
+    risks: list[str] = Field(default_factory=list)
+    exclusions: list[Exclusion] = Field(default_factory=list)      # #599
+    thresholds: list[Threshold] = Field(default_factory=list)      # #604
+    envelope: list[EnvelopeElement] = Field(default_factory=list)  # #603
+    open_decisions: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_slot_vocabulary(self, info: ValidationInfo):
+        # Same rule `PRD._validate_envelope_slot_vocabulary` and `ModelProposal._validate_slot_vocabulary`
+        # apply to their own DAG edges: a reference pointing at nothing the schema defines would let
+        # this artifact look grounded while it isn't. `_context_perimeter(info)` is what keeps this
+        # checking go-to-market's own vocabulary rather than software's default -- the generator
+        # always passes `context={"perimeter": GO_TO_MARKET}`
+        # (see `providers/anthropic/generators.py::advise_gtm`).
+        allowed, _ = schema_slot_ids(_context_perimeter(info))
+        bad = sorted(
+            {e.source_slot for e in self.envelope if e.source_slot and e.source_slot not in allowed}
+            | {sid for e in self.exclusions for sid in e.rests_on if sid not in allowed}
+            | {sid for t in self.thresholds for sid in t.rests_on if sid not in allowed}
+        )
+        if bad:
+            raise ValueError(f"go-to-market plan references unknown slots (not in schema): {bad}")
+        return self
+
+
 class PRD(StrictModel):
     title: NonEmpty
     summary: str = ""

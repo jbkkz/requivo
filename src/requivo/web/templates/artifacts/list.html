@@ -20,37 +20,49 @@
   </div>
   {% endmacro %}
 
+  {# The label of whichever document leads this page — the session's own primary artifact once
+     generated, else its primary *generatable* type, else nothing (a perimeter with no primary
+     leads with nothing rather than a guess, #609's follow-up review). Never a literal "brief": a
+     go-to-market session's primary is `gtm_plan`, and this label is what keeps this whole card's
+     prose honest about which one it is. #}
+  {% set primary_label = s.primary_artifact.label if s.primary_artifact
+    else (s.primary_generatable.label if s.primary_generatable else "") %}
   <div class="card">
     {% if s.primary_artifact %}
     {{ artifact_row(s.primary_artifact) }}
     {% if s.primary_artifact.stale %}
-    <p class="hint">The understanding moved after this brief was written. Regenerating rewrites it from
-      the current understanding — nothing is regenerated on your behalf.</p>
+    <p class="hint">The understanding moved after this {{ primary_label|lower }} was written.
+      Regenerating rewrites it from the current understanding — nothing is regenerated on your
+      behalf.</p>
     {% endif %}
-    {% else %}
-    <p>The decision brief is what you take into a scope review: what is confirmed, what is being
-      assumed, the decisions on record, and what is still open.</p>
+    {% elif primary_label %}
+    <p>{{ primary_label }} is what you take into a scope review: what is confirmed, what is being
+      assumed, and what is still open.</p>
     {% if not s.readiness.ready and s.readiness.blocking_labels %}
-    <p class="hint">Unresolved topics remain ({{ s.readiness.blocking_labels|join(', ') }}) — the brief
-      will be marked <em>Draft</em> until they are answered.</p>
+    <p class="hint">Unresolved topics remain ({{ s.readiness.blocking_labels|join(', ') }}) — the
+      {{ primary_label|lower }} will be marked <em>Draft</em> until they are answered.</p>
     {% endif %}
     {% endif %}
 
-    {% if provider is defined and provider.available %}
+    {% if provider is defined and provider.available and s.primary_generatable %}
     {# `method`/`action` are the no-JS fallback (#428) — see the note beside the answers form in
-       discovery/_questions.html for the failure this replaces. #}
+       discovery/_questions.html for the failure this replaces. Guarded on `s.primary_generatable`
+       (#609's follow-up review): this used to render unconditionally once a provider was available,
+       bound to `s.primary_generatable.type` with no check that it existed — a go-to-market session,
+       whose only artifact is not `s.primary_artifact`'s software-only default, posted this form to
+       `/sessions/<slug>/artifacts/` with no matching route. #}
     <form method="post" action="/sessions/{{ s.slug }}/artifacts/{{ s.primary_generatable.type }}"
           hx-post="/sessions/{{ s.slug }}/artifacts/{{ s.primary_generatable.type }}"
           hx-target="#artifacts-region" hx-swap="outerHTML">
       {% include "_csrf.html" %}
       <div class="toolbar">
-        <button class="btn" type="submit">{{ "Regenerate decision brief" if s.primary_artifact
-          else "Generate decision brief" }}</button>
-        <span class="spinner" role="status">Writing the brief…</span>
+        <button class="btn" type="submit">{{ "Regenerate " if s.primary_artifact
+          else "Generate " }}{{ primary_label|lower }}</button>
+        <span class="spinner" role="status">Writing the {{ primary_label|lower }}…</span>
       </div>
     </form>
-    {% else %}
-    <p class="hint">{{ provider.reason if provider is defined else "" }}</p>
+    {% elif provider is defined and not provider.available %}
+    <p class="hint">{{ provider.reason }}</p>
     {% endif %}
   </div>
 

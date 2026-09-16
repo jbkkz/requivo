@@ -15,10 +15,20 @@ import pytest
 from pydantic import BaseModel, ValidationError, create_model
 
 from requivo.core.contracts import StrictModel, schema_slot_ids
-from requivo.core.perimeters import SOFTWARE
+from requivo.core.perimeters import GO_TO_MARKET, SOFTWARE
 from requivo.paths import PERIMETERS, PROMPTS
 from requivo.providers.anthropic import generators
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, _STANDALONE_PROMPTS
+
+# The perimeter each operation's Output-format example is written against, and therefore the
+# validation context its slot-vocabulary checks (PRD's envelope, GoToMarketPlan's own) must run
+# under -- software for every op that predates #608/#609, and go-to-market for its one artifact. An
+# op absent here defaults to SOFTWARE, unchanged from before this map existed.
+_OP_PERIMETER: dict[str, str] = {"gtm_plan": GO_TO_MARKET}
+
+
+def perimeter_for(op: str) -> str:
+    return _OP_PERIMETER.get(op, SOFTWARE)
 
 # analyze is the discovery turn, not a generator -- no _GENERATORS entry; reached via run(), a stated exception.
 ANALYZE_OP = "analyze"
@@ -195,7 +205,7 @@ def test_the_output_format_example_validates_against_its_contract(op):
     """The whole point: a drift here costs three paid calls and an `EngineError`, invisible elsewhere in the suite."""
     contract = contract_for(op)
     try:
-        contract.model_validate(example_for(op))
+        contract.model_validate(example_for(op), context={"perimeter": perimeter_for(op)})
     except ValidationError as exc:
         raise AssertionError(
             f"{_OP_PROMPTS[op]}'s Output-format example is refused by {contract.__name__}, the contract {op!r} replies " f"are parsed with. A model obeying this example produces a reply `_complete()` retries twice and then "

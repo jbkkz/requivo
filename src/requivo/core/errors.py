@@ -123,6 +123,21 @@ class UnknownPerimeterError(InvalidSessionError):
     code = "unknown_perimeter"
 
 
+class ArtifactTypeNotOwnedError(RequivoError):
+    """A generation call named an artifact type its own perimeter does not produce (#608, #609).
+    `details`: `{artifact_type, perimeter, owned}`.
+
+    409, alongside `unknown_perimeter`: both refuse because the request conflicts with the
+    session's own identity, not because the request is malformed -- `unknown_artifact_type` (400,
+    services/artifacts.py) is for a type this build has no generator for at all, a different
+    failure. Here both the session's perimeter and the artifact type are individually real; only
+    their pairing is refused. Raised by `services/discovery.py`'s `_require_owned_artifact_type`,
+    which used to raise a bare `ValueError` -- invisible to `app()`'s `RequivoError` handler (a CLI
+    traceback) and to the Web's `RequivoError` exception handler (a 500 instead of a clean refusal)."""
+
+    code = "artifact_type_not_owned"
+
+
 class SessionUnreadableError(InvalidSessionError):
     """`session.json` will not parse, or its write lock could not be opened (#113). `details`: `{slug}`.
     500, not 400: a fact about the store. Deliberately not `session_not_found` (#114)."""

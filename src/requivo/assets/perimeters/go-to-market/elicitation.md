@@ -49,6 +49,9 @@ answering a question it has not yet been asked.
 ## What the engine produces
 
 While discovery is open, the same per-pillar status and priority questions render as they do for the
-software perimeter. This perimeter ships one artifact -- its equivalent of the decision brief -- and
-that artifact is #609's own scope, not this file's: what a session under this perimeter reaches today
-is a validated model, ready questions, and impact over its own twelve slots.
+software perimeter. This perimeter ships exactly one artifact, per #607's cost rule: `gtm_plan`
+(`requivo gtm_plan <slug>`) — its equivalent of the decision brief, generated and written to
+`go-to-market-plan.md`. It names a chosen set of actions rather than a ranking, states what it
+deliberately excludes and the resource envelope it assumed, and carries its decision thresholds as
+typed items — see `core/contracts.py`'s `GoToMarketPlan` and `render/markdown.py`'s
+`gtm_plan_markdown` for the split between what it projects off the model and what it judges (#609).
