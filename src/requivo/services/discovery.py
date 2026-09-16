@@ -702,12 +702,24 @@ class DiscoveryService:
         implementation with one set of preconditions (invariant 14) — `_reclaim_under`/
         `_delete_if_safe` are that implementation, shared by both judgments below.
 
-        **Claim first, under the default perimeter** — the free gate stays ahead of every paid call,
-        so a repeat discovery is refused before either judgment is billed, not after (invariant 13,
-        #133); the router's own call is exactly as paid as the grounding judgment's, so it earns no
-        exception. `perimeter=None` all the way to here is "no explicit choice" — `route_perimeter`
-        is what turns that into a claimable default, the same way `cards=None` already means *every
-        card* until `judge_grounding` narrows it.
+        **Resolve an existing session before claiming or routing at all.** A repeat of a request
+        already routed to a non-default perimeter has an identity the *default*-perimeter claim
+        never matches — claiming under software first, when an earlier call already landed this
+        exact request on go-to-market, creates a fresh, unrelated placeholder that passes the
+        revision-zero gate, and the router gets billed before the existing session is ever found
+        (#601, Codex review round four: the free refusal invariant 13 promises slipped past on
+        exactly the call it exists to save). So when the caller named no `--perimeter`,
+        `find_existing_session` is asked once per *installed* perimeter, free, before anything is
+        claimed; a match fixes `perimeter` to the one it was found under, exactly as if the caller
+        had named it, and every step below proceeds unchanged from there.
+
+        **Claim first, under the resolved perimeter** — the free gate stays ahead of every paid
+        call, so a repeat discovery is refused before either judgment is billed, not after
+        (invariant 13, #133); the router's own call is exactly as paid as the grounding judgment's,
+        so it earns no exception. `perimeter=None` reaching this point (no explicit choice, no
+        existing session found) is a genuinely first-time request — `route_perimeter` is what turns
+        that into a claimable default, the same way `cards=None` already means *every card* until
+        `judge_grounding` narrows it.
 
         **Route, and re-claim only when the verdict `fits` a perimeter other than the one claimed**,
         under the identical preconditions #593's own re-claim relies on. An `ambiguous` verdict
@@ -728,9 +740,17 @@ class DiscoveryService:
         `test_a_fitting_perimeter_verdict_reroutes_and_reclaims`,
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
         `test_an_explicit_perimeter_is_never_overridden_by_the_router`,
-        `test_a_none_verdict_continues_under_the_default_perimeter_named` and
-        `test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one`."""
+        `test_a_none_verdict_continues_under_the_default_perimeter_named`,
+        `test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one`
+        and `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`."""
         provider = self._need_provider()
+        if perimeter is None:
+            for pid in known_perimeter_ids():
+                existing = self.sessions.find_existing_session(
+                    request, context_cards=cards, perimeter=pid, slug=slug)
+                if existing is not None:
+                    perimeter = pid
+                    break
         claim_perimeter = perimeter or DEFAULT_PERIMETER
         meta, created = self.sessions.create_session_report(
             request, context_cards=cards, slug=slug,

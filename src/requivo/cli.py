@@ -283,10 +283,16 @@ def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETE
 
 def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
     """The interactive half of the ambiguous-router decline (#601): ask which candidate, one
-    question rather than a guess, `input()`-style like #592's `_prompt_answers`. `None` means
-    declined (EOF/Ctrl-C/empty/unrecognised) -- the caller re-raises `e` rather than guessing.
-    `reason` is untrusted LLM prose, so `display_text` guards this prompt too, not only `e`'s own
-    message."""
+    question, `input()`-style like #592's `_prompt_answers`. `None` means declined (EOF/empty/
+    unrecognised) -- the caller re-raises `e` rather than guessing. `reason` is untrusted LLM prose,
+    so `display_text` guards this prompt too, not only `e`'s own message.
+
+    `KeyboardInterrupt` deliberately **not** caught (#601 P2, round four): catching it to return
+    `None` fed the caller's `raise` -- re-raising `e`, so an operator cancelling exited 1 instead of
+    130 like every other interrupt in this file (`_rescue_drafted`'s own pattern). Pinned by
+    `test_an_interrupt_at_the_perimeter_prompt_exits_130_not_1`, with
+    `test_eof_at_the_perimeter_prompt_still_refuses_cleanly` as the control for the arm that stays
+    caught."""
     candidates = e.details.get("candidates", [])
     reason = display_text(e.details.get("reason", ""))
     print(f"\nMore than one installed perimeter could fit this request — {reason}")
@@ -294,7 +300,7 @@ def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
         print(f"  {i}. {c}")
     try:
         ans = input(f"      Which one? [1-{len(candidates)}, Enter to skip] > ").strip()
-    except (EOFError, KeyboardInterrupt):
+    except EOFError:
         print("\nStopped.")
         return None
     if not ans.isdigit() or not (1 <= int(ans) <= len(candidates)):
