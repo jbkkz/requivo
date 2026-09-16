@@ -32,8 +32,9 @@ from requivo.core.errors import (
     UnknownContextCardError,
     UnsafeSelectorTokenError,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.selectors import normalize_tokens
-from requivo.paths import CONTEXT, FRAMEWORK, PROMPTS, user_context_dir
+from requivo.paths import CONTEXT, PROMPTS, user_context_dir
 
 # Every refusal `load_context` can produce, so `check_selection` can report exactly what the loader
 # would raise without listing them twice. `ContextUnreadableError` is deliberately absent: "we could
@@ -369,9 +370,17 @@ class SystemPrompt(NamedTuple):
         return self.shared + self.specific
 
 
-def build_system_prompt(name: str, only: list[str] | None = None) -> SystemPrompt:
+def build_system_prompt(name: str, only: list[str] | None = None, *,
+                        perimeter: str = DEFAULT_PERIMETER) -> SystemPrompt:
     """Load a prompt file, inject the schema + product context (optionally a subset of cards), and
     split the result at the end of the shared leading block.
+
+    `perimeter` (#608) selects which installed perimeter's schema and discovery guidance ground this
+    call -- defaults to the software perimeter, the only one that existed before #608 and the one
+    every operation but a go-to-market discovery turn still uses. `{{PERIMETER_GUIDANCE}}` is
+    substituted the same way `{{SCHEMA}}`/`{{CONTEXT}}` are, a no-op on a template that does not carry
+    it -- only `engine.md` does today; a generator's own prompt has no perimeter-specific guidance to
+    inject yet, since every generator that exists is software-only (#609 is the artifact's own scope).
 
     A template that does not open with `SHARED_PROMPT_HEAD` is refused, not sent. The alternative
     outcomes are both silent: a shorter `shared` writes a cache entry no other operation's prefix
@@ -380,9 +389,11 @@ def build_system_prompt(name: str, only: list[str] | None = None) -> SystemPromp
     state is a `ValueError` naming the file, caught offline by
     `test_a_template_whose_leading_block_is_perturbed_is_refused_not_sent` before any call is made.
     """
+    perimeter_assets = get_perimeter(perimeter)
     # Explicit encoding for the same reason as the cards above: these assets are UTF-8 on disk and
     # `read_text()` would decode them with whatever the locale happens to be.
-    schema = (FRAMEWORK / "model_schema.json").read_text(encoding="utf-8")
+    schema = perimeter_assets.schema_path.read_text(encoding="utf-8")
+    guidance = perimeter_assets.engine_guidance_path.read_text(encoding="utf-8")
     template = (PROMPTS / name).read_text(encoding="utf-8")
     if not template.startswith(SHARED_PROMPT_HEAD):
         raise ValueError(
@@ -392,8 +403,10 @@ def build_system_prompt(name: str, only: list[str] | None = None) -> SystemPromp
         )
     cards = load_context(only)
     shared = SHARED_PROMPT_HEAD.replace("{{SCHEMA}}", schema).replace("{{CONTEXT}}", cards)
-    specific = template[len(SHARED_PROMPT_HEAD):].replace("{{SCHEMA}}", schema).replace(
-        "{{CONTEXT}}", cards)
+    specific = (template[len(SHARED_PROMPT_HEAD):]
+                .replace("{{SCHEMA}}", schema)
+                .replace("{{CONTEXT}}", cards)
+                .replace("{{PERIMETER_GUIDANCE}}", guidance))
     return SystemPrompt(shared, specific)
 
 
@@ -419,7 +432,8 @@ def build_standalone_prompt(name: str, substitutions: dict[str, str]) -> str:
     return template
 
 
-def build_prompt(name: str, only: list[str] | None = None) -> str:
+def build_prompt(name: str, only: list[str] | None = None, *,
+                 perimeter: str = DEFAULT_PERIMETER) -> str:
     """The assembled system prompt as one string -- `build_system_prompt(...).text`. This is what
     `prompt_version()` hashes; the provider sends the split form."""
-    return build_system_prompt(name, only).text
+    return build_system_prompt(name, only, perimeter=perimeter).text

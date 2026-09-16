@@ -28,6 +28,7 @@ from requivo.core.context import available_cards, average_card_byte_size, resolv
 from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
 from requivo.core.errors import RequivoError, SessionNotFoundError
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
@@ -172,7 +173,8 @@ class DraftingFailed(Exception):
         self.turn = turn
 
 
-def converse(disco: DiscoveryService, request: str, only: list[str] | None = None) -> Drafted:
+def converse(disco: DiscoveryService, request: str, only: list[str] | None = None,
+            perimeter: str = "software") -> Drafted:
     """Fill the model, ask, feed answers back, until no high-value question remains.
     Returns a `Drafted`: the model, and whether the *user* ended the loop. Never `None` and never a
     bare model — a caller has to read `.stopped`, since a `Drafted` is truthy either way and the old
@@ -198,7 +200,8 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
     for turn in range(1, MAX_TURNS + 1):
         print(f"\n──────────── TURN {turn} ────────────")
         try:
-            out = disco.draft_turn(request, current_model=out, answers=answers, cards=only)
+            out = disco.draft_turn(request, current_model=out, answers=answers, cards=only,
+                                   perimeter=perimeter)
         except (RequivoError, KeyboardInterrupt) as e:
             # `RequivoError`, not `EngineError`: `ProviderOutputError` (the JSON retry loop giving
             # up) is a `RequivoError` sibling of `EngineError`, not a subclass of it, and used to
@@ -211,12 +214,12 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         # The checkpoint, and the questions are *not* printed here: `_prompt_answers` asks them one
         # at a time below. A turn boundary and a checkpoint are the same event, so the cadence the
         # user sees is `QUESTIONS_PER_CHECKPOINT` questions and then this (#592).
-        render_turn_state(out)
+        render_turn_state(out, perimeter)
 
         if not out.questions:
             break
 
-        answers = _prompt_answers(out.questions)
+        answers = _prompt_answers(out.questions, perimeter)
         if answers is None:
             return Drafted(out, stopped=True)
     else:
@@ -225,7 +228,7 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
     return Drafted(out, stopped=False)
 
 
-def _prompt_answers(questions: list[Question]) -> str | None:
+def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETER) -> str | None:
     """Prompt for one turn's answers at the terminal, folding them into the
     `[slot: ...] Q: ... → A: ...` shape both `converse()` and `run`'s resume loop send back to the
     provider. `None` means the user stopped -- quit, Ctrl-C/EOF, or answered nothing -- and this
@@ -255,7 +258,7 @@ def _prompt_answers(questions: list[Question]) -> str | None:
             # carry that line and the interactive loops no longer print the block (#592).
             ans = input(
                 f"\n  [{i}/{len(asked)}] {safe_q}\n"
-                f"        ({slot_label(q.slot)})\n"
+                f"        ({slot_label(q.slot, perimeter)})\n"
                 f"      > "
             ).strip()
             if ans.lower() == "q":
@@ -310,7 +313,8 @@ def _say_nothing_drafted(slug: str) -> None:
           "again.", file=sys.stderr)
 
 
-def _rescue_drafted(disco, request: str, e: DraftingFailed, *, cards, slug: str):
+def _rescue_drafted(disco, request: str, e: DraftingFailed, *, cards, slug: str,
+                    perimeter: str = "software"):
     """Persist what an interrupted drafting loop had already paid for, then let the failure surface.
 
     Every abort path after `claim_session` must name the session, and this one must also *keep* the
@@ -334,7 +338,7 @@ def _rescue_drafted(disco, request: str, e: DraftingFailed, *, cards, slug: str)
         # `test_a_rescue_that_cannot_save_says_so_and_still_names_the_original_failure`.
         try:
             slug = disco.finalize_discovery(request, e.last, cards=cards, slug=slug,
-                                            brief=None, surface="cli-discover")
+                                            brief=None, surface="cli-discover", perimeter=perimeter)
         except (RequivoError, OSError, KeyboardInterrupt) as save_failed:
             # `KeyboardInterrupt` added here in review of #206: a second Ctrl-C landing on the
             # rescue's own save used to propagate bare and silent past this except -- no message at
@@ -374,6 +378,10 @@ _REQUEST_SHAPES = ("a sentence describing what to build, a path to a file contai
 
 
 def _cmd_discover(a, client) -> None:
+    # `getattr`, not `a.perimeter` directly: `run`'s subparser reuses this function (`a.request =
+    # ref; _cmd_discover(a, client)`) and does not itself define `--perimeter` (#608) -- a namespace
+    # without the attribute means "no explicit choice", the same default the flag itself carries.
+    perimeter = getattr(a, "perimeter", None) or "software"
     if not a.request or not a.request.strip():
         print(f"discover needs a request: {_REQUEST_SHAPES}", file=sys.stderr)
         raise SystemExit(2)
@@ -447,11 +455,12 @@ def _cmd_discover(a, client) -> None:
         # re-claim deletes a session and a destructive step does not get two implementations (#593).
         # `only` is rebound: the narrowed selection is what the turn must reason with, or the
         # session would record cards it never read.
-        meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint)
+        meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                        perimeter=perimeter)
         render_context_judgment(grounding)
         try:
             slug = disco.start(request, cards=only, slug=meta.slug, finalize=False,
-                               surface="cli-discover")
+                               surface="cli-discover", perimeter=perimeter)
         except (RequivoError, KeyboardInterrupt):
             # `RequivoError`, not `EngineError`: the identical gap as `converse()`'s own catch above,
             # found in review of this diff -- `ProviderOutputError` is a `RequivoError` sibling of
@@ -460,7 +469,7 @@ def _cmd_discover(a, client) -> None:
             _say_nothing_drafted(meta.slug)
             raise
         out = disco.sessions.load_model(slug)
-        render_turn(out)
+        render_turn(out, perimeter)
         _say_saved(slug)
         if out.questions:
             print(f'\n→ Answer and refine: requivo answer {slug} "<your answers>"')
@@ -469,13 +478,14 @@ def _cmd_discover(a, client) -> None:
     # Invariant 13's gate, here rather than only inside `finalize_discovery`: refusing after the
     # loop meant paying for up to nine provider calls first (#133). Pinned by
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
-    meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint)
+    meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                    perimeter=perimeter)
     slug = meta.slug
     render_context_judgment(grounding)
     try:
-        drafted = converse(disco, request, only=only)
+        drafted = converse(disco, request, only=only, perimeter=perimeter)
     except DraftingFailed as e:
-        _rescue_drafted(disco, request, e, cards=only, slug=slug)
+        _rescue_drafted(disco, request, e, cards=only, slug=slug, perimeter=perimeter)
     out = drafted.model
     if out is None:
         # Unreachable while `MAX_TURNS >= 1`, because the loop drafts before it ever prompts: a stop
@@ -497,7 +507,7 @@ def _cmd_discover(a, client) -> None:
         # that refusal already names both ways on: refine with `answer`, or use another slug.
         # Pinned by `test_stopping_early_keeps_the_turns_it_paid_for`.
         slug = disco.finalize_discovery(request, out, cards=only, slug=slug,
-                                        brief=None, surface="cli-discover")
+                                        brief=None, surface="cli-discover", perimeter=perimeter)
         _say_saved(slug)
         print(f'\n→ Answer and refine: requivo answer {slug} "<your answers>"')
         return
@@ -510,8 +520,15 @@ def _cmd_discover(a, client) -> None:
     # takes — and it turns the worst failure in the product into one retryable call. Pinned by
     # `test_a_failed_assessment_leaves_the_discovery_saved_and_names_the_retry`.
     slug = disco.finalize_discovery(request, out, cards=only, slug=slug,
-                                    brief=None, surface="cli-discover")
+                                    brief=None, surface="cli-discover", perimeter=perimeter)
     _say_saved(slug)
+    # A perimeter with no "brief" generator (go-to-market, #609's own scope) has nothing to finish
+    # with: generate() would raise past the discovery already saved above. Pinned by
+    # `test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_traceback`.
+    if "brief" not in get_perimeter(perimeter).artifact_types:
+        out = disco.sessions.load_model(slug)
+        render_turn(out, perimeter)
+        return
     print("\nGenerating the decision brief…")
     try:
         gen = disco.generate(slug, "brief", surface="cli-discover")
@@ -544,11 +561,12 @@ def _cmd_answer(a, client) -> None:
     if not svc.exists(slug):
         raise svc.no_session(slug)
     result = disco.answer(slug, a.answers, surface="cli-answer")
+    perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
-    render_turn(out)
+    render_turn(out, perimeter)
     if result.stale_artifacts:
         pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
-        render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
+        render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
     # Every invalidated collection is counted here, or a change that unseats only one kind of
     # reasoning reports nothing on this path while `impact`, --json and the Web all report it — the
     # half-registered shape invariant 1 fails through. Guarded by
@@ -623,20 +641,24 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     `answer` inside a loop, never a second discovery. Shares `_prompt_answers` with `converse()`
     rather than reimplementing the terminal side of a turn."""
     svc = disco.sessions
+    perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
     for _turn in range(1, MAX_TURNS + 1):
-        render_turn_state(out)
+        render_turn_state(out, perimeter)
         if not out.questions:
-            print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
+            if "brief" in get_perimeter(perimeter).artifact_types:
+                print(f"\n✅ Discovery converged — run `requivo brief {slug}` for the decision brief.")
+            else:
+                print("\n✅ Discovery converged.")
             return
-        answers = _prompt_answers(out.questions)
+        answers = _prompt_answers(out.questions, perimeter)
         if answers is None:
             print(f"\nSaved session → {store.canonical_dir(slug)}")
             return
         result = disco.answer(slug, answers, surface="cli-run")
         if result.stale_artifacts:
             pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
-            render_stale(pairs, [slot_label(sid) for sid in result.changed_slots])
+            render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
         out = svc.load_model(slug)
     else:
         print(f"\n⚠️  Reached the {MAX_TURNS}-turn limit.")
@@ -705,15 +727,20 @@ def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
 def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
     """(model, machine status). The model-derived view (readiness, understanding, questions, summary,
     gaps) comes from the shared `model_status` projection — the same one `SessionService.status` uses,
-    so there is no second status implementation to drift. Revision, context and artifact freshness are
-    layered on when the reference resolves to a canonical session (a bare model.json has none)."""
+    so there is no second status implementation to drift. Revision, perimeter, context and artifact
+    freshness are layered on when the reference resolves to a canonical session (a bare model.json
+    has none)."""
     out, slug = _resolve_ref(ref)
-    payload: dict = {"slug": slug, **model_status(out)}
     svc = SessionService()
+    perimeter = DEFAULT_PERIMETER
     if svc.exists(slug):
         meta = svc.meta(slug)
+        perimeter = resolve_perimeter(meta.perimeter)
+    payload: dict = {"slug": slug, **model_status(out, perimeter)}
+    if svc.exists(slug):
         payload["revision"] = meta.current_revision
         payload["context_cards"] = meta.context_cards
+        payload["perimeter"] = perimeter
         # Freshness is the explicit stale flag only — revision is provenance, not an invalidation rule.
         payload["artifacts"] = {
             t: {"revision": st.revision, "filename": st.filename, "stale": st.stale}
@@ -737,7 +764,7 @@ def _cmd_status(a, client) -> None:
         # fix to it.
         print_json(payload)
         return
-    render_turn(out)
+    render_turn(out, payload.get("perimeter") or DEFAULT_PERIMETER)
     # What the impact estimates above were scored against (#492). After the model rather than before
     # it, deliberately: the reader came here for where the session stands, and the grounding is what
     # they check that answer *against* -- it is evidence about the readout, not a preamble to it.
@@ -859,16 +886,20 @@ def _cmd_impact(a, client) -> None:
     # model whose review would print as this file's. Pinned by
     # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
     evidence = None if Path(ref).is_file() else svc.thinner_evidence(slug)
+    # `perimeter` (#608): the session's own, or software for a bare model.json -- the same
+    # fallback `_status_payload` uses, or a go-to-market model renders under the wrong vocabulary.
+    perimeter = (resolve_perimeter(svc.meta(slug).perimeter) if svc.exists_meta(slug)
+                else DEFAULT_PERIMETER)
     if not a.slots:
-        render_dependency_map(out)
+        render_dependency_map(out, perimeter)
         render_evidence(evidence)
         return
-    resolved, unmatched = resolve_slots(a.slots)
+    resolved, unmatched = resolve_slots(a.slots, perimeter)
     if unmatched:
         print(f"Unknown slot(s): {', '.join(unmatched)} — use a slot id or a label word "
               f"(e.g. 'permissions', 'workflow', 'reporting').")
     if resolved:
-        render_impact(propagate(out, resolved))
+        render_impact(propagate(out, resolved, perimeter))
         render_evidence(evidence)
     if unmatched:
         # A wrong probe used to be indistinguishable from an empty result -- both exited 0 -- so a
@@ -1407,6 +1438,10 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
                    help="comma-separated context cards to load instead of all "
                         "(e.g. b2b-platform,financial-reporting); sharpens discovery by dropping "
                         "irrelevant cards. Applies to this discovery only. Alias: --cards.")
+    d.add_argument("--perimeter", default="software", metavar="ID",
+                   help="which installed perimeter this session runs under, frozen at creation "
+                        "(default: software). #601's router picks one automatically; until then, "
+                        "name it explicitly.")
     d.set_defaults(func=_cmd_discover)
 
     model_cmd("answer", "fold the client's answers in and report what moved (API)",

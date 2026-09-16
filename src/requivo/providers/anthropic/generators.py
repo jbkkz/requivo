@@ -31,13 +31,14 @@ from requivo.core.contracts import (
     ReleaseNotes,
     Stories,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.core.validation import completeness_gap
 from requivo.providers.anthropic.completion import _complete
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
-def _require_complete_model(out: ModelProposal) -> None:
+def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> None:
     """A discovery turn must return the whole required slot set, and must say what the thing is for.
 
     The rules themselves live in `core.validation.completeness_gap`, shared with the deterministic
@@ -46,15 +47,22 @@ def _require_complete_model(out: ModelProposal) -> None:
     nudge, so it self-corrects instead of the turn dying. Neither rule is in the contract itself,
     because a partial model is a legitimate internal object (a diff basis, a projection) — it is only
     a *discovery reply* that owes completeness.
+
+    `perimeter` (#608) must be the one the reply was reasoned against, or this checks the wrong
+    required set entirely: a complete go-to-market reply was refused for missing `business_rules`
+    and every other software-only slot, defaulting silently to software here while `run()`'s own
+    `build_system_prompt`/`context=` calls three lines away already knew better. `run()` closes over
+    its own `perimeter` when it hands this to `_complete()` as the `validate` hook -- this function
+    itself stays a plain, perimeter-agnostic check, callable with either.
     """
-    gap = completeness_gap(out)
+    gap = completeness_gap(out, perimeter)
     if gap is not None:
         raise ValueError(gap.message)
 
 
 def run(client, messages: list[dict], retries: int = 2, only: list[str] | None = None,
         carry_from: EngineOutput | None = None, *, reuse_system: bool = True,
-        model: str | None = None) -> EngineOutput:
+        model: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Engine turn: request/answers → filled model. `only` restricts which context cards inform the
     turn (defaults to all); keep it constant across a session's turns so the prompt cache holds.
 
@@ -63,15 +71,20 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
     challenges is *quiet*, not deleting them. `carry_from` is the model being refined — the established
     reasoning is carried onto the reply, so what leaves this function is a complete model again.
 
+    `perimeter` (#608) selects the schema and discovery guidance `engine.md` is grounded in, and is
+    passed through as validation context so the reply's slot ids are checked against the same
+    vocabulary -- defaults to software, unchanged for every caller that predates perimeters.
+
     `reuse_system` is the one thing this function cannot decide, so it is the caller's: only the
     interactive `discover` loop (`DiscoveryService.draft_turn`) genuinely re-sends this prompt and
     earns the breakpoint, while `start`/`run_discovery`/`answer` take the one-shot default (#58, #77).
     Pinned by `test_the_provider_seam_is_single_call_on_both_analyze_branches`. The remaining direct
     callers of this function are `answer_turn` and `scripts/golden_run.py`; no interface reaches it."""
-    proposal = _complete(client, build_system_prompt("engine.md", only), messages, ModelProposal, retries,
-                         validate=_require_complete_model, reuse_system=reuse_system, model=model,
-                         operation="analyze")
-    return proposal.resolve(carry_from)
+    proposal = _complete(
+        client, build_system_prompt("engine.md", only, perimeter=perimeter), messages, ModelProposal,
+        retries, validate=lambda o: _require_complete_model(o, perimeter), reuse_system=reuse_system,
+        model=model, operation="analyze", context={"perimeter": perimeter})
+    return proposal.resolve(carry_from, perimeter=perimeter)
 
 
 def judge_context(client, request: str, cards: list[CardSummary], *,
@@ -109,7 +122,7 @@ def judge_context(client, request: str, cards: list[CardSummary], *,
 
 def answer_turn(client, out: EngineOutput, request: str, answers: str,
                 only: list[str] | None = None, *, reuse_system: bool = False,
-                model: str | None = None) -> EngineOutput:
+                model: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """One stateless discovery turn: refine the model with new answers.
 
     The model IS the accumulated state, so a turn needs only the original request (for context),
@@ -131,7 +144,8 @@ def answer_turn(client, out: EngineOutput, request: str, answers: str,
         {"role": "assistant", "content": out.model_dump_json()},
         {"role": "user", "content": "Client answers:\n" + answers},
     ]
-    return run(client, messages, only=only, carry_from=out, reuse_system=reuse_system, model=model)
+    return run(client, messages, only=only, carry_from=out, reuse_system=reuse_system, model=model,
+              perimeter=perimeter)
 
 
 # ── Generators (model → artifact) ───────────────────────────────────────────────
@@ -268,7 +282,8 @@ _OP_PROMPTS = {
 _STANDALONE_PROMPTS = {"judge_context": "context_judgment.md"}
 
 
-def prompt_version(op: str, only: list[str] | None = None) -> str:
+def prompt_version(op: str, only: list[str] | None = None, *,
+                   perimeter: str = DEFAULT_PERIMETER) -> str:
     """`"sha256:…"` over the exact system prompt an operation sends — the prompt file, the schema, and
     the selected context cards, byte for byte.
 
@@ -276,5 +291,7 @@ def prompt_version(op: str, only: list[str] | None = None) -> str:
     editing Markdown and JSON assets, so "which model produced this" answers half the question; the
     other half is "against which prompt and which context cards", and that is exactly what changes
     between two runs that look identical in the log. A card added to the set moves the hash, because it
-    genuinely moved the reasoning."""
-    return "sha256:" + hashlib.sha256(build_prompt(_OP_PROMPTS[op], only).encode("utf-8")).hexdigest()
+    genuinely moved the reasoning. `perimeter` (#608) moves it too -- two perimeters never share a
+    schema, so `analyze`'s hash must say which one grounded the call."""
+    return "sha256:" + hashlib.sha256(
+        build_prompt(_OP_PROMPTS[op], only, perimeter=perimeter).encode("utf-8")).hexdigest()

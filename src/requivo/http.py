@@ -24,6 +24,7 @@ STATUS_BY_CODE = {
     "invalid_session": 500,  # a store fault is not the caller's bad request (#34)
     "unsupported_format_version": 409,  # not 426: no Upgrade header to send
     "unsupported_schema_version": 409,
+    "unknown_perimeter": 409,  # same family: a session naming a vocabulary this build lacks (#608)
     "session_unreadable": 500,
     "model_unreadable": 500,
     "artifact_revision_out_of_range": 500,

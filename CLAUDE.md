@@ -425,7 +425,8 @@ Each stage has a Pydantic contract that must agree with its prompt's "Output for
 `ModelProposal` ↔ `engine.md` (the reply is a *proposal*; `EngineOutput` is what it resolves into —
 invariant 10), `Brief` ↔ `brief.md`, `Stories` ↔ `stories.md`, `EstimateDraft` ↔ `estimate.md`,
 `PRD` ↔ `prd.md`, `AcceptanceCriteria` ↔ `criteria.md`, `Epic` ↔ `epic.md`, `ReleaseNotes` ↔
-`release.md`. Slot ids live in `framework/model_schema.json`, which also carries each slot's
+`release.md`. Slot ids live in the active perimeter's `model_schema.json` (`assets/perimeters/<id>/`,
+software by default), which also carries each slot's
 `pillar` and `label` (read back by the renderer via `slot_meta()`). The enumeration above is still
 kept by hand — nothing checks those eight names against the registries — so read it as a map, not a
 guarantee. The *agreement* is guarded: `tests/test_prompt_contracts.py` validates each prompt's
@@ -451,7 +452,8 @@ objective), read by both boundaries that enforce it: the discovery `validate` ho
 
 - **Slots (the atomic unit).** Every requirement lives in a slot: `completeness` (0–100), `confidence`
   (explicit|inferred|empty), `impact` (low|medium|high), `value`, `evidence`. Slots group into four
-  navigation pillars (Why / What / How / Validate) defined in `framework/elicitation.md`. Every output
+  navigation pillars (Why / What / How / Validate) defined in the perimeter's `elicitation.md`
+  (`assets/perimeters/<id>/`, #608). Every output
   is a render of the same filled model: the bars are per-pillar completeness, the questions are its
   gaps, the assessment is a consultant's read of it.
 - **The driver: `information_value = uncertainty × impact`.** The engine does **not** ask because a
@@ -598,23 +600,30 @@ gates, and which leaves the third-instance trigger standing.
 - **`config_vs_custom`** is the one `optional: true` slot — the platform edge (hardcoded / configurable
   / per-client / reusable-for-all). On for configurable multi-client platforms, off for one-shot apps.
 - **Adding a slot** touches more files than any other kind of change, and it used to be possible to
-  miss the one file that silently mattered most (#269). Three are mandatory:
-  1. **`framework/model_schema.json`** — the slot itself (`id`, `pillar`, `impact_default`,
-     `label`, `probe`; `optional: true` only for a platform-edge slot with no dedicated artifact
-     field, `config_vs_custom` today). This is the single source — `schema_slot_ids()` reads it, and
-     everything else either derives from it or has to be kept consistent with it by hand.
-  2. **`framework/elicitation.md`** — the pillar table and the human-readable spec. **Unguarded**:
-     nothing fails if this drifts from the schema, so check it by eye every time. Unguarded on
-     purpose and not by omission — #278 asked for a guard and was answered with a measurement:
-     `decision: elicitation-schema-hand-kept`.
-  3. **`core/dependencies.py`'s `_ARTIFACT_SLOTS_RAW`** — add the slot to every artifact set it
-     materially shapes, or, if it genuinely feeds no *specific* artifact (only the assessment's
-     judgment over the whole model, via `brief`'s `*`), name it with a reason in
+  miss the one file that silently mattered most (#269). **Every schema is per-perimeter since #608**
+  — a slot belongs to one perimeter's vocabulary, not to the install, and the three mandatory steps
+  below are scoped to that one perimeter's own files and tables:
+  1. **`assets/perimeters/<id>/model_schema.json`** — the slot itself (`id`, `pillar`,
+     `impact_default`, `label`, `probe`; `optional: true` only for a platform-edge slot with no
+     dedicated artifact field, `config_vs_custom` today, software-only). This is the single source
+     for that perimeter — `schema_slot_ids(perimeter)` reads it, and everything else either derives
+     from it or has to be kept consistent with it by hand.
+  2. **`assets/perimeters/<id>/elicitation.md`** — the pillar table and the human-readable spec, for
+     that same perimeter. **Unguarded**: nothing fails if this drifts from the schema, so check it
+     by eye every time. Unguarded on purpose and not by omission — #278 asked for a guard and was
+     answered with a measurement: `decision: elicitation-schema-hand-kept`.
+  3. **`core/dependencies.py`'s `_ARTIFACT_SLOTS_RAW`** — one global table, but only the entries for
+     artifact types the slot's own perimeter owns (`core/perimeters.py`'s `artifact_types`) apply;
+     add the slot to every one of *that perimeter's* artifact sets it materially shapes, or, if it
+     genuinely feeds no *specific* artifact of that perimeter's, name it with a reason in
      `tests/test_dependencies.py`'s `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT`. **Guarded since #269**:
      `test_every_required_slot_is_consumed_by_a_specific_artifact_or_is_exempted` fails on a required
-     slot that is in neither. Before that test existed nothing caught this — a new slot silently
-     marked nothing stale for prd/stories/estimate/criteria/epic/release, only the assessment,
-     invariant 1's exact failure shape landing on the most routine change the schema will ever see.
+     slot that is in neither, for the software perimeter today (go-to-market owns no artifact yet,
+     #609). Before that test existed nothing caught this — a new slot silently marked nothing stale
+     for prd/stories/estimate/criteria/epic/release, only the assessment, invariant 1's exact
+     failure shape landing on the most routine change the schema will ever see. Forgetting a second
+     perimeter's own `_ARTIFACT_SLOTS_RAW` entries when both own the artifact type is the same drift,
+     one perimeter over.
 
   Six more, conditional on whether the slot should surface in a *specific* buildable artifact rather
   than only shape the assessment's judgment through `*`: a slot-named field on the relevant contract

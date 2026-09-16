@@ -30,6 +30,7 @@ from requivo.core.errors import (
     SessionNotFoundError,
     SessionUnreadableError,
 )
+from requivo.core.perimeters import resolve_perimeter
 from requivo.core.persistence.atomic import _atomic_write
 from requivo.core.persistence.identifiers import _probe, _refuse_new_reserved_slug, _slug_shape, validate_filename
 from requivo.core.persistence.lock import _LockHandle, _LockMixin, _resolve, is_contained
@@ -295,20 +296,30 @@ class Store(_ScanMixin, _LockMixin):
 
 
     def create_session(self, slug: str, request: str, *, provider: str | None = None,
-                       model_name: str | None = None, context_cards: list[str] | None = None) -> SessionMeta:
+                       model_name: str | None = None, context_cards: list[str] | None = None,
+                       perimeter: str | None = None) -> SessionMeta:
         """Create a fresh session directory from a request — no model yet (current_revision 0). The
         model is applied later via `save_revision` (deterministic `model apply`, or a provider turn).
+
+        `perimeter` (#608) is frozen here, the same moment the request and the card selection are —
+        half of session identity (invariant 11), never moved afterward. `None` (the default) writes no
+        perimeter at all, which a reader resolves to the software perimeter — the caller's choice not
+        to name one is the pre-#608 behaviour, not a refusal; `resolve_perimeter` validates an
+        *explicit* name against the install before it is even written, so a typo is refused here
+        rather than accepted and refused only on the next read.
 
         The session is assembled beside its destination and moved in with a single rename, which is
         the *claim* on the slug (invariant 11). Two bugs follow from doing it any other way: a
         preceding `has_meta` check is not atomic, so two concurrent creations both passed it and the
         second rewrote the first's identity, provider and cards; and a directory created before its
         metadata is a session a concurrent reader can find with no `session.json` in it."""
+        if perimeter is not None:
+            resolve_perimeter(perimeter)  # refused by name here, not left for the next reader
         now = _now()
         meta = SessionMeta(
             session_id=uuid.uuid4().hex, slug=slug, created_at=now, updated_at=now,
             provider=provider, model_name=model_name, context_cards=context_cards,
-            request_hash=content_hash(request),
+            request_hash=content_hash(request), perimeter=perimeter,
         )
         d = self.canonical_dir(slug)
         self.ensure_store_dir(d.parent)
@@ -434,7 +445,11 @@ class Store(_ScanMixin, _LockMixin):
         if not p.exists():
             raise SessionNotFoundError(
                 f"session '{slug}' has no model yet (apply a proposal first)", details={"slug": slug})
-        return _read_model(p, slug=slug)
+        # The session's own perimeter, not the software default: `read_meta` runs `migrate_session`,
+        # which already refuses an unknown one by name (#608), so by the time it returns here the
+        # perimeter is known-good.
+        perimeter = resolve_perimeter(self.read_meta(slug).perimeter)
+        return _read_model(p, slug=slug, perimeter=perimeter)
 
 
     def load_revision_model(self, slug: str, revision: int) -> EngineOutput:
@@ -443,7 +458,8 @@ class Store(_ScanMixin, _LockMixin):
         if not p.exists():
             raise SessionNotFoundError(
                 f"session '{slug}' has no revision {revision}", details={"slug": slug, "revision": revision})
-        return _read_model(p, slug=slug, revision=revision)
+        perimeter = resolve_perimeter(self.read_meta(slug).perimeter)
+        return _read_model(p, slug=slug, revision=revision, perimeter=perimeter)
 
 
     def session_request(self, slug: str) -> str:

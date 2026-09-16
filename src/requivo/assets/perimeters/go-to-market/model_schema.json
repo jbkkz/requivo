@@ -1,0 +1,36 @@
+{
+  "driver": {
+    "rule": "information_value = uncertainty * impact",
+    "ask_when": "information_value is high",
+    "do_not_ask_when": "slot is empty but impact is low",
+    "uncertainty": "derived from completeness (0-100) and confidence (see confidence below)",
+    "impact": "how much this slot changes the shape/cost of the plan; estimated using the product context (context/*.md)",
+    "impact_is_dynamic": "impact_default is only a BASELINE. Raise a slot's impact above its default when the request or context names a driver for it (a slot's impact_signals list the triggers). A regulated audience, a two-sided market, or a channel with a legal regime (unsolicited-contact rules) makes channels and offer high-impact, whatever their default."
+  },
+  "confidence": {
+    "explicit": "the requester committed to this. A third party's own word (a client, a stakeholder) always qualifies. With no third party -- a solo builder describing their own idea -- ONLY their own intent qualifies: what they want, will or will not build, will spend, have decided. Their unconfirmed belief about the world (what an audience wants, what a channel yields, what the market will bear) is NEVER explicit, no matter how confidently it is stated -- grade it inferred or testable instead.",
+    "inferred": "deduced by you, OR the requester's own unconfirmed belief about the world -- an assumption to confirm before it drives the plan.",
+    "empty": "unknown, and answerable by asking the person in front of you.",
+    "testable": "unknown, and NOT answerable by asking -- only a real test or experiment would settle it. This is the default state of a half-formed go-to-market idea, not an edge case: 'will anyone pay for this' is rarely answerable by conversation alone. Requires test_plan naming what would settle it, or the slot is refused. Does not block readiness: a named test still to run is compatible with 'precise enough to act on'."
+  },
+  "pillars": {
+    "why": "Why? The objective, its clock, and the metric that tells you it worked.",
+    "what": "What? Who this is for, what already reaches them, and what is offered.",
+    "how": "How? Channels, economics, and the resources actually available.",
+    "validate": "Validation. How this is measured, and the thresholds that trigger a decision."
+  },
+  "slots": [
+    { "id": "objective",             "pillar": "why",      "impact_default": "high",   "label": "Objective",              "probe": "What is the one outcome this is meant to achieve, and by when?" },
+    { "id": "success_metric",        "pillar": "why",      "impact_default": "high",   "label": "Success metric",         "probe": "What is the leading indicator, separate from the goal -- and what does its counting rule deliberately exclude?" },
+    { "id": "icp",                   "pillar": "what",     "impact_default": "high",   "label": "Ideal customer profile", "probe": "Who is this for, narrowly enough that you could name someone it is NOT for?" },
+    { "id": "existing_distribution", "pillar": "what",     "impact_default": "high",   "label": "Existing distribution",  "probe": "What audience, relationship or surface already exists -- a list, a community, a partner, a following?", "impact_signals": "-> the single biggest determinant of which channels are even viable; a request naming no existing distribution raises channels' impact." },
+    { "id": "offer",                 "pillar": "what",     "impact_default": "high",   "label": "Offer",                  "probe": "What is given, to whom, on what terms?", "impact_signals": "-> high when the offer targets a two-sided market or a regulated audience -- a different build than the same word suggests generically." },
+    { "id": "channels",              "pillar": "how",      "impact_default": "medium", "label": "Channels",               "probe": "What are the candidate routes to the audience, and which does existing distribution actually support?", "impact_signals": "-> high when a candidate channel carries a legal regime (unsolicited-contact rules, a platform policy) or the audience is regulated." },
+    { "id": "unit_economics",        "pillar": "how",      "impact_default": "medium", "label": "Unit economics",         "probe": "What is a customer worth, and over what period -- what turns a threshold from an assertion into a derivation?" },
+    { "id": "capacity",              "pillar": "how",      "impact_default": "high",   "label": "Capacity",               "probe": "How many hours per week are actually available, and for how many weeks?", "impact_signals": "-> the binding constraint: a plan that does not fit the hours available is not a plan, whatever the budget says." },
+    { "id": "budget",                "pillar": "how",      "impact_default": "medium", "label": "Budget",                 "probe": "How much money is available, and is it committed or conditional on an early result?" },
+    { "id": "horizon",                "pillar": "why",      "impact_default": "medium", "label": "Horizon",                "probe": "What is the clock the objective runs on -- when does this get judged?" },
+    { "id": "instrumentation",       "pillar": "validate", "impact_default": "low",    "label": "Instrumentation",        "probe": "How is any of this actually measured, and what about it is not measurable at all?" },
+    { "id": "decision_thresholds",   "pillar": "validate", "impact_default": "medium", "label": "Decision thresholds",    "probe": "At what result does this continue, change, or stop -- 'at X, do Y'?" }
+  ]
+}

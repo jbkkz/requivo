@@ -39,6 +39,7 @@ from requivo.core.errors import (
     SessionNotFoundError,
     UnknownSlotError,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
@@ -77,6 +78,7 @@ class SessionSnapshot:
     model: EngineOutput | None          # None before the first model (revision 0)
     request: str
     context_cards: list[str] | None     # None == every card
+    perimeter: str = DEFAULT_PERIMETER  # resolved (#608) -- never None, even for a pre-perimeter session
 
 
 @dataclass(frozen=True)
@@ -336,7 +338,8 @@ class SessionService:
     # ── creation ──────────────────────────────────────────────────────────────
     def create_session(self, request: str, *, context_cards: list[str] | None = None,
                         slug: str | None = None, provider: str | None = None,
-                        model_name: str | None = None) -> SessionMeta:
+                        model_name: str | None = None,
+                        perimeter: str | None = None) -> SessionMeta:
         """Create a fresh session from a request (no model yet). If `slug` is omitted it is derived
         from the request and made collision-safe against existing sessions.
 
@@ -358,12 +361,14 @@ class SessionService:
         which is every caller but one (#425). See that method for why the boolean it also returns
         exists at all."""
         meta, _created = self.create_session_report(
-            request, context_cards=context_cards, slug=slug, provider=provider, model_name=model_name)
+            request, context_cards=context_cards, slug=slug, provider=provider,
+            model_name=model_name, perimeter=perimeter)
         return meta
 
     def create_session_report(self, request: str, *, context_cards: list[str] | None = None,
                               slug: str | None = None, provider: str | None = None,
-                              model_name: str | None = None, strict_slug: bool = False
+                              model_name: str | None = None, strict_slug: bool = False,
+                              perimeter: str | None = None,
                               ) -> tuple[SessionMeta, bool]:
         """`create_session`, plus two things its return value and its parameters cannot carry without
         changing every other caller: whether *this call* actually created the session, and (opt-in)
@@ -393,27 +398,34 @@ class SessionService:
         the design record's table promises and got a silent 201 under an unrequested slug instead."""
         require_input_within_bounds(request, field="request")
         context_cards = resolve_cards(context_cards) if context_cards else None
+        # Resolved once, so "no perimeter named" and "software named explicitly" compare equal
+        # below -- the same reading `resolve_perimeter` gives a pre-#608 session on disk, and the
+        # reading `_same_identity` must use or a request explicitly asking for `software` would
+        # never idempotently re-hit the session an earlier caller made without naming one at all.
+        resolved_perimeter = resolve_perimeter(perimeter)
         explicit = bool(slug)  # matches the `or` below: an empty string is "no slug", same as None
         base = slug or self.slug_hint(request)
         refuse_immediately = explicit and strict_slug
         candidates = (base,) if refuse_immediately else (
-            base, f"{base}-{self._identity_hash(request, context_cards)}")
+            base, f"{base}-{self._identity_hash(request, context_cards, resolved_perimeter)}")
         for candidate in candidates:
             try:
                 meta = self.repo.create(candidate, request, provider=provider, model_name=model_name,
-                                        context_cards=context_cards)
+                                        context_cards=context_cards, perimeter=perimeter)
                 logger.info("session created: slug=%s", meta.slug)
                 return meta, True
             except SessionExistsError:
-                if self._same_identity(candidate, request, context_cards):
+                if self._same_identity(candidate, request, context_cards, resolved_perimeter):
                     return self.repo.read_meta(candidate), False  # idempotent re-init, same discovery
                 if refuse_immediately:
                     raise SessionExistsError(
-                        f"session '{candidate}' already exists with a different request or context "
-                        "selection — choose a different slug", details={"slug": candidate}) from None
+                        f"session '{candidate}' already exists with a different request, context "
+                        "selection or perimeter — choose a different slug",
+                        details={"slug": candidate}) from None
         raise SessionExistsError(
-            f"sessions '{base}' and '{base}-{self._identity_hash(request, context_cards)}' both exist "
-            "with a different request or context selection — pass an explicit slug",
+            f"sessions '{base}' and "
+            f"'{base}-{self._identity_hash(request, context_cards, resolved_perimeter)}' both exist "
+            "with a different request, context selection or perimeter — pass an explicit slug",
             details={"slug": base})
 
     def ensure_canonical(self, slug: str) -> None:
@@ -435,23 +447,41 @@ class SessionService:
         self.repo.delete(slug)
 
     @staticmethod
-    def _identity_hash(request: str, context_cards: list[str] | None) -> str:
+    def _identity_hash(request: str, context_cards: list[str] | None,
+                       perimeter: str = DEFAULT_PERIMETER) -> str:
         """The fallback slug suffix: a short hash over what makes a discovery distinct. The cards join
-        the hash only when there are some, so the ordinary no-cards case keeps the slugs it had."""
-        parts = [request.strip()]
+        the hash only when there are some, so the ordinary no-cards case keeps the slugs it had.
+
+        `perimeter` (#608) joins the hash for the same reason the cards do: identity is the request,
+        the card selection, *and* the perimeter (invariant 11) -- two requests with identical text
+        and cards but different perimeters must not collide on the same fallback slug, or the second
+        one's `create` would be refused by the first's and fall to `_same_identity` to sort out.
+        Always a real perimeter (never `None`): callers resolve it once before hashing, so this
+        cannot silently treat a `software`-hashed slug and a not-yet-resolved one as different."""
+        parts = [request.strip(), perimeter]
         if context_cards:
             parts.append(",".join(sorted(context_cards)))
         return hashlib.sha1("␟".join(parts).encode("utf-8")).hexdigest()[:6]
 
-    def _same_identity(self, slug: str, request: str, context_cards: list[str] | None) -> bool:
-        """Whether an existing session is the same discovery: same request, same context selection.
-        `None` (every card) and an explicit list are different selections, not the same one."""
+    def _same_identity(self, slug: str, request: str, context_cards: list[str] | None,
+                       perimeter: str = DEFAULT_PERIMETER) -> bool:
+        """Whether an existing session is the same discovery: same request, same context selection,
+        same perimeter. `None` (every card) and an explicit list are different selections, not the
+        same one. `perimeter` is compared *resolved* on both sides (#608): a session written before
+        perimeters existed carries `None` on disk, and that must read as identical to an explicit
+        `software` request -- not as a mismatch invariant 11 would then refuse to reuse. Without this
+        check, a `go-to-market` request landing on a `software` session's slug would be silently
+        treated as the same discovery, reasoned under the requested perimeter, and then refused by
+        `update_model`'s own vocabulary check *after* the paid call -- invariant 13's exact failure
+        shape, one identity check over."""
         if not self.repo.has_meta(slug):
             return False  # a legacy-only session has no recorded cards to compare
         existing = self.repo.context_cards(slug)
+        existing_perimeter = resolve_perimeter(self.repo.read_meta(slug).perimeter)
         return (self.repo.request_text(slug).strip() == request.strip()
                 and (sorted(existing) if existing else existing)
-                == (sorted(context_cards) if context_cards else context_cards))
+                == (sorted(context_cards) if context_cards else context_cards)
+                and existing_perimeter == resolve_perimeter(perimeter))
 
     # ── reads ─────────────────────────────────────────────────────────────────
     def meta(self, slug: str) -> SessionMeta:
@@ -559,13 +589,14 @@ class SessionService:
             # asked. See test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one.
             raise self.no_session(slug)
         with self.repo.lock(slug):
-            meta = self.repo.read_meta(slug)
+            meta = self.repo.read_meta(slug)  # `migrate_session` already refused an unknown perimeter
             return SessionSnapshot(
                 slug=slug,
                 revision=meta.current_revision,
                 model=self.load_model(slug) if meta.current_revision > 0 else None,
                 request=self.repo.request_text(slug),
                 context_cards=meta.context_cards,
+                perimeter=resolve_perimeter(meta.perimeter),
             )
 
     def impact(self, slug: str, slots: list[str]) -> ImpactReport:
@@ -593,14 +624,16 @@ class SessionService:
         # describe the same revision, and the review re-reads the model under the lock itself (the
         # lock is re-entrant per thread, so its inner take is free).
         with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            perimeter = resolve_perimeter(meta.perimeter)
             model = self.load_model(slug)
-            resolved, unmatched = resolve_slots(slots)
+            resolved, unmatched = resolve_slots(slots, perimeter)
             if unmatched:
                 raise UnknownSlotError(
                     f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
                     "(e.g. 'permissions', 'workflow', 'reporting').",
                     details={"unmatched": unmatched})
-            report = propagate(model, resolved)
+            report = propagate(model, resolved, perimeter)
             # Not narrowed to `slots` on purpose (#493): the review is a fact about the session, and
             # the slot that thickened is exactly the one nobody thinks to ask about.
             report.evidence = self.thinner_evidence(slug)
@@ -635,6 +668,7 @@ class SessionService:
         # the lock held for the length of the walk: measured at 300 revisions, well under 100 ms.
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
+            perimeter = resolve_perimeter(meta.perimeter)
             if meta.current_revision == 0:
                 return EvidenceReport()
             now = self.load_model(slug)
@@ -657,7 +691,7 @@ class SessionService:
                     pending -= found
         by_id: dict[str, tuple] = {}
         for rev, ids in derived_at.items():
-            partial = thinner_evidence(frozen[rev], now)
+            partial = thinner_evidence(frozen[rev], now, perimeter)
             for f in partial.flagged:
                 if f.id in ids:
                     f.derived_at = rev
@@ -739,8 +773,10 @@ class SessionService:
         """Dry run of `update_model`: validate the proposal and report what *would* change, without
         writing anything (`model diff`). `revision` is the revision that would be created."""
         current = self.load_model(slug) if self.exists(slug) else None
-        new = validate_proposal(proposal, require_complete=require_complete, current=current)
-        return self._plan(slug, current, new, apply=False)
+        perimeter = resolve_perimeter(self.meta(slug).perimeter) if self.exists_meta(slug) else DEFAULT_PERIMETER
+        new = validate_proposal(proposal, require_complete=require_complete, current=current,
+                                perimeter=perimeter)
+        return self._plan(slug, current, new, apply=False, perimeter=perimeter)
 
     def update_model(self, slug: str, proposal: dict | str, *, require_complete: bool = True,
                      expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
@@ -763,12 +799,16 @@ class SessionService:
         # from the same model the diff is computed against, or a concurrent write could slip between
         # the two and the carried reasoning would describe a model that is no longer there.
         with self.repo.lock(slug):
-            current = self.load_model(slug) if self.repo.read_meta(slug).current_revision > 0 else None
-            new = validate_proposal(proposal, require_complete=require_complete, current=current)
-            return self._plan(slug, current, new, apply=True,
+            meta = self.repo.read_meta(slug)
+            perimeter = resolve_perimeter(meta.perimeter)
+            current = self.load_model(slug) if meta.current_revision > 0 else None
+            new = validate_proposal(proposal, require_complete=require_complete, current=current,
+                                    perimeter=perimeter)
+            return self._plan(slug, current, new, apply=True, perimeter=perimeter,
                               expected_revision=expected_revision, provenance=provenance)
 
     def _plan(self, slug: str, current: EngineOutput | None, new: EngineOutput, *, apply: bool,
+              perimeter: str = DEFAULT_PERIMETER,
               expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
         # A first model (no prior) counts every present slot as changed, so the whole blast radius is
         # reported; otherwise only the slots that materially moved.
@@ -779,7 +819,7 @@ class SessionService:
         reasoning = diff_reasoning(current, new) if current is not None else ReasoningDiff()
         # Artifacts rest on slots via the static ARTIFACT_SLOTS map, so the blast radius is basis-neutral
         # — any model with these `changed` slots yields the same artifact set.
-        report = propagate(new, changed)
+        report = propagate(new, changed, perimeter)
 
         # Reasoning invalidation is about the *prior established* reasoning a change unseats — it exists
         # only when the current model on disk carries decisions/challenges/exclusions/thresholds (a
@@ -790,7 +830,7 @@ class SessionService:
         # invalidated on their first apply.
         if current is not None and (current.decisions or current.challenges or current.exclusions
                                     or current.thresholds):
-            prior = propagate(current, changed)
+            prior = propagate(current, changed, perimeter)
             invalidated_decisions = [d.decision for d in prior.decisions]
             invalidated_challenges = [c.headline for c in prior.challenges]
             invalidated_exclusions = [e.option for e in prior.exclusions]
@@ -850,8 +890,9 @@ class SessionService:
         the Web render the full picture (understanding checklist, priority questions, gaps,
         context) without rebuilding the presentation logic in another language. Everything here is a
         pure projection of the model plus the session metadata."""
-        model = self.load_model(slug)
         meta = self.repo.read_meta(slug) if self.repo.has_meta(slug) else None
+        perimeter = resolve_perimeter(meta.perimeter) if meta else DEFAULT_PERIMETER
+        model = self.load_model(slug)
         artifacts = {}
         if meta:
             for t, st in meta.artifact_status.items():
@@ -861,7 +902,8 @@ class SessionService:
         return {
             "slug": slug,
             "revision": meta.current_revision if meta else None,
-            **model_status(model),
+            "perimeter": perimeter,
+            **model_status(model, perimeter),
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,
         }

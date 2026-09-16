@@ -24,9 +24,14 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parent / "assets"
 
 PROMPTS = ASSETS / "prompts"
-FRAMEWORK = ASSETS / "framework"
 CONTEXT = ASSETS / "context"
 DEMO = ASSETS / "demo"
+
+# Per-perimeter data (#608): each installed perimeter owns a directory under here holding its own
+# model_schema.json, elicitation.md and engine_guidance.md -- the plural replacement for the single
+# framework/ directory that used to hold the software perimeter's schema as though it were the only
+# one. `core/perimeters.py` is the registry that resolves a perimeter id to its directory.
+PERIMETERS = ASSETS / "perimeters"
 
 
 def workspace_root() -> Path:

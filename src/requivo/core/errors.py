@@ -109,6 +109,20 @@ class UnsupportedSchemaVersionError(InvalidSessionError):
     code = "unsupported_schema_version"
 
 
+class UnknownPerimeterError(InvalidSessionError):
+    """The session names a perimeter this install does not have. `details`: `{perimeter, known}`.
+
+    The deliberate inversion of invariant 8 (#608): every other unrecognised vocabulary the session
+    format can carry is tolerated (an unknown key, an unknown artifact type), because it is carried
+    through rather than interpreted. A perimeter is interpreted -- it selects the slot vocabulary a
+    reader validates against, reports readiness from, and computes a blast radius over -- so an
+    unknown one is refused by name rather than guessed at. A session with no perimeter recorded at
+    all reads as the software perimeter (there was only ever one); this error is only for a *named*
+    perimeter this install cannot resolve."""
+
+    code = "unknown_perimeter"
+
+
 class SessionUnreadableError(InvalidSessionError):
     """`session.json` will not parse, or its write lock could not be opened (#113). `details`: `{slug}`.
     500, not 400: a fact about the store. Deliberately not `session_not_found` (#114)."""

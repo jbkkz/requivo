@@ -28,6 +28,7 @@ from requivo.core.errors import (
     UnreadableArchiveError,
 )
 from requivo.core.integrity import check_session_dir, newest_readable_revision, readable_revision
+from requivo.core.perimeters import resolve_perimeter
 from requivo.core.persistence import _replace_with_retry, ensure_store_dir
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import print_json
@@ -150,7 +151,8 @@ def _cmd_session_restore(a, client) -> None:
                 raise ModelUnreadableError(
                     f"session '{slug}' has revisions 1..{n}; {target_rev} is out of range",
                     details={"slug": slug, "revision": target_rev, "current_revision": n})
-            found = readable_revision(d, target_rev, expected_hashes=hashes)
+            found = readable_revision(d, target_rev, expected_hashes=hashes,
+                                       perimeter=resolve_perimeter(meta.perimeter))
             if found is None:
                 raise ModelUnreadableError(
                     f"revisions/{target_rev:04d}-model.json is missing, does not parse, or does not "
@@ -158,7 +160,8 @@ def _cmd_session_restore(a, client) -> None:
                     details={"slug": slug, "revision": target_rev})
             payload = found.payload
         else:
-            found = newest_readable_revision(d, n, expected_hashes=hashes)
+            found = newest_readable_revision(d, n, expected_hashes=hashes,
+                                              perimeter=resolve_perimeter(meta.perimeter))
             if found is None:
                 raise ModelUnreadableError(
                     f"session '{slug}' has no readable, trusted revision file (1..{n}) to restore "

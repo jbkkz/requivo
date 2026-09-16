@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from requivo import __version__
 from requivo.core.contracts import EngineOutput, PersistedEngineOutput
 from requivo.core.errors import ModelUnreadableError, UnsupportedFormatVersionError, UnsupportedSchemaVersionError
+from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 
 SESSION_FORMAT_VERSION = 1
 # The framework's slot schema version. Bumped when the slot vocabulary changes shape; recorded on
@@ -25,7 +26,7 @@ SESSION_FORMAT_VERSION = 1
 SCHEMA_VERSION = 1
 
 
-def load_model(path: Path) -> EngineOutput:
+def load_model(path: Path, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Load a saved model so artifacts can be regenerated without redoing discovery.
 
     Read through `PersistedEngineOutput` — still an `EngineOutput`, so the annotation holds — because
@@ -33,13 +34,18 @@ def load_model(path: Path) -> EngineOutput:
     the reader a session they can otherwise understand completely. The block at the foot of
     `contracts.py` says why the disk side and the provider side answer that question oppositely.
 
+    `perimeter` (#608) is the session's own perimeter, resolved by the caller from `session.json`
+    (`resolve_perimeter`) -- a bare `model.json` with no session around it has no perimeter to read,
+    so the software default is what every pre-#608 caller of this function still gets.
+
     The explicit codec is #11's and is not optional here either: `_atomic_write` writes UTF-8, so a
     read that takes the platform default decodes a model holding an accented value into mojibake that
     is still valid JSON, on exactly the platforms this repo now has CI legs for."""
-    return _read_model(path)
+    return _read_model(path, perimeter=perimeter)
 
 
-def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[int] = None) -> EngineOutput:
+def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[int] = None,
+                perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Read and validate a persisted model, turning every way that can fail into one structured error.
 
     One helper rather than three call sites, and that is the point rather than tidiness: a guard added
@@ -55,7 +61,8 @@ def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[in
     `test_a_corrupt_model_is_a_structured_error_from_every_door`.
     """
     try:
-        return PersistedEngineOutput.model_validate_json(path.read_text(encoding="utf-8"))
+        return PersistedEngineOutput.model_validate_json(
+            path.read_text(encoding="utf-8"), context={"perimeter": perimeter})
     except (ValidationError, ValueError, OSError) as e:
         details: dict = {"path": str(path)}
         if slug is not None:
@@ -150,6 +157,13 @@ class SessionMeta(BaseModel):
     context_cards: Optional[list[str]] = None  # the card selection; None == all cards
     request_hash: str = ""               # "sha256:…" of the originating request
     schema_version: int = SCHEMA_VERSION
+    # The session's perimeter (#608), frozen at create_session -- half of identity alongside the
+    # request and the card selection (invariant 11). `None` is a pre-perimeter session and reads as
+    # the software perimeter (`resolve_perimeter`), never a guess: there was only ever one. Unlike
+    # every other field here, an unrecognised *non-None* value is refused by name in `migrate_session`
+    # rather than tolerated -- the deliberate inversion of invariant 8 #608 asks for: a perimeter is
+    # interpreted, not carried through.
+    perimeter: Optional[str] = None
     # (A session-level `prompt_versions` map lived here and was never written. Prompt identity belongs
     # to the revision that was reasoned with it, not to the session — see RevisionRecord.prompt_version.
     # It is listed in _RETIRED_KEYS so `extra="allow"` doesn't carry the dead key forever.)
@@ -199,5 +213,12 @@ def migrate_session(data: dict) -> SessionMeta:
             f"(v{SCHEMA_VERSION}) — upgrade requivo.",
             details={"schema_version": sv, "supported_schema_version": SCHEMA_VERSION},
         )
+    # The perimeter is the one field on this file the permissive-reader rule above is deliberately
+    # inverted for (#608): every other unknown vocabulary this function tolerates (a key, an artifact
+    # type) is carried through unread, because carrying it costs nothing. A perimeter is *interpreted*
+    # -- it selects the schema every later read validates against -- so an unrecognised one is refused
+    # here, by name, before a `SessionMeta` is even built. `None` (absent) is not a name -- it is a
+    # pre-perimeter session, and it resolves to the software default, never a guess.
+    resolve_perimeter(data.get("perimeter"))
     return SessionMeta.model_validate({k: v for k, v in data.items() if k not in _RETIRED_KEYS})
 

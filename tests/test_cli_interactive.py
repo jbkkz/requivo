@@ -80,7 +80,8 @@ class StubProvider:
         self.analyze_calls: list[dict] = []
         self.generate_calls: list[dict] = []
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False):
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
+                perimeter=None):
         self.analyze_calls.append({
             "request": request, "current_model": current_model, "answers": answers,
             "only": only, "reuse_system": reuse_system,
@@ -97,7 +98,7 @@ class StubProvider:
     def model_name(self) -> str:
         return "stub-model"
 
-    def provenance(self, op, *, only=None) -> dict:
+    def provenance(self, op, *, only=None, perimeter=None) -> dict:
         return {"provider": self.name, "model_name": self.model_name(), "prompt_version": "sha256:0"}
 
 
@@ -476,6 +477,36 @@ def test_a_failed_assessment_leaves_the_discovery_saved_and_names_the_retry(monk
         "the failure did not name the one command that finishes the run without re-paying for "
         f"discovery; it said: {err!r}"
     )
+
+
+def test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_traceback(monkeypatch, capsys):
+    """[P2, review] A perimeter with no "brief" generator (go-to-market, #609's own scope) used to
+    call `disco.generate(slug, "brief")` unconditionally once the interactive loop converged --
+    `_require_owned_artifact_type` raises a bare `ValueError` there, uncaught by the
+    `RequivoError`/`KeyboardInterrupt` handler, *after* `finalize_discovery` had already saved the
+    session. Drives a real go-to-market discovery to convergence and checks it exits cleanly rather
+    than surfacing that traceback over an already-saved session."""
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+
+    _at_a_terminal(monkeypatch)
+    _, required = schema_slot_ids(GO_TO_MARKET)
+    reply = json.dumps({
+        "model": {sid: {"completeness": 90, "confidence": "explicit", "impact": "high",
+                        "value": "x", "evidence": "y"} for sid in required},
+        "questions": [], "summary": {"objective": "grow the funnel"},
+    })
+    fake = FakeClient(_JUDGMENT_REPLY, reply)
+
+    out = _run_app(["discover", _REQUEST, "--perimeter", GO_TO_MARKET], client=fake)
+
+    sessions = SessionService().list_sessions()
+    assert [m.current_revision for m in sessions] == [1], "the discovery was not saved"
+    assert "brief" not in out.lower(), "a brief-generation attempt was made for a perimeter with none"
+    # The rendering half of the same review finding: `converse()`'s checkpoint used to render every
+    # turn against the software default, so a fully-explicit go-to-market model showed software
+    # slots as blockers and go-to-market ids unlabelled instead of "Capacity" etc.
+    assert "Capacity" in out and "business_rules" not in out
 
 
 def test_a_failed_draft_turn_persists_the_turns_that_succeeded(monkeypatch, capsys):

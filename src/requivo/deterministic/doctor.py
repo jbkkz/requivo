@@ -66,6 +66,19 @@ def doctor_report() -> dict:
         cards_err = str(e)
     cards_status = "unreadable" if cards_err else ("ok" if cards else "empty")
 
+    # Perimeters (#608): which decision-structure vocabularies this install has, reported the same
+    # shape as context cards -- ids plus a verdict -- so an install-level check already knows what
+    # `session verify` and the loader itself would separately refuse a session for naming and not
+    # having. `empty` should never happen (software ships with the package), so it is distinguished
+    # from `ok` anyway rather than assumed impossible -- the same reasoning `cards_status` gives.
+    perimeters, perimeters_err = [], None
+    try:
+        from requivo.core.perimeters import known_perimeter_ids
+        perimeters = list(known_perimeter_ids())
+    except Exception as e:  # noqa: BLE001 - doctor reports any failure rather than raising
+        perimeters_err = str(e)
+    perimeters_status = "unreadable" if perimeters_err else ("ok" if perimeters else "empty")
+
     # Provider (optional).
     provider_installed, provider_version = False, None
     try:
@@ -130,6 +143,8 @@ def doctor_report() -> dict:
         "context_cards": cards,
         "context": {"ok": cards_status == "ok", "status": cards_status, "count": len(cards),
                     "error": cards_err, "roots": [str(CONTEXT), str(user_context_dir())]},
+        "perimeters": {"ok": perimeters_status == "ok", "status": perimeters_status,
+                       "installed": perimeters, "error": perimeters_err},
         "provider_anthropic": {
             "installed": provider_installed,
             "version": provider_version,
@@ -321,12 +336,16 @@ def _lock_health() -> dict:
 
 def _cmd_schema(a, client) -> None:
     """Print the slot schema (and optionally the human framework spec) so a reasoning caller — Claude
-    Code, above all — has the exact slot vocabulary + driver rule to produce a valid proposal offline."""
-    from requivo.paths import FRAMEWORK
-    print((FRAMEWORK / "model_schema.json").read_text(encoding="utf-8"))
+    Code, above all — has the exact slot vocabulary + driver rule to produce a valid proposal offline.
+
+    `--perimeter` (#608) selects which installed perimeter's schema to print, defaulting to the
+    software perimeter -- the only one before #608 and the one every pre-existing caller still gets."""
+    from requivo.core.perimeters import get_perimeter
+    perimeter = get_perimeter(getattr(a, "perimeter", None) or "software")
+    print(perimeter.schema_path.read_text(encoding="utf-8"))
     if a.framework:
-        print("\n\n<!-- framework/elicitation.md (human spec) -->\n")
-        print((FRAMEWORK / "elicitation.md").read_text(encoding="utf-8"))
+        print(f"\n\n<!-- {perimeter.id} perimeter's elicitation.md (human spec) -->\n")
+        print(perimeter.elicitation_path.read_text(encoding="utf-8"))
 
 
 def _cmd_context(a, client) -> None:
@@ -407,6 +426,13 @@ def _cmd_doctor(a, client) -> None:
               "incomplete.")
     else:
         print(f"  {ok} context cards   {c['count']} available")
+    pr = r["perimeters"]
+    if pr["status"] == "unreadable":
+        print(f"  ❌ perimeters      unreadable — {display_token(pr['error'])}")
+    elif pr["status"] == "empty":
+        print("  ❌ perimeters      0 installed — this install is incomplete")
+    else:
+        print(f"  {ok} perimeters      {', '.join(pr['installed'])}")
     p = r["provider_anthropic"]
     prov = f"installed (v{p['version']})" if p["installed"] else "not installed"
     # #365: a `credential_problem` means a profile IS configured and the SDK could not load it --
@@ -689,6 +715,8 @@ def register_doctor(sub) -> None:
     # schema / context — read-only knowledge for a reasoning caller (Claude Code)
     sc = sub.add_parser("schema", help="print the slot schema (the model vocabulary + driver rule)")
     sc.add_argument("--framework", action="store_true", help="also print the human framework spec")
+    sc.add_argument("--perimeter", default="software",
+                    help="which installed perimeter's schema to print (default: software)")
     sc.set_defaults(func=_cmd_schema)
 
     cx = sub.add_parser("context", help="list or print the product context cards")

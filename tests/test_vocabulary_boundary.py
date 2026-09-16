@@ -12,7 +12,7 @@ that rename, and they are not interchangeable:
   spend. Leaving it alone is a legitimate outcome, so it is a **declared exception** here rather
   than a rename, and the reason has to live at the call site: the asset itself is fed to the model
   verbatim and cannot carry an explanatory comment without becoming part of the prompt.
-- `assets/framework/elicitation.md` is the human-readable spec of the framework. It is not
+- `assets/perimeters/software/elicitation.md` is the human-readable spec of the framework. It is not
   assembled by `build_prompt()`/`load_context()` -- the only reader in the tree is
   `deterministic/doctor.py`'s `--framework` branch of `_cmd_schema`, which prints it for a human or
   a Claude Code agent reading `requivo schema --framework` directly, outside the API path the
@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS = REPO_ROOT / "src" / "requivo" / "assets"
 GENERATORS = REPO_ROOT / "src" / "requivo" / "providers" / "anthropic" / "generators.py"
-ELICITATION = ASSETS / "framework" / "elicitation.md"
+ELICITATION = ASSETS / "perimeters" / "software" / "elicitation.md"
 BRIEF_PROMPT = ASSETS / "prompts" / "brief.md"
 
 _OLD_PHRASE = re.compile(r"solution assessment", re.IGNORECASE)

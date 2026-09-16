@@ -11,11 +11,13 @@ from requivo.core.contracts import (
     schema_slot_ids,
     schema_slots,
 )
+from requivo.core.perimeters import DEFAULT_PERIMETER
 
 
-@functools.lru_cache(maxsize=1)
-def slot_meta() -> tuple[dict, dict]:
-    """`(pillars, labels)`, both keyed by slot id, projected from the framework schema and cached.
+@functools.cache
+def slot_meta(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict, dict]:
+    """`(pillars, labels)`, both keyed by slot id, projected from `perimeter`'s schema and cached
+    per perimeter (#608).
 
     Public since #302: four modules outside this one already imported it under its underscore name,
     so the privacy marker was false everywhere it mattered. Reads `schema_slots()` rather than parsing
@@ -23,31 +25,31 @@ def slot_meta() -> tuple[dict, dict]:
     same `model_schema.json`; `test_the_four_slot_projections_all_read_from_one_schema_parse` is the
     guard.
     """
-    slots = schema_slots()
+    slots = schema_slots(perimeter)
     return ({s["id"]: s["pillar"] for s in slots}, {s["id"]: s["label"] for s in slots})
 
 
-@functools.lru_cache(maxsize=1)
-def _default_impacts() -> dict[str, Impact]:
+@functools.cache
+def _default_impacts(perimeter: str = DEFAULT_PERIMETER) -> dict[str, Impact]:
     """Each slot's baseline impact from the schema — used to judge a slot the model omitted entirely
     (where there's no live impact to read)."""
-    return {s["id"]: Impact(s["impact_default"]) for s in schema_slots()}
+    return {s["id"]: Impact(s["impact_default"]) for s in schema_slots(perimeter)}
 
 
-def slot_label(slot_id: str) -> str:
+def slot_label(slot_id: str, perimeter: str = DEFAULT_PERIMETER) -> str:
     """The human label for one slot id. Public since #302, for the same reason `slot_meta` is: four
     modules outside this one already called it under its underscore name."""
-    return slot_meta()[1].get(slot_id, slot_id)
+    return slot_meta(perimeter)[1].get(slot_id, slot_id)
 
 
-def slot_labels(slot_ids: list[str]) -> list[str]:
+def slot_labels(slot_ids: list[str], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """Human labels for slot ids, in the order given — the list-form convenience over `slot_label`.
 
     Every surface that reports a change reports it in slot ids (`UpdateResult.changed_slots`), and
     every surface that shows it to a reader has to translate. Doing that translation here rather than
     in each interface is what keeps a slot id out of the Web's prose: the schema's `label` is the one
     the engine's own Voice rule already writes in."""
-    return [slot_label(sid) for sid in slot_ids]
+    return [slot_label(sid, perimeter) for sid in slot_ids]
 
 
 def soft_slots(out: EngineOutput) -> list[str]:
@@ -71,7 +73,7 @@ def estimate_confidence(n_soft: int) -> str:
     return "low"
 
 
-def readiness_blockers(out: EngineOutput) -> list[str]:
+def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """High-impact slots not yet confirmed AND covered — what stands between here and build.
 
     Public since #302, for the same reason `slot_meta` is: `render/terminal.py` and
@@ -86,11 +88,11 @@ def readiness_blockers(out: EngineOutput) -> list[str]:
     (completeness at/above the soft boundary). An `explicit` slot at completeness 5 is a stated-but-
     thin answer, not a resolved dimension — it still blocks. This keeps provenance and coverage from
     collapsing into one signal, so a high-impact topic can't read as 'confirmed' on a one-word reply."""
-    _, required = schema_slot_ids()
+    _, required = schema_slot_ids(perimeter)
     blockers = []
     for sid in required:
         s = out.model.get(sid)
-        impact = s.impact if s is not None else _default_impacts().get(sid, Impact.low)
+        impact = s.impact if s is not None else _default_impacts(perimeter).get(sid, Impact.low)
         confirmed = (
             s is not None
             and s.confidence is Confidence.explicit
@@ -103,7 +105,7 @@ def readiness_blockers(out: EngineOutput) -> list[str]:
         deferred_to_test = s is not None and s.confidence is Confidence.testable
         if impact is Impact.high and not confirmed and not deferred_to_test:
             blockers.append(sid)
-    return [sid for sid in slot_meta()[1] if sid in set(blockers)]  # schema order
+    return [sid for sid in slot_meta(perimeter)[1] if sid in set(blockers)]  # schema order
 
 
 def state_of(s: Slot) -> str:
@@ -123,36 +125,36 @@ def state_of(s: Slot) -> str:
     return "unknown"
 
 
-def model_status(out: EngineOutput) -> dict:
+def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """The model-derived half of a status snapshot — readiness, understanding, priority questions,
     summary, and remaining gaps — as one computed projection. Both `status --json` (a raw model or a
     session) and `SessionService.status` (a session) build on this, so the presentation logic lives in
     exactly one place; the session-only fields (revision, artifacts, context cards) are layered on by
     each caller. Everything here needs only the model, so it works for a bare model.json too."""
-    blockers = readiness_blockers(out)
-    gaps = [{"slot": s, "label": slot_label(s)} for s in blockers]
+    blockers = readiness_blockers(out, perimeter)
+    gaps = [{"slot": s, "label": slot_label(s, perimeter)} for s in blockers]
     return {
         "readiness": {"ready": not blockers, "blocking_slots": gaps},
-        "understanding": understanding_view(out),
-        "questions": [{"q": q.q, "slot": q.slot, "label": slot_label(q.slot), "why": q.why}
+        "understanding": understanding_view(out, perimeter),
+        "questions": [{"q": q.q, "slot": q.slot, "label": slot_label(q.slot, perimeter), "why": q.why}
                       for q in out.questions],
         "summary": out.summary.model_dump(),
         "remaining_gaps": gaps,
     }
 
 
-def understanding_view(out: EngineOutput) -> dict[str, list[dict]]:
+def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, list[dict]]:
     """The per-slot understanding grouped by state (confirmed / inferred / unknown), each entry carrying
     its pillar, label, completeness and impact. This is the machine form of the `render_turn` checklist:
     the JSON status and the Web read the same computed view rather than rebuilding the
     presentation logic. `thin` marks a confirmed-but-below-coverage slot — the exact case readiness now
     still blocks on, surfaced so a client can render 'stated but partial' without re-deriving it."""
-    pillars, _labels = slot_meta()
+    pillars, _labels = slot_meta(perimeter)
     groups: dict[str, list[dict]] = {"confirmed": [], "inferred": [], "to_test": [], "unknown": []}
     for sid, s in out.model.items():
         groups[state_of(s)].append({
             "slot": sid,
-            "label": slot_label(sid),
+            "label": slot_label(sid, perimeter),
             "pillar": pillars.get(sid),
             "completeness": s.completeness,
             "impact": s.impact.value,

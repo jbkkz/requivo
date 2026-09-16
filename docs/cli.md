@@ -67,7 +67,7 @@ as the automation contract underneath it (`decision: three-journey-verbs`).
 | Command | Does |
 |---|---|
 | `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery — both **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
-| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards) |
+| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure — default `software`, frozen at creation) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status [slug]` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
 | `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map), then the decisions derived from thinner evidence than the session now holds. Omit the slug to resolve the workspace's default session (#541). No network |
@@ -209,7 +209,7 @@ the n8n contract in [integrations.md](integrations.md).
 |---|---|
 | `requivo demo` | Replay a bundled run — no key, no network |
 | `requivo doctor [--json]` | Environment + install check (see [What `doctor` answers](#what-doctor-answers)) |
-| `requivo schema [--framework]` | Print the slot schema (the model vocabulary + driver rule); `--framework` also prints the human framework spec |
+| `requivo schema [--framework] [--perimeter ID]` | Print the slot schema (the model vocabulary + driver rule); `--framework` also prints the human elicitation spec; `--perimeter` selects which installed perimeter (default `software`) |
 | `requivo context [--list] [--context/--cards CARDS] [--session SLUG]` | Inspect available context cards. `--list` prints the stems only; `--session <slug>` scopes to exactly the cards that session uses |
 
 The deterministic verbs and `--json` outputs are what the Claude Code plugin drives — Claude reasons,

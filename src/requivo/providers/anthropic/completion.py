@@ -258,7 +258,7 @@ def _transport_message(e: Exception) -> str:
 
 def _complete(client, system: str | SystemPrompt, messages: list[dict], out_model, retries: int = 2,
               validate=None, *, reuse_system: bool = True, model: str | None = None,
-              operation: str | None = None):
+              operation: str | None = None, context: dict | None = None):
     """One call → validated `out_model`. Retries with a nudge on malformed/non-conformant JSON.
     The nudge lives in a local copy so the caller's clean history is never polluted.
 
@@ -281,6 +281,10 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     remainder only, the shared block being cached regardless. It defaults to True because that is
     the safe answer to an unknown: mistakenly caching costs 25% once, mistakenly not caching costs
     the full price of every repeat. Only a caller that *knows* it makes one call should say False.
+
+    `context` (#608) is forwarded to `out_model.model_validate` as pydantic validation context --
+    `{"perimeter": ...}` for `analyze`, so `ModelProposal`'s slot-vocabulary check validates against
+    the right schema. `None` (the default) is what every non-discovery generator still passes.
 
     `model` is the id to call and to bill against — threaded down from `AnthropicProvider(model=...)`,
     or `None` to fall back to `current_model_name()`'s env-chain resolution exactly as before.
@@ -353,7 +357,7 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
         raw = _response_text(resp)
         truncated = getattr(resp, "stop_reason", None) == "max_tokens"
         try:
-            result = out_model.model_validate(_extract_json(raw))
+            result = out_model.model_validate(_extract_json(raw), context=context)
             if validate is not None:
                 validate(result)
             rec.latency_ms = int((time.perf_counter() - started) * 1000)

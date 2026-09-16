@@ -168,7 +168,7 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
         _Case("doctor --json", ("doctor", "--json"), {
             "requivo_version": "str", "python_version": "str", "os": "str", "model": "dict",
             "assets": "dict", "output": "dict", "schema": "dict", "context_cards": "list",
-            "context": "dict", "provider_anthropic": "dict", "workspace": "dict",
+            "context": "dict", "perimeters": "dict", "provider_anthropic": "dict", "workspace": "dict",
             "sessions": "dict", "locks": "dict"}),
     ),
     "session init": (
@@ -226,7 +226,7 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
         _Case("status <slug> --json", ("status", "s", "--json"), {
             "slug": "str", "readiness": "dict", "understanding": "dict", "questions": "list",
             "summary": "dict", "remaining_gaps": "list", "revision": "int",
-            "context_cards": "list|null", "artifacts": "dict"}),
+            "context_cards": "list|null", "artifacts": "dict", "perimeter": "str"}),
         _Case("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), {
             "slug": "str", "readiness": "dict", "understanding": "dict", "questions": "list",
             "summary": "dict", "remaining_gaps": "list"}),
@@ -237,7 +237,7 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
             "created_at": "str", "updated_at": "str", "provider": "str|null",
             "model_name": "str|null", "context_cards": "list|null", "request_hash": "str",
             "schema_version": "int", "current_revision": "int", "revisions": "list",
-            "artifact_status": "dict"}),
+            "artifact_status": "dict", "perimeter": "str|null"}),
     ),
     "session verify": (
         # `notes` is additive, from #260: an artifact type this build has no generator for is

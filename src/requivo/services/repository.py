@@ -62,8 +62,11 @@ class SessionRepository(Protocol):
         ...
 
     def create(self, slug: str, request: str, *, provider: Optional[str] = None,
-               model_name: Optional[str] = None, context_cards: Optional[list[str]] = None) -> SessionMeta:
-        """Create a fresh session (no model yet, revision 0) and return its metadata."""
+               model_name: Optional[str] = None, context_cards: Optional[list[str]] = None,
+               perimeter: Optional[str] = None) -> SessionMeta:
+        """Create a fresh session (no model yet, revision 0) and return its metadata. `perimeter`
+        (#608) is frozen here, alongside the request and the card selection -- `None` leaves it
+        unrecorded, which every reader resolves to the software perimeter."""
         ...
 
     def delete(self, slug: str) -> None:
@@ -229,9 +232,11 @@ class FileSessionRepository:
             raise self._missing(slug)
 
     def create(self, slug: str, request: str, *, provider: Optional[str] = None,
-               model_name: Optional[str] = None, context_cards: Optional[list[str]] = None) -> SessionMeta:
+               model_name: Optional[str] = None, context_cards: Optional[list[str]] = None,
+               perimeter: Optional[str] = None) -> SessionMeta:
         return self._resolve_store().create_session(slug, request, provider=provider,
-                                                     model_name=model_name, context_cards=context_cards)
+                                                     model_name=model_name, context_cards=context_cards,
+                                                     perimeter=perimeter)
 
     def delete(self, slug: str) -> None:
         self._resolve_store().delete_session(slug)

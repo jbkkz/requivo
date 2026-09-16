@@ -15,6 +15,7 @@ from requivo.core.contracts import (
     Stories,
 )
 from requivo.core.dependencies import ARTIFACT_FILENAMES
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.selectors import display_text, display_token
 from requivo.usage import CallRecord, UsageLedger
@@ -69,28 +70,28 @@ def _labeled(label: str, text: str, lw: int = 9, width: int = 80, indent: str = 
                          subsequent_indent=" " * len(prefix))
 
 
-def render_understanding(out: EngineOutput) -> None:
+def render_understanding(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     print("UNDERSTANDING")
     for state, label in STATE_ROWS:
-        names = [slot_label(sid) for sid, s in out.model.items() if state_of(s) == state]
+        names = [slot_label(sid, perimeter) for sid, s in out.model.items() if state_of(s) == state]
         if names:
             print(textwrap.fill(" · ".join(names), width=80, initial_indent=f"  {label}   ", subsequent_indent=" " * 15))
 
 
-def render_readiness(out: EngineOutput) -> None:
+def render_readiness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     # One question, in the vocabulary every other surface reads ("are we ready?"), answered with the
     # one boolean the Core publishes. The length of the blocker list is not a readiness signal — the
     # list itself is the answer, printed below — so branching on it invents a state the model
     # contract, the Web and the plugin all forbid (#165). Pinned across surfaces by
     # `test_readiness_renders_as_one_boolean_on_every_surface`.
     print("ARE WE READY?")
-    blockers = [slot_label(b) for b in readiness_blockers(out)]
+    blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
     status = "Not ready" if blockers else "Ready"
     print(f"  {'Status':<20} {status}")
     if blockers:
         print(_labeled("Blocking decision", "Confirm " + ", ".join(b.lower() for b in blockers), lw=20))
     gaps = [
-        slot_label(sid)
+        slot_label(sid, perimeter)
         for sid, s in out.model.items()
         if s.impact is not Impact.high and s.confidence is not Confidence.explicit
     ]
@@ -98,32 +99,36 @@ def render_readiness(out: EngineOutput) -> None:
         print(_labeled("Remaining gaps", ", ".join(gaps), lw=20))
 
 
-def render_turn_state(out: EngineOutput) -> None:
+def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     """What is understood and whether it is enough — a turn's checkpoint, without the questions.
 
     The interactive loops render this and then ask one question at a time at the prompt, so a turn
     boundary and a checkpoint are the same event and the cadence needs no renderer of its own. A
     batch printed up front is what made a turn read as a form (#592). Pinned by
-    `test_the_interactive_loop_asks_one_question_per_prompt`."""
+    `test_the_interactive_loop_asks_one_question_per_prompt`.
+
+    `perimeter` (#608) is the session's own -- a go-to-market model rendered against the software
+    default (the pre-#608 behaviour) shows software slots as blockers and raw ids for its own
+    labels, which is exactly the bug this parameter closes."""
     print()
-    render_understanding(out)
-    blockers = [slot_label(b) for b in readiness_blockers(out)]
+    render_understanding(out, perimeter)
+    blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
     # Same rule as `render_readiness`, and the count is gone from the verdict for the same reason: it
     # is what the deleted "nearly" arm branched on, and the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
 
 
-def render_turn(out: EngineOutput) -> None:
+def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     """The checkpoint plus the questions, for the verbs with nobody at a prompt to be asked them one
     at a time — `discover`, `answer`, `status`, `demo`. The interactive loops render the checkpoint
     alone and ask through `_prompt_answers` instead (#592)."""
-    render_turn_state(out)
+    render_turn_state(out, perimeter)
     if out.questions:
         print("\nPRIORITY QUESTIONS")
         for i, q in enumerate(out.questions, 1):
             print(f"  {i}. {display_text(q.q)}")
-            print(f"     → {slot_label(q.slot)}")   # a schema-validated slot id, not free text
+            print(f"     → {slot_label(q.slot, perimeter)}")   # a schema-validated slot id, not free text
 
 
 def render_context_judgment(grounding) -> None:
@@ -264,7 +269,11 @@ def next_command(payload: dict) -> str | None:
         if status.get("stale"):
             return (f"requivo {artifact_type} {slug}   (regenerates {status['filename']}; "
                     f"requivo impact {slug} shows what else moved)")
-    if "brief" not in artifacts:
+    # (found in review, same root as the P1/P2 findings above): a perimeter that owns no "brief"
+    # generator (go-to-market, #609's own scope) never has one in `artifacts` either, so this used
+    # to suggest a command that fails outright -- gated on ownership, not only on absence.
+    perimeter = payload.get("perimeter") or DEFAULT_PERIMETER
+    if "brief" not in artifacts and "brief" in get_perimeter(perimeter).artifact_types:
         return f"requivo brief {slug}"
     return None
 
@@ -645,20 +654,21 @@ def render_evidence(report) -> None:
             print(f"    ↳ {display_text(u.reason)}")
 
 
-def render_dependency_map(out: EngineOutput) -> None:
+def render_dependency_map(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     """No-args overview: for every slot that can still move, what it would invalidate.
 
     The decision and challenge text is the model's own, so it goes through `display_text` (#213);
-    the slot labels and artifact names either side of it are this repo's tables."""
+    the slot labels and artifact names either side of it are this repo's tables. `perimeter` (#608)
+    is the session's own -- both the labels and the artifact set `propagate` narrows to come from it."""
     from requivo.core.dependencies import propagate
     print("\n" + "═" * 64)
     print("DEPENDENCY MAP — change a slot, see the blast radius")
     print("═" * 64)
     for sid in out.model:
-        rep = propagate(out, [sid])
+        rep = propagate(out, [sid], perimeter)
         if rep.empty:
             continue
-        print(f"\n{slot_label(sid)}")
+        print(f"\n{slot_label(sid, perimeter)}")
         if rep.decisions:
             print(f"  decisions: {'; '.join(display_text(d.decision) for d in rep.decisions)}")
         if rep.challenges:
