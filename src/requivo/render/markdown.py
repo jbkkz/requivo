@@ -11,7 +11,7 @@ from requivo.core.contracts import (
     EnvelopeOrigin,
     Epic,
     EstimateDraft,
-    GoToMarketBrief,
+    GoToMarketPlan,
     ReleaseNotes,
     ScenarioKind,
     Stories,
@@ -50,7 +50,7 @@ def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_
     because it is read off the model rather than written by the provider. The Voice rule holds: the
     label is the human one and the numbers behind it never appear.
 
-    `perimeter` (#609) is what keeps this projecting the *right* schema's labels — `gtm_brief_markdown`
+    `perimeter` (#609) is what keeps this projecting the *right* schema's labels — `gtm_plan_markdown`
     passes `GO_TO_MARKET`; every pre-#609 caller (`brief_markdown`) is unchanged by the default."""
     order = slot_meta(perimeter)[1]
     return [f"- **{slot_label(sid, perimeter)}** — {out.model[sid].value.strip()}"
@@ -199,7 +199,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     return "\n".join(md).rstrip() + "\n"
 
 
-def gtm_brief_markdown(out: EngineOutput, brief: GoToMarketBrief) -> str:
+def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     """Render the go-to-market perimeter's one artifact (#609) — its equivalent of `brief_markdown`,
     over its own twelve slots. Follows the identical split: what is confirmed, what is assumed, the
     resource envelope, the excluded options and the decision thresholds are read straight off the
@@ -266,7 +266,7 @@ def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PE
     own provenance. A slot-sourced element shows the slot's human label (Voice rule — never the raw
     id, same split `_stated()` draws); an assumed one says so plainly, never as a confidence label.
     `perimeter` (#609) is threaded the same way `_stated()`'s is — `prd_markdown` (software) is
-    unchanged by the default, `gtm_brief_markdown` passes `GO_TO_MARKET`."""
+    unchanged by the default, `gtm_plan_markdown` passes `GO_TO_MARKET`."""
     lines = []
     for e in elements:
         # The enum decides, never the field's presence; the contract pins the two together (#603).

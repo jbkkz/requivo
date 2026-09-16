@@ -48,7 +48,7 @@ from requivo.paths import DEMO
 # directions — an unexpected import fails, and so does an entry here that nothing imports.
 from requivo.providers.anthropic import new_client
 from requivo.providers.errors import EngineError
-from requivo.render.markdown import criteria_markdown, epic_markdown, gtm_brief_markdown, prd_markdown, release_markdown
+from requivo.render.markdown import criteria_markdown, epic_markdown, gtm_plan_markdown, prd_markdown, release_markdown
 from requivo.render.terminal import (
     DOC_TYPES,
     docs_menu_rows,
@@ -576,7 +576,7 @@ def _cmd_answer(a, client) -> None:
              (result.invalidated_exclusions, "exclusion(s)"),
              (result.invalidated_thresholds, "threshold(s)")]
     n_reasoning = sum(len(items) for items, _ in parts)
-    reasoning_type = next((t for t in ("brief", "gtm_brief") if t in get_perimeter(perimeter).artifact_types), None)
+    reasoning_type = next((t for t in ("brief", "gtm_plan") if t in get_perimeter(perimeter).artifact_types), None)
     if n_reasoning and reasoning_type:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
         print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}`.")
@@ -951,8 +951,8 @@ def _render_brief(slug: str, result) -> None:
     render_brief(result.model, result.artifact)
 
 
-def _render_gtm_brief(slug: str, result) -> None:  # plain-document pattern, like every non-`brief` generator below
-    print(display_document(gtm_brief_markdown(result.model, result.artifact)))
+def _render_gtm_plan(slug: str, result) -> None:  # plain-document pattern, like every non-`brief` generator below
+    print(display_document(gtm_plan_markdown(result.model, result.artifact)))
 
 
 def _render_prd(slug: str, result) -> None:
@@ -990,14 +990,14 @@ def _render_release(slug: str, result) -> None:
 # the file went; `estimate` also writes the stories file it saved alongside itself, the same order
 # the seven bodies this replaces used.
 _RENDER: dict[str, Callable[[str, object], None]] = {
-    "brief": _render_brief, "gtm_brief": _render_gtm_brief, "prd": _render_prd, "stories": _render_stories, "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic, "release": _render_release,
+    "brief": _render_brief, "gtm_plan": _render_gtm_plan, "prd": _render_prd, "stories": _render_stories, "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic, "release": _render_release,
 }
 
 # type → the label `_wrote` prints. "Decision brief" is the caption a reader sees everywhere; the
 # type, the verb and the file on disk stay `brief`/`solution-assessment.md` (#166) -- only the label
 # lookup moved here.
 _LABEL: dict[str, str] = {
-    "brief": "decision brief", "gtm_brief": "go-to-market plan", "prd": "PRD", "stories": "user stories", "estimate": "estimate", "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
+    "brief": "decision brief", "gtm_plan": "go-to-market plan", "prd": "PRD", "stories": "user stories", "estimate": "estimate", "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
 }
 
 
@@ -1268,7 +1268,7 @@ EPILOG = (
 # `test_every_registered_verb_appears_in_exactly_one_help_group`.
 _HELP_GROUP_START = ("demo", "run", "docs", "status", "web")
 _HELP_GROUP_SCRIPTS = (
-    "discover", "answer", "brief", "gtm_brief", "prd", "stories", "estimate", "criteria", "epic", "release", "impact",
+    "discover", "answer", "brief", "gtm_plan", "prd", "stories", "estimate", "criteria", "epic", "release", "impact",
 )
 _HELP_GROUP_PLUMBING = ("doctor", "schema", "context", "session", "model", "artifact", "api")
 
@@ -1456,7 +1456,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
               accepts_path=True, session_required=False)
     model_cmd("brief", "generate the decision brief — what to review before estimating (API)",
               _generator_verb("brief"))
-    model_cmd("gtm_brief", "generate go-to-market's one artifact (API)", _generator_verb("gtm_brief"))
+    model_cmd("gtm_plan", "generate go-to-market's one artifact (API)", _generator_verb("gtm_plan"))
     model_cmd("prd", "generate the PRD (API)", _generator_verb("prd"))
     model_cmd("stories", "derive user stories (API)", _generator_verb("stories"))
     model_cmd("estimate", "derive stories and estimate them, in day ranges (API)",

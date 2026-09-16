@@ -46,12 +46,13 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
-    GoToMarketBrief,
+    GoToMarketPlan,
     ReleaseNotes,
     Stories,
 )
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
+    ArtifactTypeNotOwnedError,
     ArtifactWriteFailedError,
     InvalidSlugError,
     RevisionConflictError,
@@ -75,7 +76,7 @@ from requivo.render.markdown import (
     criteria_markdown,
     epic_markdown,
     estimate_markdown,
-    gtm_brief_markdown,
+    gtm_plan_markdown,
     prd_markdown,
     release_markdown,
     stories_markdown,
@@ -122,9 +123,9 @@ _WRITERS: dict[str, Callable[[Any], str]] = {
 # Everything `generate()` can produce, in the order a user meets them. This is the source every
 # interface asks — the CLI's verbs, the Web's buttons — so a new generator becomes available
 # everywhere by being registered here, rather than by each surface keeping its own list and drifting.
-# `gtm_brief` (#609) is not in `_WRITERS`: it takes the same reasoning-absorbing path `brief` does
+# `gtm_plan` (#609) is not in `_WRITERS`: it takes the same reasoning-absorbing path `brief` does
 # (see `_ASSESSMENT_ARTIFACTS` below), never the generic model→writer dispatch `_WRITERS` serves.
-GENERATABLE: tuple[str, ...] = ("brief", "gtm_brief", *_WRITERS)
+GENERATABLE: tuple[str, ...] = ("brief", "gtm_plan", *_WRITERS)
 
 _A = TypeVar("_A")
 
@@ -215,17 +216,23 @@ def _require_no_conflict_yet(slug: str, expected_revision: int | None, snap: Ses
 def _require_owned_artifact_type(perimeter: str, artifact_type: str) -> None:
     """A generation call must name an artifact type its own perimeter actually produces (#608).
 
-    Software's seven types are refused on a go-to-market session and `gtm_brief` (#609) is refused
+    Software's seven types are refused on a go-to-market session and `gtm_plan` (#609) is refused
     on a software one -- every `generate()` or `reason()` call refuses here, with the perimeter
     named, rather than validating the reply against the wrong schema and surfacing a confusing
-    Pydantic error two layers down. Mirrors the existing `ValueError` a caller gets for an artifact
-    type this build has no generator for at all -- one style of refusal for "not a real type" and
-    "not this perimeter's type"."""
+    Pydantic error two layers down.
+
+    Raises `ArtifactTypeNotOwnedError`, a structured `RequivoError` (409, `http.py`) -- not the bare
+    `ValueError` this used to be. A `ValueError` reaches no `RequivoError` handler: on the CLI it
+    tracebacks past `app()`'s `except RequivoError` arm (`requivo brief` on a go-to-market session);
+    on the Web it reaches the generic `Exception` handler and renders as an ordinary click's 500
+    (found by Codex reviewing #609: `GENERATABLE` with no perimeter filter offered every session
+    every type, so a stray click was the reachable path, not a hypothetical one)."""
     owned = get_perimeter(perimeter).artifact_types
     if artifact_type not in owned:
-        raise ValueError(
+        raise ArtifactTypeNotOwnedError(
             f"{artifact_type!r} is not produced by the {perimeter!r} perimeter this session runs "
-            f"under -- it can produce: {sorted(owned) or '(none yet)'}")
+            f"under -- it can produce: {sorted(owned) or '(none yet)'}",
+            details={"artifact_type": artifact_type, "perimeter": perimeter, "owned": sorted(owned)})
 
 
 def _require_a_model(slug: str, snap: SessionSnapshot) -> EngineOutput:
@@ -259,10 +266,10 @@ def absorb_reasoning(out: EngineOutput, brief) -> None:
     out.thresholds = brief.thresholds
 
 
-def absorb_gtm_reasoning(out: EngineOutput, brief: GoToMarketBrief) -> None:
+def absorb_gtm_reasoning(out: EngineOutput, brief: GoToMarketPlan) -> None:
     """Persist the go-to-market plan's reasoning into the model (#609) -- the same role
     `absorb_reasoning` plays for the software brief, narrowed to the two typed items
-    `GoToMarketBrief` carries: `exclusions` (#599) and `thresholds` (#604). It has no
+    `GoToMarketPlan` carries: `exclusions` (#599) and `thresholds` (#604). It has no
     decisions/challenges/opportunities of its own (see the contract's own docstring)."""
     out.exclusions = brief.exclusions
     out.thresholds = brief.thresholds
@@ -283,11 +290,11 @@ class _AssessmentArtifact:
 
 # Every artifact type that takes the reasoning-absorbing generation path, keyed the same way every
 # other registry in this module is (see CLAUDE.md's "Adding a generator" checklist). `brief` is
-# software's; `gtm_brief` is go-to-market's (#609) -- a second instance is what tells this
+# software's; `gtm_plan` is go-to-market's (#609) -- a second instance is what tells this
 # generalisation apart from an accident of "brief" being the first and only one.
 _ASSESSMENT_ARTIFACTS: dict[str, _AssessmentArtifact] = {
     "brief": _AssessmentArtifact(brief_markdown, absorb_reasoning, "brief", "decision brief"),
-    "gtm_brief": _AssessmentArtifact(gtm_brief_markdown, absorb_gtm_reasoning, "gtm_brief",
+    "gtm_plan": _AssessmentArtifact(gtm_plan_markdown, absorb_gtm_reasoning, "gtm_plan",
                                      "go-to-market plan"),
 }
 
@@ -877,8 +884,8 @@ class DiscoveryService:
     def generate(self, slug: str, artifact_type: Literal["brief"], *, surface: str = "generate",
                 **kwargs) -> Generated[Brief]: ...
     @overload
-    def generate(self, slug: str, artifact_type: Literal["gtm_brief"], *, surface: str = "generate",
-                **kwargs) -> Generated[GoToMarketBrief]: ...
+    def generate(self, slug: str, artifact_type: Literal["gtm_plan"], *, surface: str = "generate",
+                **kwargs) -> Generated[GoToMarketPlan]: ...
     @overload
     def generate(self, slug: str, artifact_type: Literal["prd"], *, surface: str = "generate",
                 **kwargs) -> Generated[PRD]: ...
@@ -906,7 +913,7 @@ class DiscoveryService:
         revision. Every interface goes through here, so a given artifact is produced, saved and tracked
         identically whether it was asked for from the terminal, the browser, or Claude Code.
 
-        `brief` and `gtm_brief` (#609) are the ones with an extra step, one per perimeter: each
+        `brief` and `gtm_plan` (#609) are the ones with an extra step, one per perimeter: each
         artifact's reasoning is absorbed back into the model as a revision (`_ASSESSMENT_ARTIFACTS`),
         so downstream artifacts inherit the decisions/exclusions/thresholds, not just the facts.
         `estimate` is the one with two calls — see `_generate_estimate`.

@@ -21,10 +21,10 @@ from requivo.providers.anthropic import generators
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, _STANDALONE_PROMPTS
 
 # The perimeter each operation's Output-format example is written against, and therefore the
-# validation context its slot-vocabulary checks (PRD's envelope, GoToMarketBrief's own) must run
+# validation context its slot-vocabulary checks (PRD's envelope, GoToMarketPlan's own) must run
 # under -- software for every op that predates #608/#609, and go-to-market for its one artifact. An
 # op absent here defaults to SOFTWARE, unchanged from before this map existed.
-_OP_PERIMETER: dict[str, str] = {"gtm_brief": GO_TO_MARKET}
+_OP_PERIMETER: dict[str, str] = {"gtm_plan": GO_TO_MARKET}
 
 
 def perimeter_for(op: str) -> str:

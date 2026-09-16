@@ -59,7 +59,7 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     # over the *whole* model -- capacity, budget, icp and channels all shape which actions survive
     # the compression -- so any slot that materially moves invalidates the saved copy. This is also
     # what makes `requivo impact <slug> capacity` reach it (#609 acceptance).
-    "gtm_brief": "*",
+    "gtm_plan": "*",
 }
 
 # type → filename under <session>/artifacts/, for everything that can be *persisted*. Core holds it
@@ -83,7 +83,7 @@ ARTIFACT_FILENAMES: dict[str, str] = {
     "criteria": "acceptance-criteria.md",
     "epic": "epic.md",
     "release": "release-notes.md",
-    "gtm_brief": "go-to-market-plan.md",  # #609
+    "gtm_plan": "go-to-market-plan.md",  # #609
 }
 
 # Artifacts that rest on the *reasoning* layer (decisions / challenges / opportunities), not only on

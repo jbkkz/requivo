@@ -177,6 +177,31 @@ def test_context_unreadable_reaches_the_browser_as_a_server_error(client, monkey
     assert "context_unreadable" in r.text
 
 
+def test_a_go_to_market_only_type_on_a_software_session_is_a_clean_refusal_not_a_500(
+        client, with_provider, monkeypatch):
+    """#609 (Codex, P2): `generatable_view()` used to return the full global `GENERATABLE` with no
+    perimeter filter, so a software session's page offered a "Go-to-market plan" button -- clicking
+    it reached `_require_owned_artifact_type`, which raised a bare `ValueError`. `ValueError` is not
+    a `RequivoError`, so it missed the handler above entirely and landed in the catch-all as an
+    ordinary click's 500. Both halves of the fix are exercised here: `generatable_view()` no longer
+    offers the type in the first place (the session page's own generate-buttons list, gated on
+    `provider.available` -- a real key is faked so that block actually renders), and, defence in
+    depth, the refusal itself is now a structured `ArtifactTypeNotOwnedError`
+    (409, `artifact_type_not_owned`) rather than the 500 a stray request would otherwise still hit."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
+    with_provider()
+    _make_session("leave-approval", problem=HIGH_EXPLICIT)  # software, the default perimeter
+
+    page = client.get("/sessions/leave-approval").text
+    assert "Generate decision brief" in page, "must-fire: the generate-buttons block did render"
+    assert "gtm_plan" not in page, "the button itself must not be offered on the wrong perimeter"
+
+    r = client.post("/sessions/leave-approval/artifacts/gtm_plan")
+    assert r.status_code == 409, f"a real click must not 500; got {r.status_code}"
+    assert "artifact_type_not_owned" in r.text
+    assert "internal_error" not in r.text, "the catch-all is what this stopped being"
+
+
 def test_a_taken_session_name_is_suffixed_rather_than_refused(client):
     """Why `session_exists` gets a status row but no end-to-end test, recorded where the next
     reader will look. Posting a name already taken by a different request does not raise

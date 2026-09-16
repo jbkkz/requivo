@@ -643,12 +643,12 @@ class EnvelopeElement(StrictModel):
         return self
 
 
-class GoToMarketBrief(StrictModel):
+class GoToMarketPlan(StrictModel):
     """The go-to-market perimeter's one artifact (#609) -- its equivalent of the decision brief, and
     only that (#607's cost rule: one artifact per new perimeter). Follows `Brief`'s own split of
     judgment vs projected fact: `plan`, `rationale`, `risks` and `open_decisions` are what the
     provider is asked to judge; `exclusions`, `thresholds` and `envelope` are typed reasoning items
-    the writer (`gtm_brief_markdown`) projects straight off the model they are absorbed into, never
+    the writer (`gtm_plan_markdown`) projects straight off the model they are absorbed into, never
     prose the provider invents -- the same split `_excluded()`/`_thresholds()` already draw for the
     software brief.
 
@@ -685,7 +685,7 @@ class GoToMarketBrief(StrictModel):
             | {sid for t in self.thresholds for sid in t.rests_on if sid not in allowed}
         )
         if bad:
-            raise ValueError(f"go-to-market brief references unknown slots (not in schema): {bad}")
+            raise ValueError(f"go-to-market plan references unknown slots (not in schema): {bad}")
         return self
 
 

@@ -294,7 +294,7 @@ DOC_TYPES: tuple[str, ...] = tuple(ARTIFACT_FILENAMES)
 
 DOC_BLURBS: dict[str, str] = {
     "brief": "The judgment call to review before estimating or committing to scope.",
-    "gtm_brief": "The go-to-market plan to review before committing capacity to it.",
+    "gtm_plan": "The go-to-market plan to review before committing capacity to it.",
     "prd": "The requirements document a dev team builds from.",
     "stories": "The backlog, broken into shippable user stories.",
     "estimate": "Day-range estimates per story, reasoned from the stories above.",

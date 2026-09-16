@@ -36,7 +36,7 @@ ARTIFACT_LABELS: dict[str, str] = {
     "criteria": "Acceptance criteria",
     "epic": "Delivery epic",
     "release": "Release notes",
-    "gtm_brief": "Go-to-market plan",  # #609 -- the go-to-market perimeter's one artifact
+    "gtm_plan": "Go-to-market plan",  # #609 -- the go-to-market perimeter's one artifact
 }
 
 # The one document the primary flow leads to. Everything else is available, under "More documents".

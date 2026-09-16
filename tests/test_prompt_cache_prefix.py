@@ -35,7 +35,7 @@ def _names() -> list[str]:
     return sorted(set(_OP_PROMPTS.values()))
 
 
-# ── The nine templates share one leading block (#609 added gtm_brief.md) ────
+# ── The nine templates share one leading block (#609 added gtm_plan.md) ────
 
 
 def test_every_template_opens_with_the_shared_head_and_places_the_placeholders_only_there():

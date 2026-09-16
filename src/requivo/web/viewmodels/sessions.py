@@ -8,6 +8,7 @@ what it shows *first*.
 from __future__ import annotations
 
 from requivo.core.errors import SessionNotFoundError
+from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.services.discovery import GENERATABLE
 from requivo.services.sessions import SessionService
 from requivo.web.example import is_example
@@ -34,11 +35,17 @@ def _title(request_text: str, slug: str) -> str:
     return text if len(text) <= TITLE_CHARS else text[:TITLE_CHARS].rstrip() + "…"
 
 
-def generatable_view() -> list[dict]:
-    """Every document the shared service can produce, taken from its vocabulary rather than a list
-    kept in the template — a generator registered once shows up on every surface. The primary one is
-    split out by the caller; this stays the complete set."""
-    return [{"type": t, "label": artifact_label(t)} for t in GENERATABLE]
+def generatable_view(perimeter: str = DEFAULT_PERIMETER) -> list[dict]:
+    """Every document the shared service can produce for a session running `perimeter`, taken from
+    its vocabulary rather than a list kept in the template -- a generator registered once shows up on
+    every surface *its own perimeter owns*, not on every session regardless of perimeter (#609: this
+    used to return the full global `GENERATABLE`, so a software session's page offered `gtm_plan` and
+    a go-to-market session's offered `brief`/`prd`/... -- clicking either reached
+    `_require_owned_artifact_type` and, before that refusal became a `RequivoError`, a bare
+    `ValueError` the Web has no handler for, a 500 on a perfectly ordinary click). The primary one is
+    split out by the caller; this stays the complete set for that perimeter."""
+    owned = get_perimeter(perimeter).artifact_types
+    return [{"type": t, "label": artifact_label(t)} for t in GENERATABLE if t in owned]
 
 
 def _artifacts_view(status: dict) -> list[dict]:
@@ -194,7 +201,7 @@ def session_detail(sessions: SessionService, slug: str) -> dict:
     evidence = evidence_view(sessions.thinner_evidence(slug))
     questions = status.get("questions", [])
     artifacts = _artifacts_view(status)
-    generatable = generatable_view()
+    generatable = generatable_view(resolve_perimeter(status.get("perimeter")))
     request_text = sessions.request_text(slug)
     return {
         "slug": slug,

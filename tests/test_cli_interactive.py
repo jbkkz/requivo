@@ -509,6 +509,34 @@ def test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_tra
     assert "Capacity" in out and "business_rules" not in out
 
 
+def test_a_software_only_verb_on_a_go_to_market_session_refuses_cleanly(monkeypatch, capsys):
+    """#609 (flagged as out of scope, then asked for): `requivo brief <go-to-market-slug>` used to
+    reach `_require_owned_artifact_type`, which raised a bare `ValueError` -- not a `RequivoError`,
+    so it missed `app()`'s `except RequivoError` arm entirely and tracebacked past it instead of
+    exiting cleanly. Now a structured `ArtifactTypeNotOwnedError`: exit 1, the message on stderr,
+    no traceback."""
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+    from requivo.services.sessions import SessionService
+
+    _at_a_terminal(monkeypatch)
+    svc = SessionService()
+    meta = svc.create_session("grow the funnel", slug="gtm-refusal", perimeter=GO_TO_MARKET)
+    _, required = schema_slot_ids(GO_TO_MARKET)
+    model = {sid: {"completeness": 90, "confidence": "explicit", "impact": "high",
+                   "value": "x", "evidence": "y"} for sid in required}
+    svc.update_model(meta.slug, json.dumps({"model": model, "questions": [],
+                                            "summary": {"objective": "grow"}}), expected_revision=0)
+
+    with pytest.raises(SystemExit) as exit_:
+        app(["brief", meta.slug])
+
+    assert exit_.value.code == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, f"a clean refusal must not traceback; got: {err!r}"
+    assert "go-to-market" in err and "brief" in err
+
+
 def test_a_failed_draft_turn_persists_the_turns_that_succeeded(monkeypatch, capsys):
     """The same loss, one call earlier: a transient failure *mid-loop* rather than on the assessment."""
     _at_a_terminal(monkeypatch)
