@@ -378,10 +378,10 @@ _REQUEST_SHAPES = ("a sentence describing what to build, a path to a file contai
 
 
 def _cmd_discover(a, client) -> None:
-    # `getattr`, not `a.perimeter` directly: `run`'s subparser reuses this function (`a.request =
-    # ref; _cmd_discover(a, client)`) and does not itself define `--perimeter` (#608) -- a namespace
-    # without the attribute means "no explicit choice", the same default the flag itself carries.
-    perimeter = getattr(a, "perimeter", None) or "software"
+    # `getattr`, not `a.perimeter` directly: `run`'s subparser reuses this function and does not
+    # itself define `--perimeter` -- a namespace without it means "no explicit choice", same as an
+    # explicit flag left at its own `None` default; `claim_and_ground` routes from there (#601).
+    perimeter = getattr(a, "perimeter", None)
     if not a.request or not a.request.strip():
         print(f"discover needs a request: {_REQUEST_SHAPES}", file=sys.stderr)
         raise SystemExit(2)
@@ -451,13 +451,12 @@ def _cmd_discover(a, client) -> None:
         # then makes exactly one paid call -- and until #206 an abort inside it had no handler of its
         # own: the session was already claimed and on disk, and the traceback that reached the
         # operator never said so.
-        # Claim, judge, and re-claim if the verdict narrows -- one service call, because the
-        # re-claim deletes a session and a destructive step does not get two implementations (#593).
-        # `only` is rebound: the narrowed selection is what the turn must reason with, or the
-        # session would record cards it never read.
-        meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                        perimeter=perimeter)
-        render_context_judgment(grounding)
+        # Claim, route, judge and re-claim as needed -- one service call, since a destructive
+        # re-claim does not get two implementations (#593, #601). `only`/`perimeter` are rebound.
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                                 perimeter=perimeter)
+        perimeter = meta.perimeter
+        render_context_judgment(grounding, routing)
         try:
             slug = disco.start(request, cards=only, slug=meta.slug, finalize=False,
                                surface="cli-discover", perimeter=perimeter)
@@ -478,10 +477,11 @@ def _cmd_discover(a, client) -> None:
     # Invariant 13's gate, here rather than only inside `finalize_discovery`: refusing after the
     # loop meant paying for up to nine provider calls first (#133). Pinned by
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
-    meta, grounding, only = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                    perimeter=perimeter)
+    meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
+                                                             perimeter=perimeter)
     slug = meta.slug
-    render_context_judgment(grounding)
+    perimeter = meta.perimeter
+    render_context_judgment(grounding, routing)
     try:
         drafted = converse(disco, request, only=only, perimeter=perimeter)
     except DraftingFailed as e:
@@ -1438,10 +1438,10 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
                    help="comma-separated context cards to load instead of all "
                         "(e.g. b2b-platform,financial-reporting); sharpens discovery by dropping "
                         "irrelevant cards. Applies to this discovery only. Alias: --cards.")
-    d.add_argument("--perimeter", default="software", metavar="ID",
-                   help="which installed perimeter this session runs under, frozen at creation "
-                        "(default: software). #601's router picks one automatically; until then, "
-                        "name it explicitly.")
+    d.add_argument("--perimeter", default=None, metavar="ID",
+                   help="which installed perimeter this session runs under, frozen at creation. "
+                        "Omit it to let the router (#601) judge the request's shape and pick one, "
+                        "or ask when more than one plausibly fits.")
     d.set_defaults(func=_cmd_discover)
 
     model_cmd("answer", "fold the client's answers in and report what moved (API)",

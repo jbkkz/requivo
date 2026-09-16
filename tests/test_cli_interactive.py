@@ -27,7 +27,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
-from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, FakeClient, _run_app, full_slots, slot
+from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, _ROUTING_REPLY, FakeClient, _run_app, full_slots, slot
 
 from requivo.cli import MAX_TURNS, QUESTIONS_PER_CHECKPOINT, app, converse
 from requivo.core.contracts import MAX_QUESTIONS, Brief, EngineOutput, Question, Slot, Summary
@@ -361,11 +361,11 @@ def _at_a_terminal(monkeypatch) -> None:
 def test_both_discover_entry_points_refuse_a_refined_session_before_paying(monkeypatch, capsys, argv_tail):
     """Invariant 13's revision-zero gate is taken before the first billed call on *both* paths (#133)."""
     _at_a_terminal(monkeypatch)
-    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))  # → revision 1
+    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))  # → revision 1
 
     # Scripted with a turn *and* an assessment, so an ungated run gets all the way to the old refusal
     # point and the count below reports how much it spent rather than dying on an exhausted stub.
-    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
     with pytest.raises(SystemExit) as exit_:
         app(["discover", _REQUEST, *argv_tail], client=fake)
 
@@ -377,14 +377,15 @@ def test_both_discover_entry_points_refuse_a_refined_session_before_paying(monke
     )
 
 
-@pytest.mark.parametrize("argv_tail, calls", [(["--once"], 2), ([], 3)], ids=["once", "interactive"])
+@pytest.mark.parametrize("argv_tail, calls", [(["--once"], 3), ([], 4)], ids=["once", "interactive"])
 def test_a_first_discovery_still_reaches_the_provider_on_both_paths(monkeypatch, argv_tail, calls):
     """The must-fire half of the test above. `fake.calls == []` is also true of a verb that never ran,
     a stub that was never reached and a harness that broke — so a gate refusing *everything* would
-    pass that test and fail this one. Each path pays for the grounding judgment first (#593), then
-    the turn; the interactive one also pays for the assessment, since `--once` does not finalize."""
+    pass that test and fail this one. Each path pays for the perimeter route (#601), then the
+    grounding judgment (#593), then the turn; the interactive one also pays for the assessment,
+    since `--once` does not finalize."""
     _at_a_terminal(monkeypatch)
-    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
     _run_app(["discover", _REQUEST, *argv_tail], client=fake)
     assert len(fake.calls) == calls
     # Two revisions on the interactive path, and the second one is #202's fix showing through. The
@@ -397,11 +398,12 @@ def test_a_first_discovery_still_reaches_the_provider_on_both_paths(monkeypatch,
 
 
 def test_stopping_early_keeps_the_turns_it_paid_for(monkeypatch, capsys):
-    """Stopping is not a reason to lose what you already bought (#202). The count is two since #593:
-    the grounding judgment, then the turn — and *not* a decision brief nobody asked for."""
+    """Stopping is not a reason to lose what you already bought (#202). The count is three since
+    #601: the perimeter route, the grounding judgment, then the turn — and *not* a decision brief
+    nobody asked for."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "q")
-    fake = FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY)
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
 
     printed = _run_app(["discover", _REQUEST], client=fake)
 
@@ -409,7 +411,7 @@ def test_stopping_early_keeps_the_turns_it_paid_for(monkeypatch, capsys):
     assert [m.current_revision for m in sessions] == [1], (
         "the stop discarded the turn the user had already paid for"
     )
-    assert len(fake.calls) == 2, (
+    assert len(fake.calls) == 3, (
         "the loop kept reasoning after the user stopped, or bought a decision brief nobody asked for"
     )
     assert "Stopped." in printed
@@ -462,7 +464,7 @@ def test_a_failed_assessment_leaves_the_discovery_saved_and_names_the_retry(monk
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(DiscoveryService, "generate",
                         lambda self, *a, **kw: (_ for _ in ()).throw(EngineError("API unavailable")))
-    fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
 
     with pytest.raises(SystemExit) as exit_:
         app(["discover", _REQUEST], client=fake)
@@ -496,6 +498,7 @@ def test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_tra
                         "value": "x", "evidence": "y"} for sid in required},
         "questions": [], "summary": {"objective": "grow the funnel"},
     })
+    # --perimeter is explicit here, so the router (#601) is never asked -- no routing reply queued.
     fake = FakeClient(_JUDGMENT_REPLY, reply)
 
     out = _run_app(["discover", _REQUEST, "--perimeter", GO_TO_MARKET], client=fake)
@@ -542,7 +545,7 @@ def test_a_failed_draft_turn_persists_the_turns_that_succeeded(monkeypatch, caps
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "the line manager approves")
     _fail_draft_turn_on(monkeypatch, 2, EngineError("API unavailable"))
-    fake = FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY)
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
 
     with pytest.raises(SystemExit) as exit_:
         app(["discover", _REQUEST], client=fake)
@@ -562,7 +565,7 @@ def test_a_first_turn_that_fails_leaves_the_session_at_revision_zero(monkeypatch
     _fail_draft_turn_on(monkeypatch, 1, EngineError("API unavailable"))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+        app(["discover", _REQUEST], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
 
     assert exit_.value.code == 1
     sessions = SessionService().list_sessions()
@@ -583,7 +586,7 @@ def test_an_interrupt_inside_a_draft_turn_is_not_a_traceback(monkeypatch, capsys
     _fail_draft_turn_on(monkeypatch, 2, KeyboardInterrupt())
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+        app(["discover", _REQUEST], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
 
     assert exit_.value.code == 130, "a Ctrl-C should exit 130, not the generic 1 (#206)"
     sessions = SessionService().list_sessions()
@@ -600,7 +603,7 @@ def test_an_interrupt_during_the_brief_reports_the_saved_session(monkeypatch, ca
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
+        app(["discover", _REQUEST], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))
 
     assert exit_.value.code == 130, "a Ctrl-C should exit 130, not the generic 1 (#206)"
     sessions = SessionService().list_sessions()
@@ -623,7 +626,7 @@ def test_a_rescue_that_cannot_save_says_so_and_still_names_the_original_failure(
                             EngineError("the disk is full")))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+        app(["discover", _REQUEST], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
 
     assert exit_.value.code == 1
     err = capsys.readouterr().err

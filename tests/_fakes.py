@@ -104,6 +104,13 @@ _ENGINE_REPLY = json.dumps(
 _JUDGMENT_REPLY = json.dumps({"decision": "none", "reason": "ordinary software, nothing special"})
 
 
+# #601: a first `discover` with no explicit `--perimeter` routes *before* it judges its grounding --
+# one call earlier still, on the identical "written at the call site, not hidden in the fake" reason
+# above. `none` is the ordinary verdict: more than one perimeter is installed, but neither reply nor
+# the request itself asks a fixture to test routing, so the session stays under the default.
+_ROUTING_REPLY = json.dumps({"decision": "none", "reason": "an ordinary request, not a go-to-market plan"})
+
+
 # ── The `requivo` subcommand CLI ──────────────────────────────────────────────
 # The modern surface is a thin layer over the same core; app() takes an injected
 # client so API-backed verbs run offline against a FakeClient.

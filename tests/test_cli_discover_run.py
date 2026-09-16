@@ -13,7 +13,7 @@ import builtins
 import json
 
 import pytest
-from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, FakeClient, _run_app, full_slots, slot
+from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, _ROUTING_REPLY, FakeClient, _run_app, full_slots, slot
 
 from requivo.cli import app
 from requivo.core import persistence as store
@@ -71,7 +71,7 @@ def test_an_interrupt_in_the_once_path_names_the_claimed_session_and_the_retry(m
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY))
+        app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY))
 
     assert exit_.value.code == 130, "a Ctrl-C should exit 130, not the generic 1 (#206)"
     sessions = SessionService().list_sessions()
@@ -92,7 +92,7 @@ def test_an_interrupt_before_a_session_is_claimed_names_no_slug(monkeypatch, cap
                         lambda *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY))
+        app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY))
 
     assert exit_.value.code == 130
     assert SessionService().list_sessions() == [], (
@@ -108,7 +108,7 @@ def test_a_top_level_interrupt_on_an_existing_session_exits_130_with_no_tracebac
     """Every command other than `discover` reaches the provider with no claim of its own to make --
     the session it operates on already existed before this run started -- so `app()`'s own top-level
     handler is the whole fix for it, with nothing discover-specific to say (#206)."""
-    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY))
+    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))
     slug = SessionService().list_sessions()[0].slug
     monkeypatch.setattr(DiscoveryService, "generate",
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
@@ -133,13 +133,13 @@ def test_a_provider_output_failure_mid_turn_also_names_the_claimed_session(monke
         monkeypatch.setattr(DiscoveryService, "start",
                             lambda self, *a, **kw: (_ for _ in ()).throw(ProviderOutputError("bad json")))
         argv = ["discover", _REQUEST, "--once"]
-        client = FakeClient(_JUDGMENT_REPLY)
+        client = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY)
     else:
         _at_a_terminal(monkeypatch)
         monkeypatch.setattr(builtins, "input", lambda _prompt="": "the line manager approves")
         _fail_draft_turn_on(monkeypatch, 2, ProviderOutputError("bad json"))
         argv = ["discover", _REQUEST]
-        client = FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY)
+        client = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
 
     with pytest.raises(SystemExit) as exit_:
         app(argv, client=client)
@@ -161,13 +161,14 @@ def test_a_provider_output_failure_mid_turn_also_names_the_claimed_session(monke
 
 def test_run_with_a_request_makes_the_same_call_count_as_discover():
     """#540's acceptance criterion, as call counts: `run "…"` reaches `_cmd_discover` for a
-    request/path shape rather than reimplementing it, so the two pay identically. Two calls each
-    since #593 -- the grounding judgment, then the turn -- and *identically two* is the assertion."""
-    fake_discover = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
+    request/path shape rather than reimplementing it, so the two pay identically. Three calls each
+    since #601 -- the perimeter router, the grounding judgment, then the turn -- and *identically
+    three* is the assertion."""
+    fake_discover = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     _run_app(["discover", _REQUEST, "--once"], client=fake_discover)
-    assert len(fake_discover.calls) == 2
+    assert len(fake_discover.calls) == 3
 
-    fake_run = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
+    fake_run = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     _run_app(["run", _REQUEST + ", via run", "--once"], client=fake_run)
     assert len(fake_run.calls) == len(fake_discover.calls)
 
@@ -177,7 +178,7 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
     `run` mis-routed this slug back into `discover`, invariant 13's gate would refuse it for **zero**
     paid calls (the session is already past revision 0) -- so the call count below is also the proof
     the right path was taken, not only that it succeeded."""
-    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     slug = SessionService().list_sessions()[0].slug
     assert SessionService().list_sessions()[0].current_revision == 1
 
@@ -205,7 +206,7 @@ def test_run_on_a_session_with_no_model_refuses_before_any_paid_call():
 
 def test_run_with_no_argument_and_one_session_resumes_it(monkeypatch):
     """#540/#541: no argument, exactly one session -> resume it, without creating a second one."""
-    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     slug = SessionService().list_sessions()[0].slug
 
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "q")   # stop immediately
@@ -217,18 +218,19 @@ def test_run_with_no_argument_and_one_session_resumes_it(monkeypatch):
 
 def test_run_with_no_argument_and_no_session_prompts_for_a_request():
     """#540: no argument, no session at all -> ask for a request the same way `discover` reads one.
-    stdin is never a tty under pytest, so the quick path takes over and this costs one call."""
+    stdin is never a tty under pytest, so the quick path takes over; #601's router adds a third call
+    ahead of the two #593 already cost here."""
     import builtins as _builtins
 
     real_input = _builtins.input
     _builtins.input = lambda _prompt="": _REQUEST
     try:
-        fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
+        fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
         _run_app(["run"], client=fake)
     finally:
         _builtins.input = real_input
 
-    assert len(fake.calls) == 2, "the grounding judgment (#593) and the turn, and nothing else"
+    assert len(fake.calls) == 3, "the perimeter route, the grounding judgment, and the turn"
     sessions = SessionService().list_sessions()
     assert len(sessions) == 1
     assert sessions[0].current_revision == 1
@@ -237,9 +239,9 @@ def test_run_with_no_argument_and_no_session_prompts_for_a_request():
 def test_run_with_no_argument_and_several_sessions_lists_them_and_resumes_the_default(monkeypatch):
     """#541: several -> every candidate is listed, the default marked, before the loop's own
     (potentially paid) prompt ever runs -- and the default is the most recently *written* one."""
-    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+    _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     older = SessionService().list_sessions()[0].slug
-    _run_app(["discover", _REQUEST + ", again", "--once"], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+    _run_app(["discover", _REQUEST + ", again", "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     newer = next(m.slug for m in SessionService().list_sessions() if m.slug != older)
 
     # A deterministic tie-break: force `newer`'s `updated_at` strictly ahead of `older`'s, rather
@@ -320,7 +322,7 @@ def test_a_second_interrupt_during_the_rescues_own_save_exits_130(monkeypatch, c
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     with pytest.raises(SystemExit) as exit_:
-        app(["discover", _REQUEST], client=FakeClient(_JUDGMENT_REPLY, _ASKING_REPLY))
+        app(["discover", _REQUEST], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
 
     assert exit_.value.code == 130, "a second Ctrl-C should exit 130 like every other interrupt here"
     err = capsys.readouterr().err

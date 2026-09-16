@@ -16,8 +16,8 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from requivo.core.context import CardSummary
-from requivo.core.contracts import ContextJudgment, EngineOutput
-from requivo.core.perimeters import DEFAULT_PERIMETER
+from requivo.core.contracts import ContextJudgment, EngineOutput, PerimeterJudgment
+from requivo.core.perimeters import DEFAULT_PERIMETER, PerimeterSummary
 
 
 @runtime_checkable
@@ -111,4 +111,26 @@ class ContextJudge(Protocol):
         `cards` is passed rather than read, because the summaries are a deterministic read of the
         install and `core` already owns it — a provider re-deriving them could answer about a
         different set than the one the session will actually load."""
+        ...
+
+
+@runtime_checkable
+class PerimeterJudge(Protocol):
+    """Which installed perimeter, if any, a request's shape belongs to -- asked once, before a first
+    discovery claims anything, and deliberately **not** part of `ReasoningProvider` (#601).
+
+    The same separation `ContextJudge` states, one question over: this reasons about *which
+    vocabulary* a request should be reasoned in, not *over* a vocabulary already chosen, on a prompt
+    that carries neither a schema nor context cards (`build_standalone_prompt`). A provider — or a
+    test stub — that cannot answer this simply does not implement it, and the service reports *not
+    asked* rather than inventing a verdict, the identical honesty `ContextJudge`'s own docstring
+    argues for."""
+
+    def judge_perimeter(self, request: str, *,
+                        perimeters: list[PerimeterSummary]) -> PerimeterJudgment:
+        """One cheap call: the request and one line per installed perimeter, in; a verdict, out.
+
+        `perimeters` is passed rather than read, because the summaries are a deterministic read of
+        the install and `core` already owns it -- a provider re-deriving them could answer about a
+        different set than the one this build actually has."""
         ...

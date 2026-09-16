@@ -16,6 +16,7 @@ from __future__ import annotations
 import functools
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from requivo.core.errors import UnknownPerimeterError
 from requivo.paths import PERIMETERS
@@ -87,6 +88,13 @@ class Perimeter:
         "primary objects first" must never reach a session running a different perimeter."""
         return self.dir / "engine_guidance.md"
 
+    @property
+    def router_hint_path(self) -> Path:
+        """One short paragraph naming the kind of request this perimeter fits -- read by the router
+        (#601) so it can judge which installed perimeter a request belongs to without paying to send
+        its whole schema or elicitation spec."""
+        return self.dir / "router_hint.md"
+
 
 @functools.lru_cache(maxsize=1)
 def _registry() -> dict[str, Perimeter]:
@@ -123,3 +131,29 @@ def resolve_perimeter(name: str | None) -> str:
         return DEFAULT_PERIMETER
     get_perimeter(name)  # raises by name if unknown
     return name
+
+
+class PerimeterSummary(NamedTuple):
+    """One installed perimeter, reduced to what a routing judgment (#601) needs to decide whether it
+    fits a request: its id and the one paragraph naming the kind of request it is for. `unreadable`
+    mirrors `core.context.CardSummary`'s own third state -- the asset is there and could not be
+    read, which is not the same as a perimeter whose hint is empty."""
+
+    id: str
+    hint: str
+    unreadable: bool = False
+
+
+def perimeter_summaries() -> list[PerimeterSummary]:
+    """Every installed perimeter as one line, for a routing judgment that must not pay to send every
+    schema and elicitation spec in full. A per-perimeter read failure degrades that row and never the
+    listing (invariant 15), the same discipline `core.context.card_summaries()` applies to cards."""
+    out = []
+    for pid in known_perimeter_ids():
+        try:
+            hint = get_perimeter(pid).router_hint_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            out.append(PerimeterSummary(id=pid, hint="", unreadable=True))
+            continue
+        out.append(PerimeterSummary(id=pid, hint=hint))
+    return out

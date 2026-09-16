@@ -47,11 +47,14 @@ from requivo.core.contracts import (
     Epic,
     EstimateDraft,
     GoToMarketPlan,
+    PerimeterDecision,
+    PerimeterJudgment,
     ReleaseNotes,
     Stories,
 )
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
+    AmbiguousPerimeterError,
     ArtifactTypeNotOwnedError,
     ArtifactWriteFailedError,
     InvalidSlugError,
@@ -59,7 +62,13 @@ from requivo.core.errors import (
     SessionLockedError,
     SessionUnreadableError,
 )
-from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
+from requivo.core.perimeters import (
+    DEFAULT_PERIMETER,
+    get_perimeter,
+    known_perimeter_ids,
+    perimeter_summaries,
+    resolve_perimeter,
+)
 from requivo.core.persistence import (
     ArtifactStatus,
     Store,
@@ -70,7 +79,7 @@ from requivo.core.persistence import (
 )
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
-from requivo.providers.base import ContextJudge
+from requivo.providers.base import ContextJudge, PerimeterJudge
 from requivo.render.markdown import (
     brief_markdown,
     criteria_markdown,
@@ -432,6 +441,16 @@ class Grounding(NamedTuple):
     why_not: str
 
 
+class Routing(NamedTuple):
+    """The answer to *which installed perimeter does this request's shape belong to?* (#601) --
+    `Grounding`'s own shape, one question over: `judgment is None` means nobody looked, and
+    `why_not` says why. A caller that reads that the same as a `none` verdict has made the identical
+    mistake `Grounding`'s docstring warns against, one layer up."""
+
+    judgment: PerimeterJudgment | None
+    why_not: str
+
+
 class DiscoveryService:
     """Provider-backed orchestration over the session/artifact services.
 
@@ -571,61 +590,145 @@ class DiscoveryService:
             return Grounding(None, "this install has no context cards to judge against")
         return Grounding(provider.judge_context(request, cards=summaries), "")
 
-    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
-                         perimeter: str = DEFAULT_PERIMETER
-                         ) -> tuple[Any, Grounding, list[str] | None]:
-        """Claim the session, judge its grounding, and act on the judgment when acting is safe.
+    def route_perimeter(self, request: str, *, perimeter: str | None) -> Routing:
+        """Ask which installed perimeter, if any, this request's shape belongs to (#601) --
+        `judge_grounding`'s own three-state honesty, one question over: `judgment is None` means
+        nobody looked, never *no perimeter needed*.
 
-        The whole sequence lives here rather than in a surface, because acting on the verdict means
-        *deleting a session*, and a destructive step on the discovery path is exactly the kind of
-        thing that must have one implementation with one set of preconditions (invariant 14).
+        - **Not asked, because the user chose.** An explicit `--perimeter` is a human decision,
+          exactly as an explicit `--context` suppresses `judge_grounding` — paying to second-guess
+          it would either agree at cost or disagree with nothing the service is allowed to do about
+          it.
+        - **Not asked, because there is nothing to route between.** One installed perimeter is not a
+          routing decision.
+        - **Not asked, because this provider cannot.** `PerimeterJudge` is a protocol a provider may
+          not implement.
+        - **Asked, and here is the verdict.**
 
-        **Claim first** — the free gate stays ahead of every paid call, so a repeat discovery is
-        refused before the judgment is billed, not after (invariant 13, #133).
-
-        **Then judge, and re-claim only when every one of these holds:**
-
-        - the verdict is `installed`, so there is a narrower selection to move to;
-        - the caller named no cards, so nothing is overriding a human's own choice;
-        - **this call created the session** (`create_session_report`'s boolean), so an idempotent
-          re-entry onto somebody else's session can never be the thing deleted;
-        - it is *still* at revision 0 when re-read under the lock, because the judgment call takes
-          real time and the check that authorises a delete must be held across it (invariant 9).
-
-        The delete-then-create is not atomic across the two slugs, and does not need to be: what is
-        deleted is a session this call made moments ago and nothing has been applied to, so a crash
-        between them loses a claim rather than any work.
-
-        Returns the session to discover against, what was judged, and the card selection to reason
-        with. Pinned by `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
-        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
-        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`."""
+        Pinned by `test_an_explicit_perimeter_is_not_second_guessed`,
+        `test_a_single_installed_perimeter_is_not_judged`,
+        `test_a_provider_that_cannot_route_reports_not_asked` and
+        `test_the_routing_judgment_reaches_the_provider_with_one_line_per_installed_perimeter`."""
+        if perimeter is not None:
+            return Routing(None, "the perimeter for this session was chosen with --perimeter")
+        if len(known_perimeter_ids()) <= 1:
+            return Routing(None, "this install has only one perimeter")
         provider = self._need_provider()
-        meta, created = self.sessions.create_session_report(
+        if not isinstance(provider, PerimeterJudge):
+            return Routing(None, f"the {getattr(provider, 'name', 'current')} provider does not "
+                                 f"route perimeters")
+        return Routing(provider.judge_perimeter(request, perimeters=perimeter_summaries()), "")
+
+    def _delete_if_safe(self, meta, *, created: bool) -> bool:
+        """The fourth of #593's four preconditions that authorise deleting an empty first-discovery
+        claim, factored out so #601's router shares this exact check rather than a second copy of
+        it (the issue's own instruction: ride the seam, do not duplicate the preconditions).
+
+        The first three — the verdict warrants acting, the caller named nothing overriding it — are
+        the caller's to have already established; this one is re-read fresh under the lock, because
+        the judgment that produced the verdict took real time and a stale authorisation is how a
+        delete stops being safe (invariant 9). Returns whether it actually deleted."""
+        if not created:
+            return False
+        with self.sessions.repo.lock(meta.slug):
+            if self.sessions.repo.read_meta(meta.slug).current_revision != 0:
+                return False
+            self.sessions.delete_session(meta.slug)
+        return True
+
+    def _reclaim_under(self, meta, *, request: str, slug: str | None, cards: list[str] | None,
+                       perimeter: str, created: bool, provider) -> tuple[Any, bool]:
+        """Delete the empty session `meta` names and recreate it under a narrower identity — cards,
+        perimeter, or both call this, so the destructive step has exactly one implementation
+        (invariant 14, and #601's instruction not to duplicate #593's four preconditions).
+
+        Returns the (possibly unchanged) session and whether this call now owns it — `False` when
+        `_delete_if_safe` found the fourth precondition no longer held, in which case `meta` is
+        handed back exactly as given and nothing was touched."""
+        if not self._delete_if_safe(meta, created=created):
+            return meta, False
+        meta = self.sessions.create_session(
             request, context_cards=cards, slug=slug,
             provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
+        return meta, True
+
+    def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
+                         perimeter: str | None = None
+                         ) -> tuple[Any, Grounding, list[str] | None, Routing]:
+        """Claim the session, route it to the perimeter its shape fits (#601), judge its context
+        grounding (#593), and act on each judgment when acting is safe.
+
+        The whole sequence lives here rather than in a surface, because acting on either verdict
+        means *deleting a session*, and a destructive step on the discovery path must have one
+        implementation with one set of preconditions (invariant 14) — `_reclaim_under`/
+        `_delete_if_safe` are that implementation, shared by both judgments below.
+
+        **Claim first, under the default perimeter** — the free gate stays ahead of every paid call,
+        so a repeat discovery is refused before either judgment is billed, not after (invariant 13,
+        #133); the router's own call is exactly as paid as the grounding judgment's, so it earns no
+        exception. `perimeter=None` all the way to here is "no explicit choice" — `route_perimeter`
+        is what turns that into a claimable default, the same way `cards=None` already means *every
+        card* until `judge_grounding` narrows it.
+
+        **Route, and re-claim only when the verdict `fits` a perimeter other than the one claimed**,
+        under the identical preconditions #593's own re-claim relies on. An `ambiguous` verdict
+        deletes the same empty claim, under the same preconditions, and refuses with
+        `AmbiguousPerimeterError` naming the candidates — before any model is reasoned, the
+        invariant-13 shape applied to a second cause. A `none` verdict leaves the session under the
+        default perimeter, stated rather than assumed, and the session continues.
+
+        **Then judge grounding, and re-claim under narrowed cards** exactly as before #601 — only
+        which perimeter it recreates under can have moved, since routing may already have re-claimed
+        once.
+
+        Returns the session to discover against, what context grounding found, the card selection to
+        reason with, and what the router found. Pinned by
+        `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`,
+        `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`,
+        `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`,
+        `test_a_fitting_perimeter_verdict_reroutes_and_reclaims`,
+        `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
+        `test_an_explicit_perimeter_is_never_overridden_by_the_router` and
+        `test_a_none_verdict_continues_under_the_default_perimeter_named`."""
+        provider = self._need_provider()
+        claim_perimeter = perimeter or DEFAULT_PERIMETER
+        meta, created = self.sessions.create_session_report(
+            request, context_cards=cards, slug=slug,
+            provider=provider.name, model_name=provider.model_name(), perimeter=claim_perimeter)
+        _require_revision_zero(meta.slug, meta.current_revision)
+
+        routing = self.route_perimeter(request, perimeter=perimeter)
+        route_judgment = routing.judgment
+        if route_judgment is not None:
+            if route_judgment.decision is PerimeterDecision.ambiguous:
+                self._delete_if_safe(meta, created=created)
+                raise AmbiguousPerimeterError(
+                    f"more than one installed perimeter could fit this request -- "
+                    f"{route_judgment.reason} Name one explicitly, e.g. --perimeter "
+                    f"{route_judgment.candidates[0]} (candidates: "
+                    f"{', '.join(route_judgment.candidates)}).",
+                    details={"candidates": route_judgment.candidates,
+                             "reason": route_judgment.reason})
+            if (route_judgment.decision is PerimeterDecision.fits
+                    and route_judgment.perimeter != claim_perimeter):
+                meta, created = self._reclaim_under(
+                    meta, request=request, slug=slug, cards=cards,
+                    perimeter=route_judgment.perimeter, created=created, provider=provider)
+                claim_perimeter = resolve_perimeter(meta.perimeter)
 
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment
         if judgment is None or judgment.decision is not ContextDecision.installed:
-            return meta, grounding, cards
+            return meta, grounding, cards, routing
         narrowed = resolve_cards(judgment.cards)
         if cards or not created or not narrowed or narrowed == cards:
-            return meta, grounding, cards
+            return meta, grounding, cards, routing
 
-        with self.sessions.repo.lock(meta.slug):
-            # Re-read under the lock: `created` was true a call ago, and a call ago is long enough
-            # for the session to have been written to. A stale authorisation is how a delete stops
-            # being safe.
-            if self.sessions.repo.read_meta(meta.slug).current_revision != 0:
-                return meta, grounding, cards
-            self.sessions.delete_session(meta.slug)
-        meta = self.sessions.create_session(
-            request, context_cards=narrowed, slug=slug,
-            provider=provider.name, model_name=provider.model_name(), perimeter=perimeter)
-        _require_revision_zero(meta.slug, meta.current_revision)
-        return meta, grounding, narrowed
+        meta, reclaimed = self._reclaim_under(
+            meta, request=request, slug=slug, cards=narrowed, perimeter=claim_perimeter,
+            created=created, provider=provider)
+        return meta, grounding, (narrowed if reclaimed else cards), routing
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
                       perimeter: str = DEFAULT_PERIMETER):

@@ -29,10 +29,11 @@ from requivo.core.contracts import (
     EstimateDraft,
     GoToMarketPlan,
     ModelProposal,
+    PerimeterJudgment,
     ReleaseNotes,
     Stories,
 )
-from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET
+from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET, PerimeterSummary
 from requivo.core.validation import completeness_gap
 from requivo.providers.anthropic.completion import _complete
 
@@ -119,6 +120,43 @@ def judge_context(client, request: str, cards: list[CardSummary], *,
     return _complete(client, system, [{"role": "user", "content": "Judge this request's grounding."}],
                      ContextJudgment, validate=_names_only_installed_cards,
                      reuse_system=False, model=model, operation="judge_context")
+
+
+def judge_perimeter(client, request: str, perimeters: list[PerimeterSummary], *,
+                    model: str | None = None) -> PerimeterJudgment:
+    """Which installed perimeter, if any, this request's shape belongs to (#601) -- the router,
+    riding `judge_context`'s own seam (#593) rather than a second one beside it: a standalone call,
+    before a session has claimed a perimeter at all, and a typed verdict a validator refuses when
+    its payload disagrees with its own decision.
+
+    `build_standalone_prompt`, not `build_system_prompt`, for the identical reason `judge_context`
+    takes it: this call must NOT carry every installed perimeter's schema, or its whole economy -- a
+    few hundred tokens instead of a share of the ~9k shared prefix -- is gone. `reuse_system=False`
+    for the same reason a one-call verb takes it: there is no second call of this operation to read
+    back a cache it would write.
+
+    The perimeter names are validated against the install here rather than trusted, mirroring
+    `judge_context`'s own guard: an invented id is not inert, it would reach `get_perimeter` as a
+    claim and refuse the very discovery this judgment exists to route."""
+    known = {p.id for p in perimeters}
+
+    def _names_only_installed_perimeters(judgment: PerimeterJudgment) -> None:
+        named = ({judgment.perimeter} if judgment.perimeter else set()) | set(judgment.candidates)
+        unknown = sorted(named - known)
+        if unknown:
+            raise ValueError(
+                f"perimeter(s) {unknown} are not installed; name only the perimeters listed in the "
+                f"prompt, spelled exactly, or use decision 'none' if none of them fits")
+
+    listing = "\n".join(
+        f"- {p.id}: " + ("(this perimeter's hint could not be read)" if p.unreadable else p.hint)
+        for p in perimeters)
+    system = build_standalone_prompt(
+        "perimeter_judgment.md", {"{{REQUEST}}": request, "{{PERIMETERS}}": listing})
+    return _complete(
+        client, system, [{"role": "user", "content": "Judge which perimeter this request fits."}],
+        PerimeterJudgment, validate=_names_only_installed_perimeters, reuse_system=False,
+        model=model, operation="judge_perimeter")
 
 
 def answer_turn(client, out: EngineOutput, request: str, answers: str,
@@ -299,7 +337,8 @@ _OP_PROMPTS = {
 # produce no revision to stamp provenance onto. A second table rather than an exemption, so
 # `test_every_prompt_asset_belongs_to_an_operation` keeps accounting for every file on disk --
 # unclaimed is still dead weight, there are simply two ways to claim one now (#593).
-_STANDALONE_PROMPTS = {"judge_context": "context_judgment.md"}
+_STANDALONE_PROMPTS = {"judge_context": "context_judgment.md",
+                       "judge_perimeter": "perimeter_judgment.md"}
 
 
 def prompt_version(op: str, only: list[str] | None = None, *,

@@ -25,6 +25,7 @@ STATUS_BY_CODE = {
     "unsupported_format_version": 409,  # not 426: no Upgrade header to send
     "unsupported_schema_version": 409,
     "unknown_perimeter": 409,  # same family: a session naming a vocabulary this build lacks (#608)
+    "ambiguous_perimeter": 409,  # same family: the router (#601) found more than one plausible fit, not a malformed request
     "artifact_type_not_owned": 409,  # same family: a real type, a real perimeter, the pairing refused (#609)
     "session_unreadable": 500,
     "model_unreadable": 500,
