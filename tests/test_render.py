@@ -1,12 +1,10 @@
 """The renderers: data → string, no side effects (#72); Markdown → HTML for the web's artifact page (#235)."""
 from __future__ import annotations
 
-import io
 import re
-from contextlib import redirect_stdout
 
 import pytest
-from _fakes import out, slot
+from _fakes import out, printed, slot
 
 from requivo.core.contracts import (
     PRD,
@@ -28,13 +26,6 @@ from requivo.render.terminal import render_brief
 _MODEL = {"problem": slot(80, "explicit", "high")}
 
 
-def _rendered(fn, *args) -> str:
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        fn(*args)
-    return buf.getvalue()
-
-
 # ── the Markdown writers ─────────────────────────────────────────────────────────
 
 
@@ -43,8 +34,7 @@ def test_prd_markdown_renders_title_and_requirement_table_with_pipes_escaped():
         {"id": "FR-1", "requirement": "Submit a request", "priority": "must"},
         {"id": "FR-2", "requirement": "Export as CSV | XLSX | PDF", "priority": "must"}])
     md = prd_markdown(prd)
-    assert md.startswith("# Leave approval")
-    assert "| FR-1 | Submit a request | Must |" in md
+    assert md.startswith("# Leave approval") and "| FR-1 | Submit a request | Must |" in md
     assert "| FR-2 | Export as CSV \\| XLSX \\| PDF | Must |" in md, "a literal pipe would split the row"
 
 
@@ -66,8 +56,7 @@ def test_criteria_markdown_renders_gherkin_checklist():
          "when": "they submit a 3-day request", "then": ["the request is created", "the manager is notified"]}]}],
         open_questions=["Can a manager approve their own request?"])
     md = criteria_markdown(ac)
-    assert md.startswith("# Leave approval")
-    assert "### [ ] AC-1 — Valid request is accepted  _Happy path_" in md
+    assert md.startswith("# Leave approval") and "### [ ] AC-1 — Valid request is accepted  _Happy path_" in md
     # First given is "Given", subsequent ones fold to "And"; likewise Then → And.
     for line in ("- **Given** the employee is logged in", "- **And** they have enough balance",
                  "- **When** they submit a 3-day request", "- **Then** the request is created",
@@ -81,10 +70,10 @@ def test_epic_markdown_renders_issues_with_labels_and_deps():
         {"id": "#2", "title": "Build approval circuit", "description": "Route to manager.",
          "labels": ["feature", "backend"], "depends_on": ["#1"]}], open_questions=["Half-day support?"])
     md = epic_markdown(epic)
-    assert md.startswith("# Epic: Leave approval") and "**Milestone:** Pilot" in md
-    assert "### [ ] #1 — Model the leave object" in md
-    assert "**Labels:** `feature`, `backend` · **Depends on:** #1" in md
-    assert "## Open questions" in md
+    for expected in ("# Epic: Leave approval", "**Milestone:** Pilot", "### [ ] #1 — Model the leave object",
+                     "**Labels:** `feature`, `backend` · **Depends on:** #1", "## Open questions"):
+        assert expected in md
+    assert md.startswith("# Epic: Leave approval")
 
 
 def test_release_markdown_stamps_version_and_sections():
@@ -113,18 +102,14 @@ def test_render_brief_titles_decision_brief_and_shows_challenges_decisions_and_o
                   opportunities=[Opportunity(text="Generalize the approval circuit.", leverage=Leverage.high,
                                              modules=["Absence", "Contracts", "Missions"]),
                                  Opportunity(text="Add a dashboard later.", leverage=Leverage.future)])
-    text = _rendered(render_brief, out(_MODEL), brief)
-    # One vocabulary for one artifact (#166): the caption is "decision brief" wherever a person reads it.
-    assert "DECISION BRIEF" in text and "SOLUTION ASSESSMENT" not in text
-    assert "CHALLENGES" in text and "Challenge Invoice at signature" in text and "⚑ Invoice at signature" in text
-    assert "Premise" in text and "Alternative" in text and "Recommend" in text
-    # The forked decision shows its reasoning, the bare fact stays a single line.
-    assert "DESIGN DECISIONS" in text and "DECISION LOG" not in text
-    assert "✓ Draft-first invoices reviewed before issuance" in text and "Why" in text and "Tradeoff" in text
-    assert "✓ Amount sourced from the Contract" in text
-    # A grounded opportunity names the modules it reaches; an ungrounded one shows no ↳ line.
-    assert "↳ reaches: Absence, Contracts, Missions" in text and "Add a dashboard later." in text
-    assert text.count("↳ reaches:") == 1
+    text = printed(render_brief, out(_MODEL), brief)
+    # One vocabulary for one artifact (#166); the forked decision shows its reasoning, the bare fact stays one line;
+    # a grounded opportunity names the modules it reaches and an ungrounded one shows no ↳ line.
+    for expected in ("DECISION BRIEF", "CHALLENGES", "Challenge Invoice at signature", "⚑ Invoice at signature", "Premise",
+                     "Alternative", "Recommend", "DESIGN DECISIONS", "✓ Draft-first invoices reviewed before issuance", "Why",
+                     "Tradeoff", "✓ Amount sourced from the Contract", "↳ reaches: Absence, Contracts, Missions", "Add a dashboard later."):
+        assert expected in text, expected
+    assert "SOLUTION ASSESSMENT" not in text and "DECISION LOG" not in text and text.count("↳ reaches:") == 1
 
 
 def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief():
@@ -217,8 +202,7 @@ def test_each_construct_of_the_dialect_renders_as_its_element(document, present,
 
 def test_a_marker_inside_a_code_span_is_shown_rather_than_obeyed():
     html = markdown_to_html(md("Write `**not bold**` and `_not italic_` literally."))
-    assert "<code>**not bold**</code>" in html and "<code>_not italic_</code>" in html
-    assert "<strong>" not in html and "<em>" not in html
+    assert "<code>**not bold**</code>" in html and "<code>_not italic_</code>" in html and "<strong>" not in html and "<em>" not in html
 
 
 def test_an_underscore_inside_a_word_is_not_emphasis():
@@ -240,8 +224,7 @@ def test_an_escaped_pipe_comes_back_as_a_pipe():
 def test_a_pipe_block_with_no_header_degrades_instead_of_crashing():
     """The dialect's floor is escaped text, never an exception; the surrounding document still renders."""
     html = markdown_to_html(md("Some notes.", "", "|---|---|", "", "More notes."))
-    assert "<table>" not in html and "|---|---|" in _unescape(html)
-    assert "<p>Some notes.</p>" in html and "<p>More notes.</p>" in html
+    assert "<table>" not in html and "|---|---|" in _unescape(html) and "<p>Some notes.</p>" in html and "<p>More notes.</p>" in html
 
 
 def test_a_body_row_that_looks_like_a_rule_is_still_a_row():
@@ -276,8 +259,7 @@ def test_markup_smuggled_inside_every_construct_is_still_escaped():
 
 def test_an_attribute_break_out_cannot_reach_an_attribute():
     html = markdown_to_html(md('# " onmouseover="alert(1)'))
-    assert '="' not in html, "this renderer emits no attribute anywhere: " + html
-    assert "&quot;" in html, "the quotes were dropped rather than escaped"
+    assert '="' not in html and "&quot;" in html, "no attribute anywhere, and the quotes escaped rather than dropped: " + html
 
 
 def test_no_inline_style_is_emitted():

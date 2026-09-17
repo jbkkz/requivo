@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from _fakes import FakeClient, Spend, full_model  # noqa: F401  (re-exported for the api suite)
+from _fakes import engine_reply as _engine_reply
 from _fakes import seed_session as _seed_session
 from fastapi.testclient import TestClient
 
@@ -13,6 +12,7 @@ from requivo.api.app import create_api
 from requivo.api.dependencies import get_discovery
 from requivo.services.discovery import DiscoveryService
 
+SESSIONS = "/api/v1/sessions"
 JSON = {"Content-Type": "application/json"}
 BODY = b'{"request": "A leave approval system."}'
 HIGH_EXPLICIT = {"completeness": 90, "confidence": "explicit", "impact": "high"}
@@ -66,4 +66,12 @@ def seed_session(slug: str = "leave-approval", **model_overrides) -> str:
 
 
 def engine_reply(**overrides) -> str:
-    return json.dumps(full_model(**overrides))
+    return _engine_reply(converged=True, **overrides)
+
+
+def refused(resp, status: int, code: str) -> dict:
+    """The one error envelope: the status and the published code."""
+    assert resp.status_code == status, resp.text
+    body = resp.json()
+    assert body["code"] == code and "message" in body, body
+    return body

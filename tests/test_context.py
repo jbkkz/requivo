@@ -26,11 +26,16 @@ def _bundled_card_sizes() -> dict[str, int]:
     return sizes
 
 
+def _documented(pattern: str, what: str) -> re.Match:
+    m = re.search(pattern, re.sub(r"\s+", " ", _CONTEXT_DOC.read_text(encoding="utf-8")))
+    assert m, f"docs/context-cards.md no longer states {what} -- update this pattern if the wording moved"
+    return m
+
+
 def test_the_docs_stated_bundled_card_byte_total_matches_the_files_on_disk():
     sizes = _bundled_card_sizes()
     assert len(available_cards()) >= len(sizes)
-    m = re.search(r"([\d,]+) bytes, ~[\d.]+k tokens", _CONTEXT_DOC.read_text(encoding="utf-8"))
-    assert m, "docs/context-cards.md no longer states a 'N bytes, ~Xk tokens' figure -- update this pattern if the wording moved"
+    m = _documented(r"([\d,]+) bytes, ~[\d.]+k tokens", "a 'N bytes, ~Xk tokens' figure")
     documented, total = int(m.group(1).replace(",", "")), sum(sizes.values())
     assert documented == total, f"docs/context-cards.md says {documented} bytes; the real total is {total} from {sizes}"
 
@@ -57,9 +62,7 @@ def test_the_docs_stated_prompt_weight_range_matches_a_live_measurement():
     names = ["engine.md", "brief.md", "stories.md", "estimate.md", "prd.md", "criteria.md", "epic.md", "release.md"]
     percentages = [card_total / len(build_prompt(n).encode("utf-8")) * 100 for n in names]
     low, high = round(min(percentages)), round(max(percentages))
-    flat = re.sub(r"\s+", " ", _CONTEXT_DOC.read_text(encoding="utf-8"))
-    m = re.search(r"(\d+)[-–](\d+)% of every call.s system prompt", flat)
-    assert m, "docs/context-cards.md no longer states an 'N-M% of every call's system prompt' range"
+    m = _documented(r"(\d+)[-–](\d+)% of every call.s system prompt", "an 'N-M% of every call's system prompt' range")
     assert (int(m.group(1)), int(m.group(2))) == (low, high), (
         f"docs/context-cards.md says {m.group(1)}-{m.group(2)}%; a live measurement gives {low}-{high}% ({list(zip(names, percentages))})")
 
@@ -74,13 +77,7 @@ def test_one_unreadable_card_degrades_its_own_summary_row(tmp_path, monkeypatch)
     bad.write_text("unreadable", encoding="utf-8")
     monkeypatch.setattr(ctx, "_card_paths", lambda: {"good": good, "bad": bad})
     real_read = type(bad).read_text
-
-    def refuse_one(self, *a, **kw):
-        if self == bad:
-            raise PermissionError("nope")
-        return real_read(self, *a, **kw)
-
-    monkeypatch.setattr(type(bad), "read_text", refuse_one)
+    monkeypatch.setattr(type(bad), "read_text", lambda self, *a, **kw: real_read(self, *a, **kw) if self != bad else (_ for _ in ()).throw(PermissionError("nope")))
     rows = {c.stem: c for c in ctx.card_summaries()}
     assert rows["bad"].unreadable is True and rows["bad"].domain == ""
     assert rows["good"].unreadable is False and rows["good"].domain == "dentistry"

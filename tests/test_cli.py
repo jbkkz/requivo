@@ -7,7 +7,6 @@ import io
 import json
 import re
 import sys
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -17,9 +16,13 @@ from _fakes import (
     _ROUTING_REPLY,
     FakeClient,
     _model_in_out,
+    forge_meta,
     full_model,
     full_slots,
+    printed,
     run_cli,
+    run_cli_fails,
+    seed_session,
     slot,
 )
 from _fakes import out as _built_model
@@ -56,14 +59,7 @@ pytestmark = pytest.mark.usefixtures("workspace")
 
 _DISCOVER = (_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
 EXAMPLES = DEMO.parents[3] / "examples"   # assets/demo -> assets -> requivo -> src -> repo
-
-
-def _exits(argv, client=None) -> tuple[int, str]:
-    """`app()` under `SystemExit`: the exit code and what reached stderr."""
-    err = io.StringIO()
-    with redirect_stdout(io.StringIO()), redirect_stderr(err), pytest.raises(SystemExit) as e:
-        app(argv, client=client)
-    return int(e.value.code or 0), err.getvalue()
+_PROBLEM = {"problem": slot(80, "explicit", "high")}
 
 
 def _only_slug() -> str:
@@ -76,16 +72,8 @@ def _saved_request(slug: str) -> str:
     return (store.canonical_dir(slug) / "request.md").read_text(encoding="utf-8")
 
 
-def _revised(slug: str, request: str = "a request") -> None:
-    store.create_session(slug, request)
-    store.save_revision(slug, _built_model({"problem": slot(80, "explicit", "high")}))
-
-
-def _touch(slug: str, iso: str = "2999-01-01T00:00:00Z") -> None:
-    p = store.canonical_dir(slug) / "session.json"
-    data = json.loads(p.read_text(encoding="utf-8"))
-    data["updated_at"] = iso
-    p.write_text(json.dumps(data), encoding="utf-8")
+def _artifact(p: Path, name: str) -> str:
+    return (p.parent / "artifacts" / name).read_text(encoding="utf-8")
 
 
 # ── status and impact ────────────────────────────────────────────────────────────
@@ -95,12 +83,10 @@ def test_status_json_payload_is_rich_enough_for_a_client():
     """`status` carries the whole picture, so no client rebuilds the presentation logic."""
     slug = "clitest-status-json"
     store.create_session(slug, "req")
-    model = EngineOutput.model_validate({
-        "model": full_slots(workflow=slot(90, "explicit", "high"), business_rules=slot(30, "explicit", "high")),
+    SessionService().update_model(slug, {
+        **full_model(workflow=slot(90, "explicit", "high"), business_rules=slot(30, "explicit", "high")),
         "questions": [{"q": "How are exceptions handled?", "slot": "business_rules", "why": "u×i"}],
-        "summary": {"objective": "obj"},
-    })
-    SessionService().update_model(slug, model.model_dump())
+        "summary": {"objective": "obj"}})
     with _model_in_out("clitest-status") as p:
         assert "UNDERSTANDING" in run_cli(["status", str(p)])  # no client built
     st = SessionService().status(slug)
@@ -114,28 +100,23 @@ def test_status_json_payload_is_rich_enough_for_a_client():
 
 @pytest.mark.parametrize("verb", ["status", "impact"])
 def test_status_with_no_argument_matches_the_explicit_slug_when_there_is_one_session(verb):
-    """#541: `status`/`impact` with no slug resolve the one session, with the identical payload."""
-    _revised("only-session")
+    """#541: no session -> exit 1 naming `run` (a plumbing verb keeps its slug, exit 2); one -> the identical payload."""
+    code, err = run_cli_fails([verb])
+    assert code == 1 and "run" in err
+    assert run_cli_fails(["session", "show"])[0] == 2
+    seed_session("only-session", **_PROBLEM)
     tail = ["--json"] if verb == "status" else []
     assert run_cli([verb, *tail]) == run_cli([verb, "only-session", *tail])
 
 
 def test_status_with_no_argument_and_several_sessions_lists_them_with_the_default_marked():
     """#541: several sessions -> listed, the most recently written one marked and taken as default."""
-    _revised("older")
-    _revised("newer", "a second request")
-    _touch("newer")
-    printed = run_cli(["status"])
-    assert "older" in printed and "newer" in printed
-    assert "→" in next(ln for ln in printed.splitlines() if "newer" in ln)
+    seed_session("older", **_PROBLEM)
+    seed_session("newer", "a second request", **_PROBLEM)
+    forge_meta("newer", {"updated_at": "2999-01-01T00:00:00Z"})
+    text = run_cli(["status"])
+    assert "older" in text and "→" in next(ln for ln in text.splitlines() if "newer" in ln)
     assert json.loads(run_cli(["status", "--json"]))["slug"] == "newer"
-
-
-def test_status_with_no_argument_and_no_session_exits_1_naming_run():
-    """#541: none -> exit 1 naming `run`; a plumbing verb keeps its slug required (exit 2)."""
-    code, err = _exits(["status"])
-    assert code == 1 and "run" in err
-    assert _exits(["session", "show"])[0] == 2
 
 
 # ── `requivo demo` and the browsable examples (#223, #225) ───────────────────────
@@ -188,10 +169,7 @@ def test_the_browsable_examples_deterministic_half_matches_the_renderer():
     draft = bool(readiness_blockers(out))
     assert lines[1].strip() == ("DRAFT DECISION BRIEF" if draft else "DECISION BRIEF"), "the example's banner is stale"
     assert (lines[2].strip() if draft else None) == (DRAFT_NOTE if draft else None), "the example's draft sub-line is stale"
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        render_readiness(out)
-    live = buf.getvalue().rstrip("\n")
+    live = printed(render_readiness, out).rstrip("\n")
     captured = ("ARE WE READY?" + assessment.split("ARE WE READY?", 1)[1]).rstrip("\n")
     assert captured == live, f"the example's readiness block is stale.\n--- captured ---\n{captured}\n--- live ---\n{live}"
 
@@ -224,34 +202,29 @@ _EPIC = {"title": "X", "issues": [{"id": "I-1", "title": "Build the request form
 _STORIES = json.dumps({"stories": [{"id": "S1", "title": "T"}]})
 _ESTIMATE = json.dumps({"items": [{"story_id": "S1", "title": "T", "complexity": "S", "days_low": 1, "days_high": 2}]})
 _BRIEF = json.dumps({"complexity": "low", "solution": "S"})
+_PRD = '{"title": "X", "problem": "P"}'
 
 
-def _estimate_client() -> FakeClient:
-    """The two scripted replies `estimate` needs: the stories, then the estimate read against them."""
-    return FakeClient(_STORIES, _ESTIMATE)
-
-
-@pytest.mark.parametrize("argv, replies, files, printed", [
+@pytest.mark.parametrize("argv, replies, files, shown", [
     (["brief"], [_BRIEF], ["solution-assessment.md"], "DECISION BRIEF"),
     (["stories"], [_STORIES], ["stories.md"], "[S1] T"),
     (["estimate"], [_STORIES, _ESTIMATE], ["estimate.md"], "=== ESTIMATE"),
-    (["prd"], [json.dumps({"title": "X", "problem": "P"})], ["prd.md"], ""),
+    (["prd"], [_PRD], ["prd.md"], ""),
     (["criteria"], [json.dumps(_CRITERIA)], ["acceptance-criteria.md"], ""),
     (["epic", "--export-json", "--github", "--gitlab"], [json.dumps(_EPIC)], ["epic.md", "epic.json", "epic.github.json", "epic.gitlab.json"], ""),
     (["release", "v1.0"], [json.dumps({"title": "X"})], ["release-notes.md"], ""),
 ], ids=["brief", "stories", "estimate", "prd", "criteria", "epic", "release"])
-def test_pc_generators_write_their_artifacts_through_the_injected_client(argv, replies, files, printed):
+def test_pc_generators_write_their_artifacts_through_the_injected_client(argv, replies, files, shown):
     """Every generator verb renders and writes its artifact(s); the brief also records which prompt reasoned."""
     verb, *rest = argv
     with _model_in_out(f"clitest-{verb}") as p:
-        text = run_cli([verb, p.parent.name, *rest], client=FakeClient(*replies))
-        assert printed in text
+        assert shown in run_cli([verb, p.parent.name, *rest], client=FakeClient(*replies))
         for name in files:
             assert (p.parent / "artifacts" / name).exists(), name
         if verb == "prd":
-            assert (p.parent / "artifacts" / "prd.md").read_text(encoding="utf-8").startswith("# X")
+            assert _artifact(p, "prd.md").startswith("# X")
         if verb == "release":
-            assert "v1.0" in (p.parent / "artifacts" / "release-notes.md").read_text(encoding="utf-8")
+            assert "v1.0" in _artifact(p, "release-notes.md")
         listed = ArtifactService().list(p.parent.name)[verb]
         assert listed["stale"] is False and listed["revision"] >= 1
         if verb == "brief":   # the one generator that mints a revision, so the one with provenance to check
@@ -263,16 +236,12 @@ def test_pc_generators_write_their_artifacts_through_the_injected_client(argv, r
 def test_pc_brief_persists_reasoning_into_model():
     """Keystone: the brief's reasoning is absorbed into the saved model."""
     with _model_in_out("clitest-brief-persist") as p:
-        brief_json = json.dumps({
-            "complexity": "high",
-            "decisions": [{"decision": "draft-first", "tradeoff": "review step"}],
+        run_cli(["brief", p.parent.name], client=FakeClient(json.dumps({
+            "complexity": "high", "decisions": [{"decision": "draft-first", "tradeoff": "review step"}],
             "challenges": [{"headline": "Archive vs delete", "premise": "pr", "alternative": "al", "consequence": "co", "recommendation": "re"}],
-            "opportunities": [{"text": "reuse engine", "leverage": "high", "modules": ["Invoicing"]}],
-        })
-        run_cli(["brief", p.parent.name], client=FakeClient(brief_json))
+            "opportunities": [{"text": "reuse engine", "leverage": "high", "modules": ["Invoicing"]}]})))
         reloaded = load_model(p)
-        assert reloaded.challenges[0].headline == "Archive vs delete"
-        assert reloaded.decisions[0].decision == "draft-first"
+        assert reloaded.challenges[0].headline == "Archive vs delete" and reloaded.decisions[0].decision == "draft-first"
         assert reloaded.opportunities[0].modules == ["Invoicing"]
 
 
@@ -281,7 +250,7 @@ def test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot(monkeypa
     taken = []
     real = SessionService.snapshot
     monkeypatch.setattr(SessionService, "snapshot", lambda self, slug: (taken.append(slug), real(self, slug))[1])
-    fake = _estimate_client()
+    fake = FakeClient(_STORIES, _ESTIMATE)
     with _model_in_out("clitest-estimate-snapshot") as p:
         run_cli(["estimate", p.parent.name], client=fake)
     assert len(fake.calls) == 2, "both provider calls have to happen or the count below proves nothing"
@@ -292,14 +261,14 @@ def test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_ag
     """#274: `epic.json` is the machine-consumed input an n8n flow acts on and needs provenance."""
     slug = "clitest-epic-revision"
     with _model_in_out(slug) as p:
-        store.save_revision(slug, _built_model({"problem": slot(80, "explicit", "high")}))   # past revision 1
+        store.save_revision(slug, _built_model(_PROBLEM))   # past revision 1
         assert store.read_meta(slug).current_revision == 2
         run_cli(["epic", p.parent.name, "--export-json", "--github", "--gitlab"], client=FakeClient(json.dumps(_EPIC)))
         epic_revision = store.read_meta(slug).artifact_status["epic"].revision
         assert epic_revision == 2
         for name in ("epic.json", "epic.github.json", "epic.gitlab.json"):
-            assert json.loads((p.parent / "artifacts" / name).read_text(encoding="utf-8"))["source_revision"] == epic_revision
-        assert json.loads((p.parent / "artifacts" / "epic.json").read_text(encoding="utf-8"))["slug"] == slug
+            assert json.loads(_artifact(p, name))["source_revision"] == epic_revision
+        assert json.loads(_artifact(p, "epic.json"))["slug"] == slug
 
 
 # ── `requivo docs` (#544): one verb over the seven generators ─────────────────────
@@ -312,11 +281,10 @@ def test_docs_stories_and_estimate_together_write_stories_once():
         run_cli(["docs", p.parent.name, "stories", "estimate"], client=fake)
         assert (p.parent / "artifacts" / "stories.md").exists() and (p.parent / "artifacts" / "estimate.md").exists()
     assert len(fake.calls) == 2, "stories must be reasoned and saved exactly once"
-    reply = '{"title": "X", "problem": "P"}'
     with _model_in_out("clitest-docs-prd-a") as pa, _model_in_out("clitest-docs-prd-b") as pb:
-        run_cli(["docs", pa.parent.name, "prd"], client=FakeClient(reply))
-        run_cli(["prd", pb.parent.name], client=FakeClient(reply))
-        assert (pa.parent / "artifacts" / "prd.md").read_text(encoding="utf-8") == (pb.parent / "artifacts" / "prd.md").read_text(encoding="utf-8")
+        run_cli(["docs", pa.parent.name, "prd"], client=FakeClient(_PRD))
+        run_cli(["prd", pb.parent.name], client=FakeClient(_PRD))
+        assert _artifact(pa, "prd.md") == _artifact(pb, "prd.md")
         sa, sb = (store.read_meta(x.parent.name).artifact_status["prd"] for x in (pa, pb))
         assert (sa.revision, sa.stale) == (sb.revision, sb.stale)
 
@@ -333,22 +301,17 @@ def test_resolve_doc_types_refuses_an_unknown_type_before_any_call():
 
 def test_prompt_doc_selection_refuses_an_unknown_token_before_any_call(monkeypatch):
     """The interactive pick parses numbers, names and `all`, and refuses a bad token before any generator runs (invariant 3)."""
-    monkeypatch.setattr("builtins.input", lambda prompt="": "2, stories")
-    assert _prompt_doc_selection() == ["prd", "stories"]
-    monkeypatch.setattr("builtins.input", lambda prompt="": "all")
-    assert _prompt_doc_selection() == list(DOC_TYPES)
-    monkeypatch.setattr("builtins.input", lambda prompt="": "")
-    assert _prompt_doc_selection() is None
+    for typed, picked in (("2, stories", ["prd", "stories"]), ("all", list(DOC_TYPES)), ("", None)):
+        monkeypatch.setattr("builtins.input", lambda prompt="", typed=typed: typed)
+        assert _prompt_doc_selection() == picked
     monkeypatch.setattr("builtins.input", lambda prompt="": "prd, nope")
     with pytest.raises(RequivoError):
         _prompt_doc_selection()
 
 
 def test_docs_all_flag_generates_every_document_skipping_the_menu():
-    replies = [
-        '{"complexity": "low"}', '{"title": "X", "problem": "P"}', _STORIES, _ESTIMATE,
-        json.dumps(_CRITERIA), json.dumps(_EPIC), '{"title": "X", "summary": "S", "highlights": ["H"], "notes": ["N"]}',
-    ]
+    replies = ['{"complexity": "low"}', _PRD, _STORIES, _ESTIMATE, json.dumps(_CRITERIA), json.dumps(_EPIC),
+               '{"title": "X", "summary": "S", "highlights": ["H"], "notes": ["N"]}']
     with _model_in_out("clitest-docs-all") as p:
         run_cli(["docs", p.parent.name, "--all"], client=FakeClient(*replies))
         for name in ("solution-assessment.md", "prd.md", "stories.md", "estimate.md", "acceptance-criteria.md", "epic.md", "release-notes.md"):
@@ -364,7 +327,7 @@ def test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session(argv, 
     """#544 and its review: every malformed selection is refused before any call, and touches no other session."""
     fake = FakeClient()
     with _model_in_out("clitest-docs-refusal") as other:
-        code, err = _exits([a.replace("{slug}", other.parent.name) for a in argv], client=fake)
+        code, err = run_cli_fails([a.replace("{slug}", other.parent.name) for a in argv], client=fake)
         assert code == 1 and message in err and fake.calls == []
         artifacts_dir = other.parent / "artifacts"
         assert not artifacts_dir.exists() or not any(artifacts_dir.iterdir())
@@ -372,10 +335,11 @@ def test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session(argv, 
 
 def test_docs_revision_zero_has_no_menu_and_points_at_run(monkeypatch):
     """A revision-0 session gets no menu; the bundled example shows the brief up to date and six not generated."""
+    from requivo.web.example import seed_example
+
     store.create_session("clitest-docs-empty", "A request.")
     out_text = run_cli(["docs", "clitest-docs-empty"])
     assert "DOCUMENTS" not in out_text and "requivo run clitest-docs-empty" in out_text
-    from requivo.web.example import seed_example
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
     lines = run_cli(["docs", seed_example(SessionService())]).splitlines()
     assert "up to date" in next(ln for ln in lines if "Decision brief" in ln)
@@ -384,8 +348,7 @@ def test_docs_revision_zero_has_no_menu_and_points_at_run(monkeypatch):
 
 def test_docs_menu_rows_state_reads_artifact_status_not_revision_arithmetic():
     """A rev-1 artifact on a rev-2 session whose change touched none of its slots still reads *up to date*."""
-    slug = "clitest-docs-menu-rows"
-    _revised(slug, "A request.")
+    slug = seed_session("clitest-docs-menu-rows", "A request.", **_PROBLEM)
     ArtifactService().save(slug, "criteria", "# Criteria\n", source_revision=1)
     store.save_revision(slug, _built_model({"problem": slot(90, "explicit", "high")}))
     meta = store.read_meta(slug)
@@ -397,22 +360,17 @@ def test_docs_menu_rows_state_reads_artifact_status_not_revision_arithmetic():
 # ── `discover --once` and its request argument ────────────────────────────────────
 
 
-def test_pc_discover_once_saves_model():
-    slug = "clitest-discover-probe-xyz"
-    run_cli(["discover", "clitest discover probe xyz", "--once"], client=FakeClient(*_DISCOVER))
-    folder = store.canonical_dir(slug)
+def test_pc_discover_prints_the_default_cards_before_the_paid_call(monkeypatch):
+    """`--once` saves a resumable session (#72); the default names every installed card, an explicit selection only its own (#257)."""
+    output = run_cli(["discover", "clitest discover default cards", "--once"], client=FakeClient(*_DISCOVER))
+    folder = store.canonical_dir(slug := _only_slug())
     assert (folder / "model.json").exists() and (folder / "request.md").exists()   # `answer` can resume
     assert store.read_meta(slug).current_revision == 1 and store.read_meta(slug).provider == "anthropic"
-
-
-def test_pc_discover_prints_the_default_cards_before_the_paid_call(monkeypatch):
-    """#257: the default (no `--context`) names every installed card; an explicit selection names only its own."""
-    output = run_cli(["discover", "clitest discover default cards", "--once"], client=FakeClient(*_DISCOVER))
     cards = available_cards()
     assert cards, "no bundled context cards found -- this test is not exercising anything"
     for name in cards:
         assert name in output, f"{name!r} (a real installed card) is not named in the pre-call output"
-    assert store.read_meta(_only_slug()).context_cards is None
+    assert store.read_meta(slug).context_cards is None
     output = run_cli(["discover", "clitest discover explicit cards", "--once", "--context", "b2b-platform"], client=FakeClient(*_DISCOVER))
     assert "Context cards: b2b-platform" in output and "document-management" not in output
     monkeypatch.setattr("requivo.cli.average_card_byte_size", lambda: None)
@@ -432,7 +390,7 @@ def test_discover_file_check_survives_a_real_length_request(tmp_path):
 
 @pytest.mark.parametrize("blank", ["", "   "])
 def test_pc_discover_rejects_empty_request(blank):
-    assert _exits(["discover", blank], client=FakeClient(_ENGINE_REPLY))[0] != 0
+    assert run_cli_fails(["discover", blank], client=FakeClient(_ENGINE_REPLY))[0] != 0
 
 
 class _Tty(io.StringIO):
@@ -456,7 +414,7 @@ def test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on(mo
     """A terminal on stdin, or nothing on it, is refused before the provider (#360)."""
     monkeypatch.setattr(sys, "stdin", stdin)
     fake = FakeClient(*_DISCOVER)
-    assert _exits(["discover", "-"], client=fake)[0] == code
+    assert run_cli_fails(["discover", "-"], client=fake)[0] == code
     assert fake.calls == []
 
 
@@ -486,7 +444,7 @@ def test_a_dash_is_stdin_even_when_a_file_of_that_name_exists(monkeypatch, tmp_p
 def test_pc_answer_refines_the_model():
     """A stateless discovery turn: answers + the current model -> a refined model."""
     with _model_in_out("clitest-answer") as p:
-        fake = FakeClient(json.dumps({**full_model(problem=slot(95, "explicit", "high"))}))
+        fake = FakeClient(json.dumps(full_model(problem=slot(95, "explicit", "high"))))
         run_cli(["answer", p.parent.name, "The approver is HR, and the circuit is per-client."], client=fake)
         sent = fake.calls[0]["messages"]
         assert "The approver is HR" in sent[-1]["content"] and "problem" in sent[1]["content"]
@@ -496,13 +454,11 @@ def test_pc_answer_refines_the_model():
 
 def test_requivo_package_is_importable_and_versioned():
     """The rename Product Copilot -> Requivo is complete: the old package is gone, `--help` exits 0."""
-    import importlib
-
     import requivo
     assert requivo.__version__ and callable(app)
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("product_copilot")
-    assert _exits(["--help"])[0] == 0
+        __import__("product_copilot")
+    assert run_cli_fails(["--help"])[0] == 0
 
 
 # ── `requivo --help` is the first screen (#244, #546) ─────────────────────────────
@@ -510,6 +466,7 @@ def test_requivo_package_is_importable_and_versioned():
 API_VERBS = (set(_OP_PROMPTS) - {"analyze"}) | {"discover", "answer", "run", "docs"}   # the paid verbs (#540)
 MARKER = "(API)"
 PLUMBING = {"doctor", "schema", "context", "session", "model", "artifact"}
+_GROUPS = {"start": _HELP_GROUP_START, "scripts": _HELP_GROUP_SCRIPTS, "plumbing": _HELP_GROUP_PLUMBING}
 
 
 def _subcommands() -> list:
@@ -536,10 +493,7 @@ def test_start_here_leads_the_rendered_help():
 def test_every_registered_verb_appears_in_exactly_one_help_group():
     """The completeness half of #546's acceptance criterion: every existing verb appears exactly once."""
     order = [name for name, _ in _subcommands()]
-    seen: dict[str, list[str]] = {}
-    for label, group in zip(("start", "scripts", "plumbing"), (_HELP_GROUP_START, _HELP_GROUP_SCRIPTS, _HELP_GROUP_PLUMBING)):
-        for name in group:
-            seen.setdefault(name, []).append(label)
+    seen = {name: [label for label, group in _GROUPS.items() if name in group] for group in _GROUPS.values() for name in group}
     duplicated = {name: labels for name, labels in seen.items() if len(labels) > 1}
     assert duplicated == {}, f"a verb is in more than one --help group: {duplicated}"
     assert set(seen) == set(order), f"missing: {sorted(set(order) - set(seen))}; unregistered: {sorted(set(seen) - set(order))}"
@@ -573,8 +527,7 @@ def test_every_paid_verb_in_a_compact_group_still_shows_the_marker():
     helps = dict(_subcommands())
     marked = {name for name, text in helps.items() if MARKER in text}
     assert marked == API_VERBS, f"marked but free: {sorted(marked - API_VERBS)}; paid but unmarked: {sorted(API_VERBS - marked)}"
-    for verb in ("status", "impact", "demo", *PLUMBING):
-        assert MARKER not in helps[verb], verb
+    assert not any(MARKER in helps[verb] for verb in ("status", "impact", "demo", *PLUMBING))
     text = _build_parser().format_help()
     paid_outside_start = [name for name in (*_HELP_GROUP_SCRIPTS, *_HELP_GROUP_PLUMBING) if MARKER in helps[name]]
     assert paid_outside_start   # must fire: vacuous otherwise
