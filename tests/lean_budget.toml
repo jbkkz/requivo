@@ -1,85 +1,36 @@
-# The lean ratchet (#553) -- ceilings, not targets.
+# The lean ratchet (#553): ceilings, not targets. Every value is what `scripts/prose_measure.py`
+# measured on the real tree when its PR was opened, rounded up by at most 5%, and read by
+# `test_the_tree_stays_within_its_lean_budget`, which reports every breach at once. Lowering one is a
+# one-line PR; raising one is legal and visible, and costs the PR one sentence here saying why the
+# tree needed to grow. The estate's membership is `ESTATE_FILES` in tests/test_source_form.py.
 #
-# Every value here is what `scripts/prose_measure.py` measured on this repository the moment
-# before this file's own PR was opened -- including this PR's own additions (the script, this
-# TOML, and the guard section in tests/test_source_form.py), because a ceiling that ignored the
-# ratchet's own weight would start life already broken by the thing enforcing it. Rounded up by at
-# most 5% from that measurement. None is a round number someone expected and none is an
-# aspiration: raise one and the tree has grown past what it measured last time; lower one and the
-# tree has gotten leaner than what this file still allows.
-#
-# This is a FLOOR under today's tree, not a plan for tomorrow's. `tests/test_source_form.py`'s
-# lean-budget section reads this file, re-measures, and reports every breach -- file and number,
-# never only the first.
-#
-# - Lowering a ceiling is a one-line PR: a change that gets comfortably under one should be asked
-#   to tighten it, so the ratchet keeps meaning something instead of only ever loosening.
-# - Raising a ceiling is legal and visible -- a diff on this file -- but it costs the PR one
-#   sentence saying why the tree needed to grow there. No silent creep.
-#
-# No key here was met by rounding to what looked tidy: `src.largest_module_max_lines` and
-# `tests.ratio_max` in particular are far from any figure a reader might assume going in --
-# `src/requivo/cli.py` is the largest module in `src/`, and the suite still runs at roughly 2.7x
-# the product's code even after the CLI tranche of #555 (#582) landed. Measure; do not assume.
-#
-# Measured 2026-09-14 on main at 1a83bb2, after all four tranches of #555 landed. The [tests]
-# ceilings were lowered here in that same pass -- a reduction landed, the ceiling followed it down.
+# Last measured 2026-09-17 on 627-t1-rules (#627, tranche 1: the rules). Tranches 2-5 lower these.
 
 [src]
-# src/requivo, .py files, untouched by #553/#582: 44.7% prose (8,340 of 18,666 lines),
-# src/requivo/cli.py the largest module at 1,593 lines.
-#
-# `prose_share_max` starts at exactly the figure the lean pass (#548) set out to reduce -- the
-# 2026-08-29 audit found 45%, this tree still measures 44.7%. That is deliberate, not an
-# oversight: a ratchet has to start at what the tree *is*, and #549's src/ compression is a
-# separate, already-closed lane. Lowering this ceiling once src/ actually shrinks further is the
-# one-line PR the header above describes.
+# src/requivo, .py files. Unchanged since #553: the src/ cut is tranche 2 of #627.
 prose_share_max = 0.469
-# Raised from 1672 to 1704 for #601's Codex-review follow-up: the interactive ambiguity prompt
-# JB's decision asked for (`_prompt_perimeter_choice` plus its call site in `_cmd_discover`) had
-# nowhere else to land -- it is CLI-only terminal I/O, the one thing `services/` may not touch.
-# Raised again to 1710 in the same lane's fourth round: `_prompt_perimeter_choice` had to stop
-# swallowing `KeyboardInterrupt`, and the docstring explaining why it must not is CLI-only too.
+# Raised from 1672 to 1710 across #601's review rounds: `_prompt_perimeter_choice` is CLI-only
+# terminal I/O and had nowhere else to land.
 largest_module_max_lines = 1710
+module_docstring_max_lines = 60
+function_docstring_max_lines = 67
 
 [tests]
-# tests/, .py files. 2.72x test code per line of product code (22,303 test code lines against
-# 8,201). #555's four tranches removed ~3,500 tests/ lines in total and the ratio barely moved,
-# which is the whole reason this key exists rather than a one-off claim in an issue body -- the
-# issue's original 1.2x target was removed once measurement showed it unreachable, because ~40% of
-# test names are pinned in place by citations #554 requires to keep resolving.
-#
-# Docstring maxima are over every module/class/function docstring in tests/: 75 lines
-# (tests/test_public_payload_shapes.py's module docstring) and 20 lines (a function docstring in
-# tests/test_plugin_cli_drift_forgery_guards.py).
-#
-# `largest_module_max_lines` deliberately EXCLUDES the meta-guard estate (see [estate] below):
-# tests/test_source_form.py, the estate's own largest file at 2,167 lines, would otherwise pin
-# this key nearly 3x over #555's separate 800-line rule for an ordinary test module. Excluding the
-# twelve files `ESTATE_FILES` names (tests/test_source_form.py's own lean-budget section owns that
-# list), the largest test module is now tests/test_golden_lib.py at 767 lines.
-#
-# That key is set to 800 rather than the 805 a 5% rounding would give, and the tighter value is
-# the point: 800 is #555's own rule for an ordinary test module, which until now no test enforced
-# and every reviewer had to check by eye. At 800 the ratchet enforces it mechanically, and the two
-# rules stop being able to disagree.
+# tests/, .py files. `largest_module_max_lines` excludes the meta-guard estate and is set at #555's
+# own 800-line rule for an ordinary test module rather than at a 5% rounding.
 ratio_max = 2.84
 largest_module_max_lines = 800
 module_docstring_max_lines = 78
 function_docstring_max_lines = 21
 
 [estate]
-# The meta-guard estate: the tests that guard the repo's own self-description rather than its
-# runtime. The file list lives in tests/test_source_form.py, not here (#553 asks for the ceiling
-# value here and the membership there, so a file joining or leaving the estate is a test diff, not
-# a silent change of what this number means). 4,538 lines across the twelve files named there
-# (4,382 on main before #553's own guard section landed; +156 for that section across three review
-# rounds -- the estate-exclusion helper and, in the round beside this comment, deriving the
-# must-fire test's expected file names from the same measurement instead of hardcoding them; #582
-# did not touch any estate file).
+# The tests that guard the repo's own self-description rather than its runtime, summed.
 total_max_lines = 4764
 
 [docs]
-# docs/compatibility.md, untouched by #553 or #582: 399 lines -- already under #552's target of
-# <=400, so this ceiling mostly guards against silent regrowth rather than driving a cut.
 compatibility_max_lines = 418
+decision_record_max_lines = 485
+
+[claude_md]
+# CLAUDE.md is loaded into every session; it holds the rules and the map, and nothing else (#627).
+max_lines = 125

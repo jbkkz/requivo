@@ -63,6 +63,8 @@ the same as any other first capture in this file.
   run flipping). Act on strong, watch weak only in aggregate.
 - **A capture identical to HEAD is reported as "not re-captured", never "no change"** — a false
   all-clear is the one failure mode a regression lens must not have.
+- **Challenges are grouped by the slots they contest, never by wording**: the engine rephrases at
+  the concept level, so two wordings of one challenge share no words.
 - **The assessment lens** (`--brief`) watches the deliverable instead of the discovery state: the
   complexity verdict and which premises the engine chose to contest.
 - **Every lens runs, and the verdict is the union of the ones that ran** — the strongest signal any

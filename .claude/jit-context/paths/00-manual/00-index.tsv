@@ -1,1 +1,8 @@
-^(src|tests)/.*\.py$	lean.md
+^CLAUDE\.md$	claude-md.md
+^docs/decisions/.*\.md$	decision-record.md
+^src/requivo/(core/persistence/scan\.py|deterministic/doctor\.py)$	diagnostics-tier.md
+^tests/lean_budget\.toml$	lean-budget.md
+^(src|tests|scripts)/.*\.py$	lean.md
+^src/requivo/assets/perimeters/.*	perimeter-schema.md
+^src/requivo/assets/(prompts|context)/.*\.md$	prompt-assets.md
+^src/requivo/(core/dependencies\.py|services/discovery\.py|providers/anthropic/generators\.py|render/markdown\.py|web/viewmodels/labels\.py|cli\.py)$	registries.md

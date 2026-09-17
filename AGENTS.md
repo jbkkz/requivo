@@ -8,7 +8,8 @@ repository is **independent reviewer first; implementer only when explicitly req
 Do not duplicate or reinterpret the project's detailed rules here. Before reviewing a change, read
 the parts relevant to its scope:
 
-- `CLAUDE.md` for architecture, invariants, and repository-specific failure history;
+- `CLAUDE.md` for the rules and the map; the failure history behind each invariant is on the
+  tracker, under the issue its guarding test cites;
 - `CONTRIBUTING.md` for checks, conventions, changelog policy, and source/prose guards;
 - `docs/architecture.md` and `docs/compatibility.md` for layer and compatibility contracts;
 - `docs/session-format.md`, `docs/cli.md`, or `docs/evaluations.md` when the change touches those
