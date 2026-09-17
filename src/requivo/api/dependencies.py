@@ -1,17 +1,5 @@
-"""FastAPI dependencies for the `[api]` extra -- construct the shared application services per
-request (#425).
-
-Mirrors `web/dependencies.py`: the services are stateless over an injected `FileSessionRepository`
-(they read/write the workspace on each call), so a fresh instance per request is correct and cheap.
-Routes depend on these instead of importing the store, so the filesystem is only ever reached
-through a service -- never from a route.
-
-`safe_slug` is a second, small implementation of the web module's function of the same name rather
-than an import of it: the two are different surfaces behind different optional extras, and neither
-needs fastapi to define it, so importing across them would trade the ten lines this duplicates for a
-dependency from one surface's package onto another's -- more coupling than the duplication it would
-remove. The behaviour is identical on purpose, and the reasoning is `web/dependencies.py`'s own; see
-that module's `safe_slug` docstring for the read-time/creation-time split this mirrors.
+"""FastAPI dependencies for the `[api]` extra (#425), mirroring `web/dependencies.py`: the shared
+services per request, and a `safe_slug` duplicated rather than imported across two optional extras.
 """
 
 from __future__ import annotations
@@ -36,18 +24,9 @@ def get_discovery() -> DiscoveryService:
 
 
 def safe_slug(slug: str) -> str:
-    """Validate a `{slug}` path parameter in Core (strict kebab-case, no traversal) before any route
-    uses it. Raises `InvalidSlugError` -- the API's exception handler turns that into a clean 400.
-
-    Read-time only: every route taking this dependency addresses a session that must already exist,
-    so the reserved Windows device-name refusal is conditional on a name already occupying the
-    session root (`_refuse_new_reserved_slug`), never unconditional. Load-bearing since #425 slice 2:
-    `POST /sessions` -- the one route that can bring a slug into existence -- takes its name from the
-    request body (`CreateSessionRequest.slug`) rather than the path, so it never reaches this
-    dependency at all; it goes through `SessionService.create_session_report` directly, which is also
-    what lets a 409 `session_exists` name the identity conflict rather than a spurious reserved-name
-    refusal. Widening *this* function would widen creation, which is exactly what must not happen --
-    the identical split `web/dependencies.py`'s own `safe_slug` docstring argues for the same reason."""
+    """Validate a `{slug}` path parameter in Core before any route uses it; read-time only, so the
+    reserved-name refusal is conditional on nothing occupying the name (`POST /sessions` takes its
+    slug from the body and never reaches this), as `web/dependencies.py`'s twin argues."""
     slug = _slug_shape(slug)
     _refuse_new_reserved_slug(slug, session_root() / slug)
     return slug

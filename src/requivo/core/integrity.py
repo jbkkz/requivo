@@ -1,44 +1,13 @@
-"""Session integrity — does this session directory tell the truth about itself?
+"""Session integrity: does this session directory tell the truth about itself?
 
-A session is not one file. It is metadata claiming a revision count, a history of one file per
-revision, a current model that should equal the last of them, and artifacts each pointing back at the
-revision they came from. Every one of those claims can be false while each individual file is
-perfectly valid JSON — an archive that lost its `revisions/`, a hand-edited `session.json`, an
-interrupted copy, a model.json swapped out from under its own hash.
-
-Validating the *shape* of each file (which is all `session import` used to do) cannot see any of that,
-because nothing is malformed. Only the relationships are broken. This module checks the relationships,
-and it is deliberately separate from `persistence`: the same function has to serve a session in the
-store (`requivo session verify`, `doctor`) and a directory extracted from an archive that has not been
-allowed into the store yet — so it takes a *path*, and it never writes.
-
-It reports rather than raises. A caller decides what a problem means: `session verify` prints them all
-and exits non-zero, `session import` refuses the archive, `doctor` names the sessions worth looking at.
-Raising on the first one would answer a different, less useful question — "is it broken?" instead of
-"what is broken?".
-
-**The evidence is the directory, and only the directory.** One rule binding in both directions — an
-integrity answer is derived from the directory's own bytes, importing no fact from the environment
-and exporting no question to it:
-
-- *Nothing outside becomes a verdict.* Whether a session's context cards still resolve is a fact
-  about the machine, so the same directory would be coherent on one machine and broken on another —
-  and `session import` refusing on these problems would make a colleague's good session unimportable
-  for want of a card you do not have. That check lives in `core.context.check_selection`, reported
-  beside these problems (`test_a_context_card_that_no_longer_resolves_is_not_an_integrity_problem`).
-- *Nothing inside sends us outside.* A claim in `session.json` is untrusted input: the recorded
-  artifact filename was joined into `artifacts/` and stat-ed unvalidated, and under `pathlib` an
-  absolute component replaces the prefix outright, so the answer leaked whether a path existed
-  (`test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session`). See
-  the artifact loop below.
-
-**Not everything worth naming is a defect.** A finding carries a `severity`, and an artifact type
-this build has no generator for is a *note* rather than a problem, because `docs/compatibility.md`
-lists "a new artifact type" among the changes needing no `format_version` bump and this module used
-to refuse one outright (#260) — a diagnostic must be at least as permissive as the loader.
-`check_session_dir` returns the blocking half, so every existing caller's default is the safe one;
-`inspect_session_dir` returns everything, for the surfaces that report rather than gate.
-`test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`.
+It checks the relationships between the files (revision count, one file per revision, model equal
+to the last, artifacts pointing at real revisions), takes a *path* so it serves the store and an
+extracted archive alike, never writes, and reports rather than raises. The evidence is the directory
+and only the directory: nothing outside becomes a verdict
+(`test_a_context_card_that_no_longer_resolves_is_not_an_integrity_problem`) and nothing inside sends a
+filesystem call outside (`test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session`).
+A finding carries a `severity`; an artifact type this build cannot name is a note, not a problem
+(#260, `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`).
 """
 
 from __future__ import annotations
@@ -63,43 +32,23 @@ from requivo.core.persistence import (
     validate_filename,
 )
 
-# The two severities a finding can carry.
-#
-# `problem` is a broken claim: the session does not tell the truth about itself, and every caller
-# refuses on it. `note` is something worth *naming* that is not a defect, and the only member today
-# is an artifact type this build has no generator for (#260).
+# `problem` is a broken claim every caller refuses on; `note` is worth naming and not a defect (#260).
 SEVERITY_PROBLEM = "problem"
 SEVERITY_NOTE = "note"
 
-# What an artifact *type* must look like for this module to treat it as a plausible future one. The
-# same shape as `_FILENAME_RE` in the store, and deliberately a separate statement of it: a type is a
-# vocabulary token and a filename is a path component, `ARTIFACT_FILENAMES` maps one onto the other,
-# and the two are free to diverge. Lowercase runs of [a-z0-9] joined by a single `.`, `-` or `_`,
-# which is what every key in `ARTIFACT_FILENAMES` already is.
-#
-# It exists because tolerating an unknown type widens a door that used to be shut: before #260 an
-# archive carrying arbitrary `artifact_status` keys was refused outright by `session import`, and a
-# tolerated key is one this build will accept, store, and print on a *passing* `doctor` run for as
-# long as the session lives. A key that is not token-shaped is not a newer Requivo's generator — it
-# is junk or a forgery — so it keeps the refusal, under `unsafe_artifact_type` rather than under the
-# note's code, because a consumer has to be able to tell the two apart.
-# `test_an_artifact_type_that_is_not_a_plausible_token_is_still_a_problem` is the guard.
+# What an artifact type must look like to be treated as a plausible future one: a vocabulary token,
+# stated separately from `_FILENAME_RE`. A key that is not token-shaped keeps the refusal, under
+# `unsafe_artifact_type` (#260): `test_an_artifact_type_that_is_not_a_plausible_token_is_still_a_problem`.
 _ARTIFACT_TYPE_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 
-# Room for a descriptive compound name and no more. An artifact type is printed once per row by
-# `doctor` and by `session verify`, on what is now a code path that *passes*, so an unbounded one is
-# a reader's whole screen. Generous against the longest key those tables could plausibly hold.
+# Room for a descriptive compound name and no more: a type is printed once per row on a passing run.
 MAX_ARTIFACT_TYPE_LENGTH = 64
 
 
 @dataclass(frozen=True)
 class IntegrityProblem:
-    """One finding. `code` is a stable machine token (assert on it, not on the message).
-
-    `severity` is additive and defaults to `SEVERITY_PROBLEM`, so every construction and every
-    `to_dict()` consumer that predates #260 keeps exactly the meaning it had. Filter with `blocking`
-    rather than by hand: `severity != SEVERITY_PROBLEM` and `severity == SEVERITY_NOTE` differ the
-    moment a third value exists, and only one of the two is the safe reading."""
+    """One finding. `code` is a stable machine token (assert on it, not on the message); `severity`
+    defaults to `SEVERITY_PROBLEM`. Filter with `blocking`, not by hand."""
     code: str
     message: str
     severity: str = SEVERITY_PROBLEM
@@ -132,26 +81,18 @@ def _is_revision(filename: str, n: int) -> bool:
 
 @dataclass(frozen=True)
 class ReadableRevision:
-    """One revision this build could parse, found while searching for a repair target (#210) — the
-    pair `newest_readable_revision` returns. `payload` is the exact bytes read off disk, not a
-    round-trip through a pydantic model: a caller that writes it back onto `model.json` unchanged
-    reproduces the revision file's own `content_hash`, which is what lets `check_session_dir`'s
-    `model_is_not_the_last_revision` check pass afterwards without this module recomputing anything.
-    Re-serializing a parsed model instead would risk silently dropping a field this build cannot
-    name — exactly the loss invariant 8 warns `resolve()` about, one file along."""
+    """One revision this build could parse, found while searching for a repair target (#210).
+    `payload` is the exact bytes read off disk, so writing it back reproduces the file's own
+    `content_hash` and drops no field this build cannot name (invariant 8)."""
     revision: int
     payload: str
 
 
 def _try_revision(d: Path, i: int, expected_hashes: dict[int, str] | None,
                   perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
-    """One candidate: does `revisions/NNNN-model.json` exist, parse under the permissive contract,
-    and — when `expected_hashes` names a hash for it — match it? Shared by `newest_readable_revision`
-    (searching) and `readable_revision` (checking one specific number), so the two never state the
-    same three-part check twice. `expected` absent or empty is unconfirmed rather than refused, the
-    same tolerance `inspect_session_dir` gives a legacy revision record with no recorded hash.
-    `perimeter` (#608) defaults to software -- a caller repairing a session it already knows the
-    perimeter of should pass it, the same way `inspect_session_dir` resolves it from session.json."""
+    """One candidate: does `revisions/NNNN-model.json` exist, parse permissively and match the hash
+    `expected_hashes` names for it (absent or empty is unconfirmed, not refused)? `perimeter` (#608)
+    defaults to software."""
     f = d / "revisions" / f"{i:04d}-model.json"
     if not f.is_file():
         return None
@@ -169,38 +110,17 @@ def _try_revision(d: Path, i: int, expected_hashes: dict[int, str] | None,
 
 def readable_revision(d: Path, revision: int, *, expected_hashes: dict[int, str] | None = None,
                       perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
-    """Is this one specific revision readable and trustworthy? `None` if the file is missing, does
-    not parse, or does not match its recorded hash — the check `session restore`'s explicit
-    `--revision N` runs before touching anything, so a caller-named target is refused on exactly the
-    same grounds `newest_readable_revision`'s search would have skipped it on, never on a looser one.
-    See `_try_revision` for what "readable and trustworthy" means."""
+    """Is this one revision readable and trustworthy? `None` if missing, unparseable or hash-mismatched,
+    the check `session restore --revision N` runs before touching anything."""
     return _try_revision(d, revision, expected_hashes, perimeter)
 
 
 def newest_readable_revision(d: Path, n: int, *, expected_hashes: dict[int, str] | None = None,
                              perimeter: str = DEFAULT_PERIMETER) -> ReadableRevision | None:
-    """The highest revision number in `1..n` whose `revisions/NNNN-model.json` exists, parses under
-    the same permissive contract `inspect_session_dir` checks it against, and — when
-    `expected_hashes` names one — matches the hash `session.json`'s own revision log recorded for
-    it. Read newest first, because a repair wants the most recent state this build can trust, not
-    the oldest one that happens to still parse. `None` when nothing in that range is readable, which
-    is the answer a documented recovery path has to be able to give honestly rather than invent one
-    for.
-
-    **A file that parses is not automatically trustworthy, and `session restore` (#210) exists to be
-    trustworthy.** A revision file tampered with after it was frozen still parses as a perfectly good
-    model, and `inspect_session_dir` already refuses it as `revision_hash_mismatch` — so restoring
-    without the identical check would let a repair tool trust what its paired diagnostic does not.
-    `test_newest_readable_revision_skips_a_revision_whose_hash_no_longer_matches`, with
-    `test_newest_readable_revision_with_no_expected_hashes_trusts_anything_that_parses` for the
-    unconfirmed case: a revision absent from `expected_hashes`, or recorded with an empty hash, is
-    unconfirmed rather than refused, because this answers *can this build open it*.
-
-    Deliberately *not* a verdict about the session: it never raises and decides nothing about repair,
-    only which history this build can open and trust. It re-validates each candidate independently
-    rather than recovering that from `inspect_session_dir`'s findings, which do not carry "which
-    revisions parsed" in a form a caller could use without re-deriving this same loop.
-    """
+    """The highest revision in `1..n` that exists, parses under the permissive contract and, where
+    `expected_hashes` names one, matches its recorded hash; `None` when none does. Never raises and
+    decides nothing about repair. `test_newest_readable_revision_skips_a_revision_whose_hash_no_longer_matches`,
+    `test_newest_readable_revision_with_no_expected_hashes_trusts_anything_that_parses`."""
     for i in range(n, 0, -1):
         found = _try_revision(d, i, expected_hashes, perimeter)
         if found is not None:
@@ -209,17 +129,9 @@ def newest_readable_revision(d: Path, n: int, *, expected_hashes: dict[int, str]
 
 
 def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[IntegrityProblem]:
-    """Every finding about the session directory `d`, in reading order — notes included.
-
-    `expected_slug` is the name the caller believes the session has — the directory name in the store,
-    or the folder name inside an archive. A session that disagrees with its own container about its
-    identity is the first thing to catch, because every later check keys on it.
-
-    **`check_session_dir` is the one to call to decide something**; this one is for a surface that
-    reports. The split is which way the *default* fails (#260): a caller asking "is this session
-    sound" and getting the whole list back would gate on a note, silently, since the list is non-empty
-    either way. `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`.
-    """
+    """Every finding about the session directory `d`, notes included, in reading order.
+    `expected_slug` is the name the caller believes the session has. `check_session_dir` is the one
+    to call to decide something (#260)."""
     findings: list[IntegrityProblem] = []
 
     def bad(code: str, message: str) -> None:
@@ -239,15 +151,11 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
     try:
         meta = migrate_session(raw)
     except UnknownPerimeterError as e:
-        # Named separately from the generic RequivoError arm below (#608): a `session verify`/`doctor`
-        # reader needs `unknown_perimeter` to tell "this session names a perimeter we don't have" apart
-        # from every other way session.json can be malformed, and the two are otherwise the identical
-        # exception family.
+        # Named separately from the generic arm (#608), so a reader can tell an unknown perimeter apart.
         bad("unknown_perimeter", str(e))
         return findings
     except (RequivoError, ValidationError) as e:
-        # Both are expected here and neither should escape as a traceback: a *future* format is a
-        # RequivoError by design, and a structurally wrong session.json is a Pydantic ValidationError.
+        # Both expected: a future format is a RequivoError by design, a wrong shape a ValidationError.
         bad("invalid_session_json", f"session.json is not valid session metadata: {e}")
         return findings
     perimeter = resolve_perimeter(meta.perimeter)
@@ -290,12 +198,7 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
                 f"revisions/{i:04d}-model.json does not match the hash recorded for it — the file "
                 "was changed after it was written")
         try:
-            # The permissive contract, matching `load_revision_model`: a field a newer Requivo added
-            # is legal on disk, so a checker that refused it would report a defect in a session that
-            # opens perfectly well — the diagnostic disagreeing with the loader about the same file
-            # is worse than either answer on its own (#14). Validated against the session's own
-            # perimeter (#608), resolved above — a go-to-market revision checked against the software
-            # schema would report every one of its slots as unknown.
+            # The permissive contract, matching the loader (#14), against the session's own perimeter (#608).
             PersistedEngineOutput.model_validate_json(payload, context={"perimeter": perimeter})
         except (ValidationError, ValueError) as e:
             bad("invalid_revision_model", f"revisions/{i:04d}-model.json is not a valid model: {e}")
@@ -333,26 +236,11 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
     artifacts = d / "artifacts"
     for atype, st in meta.artifact_status.items():
         if atype not in ARTIFACT_FILENAMES:
-            # **A note, not a problem** (#260). `docs/compatibility.md` lists "a new artifact type"
-            # among the changes that need no `format_version` bump, and refusing one here made the
-            # first generator a later Requivo ships turn every session it had touched into a defect
-            # on this build: `session verify` non-zero, `doctor` naming it, `session import` refusing
-            # a colleague's archive — while `read_meta` opens the very same file without complaint.
-            # The diagnostic disagreeing with the loader about one file is the worse of the two
-            # answers (invariant 8), and it is the correction #14 already made one field along, for
-            # a *model* key from a newer version.
-            #
-            # Tolerated is not trusted (invariant 14), in two ways. The type must be *shaped* like
-            # one, or it keeps the refusal below. And nothing further down this loop is skipped: the
-            # recorded filename still goes through `validate_filename` and `is_contained`, the file
-            # still has to be there, and the revision still has to exist — so a type this build
-            # cannot name buys an archive no relaxation of any other check.
-            #
-            # `atype` is untrusted and reaches the terminal, so it is rendered `!r` for the same
-            # reason the filename beside it is: `session show` and `artifact list` already escape
-            # this very dict key (#70), and a note prints on a run that *passes*, where a forged row
-            # at column 0 is least likely to be doubted (#40).
-            # `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect` is the guard.
+            # A note, not a problem (#260): a new artifact type needs no `format_version` bump, and the
+            # diagnostic must not disagree with the loader (invariant 8). Tolerated is not trusted
+            # (invariant 14): the type must be token-shaped, and every check below still runs. `atype`
+            # is rendered `!r` because it reaches the terminal on a passing run (#40, #70).
+            # `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`.
             if _ARTIFACT_TYPE_RE.match(atype) and len(atype) <= MAX_ARTIFACT_TYPE_LENGTH:
                 note("unknown_artifact_type",
                      f"session.json records an artifact of unknown type {atype!r} — this build has "
@@ -369,23 +257,13 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
                 f"the {atype!r} artifact is recorded as {st.filename!r}, but that type is stored as "
                 f"{ARTIFACT_FILENAMES[atype]!r}")
 
-        # `st.filename` is an unconstrained `str` out of session.json, and the two branches above only
-        # *record* a problem -- execution carried on to the join with the untrusted value in hand, so
-        # neither was a guard. `pathlib` makes the absolute case the sharp one: an absolute component
-        # replaces everything before it, so the join never had to escape upwards at all, and the row
-        # coming back `missing_artifact_file` disclosed whether an outside path existed.
+        # `st.filename` is untrusted: under `pathlib` an absolute component replaces the prefix, so an
+        # unvalidated join disclosed whether an outside path existed.
         # `test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session`.
-        #
-        # `artifact_path()` is deliberately not reused: it builds from `canonical_dir(slug)`, while
-        # this function is also handed a directory extracted from an archive that is not in the store
-        # -- it would answer confidently about the wrong directory, this module's own defect class.
-        # The containment confirmation is `is_contained`, the store's, rather than a third statement
-        # of the rule that had to be corrected twice for defects its siblings were each corrected for
-        # separately (#3, invariant 17) --
+        # Not `artifact_path()`, which builds from `canonical_dir(slug)` and this may be an extracted
+        # archive; containment is `is_contained`, the store's (invariant 17):
         # `test_an_artifact_symlink_is_reported_unsafe_where_the_platform_cannot_resolve_it`.
-        #
-        # The classification runs before the existence check below, and that ordering is what keeps a
-        # refused name reported as refused rather than probed and then reported as absent.
+        # Classification runs before the existence check, so a refused name is never probed.
         try:
             f = artifacts / validate_filename(st.filename)
             safe = is_contained(f, artifacts)
@@ -409,42 +287,20 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
 
 
 def check_session_dir(d: Path, *, expected_slug: str | None = None) -> list[IntegrityProblem]:
-    """Every internal inconsistency in the session directory `d`, in reading order. Empty == coherent.
-
-    The gating answer, and the one whose meaning has not changed: a caller that refuses on a non-empty
-    return refuses on exactly the same set it always did. `inspect_session_dir` is the same walk with
-    the notes left in, for a surface that reports instead of deciding.
-    """
+    """Every internal inconsistency in `d`, in reading order; empty means coherent. The gating answer;
+    `inspect_session_dir` is the same walk with the notes left in."""
     return blocking(inspect_session_dir(d, expected_slug=expected_slug))
 
 
 def inspect_session(slug: str) -> list[IntegrityProblem]:
-    """`inspect_session_dir` for a session in the store, taken under the session's write lock (#263).
-
-    `check_session_dir` reads session.json, then the revision files, then model.json, and none of
-    that used to be locked. `save_revision` writes the same three things in the same order but not
-    atomically as one unit -- the frozen revision file and model.json land first, session.json last
-    (see the comment on that ordering) -- so a checker racing a writer could read the *old* meta
-    against the *new* model and report `model_is_not_the_last_revision`, "the file was changed after
-    it was written", about a session that is perfectly healthy and merely mid-save. That is
-    invariant 17's own class ("a check that can answer differently for the same argument depending
-    on when it runs is not a check") landing in the one verb whose entire job is truth-telling.
-
-    Taking the lock here, rather than in `check_session_dir`, keeps that function usable on an
-    *extracted archive* directory during `session import` -- there is no session in the store yet to
-    lock, and no writer that could be racing one. `session_lock` also reports a session that has
-    vanished exactly the way every other store-side caller already reports it
-    (`SessionNotFoundError`), so this needs no case of its own for that. Writes hold the lock for
-    milliseconds, so waiting for one costs nothing measurable; a lock held past `_LOCK_TIMEOUT_SECONDS`
-    raises `SessionLockedError`, which callers must treat as *no measurement*, never as *inconsistent*
-    -- see `_cmd_session_verify` and `_session_health`, which both catch it for exactly that reason.
-    Pinned by `test_check_session_waits_for_a_concurrent_writer_instead_of_reporting_a_tear`.
-    """
+    """`inspect_session_dir` for a session in the store, under the session's write lock (#263): a
+    checker racing `save_revision` could read the old meta against the new model and report a tear
+    on a healthy session (invariant 17). A lock held past the timeout raises `SessionLockedError`,
+    which callers treat as *no measurement*. `test_check_session_waits_for_a_concurrent_writer_instead_of_reporting_a_tear`."""
     with session_lock(slug):
         return inspect_session_dir(canonical_dir(slug), expected_slug=slug)
 
 
 def check_session(slug: str) -> list[IntegrityProblem]:
-    """`check_session_dir` for a session in the store -- the blocking half of `inspect_session`,
-    including its lock (#263)."""
+    """`check_session_dir` for a session in the store: the blocking half of `inspect_session`."""
     return blocking(inspect_session(slug))

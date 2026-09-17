@@ -18,34 +18,22 @@ from requivo.providers.errors import EngineError
 
 
 class AnthropicProvider:
-    """`ReasoningProvider` over the Anthropic SDK. Holds a client so the free functions in
-    `generators.py` (which tests still exercise directly with a fake client) stay the single
-    implementation — the object is a thin, uniform face over them for callers that want the provider
-    seam."""
+    """`ReasoningProvider` over the Anthropic SDK: a thin face over the free functions in `generators.py`."""
 
     name = "anthropic"
 
     def __init__(self, client=None, model: str | None = None):
-        """`model` is an optional fixed model id for this instance. `None` (the default) preserves
-        the pre-existing behaviour byte-for-byte via `current_model_name()`'s env chain; set
-        explicitly, it wins outright with **no env read at all**, so two providers built with two
-        different ids in one process price and record independently (#434). Stored privately
-        (`self._model`, not `self.model`) because `generate()`'s own `model` parameter already names
-        the *requirements* model, an unrelated concept that happens to share the word. Pinned by
-        `test_a_constructed_model_makes_no_env_read`,
-        `test_two_constructed_providers_record_and_price_independently` and
-        `test_default_construction_is_byte_identical_to_before_434`."""
+        """`model` is an optional fixed model id: `None` keeps `current_model_name()`'s env chain, an
+        explicit id makes no env read at all (#434, `test_a_constructed_model_makes_no_env_read`).
+        Stored as `self._model`, since `generate()`'s `model` names the *requirements* model."""
         self.client = client or new_client()
         self._model = model
 
     def analyze(self, request: str, *, current_model: EngineOutput | None = None,
                 answers: str | None = None, only: list[str] | None = None,
                 reuse_system: bool = False, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-        """One reasoning turn, on either branch — **one call per operation by default**, hence
-        `reuse_system=False`. The caching question is decidable only per *operation*, not per
-        function: `DiscoveryService.start`/`run_discovery`/`answer` each reach this once, while the
-        one looping caller inside the seam, `DiscoveryService.draft_turn`, passes `reuse_system=True`
-        and earns the breakpoint there instead (#58, #77). Pinned by
+        """One reasoning turn on either branch, one call per operation by default (`reuse_system=False`);
+        `DiscoveryService.draft_turn` passes True (#58, #77).
         `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
         if current_model is not None and answers is not None:
             return answer_turn(self.client, current_model, request, answers, only=only,
@@ -54,28 +42,18 @@ class AnthropicProvider:
                    reuse_system=reuse_system, model=self._model, perimeter=perimeter)
 
     def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
-        """`ContextJudge`, the second protocol this class satisfies. Separate from `analyze` because
-        it asks about the grounding rather than from it -- see that protocol for why a provider is
-        allowed not to have this at all."""
+        """`ContextJudge`, the second protocol this class satisfies."""
         return judge_context(self.client, request, cards, model=self._model)
 
     def judge_perimeter(self, request: str, *, perimeters: list[PerimeterSummary]) -> PerimeterJudgment:
-        """`PerimeterJudge`, the third protocol this class satisfies (#601). Separate from `analyze`
-        for the identical reason `judge_context` is: it asks which vocabulary to reason in, not
-        something over one already chosen -- see that protocol for why a provider is allowed not to
-        have this at all."""
+        """`PerimeterJudge`, the third protocol this class satisfies (#601)."""
         return judge_perimeter(self.client, request, perimeters, model=self._model)
 
     def generate(self, artifact_type: str, model: EngineOutput, *, only: list[str] | None = None,
                  **kwargs):
-        """`**kwargs` carries the few per-artifact options a generator takes (release notes accept a
-        `version` to stamp); an option a generator does not know is a TypeError, not a silent no-op.
-
-        `model` here is the *requirements* model (this method's own parameter, inherited from the
-        protocol) — not to be confused with `self._model`, the constructed LLM id forwarded below as
-        the generator functions' own `model=` keyword: `model` binds positionally to the callee's
-        requirements-model parameter, `model=self._model` binds by name to its `model: str | None`,
-        and the two never collide (#434). Pinned by `test_generate_threads_the_constructed_model_too`."""
+        """`**kwargs` carries per-artifact options; an unknown one is a TypeError. `model` is the
+        requirements model; `self._model` is forwarded by name as the LLM id (#434,
+        `test_generate_threads_the_constructed_model_too`)."""
         try:
             fn = _GENERATORS[artifact_type]
         except KeyError as e:
@@ -87,8 +65,6 @@ class AnthropicProvider:
 
     def provenance(self, op: str, *, only: list[str] | None = None,
                    perimeter: str = DEFAULT_PERIMETER) -> dict:
-        """Who reasoned, with what, against which prompt — the fields a revision records. The service
-        asks the provider for this instead of assembling it, so a second provider cannot silently
-        stamp revisions as `anthropic`, and the prompt identity comes from the layer that owns it."""
+        """Who reasoned, with what, against which prompt: the fields a revision records, from the layer that owns them."""
         return {"provider": self.name, "model_name": self.model_name(),
                 "prompt_version": prompt_version(op, only, perimeter=perimeter)}

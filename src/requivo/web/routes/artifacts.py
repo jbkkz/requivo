@@ -1,9 +1,4 @@
-"""Artifact routes — generate (brief/PRD), view, and download, always tied to a source revision.
-
-Generation goes through `DiscoveryService.generate`, which calls the provider and saves via
-`ArtifactService` with the current revision — so staleness is tracked by the Core exactly as for the
-CLI. Viewing and downloading read the saved content through the service; a route never touches a file.
-"""
+"""Artifact routes: generate, view and download, always tied to a source revision through the services."""
 
 from __future__ import annotations
 
@@ -33,30 +28,20 @@ def generate_artifact(
     discovery: DiscoveryService = Depends(get_discovery),
     sessions: SessionService = Depends(get_sessions),
 ):
-    """Generate an artifact and save it against the session, then return the refreshed artifacts region
-    for an HTMX swap. The vocabulary is the service's `GENERATABLE`, not a list kept here — the Web
-    offers whatever the shared orchestration can produce, so the surfaces cannot drift apart."""
+    """Generate an artifact, save it against the session, and return the refreshed artifacts region
+    for an HTMX swap; the vocabulary is the service's `GENERATABLE`."""
     if artifact_type not in GENERATABLE:
         raise UnknownArtifactTypeError(
             f"{artifact_type!r} is not a generated artifact; supported: {', '.join(GENERATABLE)}",
             details={"type": artifact_type})
     is_htmx = request.headers.get("HX-Request") == "true"
-    # A generation is the paid step a reader is most likely to repeat — a document that reads badly
-    # invites another click — so it is the one whose cost was most worth stating and was stated
-    # nowhere (#253). The fragment it swaps in carries the footprint on the htmx path; a no-JS submit
-    # (#428) is a bodyless redirect instead, so `carry_to=slug` stashes the same figure for the
-    # session page's next GET to pop (`spend.py`) — passed only on that path, or the fragment path's
-    # figure would sit stashed and unread, then surface again on some later, unrelated visit to the
-    # session (spend.py's stash is deliberately read-once per action, not per page load).
+    # The paid step most likely to be repeated, so its cost is stated (#253): on the fragment for
+    # htmx, stashed for the next GET on a no-JS redirect (#428), never both.
     with track_web_usage(f"web-{artifact_type}", carry_to=None if is_htmx else slug) as spend:
         discovery.generate(slug, artifact_type, surface=f"web-{artifact_type}")
         usage = usage_view(spend)
     if not is_htmx:
-        # A plain form submit (#428): the form now carries `method="post" action="…"` beside its
-        # `hx-post`, so a no-JS reader reaches this route as a real POST rather than the bare GET a
-        # form with neither attribute falls back to. No fragment to swap; the spend footprint rides
-        # the stash above, and the session page this redirects to shows the freshly generated
-        # document.
+        # A plain form submit (#428): no fragment to swap, so a 303 to the session page.
         return RedirectResponse(url=f"/sessions/{slug}", status_code=303)
     return templates.TemplateResponse(request, "artifacts/list.html", {
         "s": session_detail(sessions, slug), "provider": provider_status(),
@@ -72,28 +57,14 @@ def view_artifact(
     slug: str = Depends(safe_slug),
     artifacts: ArtifactService = Depends(get_artifacts),
 ):
-    """View a saved artifact as a formatted document, or download the raw Markdown file.
-
-    **Two views of one file, and only the view moved** (#235). The download stays byte-identical to
-    what `ArtifactService` saved, because the file is the artifact: it is what gets handed to a
-    tracker, a colleague or the CLI, and a browser reformatting it on the way out would break every
-    consumer that is not a browser. Pinned by
-    `test_downloading_an_artifact_still_serves_the_bytes_that_were_saved`.
-
-    The rendered half goes through `markdown_to_html`, which escapes every run of document text
-    before it builds any tag — see that module. It has to, because the template renders the result
-    with autoescape off; that is not a shortcut but the only way to apply markup at all, and it is
-    why the escaping is the renderer's job rather than Jinja's here.
-    """
-    # `artifacts.show()` calls `ArtifactService._filename` first, which raises
-    # `UnknownArtifactTypeError` (400) for any type not in `ARTIFACT_FILENAMES` -- so an
-    # `artifact_type` that reaches the `if download:` branch below is already a real key.
+    """View a saved artifact as a document, or download the raw Markdown byte-identical to what was
+    saved (#235, `test_downloading_an_artifact_still_serves_the_bytes_that_were_saved`). The rendered
+    half goes through `markdown_to_html`, which escapes before it builds any tag, since the template
+    renders it with autoescape off."""
+    # `artifacts.show()` refuses an unknown type first (400), so the branch below sees a real key.
     content = artifacts.show(slug, artifact_type)  # SessionNotFoundError → 404 if absent
     if download:
-        # No invented-filename fallback (#270): `.get(artifact_type, f"{artifact_type}.md")` used to
-        # guess a name for a type nothing ever produced, against the repo's own refuse-don't-guess
-        # rule (invariant 3) -- and the guess could never actually be reached, since the line above
-        # already refuses anything `ARTIFACT_FILENAMES` does not know. Plain indexing says so.
+        # Plain indexing, no invented-filename fallback (#270, invariant 3).
         filename = ARTIFACT_FILENAMES[artifact_type]
         return PlainTextResponse(content, media_type="text/markdown", headers={
             "Content-Disposition": f'attachment; filename="{filename}"'})

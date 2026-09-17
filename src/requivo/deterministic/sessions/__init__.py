@@ -1,34 +1,7 @@
-"""`requivo session`: create, list, show, migrate, export, verify, restore, rescope and import
-sessions.
-
-The session directory is the interface between every surface and it is public at `format_version` 1
-(invariant 8), so this is the largest of the deterministic modules and the one whose output shape is
-hardest to change. Two rules run through all of it.
-
-**A listing survives its own members** (invariant 15). `session list` renders every row it can and
-degrades the ones it cannot, and *could not be read* is a different answer from *not analysed yet*.
-`EXIT_DEGRADED` is the exit code that says so. It lives in `_shared` rather than here because it
-names a shape of answer rather than a verb: `session verify` reaches the same state from the other
-side when it cannot read a session's product context, and minting a code per verb would rebuild the
-collapse the code exists to undo.
-
-**A value read off disk is untrusted input** (invariant 14). Every slug, error string and filename
-that comes back from the store goes through `display_token` before it reaches a printed line,
-because a stored value carrying a newline would otherwise write what reads as a second,
-authoritative line of Requivo's own output at column 0.
-
-`session verify` also asks whether a session's context cards still load on this machine. That is an
-environment finding rather than an integrity one, so the check and its two remedy hints are imported
-from `doctor`, which owns them, instead of being restated here: the two surfaces printing different
-advice for the same finding is how they drift.
-
-Part of the deterministic surface, so no LLM and no API key. `register_sessions(sub)` is composed
-into the package's single `register()` by `deterministic/__init__.py`.
-
-Split into a package by #550 (the lean pass, #548): `lifecycle.py` (init/list/show/migrate/rescope/
-delete), `archives.py` (export/import/restore) and `verify.py` (verify) -- this file is the single
-seam that stays, wiring every subcommand's `argparse` parser to the verb function that now lives in
-one of the three.
+"""`requivo session`: create, list, show, migrate, export, verify, restore, rescope and import. A
+listing survives its own members (invariant 15, `EXIT_DEGRADED`), and every value read off disk goes
+through `display_token` (invariant 14). Split into `lifecycle.py`, `archives.py` and `verify.py`
+(#550); this file is the one seam that wires every subcommand.
 """
 from __future__ import annotations
 

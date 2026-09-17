@@ -1,8 +1,6 @@
-"""RequivoError code -> HTTP status classification (#422). Framework-free: no fastapi, no HTTP
-client, no stdlib `http` import (`requivo.http` and stdlib `http` coexist, nothing shadowed).
-Moved out of `web/app.py` (#422) so a second HTTP surface can reach it with no extra installed.
-Guarded by `test_every_error_code_has_an_explicit_http_status`; per-code rationale lives in
-`tests/test_http_status_table.py` (#34, `decision: the-tree-records-the-rule`)."""
+"""RequivoError code → HTTP status classification (#422), framework-free so a second HTTP surface
+reaches it with no extra installed. `test_every_error_code_has_an_explicit_http_status`; the per-code
+rationale lives in `tests/test_http_status_table.py` (`decision: the-tree-records-the-rule`)."""
 
 from __future__ import annotations
 
@@ -11,9 +9,7 @@ from requivo.providers.errors import EngineError
 
 # Allowlisted isinstance-only reach into providers/errors.py — see tests/test_boundaries.py.
 
-# Every code needs an explicit row, or it silently defaults below and misreports a server fault as
-# the caller's bad request (#34) -- rationale for the rows a test pins: test_http_status_table.py;
-# for the rest, docs/compatibility.md's exit-code and status tables.
+# Every code needs an explicit row, or it defaults below and misreports a server fault as the caller's (#34).
 STATUS_BY_CODE = {
     "session_not_found": 404,
     "invalid_slug": 400,
@@ -62,16 +58,13 @@ STATUS_BY_CODE = {
     "api_token_required": 500,
 }
 
-# Deliberately 5xx -- fires only for a code this version has never heard of, the generalised form
-# of the bug #34 reports.
+# Deliberately 5xx: fires only for a code this version has never heard of (#34).
 UNCLASSIFIED_STATUS = 500
 
 
 def http_status_for(error: RequivoError) -> int:
-    """The HTTP status for a structured error. A function, not an inline lookup, so every code can
-    be asserted directly with no real request driven to it. `EngineError` is checked ahead of the
-    table: `provider_unavailable` deliberately has no row -- see
-    `test_a_provider_transport_failure_is_still_502`."""
+    """The HTTP status for a structured error. `EngineError` is checked ahead of the table:
+    `provider_unavailable` has no row (`test_a_provider_transport_failure_is_still_502`)."""
     if isinstance(error, EngineError):
         return 502
     return STATUS_BY_CODE.get(error.code, UNCLASSIFIED_STATUS)

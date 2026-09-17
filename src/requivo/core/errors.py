@@ -1,8 +1,7 @@
-"""Structured, provider-agnostic errors -- the failure vocabulary of Requivo Core. Surfaced four ways from one
-raise: printed in the CLI, read by Claude Code (`.to_dict()`), converted to an HTTP status by `requivo.http`, and
-asserted in tests **by code**, never by message. The base carries a stable `code`, an optional dotted `path`, and
-a `details` dict: {"code": "missing_required_slot", "message": "...", "path": "model.business_rules", "details":
-{"slot": "business_rules"}}. Core raises these; it never imports a provider (a separate family, `providers`)."""
+"""Structured, provider-agnostic errors: the failure vocabulary of Requivo Core, printed by the CLI,
+read by Claude Code (`.to_dict()`), mapped to an HTTP status by `requivo.http`, and asserted in tests
+by `code`, never by message. The base carries a stable `code`, an optional dotted `path` and a
+`details` dict; each class below states its code, its `details` shape and its status where they matter."""
 
 from __future__ import annotations
 
@@ -53,20 +52,20 @@ class UnknownContextCardError(InvalidModelError):
 
 
 class EmptySelectorTokenError(RequivoError):
-    """A selector token was empty or whitespace-only. `details`: `{selector, position}` -- refused, not dropped: an empty token is no selection wearing the shape of one (invariant 3)."""
+    """A selector token was empty or whitespace-only. `details`: `{selector, position}`; refused, not dropped (invariant 3)."""
 
     code = "empty_selector_token"
 
 
 class UnsafeSelectorTokenError(RequivoError):
-    """A selector token carried a control character. `details`: `{selector, position}`. Refused rather
-    than escaped-at-render (#40): the token can persist and forge a line of a later report."""
+    """A selector token carried a control character. `details`: `{selector, position}`; refused, since
+    it can persist and forge a line of a later report (#40)."""
 
     code = "unsafe_selector_token"
 
 
 class EmptySelectionError(RequivoError):
-    """A selection was supplied and it selects nothing. `details`: `{selector, tokens: 0}` -- a sibling of `EmptySelectorTokenError`, not a subclass (shared code, different shape, until #35)."""
+    """A selection was supplied and it selects nothing. `details`: `{selector, tokens: 0}`; a sibling of `EmptySelectorTokenError`, not a subclass (#35)."""
 
     code = "empty_selection"
 
@@ -78,7 +77,7 @@ class ContextUnreadableError(RequivoError):
 
 
 class NoContextCardsError(RequivoError):
-    """No context cards are installed at all -- every root was readable and empty. `details`: `{roots}` -- raised, not tolerated: reasoning with an empty `{{CONTEXT}}` on a paid call must never be silent."""
+    """No context cards are installed at all. `details`: `{roots}`; raised, since an empty `{{CONTEXT}}` on a paid call must never be silent."""
 
     code = "no_context_cards"
 
@@ -90,7 +89,7 @@ class InputTooLargeError(RequivoError):
 
 
 class InvalidSessionError(RequivoError):
-    """A session on disk is malformed, unreadable, or of an unsupported format version -- a family; nothing raises it directly (#82). `docs/compatibility.md` carries the per-arm `details` table."""
+    """A session on disk is malformed, unreadable or of an unsupported format: a family nothing raises directly (#82). `docs/compatibility.md` carries the per-arm `details` table."""
 
     code = "invalid_session"
 
@@ -111,43 +110,24 @@ class UnsupportedSchemaVersionError(InvalidSessionError):
 
 class UnknownPerimeterError(InvalidSessionError):
     """The session names a perimeter this install does not have. `details`: `{perimeter, known}`.
-
-    The deliberate inversion of invariant 8 (#608): every other unrecognised vocabulary the session
-    format can carry is tolerated (an unknown key, an unknown artifact type), because it is carried
-    through rather than interpreted. A perimeter is interpreted -- it selects the slot vocabulary a
-    reader validates against, reports readiness from, and computes a blast radius over -- so an
-    unknown one is refused by name rather than guessed at. A session with no perimeter recorded at
-    all reads as the software perimeter (there was only ever one); this error is only for a *named*
-    perimeter this install cannot resolve."""
+    The deliberate inversion of invariant 8 (#608): a perimeter is interpreted, not carried through;
+    no perimeter recorded reads as software."""
 
     code = "unknown_perimeter"
 
 
 class AmbiguousPerimeterError(RequivoError):
-    """A first discovery's own perimeter router (#601) found more than one installed perimeter that
-    plausibly fits the request, and named no session rather than guess between them. `details`:
-    `{candidates, reason}`.
-
-    409, alongside `unknown_perimeter`/`artifact_type_not_owned`: the request itself is not
-    malformed, it conflicts with what the session would need to commit to. Raised before any
-    session is left behind -- the empty claim this call made while judging is deleted first when
-    the same four preconditions that authorise #593's own delete hold, so retrying with an explicit
-    `--perimeter` lands cleanly rather than colliding with a stale one."""
+    """The perimeter router (#601) found more than one installed perimeter that plausibly fits, and
+    named no session rather than guess. `details`: `{candidates, reason}`. 409; the empty claim is
+    deleted first, so a retry with `--perimeter` lands cleanly."""
 
     code = "ambiguous_perimeter"
 
 
 class ArtifactTypeNotOwnedError(RequivoError):
-    """A generation call named an artifact type its own perimeter does not produce (#608, #609).
-    `details`: `{artifact_type, perimeter, owned}`.
-
-    409, alongside `unknown_perimeter`: both refuse because the request conflicts with the
-    session's own identity, not because the request is malformed -- `unknown_artifact_type` (400,
-    services/artifacts.py) is for a type this build has no generator for at all, a different
-    failure. Here both the session's perimeter and the artifact type are individually real; only
-    their pairing is refused. Raised by `services/discovery.py`'s `_require_owned_artifact_type`,
-    which used to raise a bare `ValueError` -- invisible to `app()`'s `RequivoError` handler (a CLI
-    traceback) and to the Web's `RequivoError` exception handler (a 500 instead of a clean refusal)."""
+    """A generation named an artifact type its own perimeter does not produce (#608, #609).
+    `details`: `{artifact_type, perimeter, owned}`. 409, beside `unknown_perimeter`: both parts are
+    real and only their pairing is refused; `unknown_artifact_type` (400) is a type with no generator."""
 
     code = "artifact_type_not_owned"
 
@@ -260,9 +240,8 @@ class ArtifactWriteFailedError(RequivoError):
 
 
 class SpendCeilingReachedError(RequivoError):
-    """An injected `SpendPolicy` refused the next call: the ledger shows spend at or above the ceiling
-    (#427, `decision: the-http-api-facade`). `details`: `{ceiling_usd, spent_usd, calls, reason}`; `reason` is
-    `"ceiling_reached"` or `"unpriced_call"` (refuse rather than guess a call cost zero, invariant 6). 403, not
-    429: it does not reset with time."""
+    """An injected `SpendPolicy` refused the next call (#427, `decision: the-http-api-facade`).
+    `details`: `{ceiling_usd, spent_usd, calls, reason}`; `reason` is `"ceiling_reached"` or
+    `"unpriced_call"` (invariant 6). 403, not 429: it does not reset with time."""
 
     code = "spend_ceiling_reached"

@@ -1,12 +1,5 @@
-"""A pytest suite any `SessionRepository` implementation can run against itself (#424).
-
-`SessionService` and `ArtifactService` are backing-agnostic by design (CLAUDE.md: "Both storage
-... and reasoning ... are injected, so the orchestration is backing-agnostic -- a Postgres
-repository reuses it verbatim"). The proof of that used to live entirely inside
-`tests/test_sessions.py`, as one dict-backed `InMemorySessionRepository` and one test exercising it
--- real, but private: not importable, not runnable by an external implementation. This module lifts
-the behavioural assertions behind that proof out into a factory-parametrised base class. Subclass it,
-implement `make_repository()`, and pytest collects the rest.
+"""A pytest suite any `SessionRepository` implementation can run against itself (#424): subclass
+it under a `Test*` name, implement `make_repository()`, and pytest collects the rest.
 
     from requivo.testing.repository_conformance import SessionRepositoryConformance
 
@@ -14,31 +7,10 @@ implement `make_repository()`, and pytest collects the rest.
         def make_repository(self):
             return MyPostgresSessionRepository(dsn=TEST_DSN)
 
-A repository that passes this suite has proven it honours the semantics the services assume:
-
-- **Create claims the slug once** (invariant 11) -- a second `create()` on a slug already in the
-  store raises `SessionExistsError` rather than silently overwriting it.
-- **`expected_revision` is a real precondition** (invariant 2) -- `save_revision` refuses a write
-  against a revision the session has moved past.
-- **The lock is mutually exclusive across threads and re-entrant within one** (invariant 9) -- two
-  threads never hold it at once, and a thread that already holds it may take it again without
-  deadlocking (the service takes it once per compound operation and the calls inside take it again).
-- **`list_slugs()` and `list_unexaminable()` partition, never overlap** (invariant 15's shape, at the
-  repository's own layer) -- a name the backing knows is a session is never also reported as one it
-  could not examine.
-- **`load_artifact` returns `None` for a real absence** -- the *refuse loudly on an unsafe name*
-  half of that rule is specific to a path-building backing (see the protocol's own docstring) and is
-  not asserted here; what every backing owes is that "nobody has generated this yet" reads as `None`.
-- **An unknown top-level key on the persisted model survives a save/load round trip** (invariants
-  8/10) -- a field a *newer* Requivo wrote and this one does not recognise must not be silently
-  dropped by the backing's own (de)serialisation.
-- **`delete` genuinely releases the slug** (invariant 11, #238) -- a session `delete()` removed must
-  no longer `exists()` or appear in `list_slugs()`, and re-`create()`-ing the identical slug must
-  succeed rather than colliding with residue the deleted session left behind.
-
-What this suite deliberately does **not** assert: anything about *where* or *how* a backing stores
-data (a Postgres row layout, a file's exact path) -- only the protocol-level behaviour the services
-depend on. A backing is free to implement `SessionRepository` however it likes underneath that.
+It asserts the protocol-level semantics the services assume (create claims the slug once,
+`expected_revision` is a real precondition, the lock is exclusive and re-entrant, known and
+unexaminable never overlap, `load_artifact` returns `None` for an absence, an unknown model key
+survives a round trip, `delete` releases the slug) and nothing about where or how a backing stores.
 """
 from __future__ import annotations
 
@@ -56,9 +28,7 @@ __all__ = ["SessionRepositoryConformance", "full_model"]
 
 
 def full_model(**overrides) -> PersistedEngineOutput:
-    """A minimal but schema-complete model -- built from the same public schema surface
-    (`schema_slots`/`schema_slot_ids`) prompts and validation read, not from a private helper, so an
-    out-of-repo subclass of this suite can call it too."""
+    """A minimal, schema-complete model, built from the public schema surface so an out-of-repo subclass can call it."""
     _, required = schema_slot_ids()
     order = [s["id"] for s in schema_slots()]
     model = {sid: {"completeness": 0, "confidence": "empty", "impact": "low", "value": ""}
@@ -70,9 +40,7 @@ def full_model(**overrides) -> PersistedEngineOutput:
 
 
 class SessionRepositoryConformance:
-    """Subclass and implement `make_repository`. Not collected on its own: pytest's default
-    `python_classes = Test*` never matches this name, so importing this module adds no tests until
-    something actually subclasses it under a `Test*` name."""
+    """Subclass and implement `make_repository`; not collected on its own (`python_classes = Test*`)."""
 
     def make_repository(self) -> SessionRepository:
         raise NotImplementedError("subclasses must return a fresh, empty SessionRepository")
@@ -89,8 +57,7 @@ class SessionRepositoryConformance:
             repo.create("s", "a different request")
 
     def test_create_does_not_refuse_a_different_slug(self, repo: SessionRepository):
-        """Positive control for the assertion above -- `create` must still succeed in the ordinary
-        case, so the refusal above is about the *collision*, not about `create` itself."""
+        """Positive control: `create` still succeeds in the ordinary case."""
         repo.create("a", "req")
         repo.create("b", "req")
         assert {"a", "b"} <= set(repo.list_slugs())
@@ -113,10 +80,7 @@ class SessionRepositoryConformance:
     # -- invariant 9: the lock is mutually exclusive and re-entrant --------------------------------
 
     def test_lock_serialises_two_concurrent_holders(self, repo: SessionRepository):
-        """Provable, not merely likely: each holder records the wall-clock interval it held the lock
-        for, and the two intervals must not overlap. A lock that let both threads run their critical
-        section at once would show up as an overlap here, not as a flaky failure that only shows up
-        under load."""
+        """Each holder records the interval it held the lock; the two must not overlap."""
         repo.create("s", "req")
         start = threading.Barrier(2)
         intervals: list[tuple[float, float]] = []
@@ -142,9 +106,7 @@ class SessionRepositoryConformance:
         assert a1 <= b0 or b1 <= a0, f"the two holders overlapped: {intervals} -- lock is not exclusive"
 
     def test_lock_is_reentrant_within_one_thread(self, repo: SessionRepository):
-        """A deadlock here must not hang the whole run: the nested acquire happens on a daemon
-        thread, and a `join(timeout=...)` that does not observe completion is the failure, reported
-        as a normal assertion rather than a wedged test process."""
+        """The nested acquire runs on a daemon thread with a `join(timeout=...)`, so a deadlock fails rather than hangs."""
         repo.create("s", "req")
         finished = threading.Event()
 
@@ -177,11 +139,8 @@ class SessionRepositoryConformance:
         assert repo.load_artifact("s", "prd.md") is None
 
     def test_load_artifact_returns_what_was_saved(self, repo: SessionRepository):
-        """Positive control: the None above must be about absence, not about `load_artifact` itself
-        being unable to return content. Saved against revision 1, not 0 -- an artifact is always
-        generated from a real model, and the file backing refuses a `source_revision` the session
-        has not reached yet (`ArtifactRevisionOutOfRangeError`), which is the correct, stricter
-        answer a backing may give even though this suite does not itself assert that refusal."""
+        """Positive control: the None above is about absence. Saved against revision 1, since the file
+        backing refuses a `source_revision` the session has not reached."""
         repo.create("s", "req")
         repo.save_revision("s", full_model(), expected_revision=0)
         repo.save_artifact("s", "prd", "prd.md", "# Hello", source_revision=1)
@@ -190,9 +149,7 @@ class SessionRepositoryConformance:
     # -- invariants 8/10: an unrecognised top-level key survives the round trip ---------------------
 
     def test_an_unknown_top_level_key_survives_a_save_and_load_round_trip(self, repo: SessionRepository):
-        """A field a *newer* Requivo wrote and this one does not know about must not be silently
-        dropped by the backing's own (de)serialisation -- the same promise `PersistedEngineOutput`
-        makes for the file backing, which any other backing storing the same payload owes too."""
+        """A field a newer Requivo wrote must not be dropped by the backing's own (de)serialisation (invariants 8/10)."""
         repo.create("s", "req")
         model = full_model(a_field_from_a_newer_requivo="kept")
         repo.save_revision("s", model, expected_revision=0)
@@ -202,18 +159,14 @@ class SessionRepositoryConformance:
     # -- #238: delete is on the protocol, not only the file backing ---------------------------------
 
     def test_delete_removes_the_session_from_the_backing(self, repo: SessionRepository):
-        """The behavioural bar every backing owes (#238's own scope amendment: `delete` belongs on
-        the protocol, not only on `FileSessionRepository`, because a Postgres backing needs the
-        identical operation and there is otherwise no method to implement it against)."""
+        """`delete` belongs on the protocol, not only on the file backing (#238)."""
         repo.create("s", "req")
         repo.delete("s")
         assert repo.exists("s") is False
         assert "s" not in repo.list_slugs()
 
     def test_deleting_then_recreating_the_same_slug_succeeds(self, repo: SessionRepository):
-        """Invariant 11's claim on a slug at this layer: the acceptance criterion is that a delete
-        genuinely releases the name, so a second `create()` for the identical slug must succeed
-        rather than colliding with residue the first session left behind."""
+        """A delete genuinely releases the name (invariant 11)."""
         repo.create("s", "the first occupant")
         repo.delete("s")
         repo.create("s", "a completely different request")

@@ -4,16 +4,14 @@
 # one-line PR; raising one is legal and visible, and costs the PR one sentence here saying why the
 # tree needed to grow. The estate's membership is `ESTATE_FILES` in tests/test_source_form.py.
 #
-# Last measured 2026-09-17 on 627-t1-rules (#627, tranche 1: the rules). Tranches 2-5 lower these.
+# Last measured 2026-09-17 on 627-t2-src-prose (#627, tranche 2: src/ prose). Tranches 3-5 lower the rest.
 
 [src]
-# src/requivo, .py files. Unchanged since #553: the src/ cut is tranche 2 of #627.
-prose_share_max = 0.469
-# Raised from 1672 to 1710 across #601's review rounds: `_prompt_perimeter_choice` is CLI-only
-# terminal I/O and had nowhere else to land.
-largest_module_max_lines = 1710
-module_docstring_max_lines = 60
-function_docstring_max_lines = 67
+# src/requivo, .py files. Measured after #627's tranche 2 cut src/ prose by the rule.
+prose_share_max = 0.196
+largest_module_max_lines = 1304
+module_docstring_max_lines = 15
+function_docstring_max_lines = 12
 
 [tests]
 # tests/, .py files. `largest_module_max_lines` excludes the meta-guard estate and is set at #555's

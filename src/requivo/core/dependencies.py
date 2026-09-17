@@ -1,19 +1,7 @@
-"""The dependency DAG — impact propagation over a saved model.
-
-The model is not a flat snapshot: its parts rest on each other. A design decision rests on the
-slots it was derived from; a generated artifact consumes a known set of slots. When a slot changes,
-the things that rest on it go stale. This module makes that graph explicit and answers one question:
+"""The dependency DAG: impact propagation over a saved model. Pure (no I/O, no LLM, no argv). Two
+edge sets: slot → decision from `DesignDecision.derived_from`, slot → artifact from `ARTIFACT_SLOTS`.
 
     change these slots → which decisions must be re-validated, and which artifacts go stale?
-
-It is **pure** (no I/O, no LLM, no argv/stdout): `render/` prints an `ImpactReport`, `cli.py` wires
-it to a verb. The two edge sets are:
-
-  slot ──derived_from──> decision   from DesignDecision.derived_from (filled by advise())
-  slot ──consumed_by───> artifact   from ARTIFACT_SLOTS below (static, honest, coarse)
-
-The artifact edges need no LLM, so propagation works even on a model whose decisions predate
-`derived_from` — the decision layer just *explains* the staleness on top of the artifact backbone.
 """
 
 from __future__ import annotations
@@ -31,17 +19,8 @@ def _all_slot_ids(perimeter: str = DEFAULT_PERIMETER) -> set[str]:
     return set(slot_meta(perimeter)[1])  # (pillars, labels) — labels is keyed by every slot id
 
 
-# Which slots materially shape each artifact. Deliberate, not "everything": an over-broad map makes
-# every change invalidate everything, which is the same as saying nothing. The names match the
-# buildable generators.
-#
-# The `brief`/assessment is the one entry mapped to `*`, and that is not laziness. It is a *judgment
-# over the whole model* — the executive summary, the complexity verdict, the challenges and the
-# understanding checklist are all read off the complete slot set — so any slot that materially moves
-# does invalidate the copy on disk. It used to be absent from this map on the grounds that it is the
-# live analysis layer rather than a deliverable; that stopped being true when it became a saved
-# artifact, and the result was an assessment that stayed marked "fresh" after the problem statement
-# under it had changed.
+# Which slots materially shape each artifact; deliberate, not "everything". `brief` maps to `*`: it is
+# a judgment over the whole model, and a saved copy stays marked fresh otherwise (invariant 1).
 _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "brief": "*",
     "prd": {"problem", "success_metrics", "actors", "business_objects", "business_rules",
@@ -54,27 +33,14 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "epic": {"actors", "business_objects", "business_rules", "workflow", "integrations",
              "permissions", "config_vs_custom", "constraints"},
     "release": {"problem", "success_metrics", "workflow", "risks"},
-    # #609: the go-to-market perimeter's one artifact. Mapped to `*` for the same reason `brief` is
-    # (software's own assessment): the plan, its rationale and its excluded options are a judgment
-    # over the *whole* model -- capacity, budget, icp and channels all shape which actions survive
-    # the compression -- so any slot that materially moves invalidates the saved copy. This is also
-    # what makes `requivo impact <slug> capacity` reach it (#609 acceptance).
+    # The go-to-market perimeter's one artifact (#609), `*` for the same reason `brief` is.
     "gtm_plan": "*",
 }
 
-# type → filename under <session>/artifacts/, for everything that can be *persisted*. Core holds it
-# because three layers ask the same question — the service that saves, the CLI that offers `--type`,
-# and the integrity checker that verifies what a session claims to hold — and a vocabulary that
-# exists in two places drifts. Until #519 this table and a second one (`ARTIFACT_FILES`) answered two
-# different questions — `stories` was saveable by Claude Code but unwritten by the provider path, and
-# `estimate` was terminal-only on both counts — so the two carried genuinely different values. #519
-# (`decision: the-estimate-graduates`) made every type saveable through both paths, which made the
-# two tables identical; #556 removes the second one rather than let an identical pair keep drifting
-# in step by luck. Every reader (`core/persistence/store.py`'s `migrate_legacy`,
-# `render/terminal.py`'s `render_impact`, `services/sessions.py`'s `_resolve_stale`) now reads this
-# one map. Cost of a second table: `test_dependencies.py` used to pin the two *agreeing*, which
-# proves nothing once there is only one to agree with itself; a real drift would instead have been a
-# type missing here entirely, caught by `test_the_real_artifact_registries_agree_on_their_key_sets`.
+# type → filename under <session>/artifacts/, for everything that can be persisted: the one table three
+# layers read (the service that saves, the CLI, the integrity checker). `ARTIFACT_FILES` was a second
+# one until #556 (`decision: the-estimate-graduates` made the two identical);
+# `test_the_real_artifact_registries_agree_on_their_key_sets` catches a type missing here.
 ARTIFACT_FILENAMES: dict[str, str] = {
     "brief": "solution-assessment.md",
     "prd": "prd.md",
@@ -86,18 +52,13 @@ ARTIFACT_FILENAMES: dict[str, str] = {
     "gtm_plan": "go-to-market-plan.md",  # #609
 }
 
-# Artifacts that rest on the *reasoning* layer (decisions / challenges / opportunities), not only on
-# slots. This is every generator, and deliberately so: each one is prompted with the complete
-# EngineOutput — `model_dump_json()`, reasoning included — so a decision that changes can change the
-# artifact even when no slot moved. The slot map above is a genuine narrowing because a generator
-# reads only some *facts*; there is no comparable narrowing here, because they all read all of it.
+# Artifacts that rest on the *reasoning* layer: every generator, since each is prompted with the complete
+# EngineOutput.
 REASONING_CONSUMERS: frozenset[str] = frozenset(_ARTIFACT_SLOTS_RAW)
 
 
 def artifact_slots(perimeter: str = DEFAULT_PERIMETER) -> dict[str, set[str]]:
-    """Resolve the artifact→slots map, expanding `*` to every slot id, narrowed to the artifact types
-    `perimeter` may produce (#608, #607's cost rule) -- go-to-market ships none yet, so this is `{}`
-    for it until #609 registers its one artifact."""
+    """The artifact→slots map with `*` expanded, narrowed to the types `perimeter` may produce (#608)."""
     every = _all_slot_ids(perimeter)
     owned = get_perimeter(perimeter).artifact_types
     return {name: (set(every) if slots == "*" else set(slots))
@@ -105,23 +66,11 @@ def artifact_slots(perimeter: str = DEFAULT_PERIMETER) -> dict[str, set[str]]:
 
 
 def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tuple[list[str], list[str]]:
-    """Map user-typed tokens (slot ids OR label substrings, PM-friendly) to slot ids.
-    Returns (resolved ids in schema order, unmatched tokens).
-
-    A token that matches nothing is *reported*, not dropped — that is what the second element is for,
-    and the caller prints it. A token that is **empty** is refused outright, before any matching runs,
-    because the substring arm makes it match everything: `"" in label` is true for every label, so
-    `requivo impact <model> ""` (an unset shell variable, usually — the positional is named
-    `session` since #248) or a caller splitting a
-    comma-separated value on a trailing comma resolved to the *entire* schema with an empty unmatched
-    list. An impact report claiming the whole model changed, carrying no complaint about its input,
-    reads as a precise answer to a specific question rather than as a failure. The refusal is
-    `normalize_tokens`, shared with the context-card selectors so the rule is stated once.
-    """
+    """Map user-typed tokens (slot ids or label substrings) to slot ids: (resolved ids in schema
+    order, unmatched tokens). An unmatched token is reported, not dropped; an empty one is refused by
+    `normalize_tokens`, since `"" in label` matches every label."""
     _, labels = slot_meta(perimeter)
-    # Materialised before the helper iterates it: a generator handed in here would be exhausted by
-    # `normalize_tokens` and the `zip` below would then pair nothing, returning ([], []) — no slots
-    # and no complaint, which is the same silent absence this function is being fixed for.
+    # Materialised before the helper iterates it: a generator would be exhausted by `normalize_tokens`.
     tokens = list(tokens)
     keys = normalize_tokens(tokens, what="slot")
     resolved, unmatched = [], []
@@ -133,14 +82,7 @@ def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tupl
         if hit:
             resolved.extend(hit)
         else:
-            # `raw.strip()`, not `raw` — echo the token the guard actually checked (#40 review).
-            # `normalize_tokens` inspects the *stripped* token for control characters, and
-            # `str.strip()` removes the ones Python classifies as whitespace, a newline among them.
-            # So a token whose newline is leading or trailing passes the guard, and echoing the
-            # unstripped original here put that newline into the line `cli.py` prints — the same
-            # forged-receipt defect #40 is about, one selector over. The two card selectors already
-            # echo `raw.strip()` for the sibling reason (a caller should see what they typed, not
-            # the key it was matched by); this one had drifted.
+            # `raw.strip()`: echo the token the guard checked, or a leading newline forges a line (#40).
             unmatched.append(raw.strip())
     ordered = [sid for sid in labels if sid in set(resolved)]  # schema order, de-duped
     return ordered, unmatched
@@ -190,17 +132,12 @@ class ImpactReport:
     exclusions: list[ExclusionImpact] = field(default_factory=list)
     thresholds: list[ThresholdImpact] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)  # artifact names whose slot set is touched
-    # Decisions derived from thinner evidence than the model now holds (#493). `None` is *not
-    # reviewed* -- `propagate` alone has no revision history to compare against, and a bare
-    # model.json never will; the service fills it for a session. An empty report is a review that
-    # ran and found nothing, which is a different sentence, and `to_dict` keeps the two apart.
+    # `None` is *not reviewed* (#493): `propagate` has no revision history; an empty report ran and found nothing.
     evidence: Optional[EvidenceReport] = None
 
     @property
     def reasoning_hit(self) -> bool:
-        """True if the change unseats a piece of baked-in reasoning (a decision, a challenge, an
-        exclusion or a threshold) — the signal that the saved assessment, which renders that
-        reasoning, no longer holds."""
+        """True if the change unseats a piece of baked-in reasoning, so the saved assessment no longer holds."""
         return bool(self.decisions or self.challenges or self.exclusions or self.thresholds)
 
     @property
@@ -209,9 +146,7 @@ class ImpactReport:
                and not self.thresholds and not self.artifacts)
 
     def to_dict(self) -> dict:
-        """The wire shape for the API's `/impact` route (#425) -- the first `--json`-style payload
-        this report has ever needed, since `requivo impact` has always been terminal-only. Not a
-        second vocabulary: the field names are this dataclass's own, unrenamed."""
+        """The wire shape for the API's `/impact` route (#425); the field names are this dataclass's own."""
         return {"changed": self.changed,
                 "decisions": [d.to_dict() for d in self.decisions],
                 "challenges": [c.to_dict() for c in self.challenges],
@@ -222,13 +157,8 @@ class ImpactReport:
 
 
 def propagate(out: EngineOutput, changed: list[str], perimeter: str = DEFAULT_PERIMETER) -> ImpactReport:
-    """Given slot ids that changed (or are being probed), report what rests on them: the design
-    decisions to re-validate, the challenges whose premise is now in question, the excluded options
-    worth reconsidering, the thresholds worth reconsidering, and the artifacts that go stale.
-    Decisions rest on slots via `derived_from`; challenges contest slots via `contests`; exclusions
-    and thresholds rest on slots via `rests_on` — the same DAG edge, four directions of reasoning.
-    `perimeter` (#608) narrows the artifact set to the ones that perimeter may produce -- see
-    `artifact_slots`."""
+    """What rests on the changed slots: decisions (`derived_from`), challenges (`contests`),
+    exclusions and thresholds (`rests_on`), and the artifacts that go stale, narrowed to `perimeter`'s (#608)."""
     changed_set = set(changed)
     report = ImpactReport(changed=[slot_label(sid, perimeter) for sid in changed])
 
@@ -282,31 +212,19 @@ class ReasoningDiff:
 
 
 def _diff_items(old_items: list, new_items: list) -> list[str]:
-    """Ids that were added, removed, or edited between two reasoning collections.
-
-    This is symmetric, including the populated → empty case, and that is only safe because both sides
-    are *resolved* models. A refinement turn routinely replies without re-stating the reasoning it
-    already established (the engine is answering a question, not re-deriving the brief) — but that
-    omission is collapsed upstream, by `ModelProposal.resolve`, which carries the established
-    reasoning forward. So by the time two models reach this function, an empty collection facing a
-    populated one means the reasoning was genuinely dropped, and it should mark what rests on it
-    stale. This function used to absorb that case itself, which made a real deletion indistinguishable
-    from a turn that simply stayed quiet.
-    """
+    """Ids added, removed or edited between two reasoning collections. Symmetric, populated → empty
+    included, which is safe only because both sides are *resolved* models (`ModelProposal.resolve`
+    carries omitted reasoning forward), so an empty side is a genuine deletion."""
     old_by_id = {i.id: i.model_dump_json() for i in old_items}
     new_by_id = {i.id: i.model_dump_json() for i in new_items}
-    # Compare content, not just ids: `id` is derived from a *subset* of each item's fields (a
-    # decision's text, a challenge's headline + premise), so an edit to a rationale or a tradeoff
-    # keeps the id and would otherwise be invisible.
+    # Compare content, not ids: `id` is derived from a subset of the fields.
     return sorted(k for k in old_by_id.keys() | new_by_id.keys()
                   if old_by_id.get(k) != new_by_id.get(k))
 
 
 def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
-    """The reasoning-layer counterpart of `diff_models`. Slots carry the facts; decisions, challenges,
-    opportunities, exclusions and thresholds carry the judgment over them, and all reach the
-    generators. A model whose slots are untouched but whose design decisions changed is a materially
-    different model."""
+    """The reasoning-layer counterpart of `diff_models`: unchanged slots with changed decisions is a
+    materially different model."""
     return ReasoningDiff(
         decisions=_diff_items(old.decisions, new.decisions),
         challenges=_diff_items(old.challenges, new.challenges),
@@ -317,8 +235,7 @@ def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
 
 
 def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
-    """Slot ids that materially changed between two model versions — the trigger for staleness.
-    A slot changed if its value, confidence or impact moved (completeness alone is noise)."""
+    """Slot ids that materially changed (value, confidence, impact or test plan; completeness alone is noise)."""
     changed = []
     for sid in old.model.keys() | new.model.keys():
         old_slot = old.model.get(sid)
@@ -329,10 +246,7 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
             old_slot.value.strip() != new_slot.value.strip()
             or old_slot.confidence != new_slot.confidence
             or old_slot.impact != new_slot.impact
-            # A re-planned test is a material change (#610): the model carries `test_plan` into every
-            # generator prompt, so swapping a survey for a paid pilot changes what they read while
-            # every artifact stays marked fresh -- invariant 1's failure shape. Guarded by
-            # `test_a_re_planned_test_is_a_material_change`.
+            # A re-planned test is a material change (#610): `test_a_re_planned_test_is_a_material_change`.
             or old_slot.test_plan.strip() != new_slot.test_plan.strip()
         ):
             changed.append(sid)
@@ -340,18 +254,8 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
 
 
 # ── Evidence since derivation (#493) ──────────────────────────────────────────
-# `propagate` answers "a slot changed -- what rests on it?". It cannot represent the case where a
-# slot moved *toward* being filled and the new evidence undermines a decision recorded against the
-# earlier, thinner state of that same slot: everyone is pleased the slot got filled, so nobody
-# re-reads the decision. Whether the new evidence *contradicts* the decision is a judgment over
-# both and belongs to the assessment (a provider call). What is decidable here, for free, is the
-# approximation: the decision was derived while a slot it rests on was `empty`, `inferred` or
-# `testable`, and that slot is `explicit` now. The wording that goes with it is *derived from thinner
-# evidence than exists now, worth re-reading* -- never "contradicted".
-#
-# `testable` belongs here as much as the other two, and is the case #610 was opened for: a decision
-# taken while an answer was only-testable, against a test that has since returned, is exactly what
-# nobody goes back to re-read. Guarded by
+# A decision derived while a slot it rests on was `empty`, `inferred` or `testable` (#610), and that slot
+# is `explicit` now: *worth re-reading*, never "contradicted", which is the assessment's judgment.
 # `test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged`.
 
 _THIN = frozenset({Confidence.empty, Confidence.inferred, Confidence.testable})
@@ -363,8 +267,7 @@ class ThinnerEvidence:
     decision: str
     id: str
     thickened: list[str]  # labels of the derived_from slots that were empty/inferred then, explicit now
-    # The revision the decision was first recorded at. The pure comparison knows no revision
-    # numbers, so it leaves this None; `SessionService.thinner_evidence` fills it.
+    # The revision the decision was first recorded at; the pure comparison leaves it None.
     derived_at: Optional[int] = None
 
     def to_dict(self) -> dict:
@@ -374,8 +277,7 @@ class ThinnerEvidence:
 
 @dataclass
 class EvidenceUnknown:
-    """A decision the review could not decide about, and why -- the third state, reported rather
-    than folded into "nothing found"."""
+    """A decision the review could not decide about, and why: the third state."""
     decision: str
     id: str
     reason: str
@@ -386,9 +288,8 @@ class EvidenceUnknown:
 
 @dataclass
 class EvidenceReport:
-    """What `thinner_evidence` found. `reviewed` counts every decision examined -- flagged, clean and
-    undecidable alike -- so an empty `flagged` on a model with decisions reads as *checked, none*,
-    and an empty report on a model with no decisions reads as exactly that."""
+    """What `thinner_evidence` found. `reviewed` counts every decision examined, so an empty `flagged`
+    on a model with decisions reads as *checked, none*."""
     reviewed: int = 0
     flagged: list[ThinnerEvidence] = field(default_factory=list)
     could_not_tell: list[EvidenceUnknown] = field(default_factory=list)
@@ -405,24 +306,10 @@ class EvidenceReport:
 
 def thinner_evidence(then: EngineOutput, now: EngineOutput,
                      perimeter: str = DEFAULT_PERIMETER) -> EvidenceReport:
-    """Decisions in `now` that were recorded, in `then`, against thinner evidence than `now` holds.
-
-    Pure: two models in, a report out. `then` is the model at the revision the decisions were
-    derived at -- finding that revision is the service's job (`SessionService.thinner_evidence`),
-    because it needs the frozen revision files and this module does no IO. A decision is matched
-    across the two models by its content-derived `id` (invariant 5), and the slots it rests on are
-    read from `now` -- what it is recorded as resting on today.
-
-    A decision is flagged when at least one slot in its `derived_from` was `empty` or `inferred` in
-    `then` and is `explicit` in `now`. The opposite direction (explicit -> inferred) is a slot that
-    moved, which `diff_models`/`propagate` already report, and is not a finding here.
-
-    Three states per decision, and the third is load-bearing: flagged; clean (counted in `reviewed`
-    and otherwise silent); or `could_not_tell`, when the decision is not in `then` at all, records
-    no `derived_from`, or rests on a slot that one of the two models does not carry (a frozen model
-    from an older schema, read permissively per invariant 8). A firm flag outranks a partial look:
-    a decision with one thickened slot and one unresolvable one is flagged.
-    """
+    """Decisions in `now` recorded, in `then`, against thinner evidence than `now` holds: pure, two
+    models in, a report out, matched by content-derived id (invariant 5). Three states per decision:
+    flagged, clean, or `could_not_tell` (not in `then`, no `derived_from`, or a slot one model does
+    not carry); a firm flag outranks a partial look."""
     then_ids = {d.id for d in then.decisions}
     report = EvidenceReport()
     for d in now.decisions:

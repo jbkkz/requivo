@@ -1,10 +1,6 @@
-"""The session metadata schema, and how a persisted model is read off disk.
-
-Split out of `core/persistence.py` by #550 (the lean pass, #548), to keep `store.py` itself under
-the 900-line ceiling: `SessionMeta`/`RevisionRecord`/`ArtifactStatus` (the shape of `session.json`),
-`migrate_session` (its version frontier), and `load_model`/`_read_model` (the one door every
-`model.json` read goes through, invariant 8). `Store` (in `store.py`) is the only writer of these;
-nothing here touches `self` or the filesystem beyond `_read_model`'s own read.
+"""The session metadata schema (`SessionMeta`/`RevisionRecord`/`ArtifactStatus`), `migrate_session`
+(the version frontier) and `load_model`/`_read_model`, the one door every `model.json` read goes
+through (#550, invariant 8). `Store` is the only writer.
 """
 from __future__ import annotations
 
@@ -21,45 +17,22 @@ from requivo.core.errors import ModelUnreadableError, UnsupportedFormatVersionEr
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 
 SESSION_FORMAT_VERSION = 1
-# The framework's slot schema version. Bumped when the slot vocabulary changes shape; recorded on
-# every session so a future reader knows which schema a model was authored against.
+# The slot schema version, recorded on every session.
 SCHEMA_VERSION = 1
 
 
 def load_model(path: Path, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-    """Load a saved model so artifacts can be regenerated without redoing discovery.
-
-    Read through `PersistedEngineOutput` — still an `EngineOutput`, so the annotation holds — because
-    a model on disk may have been written by a newer Requivo, and refusing an unknown key there costs
-    the reader a session they can otherwise understand completely. The block at the foot of
-    `contracts.py` says why the disk side and the provider side answer that question oppositely.
-
-    `perimeter` (#608) is the session's own perimeter, resolved by the caller from `session.json`
-    (`resolve_perimeter`) -- a bare `model.json` with no session around it has no perimeter to read,
-    so the software default is what every pre-#608 caller of this function still gets.
-
-    The explicit codec is #11's and is not optional here either: `_atomic_write` writes UTF-8, so a
-    read that takes the platform default decodes a model holding an accented value into mojibake that
-    is still valid JSON, on exactly the platforms this repo now has CI legs for."""
+    """Load a saved model through `PersistedEngineOutput` (a newer Requivo's key must not cost the
+    reader the session). `perimeter` (#608) is the session's own, software for a bare `model.json`.
+    Explicit UTF-8 (#11)."""
     return _read_model(path, perimeter=perimeter)
 
 
 def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[int] = None,
                 perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-    """Read and validate a persisted model, turning every way that can fail into one structured error.
-
-    One helper rather than three call sites, and that is the point rather than tidiness: a guard added
-    at two of the three doors is one the third quietly does without, and which door a given verb takes
-    is not visible from the verb. The bare `model_validate_json` this replaced sent a truncated
-    `model.json` to the operator as a raw pydantic traceback from three CLI verbs and a generic 500
-    from the web session page -- `ValidationError` is not a `RequivoError` -- while the remedy sat on
-    disk in `revisions/` with nothing saying so (#204).
-
-    `OSError` is caught alongside the parse failures because "there but unreadable" is the same fact
-    about the store as "there but unparseable"; a *missing* file is decided by the callers above,
-    which raise `SessionNotFoundError` because that has a different remedy. Pinned by
-    `test_a_corrupt_model_is_a_structured_error_from_every_door`.
-    """
+    """Read and validate a persisted model, turning every failure into one structured error (#204):
+    a `ValidationError` is not a `RequivoError`. `OSError` is caught too; a missing file is the
+    caller's `SessionNotFoundError`. `test_a_corrupt_model_is_a_structured_error_from_every_door`."""
     try:
         return PersistedEngineOutput.model_validate_json(
             path.read_text(encoding="utf-8"), context={"perimeter": perimeter})
@@ -86,17 +59,12 @@ def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[in
 
 
 # ── Canonical session store (.requivo/sessions/<slug>/) ────────────────────────
-# The versioned, forward-compatible layout: a session is a directory holding session.json (the
-# metadata + provenance), request.md, model.json (the current model), revisions/NNNN-model.json (the
-# history, one file per applied revision), and artifacts/ (generated views, each tied to the revision
-# it was produced from). Every write is atomic; a revision is preserved before the model is replaced.
-# Legacy `out/<slug>/` sessions are read-only and are copied in here only by the explicit
-# `requivo session migrate` (`migrate_legacy`). Nothing has read that layout implicitly since 0.9.8.
+# session.json, request.md, model.json, revisions/NNNN-model.json, artifacts/. Every write is atomic;
+# a revision is preserved before the model is replaced. Legacy `out/` is read only by `session migrate`.
 
 
 class ArtifactStatus(BaseModel):
-    """Per-artifact provenance in session.json: which model revision produced it, its file, when it
-    was written, and whether the model has since moved past that revision (stale)."""
+    """Per-artifact provenance in session.json: the revision that produced it, its file, when, and `stale`."""
     revision: int
     filename: str
     updated_at: str
@@ -104,10 +72,7 @@ class ArtifactStatus(BaseModel):
 
 
 class RevisionRecord(BaseModel):
-    """Provenance for one applied revision: who produced it and from what. A session's model can be
-    moved by more than one surface over its life (the Anthropic provider, a Claude Code turn, the CLI,
-    later the Web), so provenance belongs to each *revision*, not just the session's creation. `extra`
-    is allowed so a newer Requivo can add a provenance field an older reader simply carries through."""
+    """Provenance for one applied revision; `extra="allow"` so a newer Requivo's field is carried through."""
     model_config = ConfigDict(extra="allow")
 
     revision: int
@@ -118,32 +83,20 @@ class RevisionRecord(BaseModel):
     surface: Optional[str] = None             # the reasoning surface, e.g. "cli-discover", "requivo-answer"
     prompt_version: Optional[str] = None      # "sha256:…" of the prompt, when known
     model_hash: str = ""                      # "sha256:…" of the model payload — content identity
-    # Token/rate provenance for a provider-backed apply (#292) — absent for a deterministic apply
-    # (session import, a hand-authored `model apply`, a Claude Code turn, which spends no API tokens)
-    # and for any revision written before this field existed. Never zero-filled: invariant 6 says
-    # provenance is real or absent, and a revision that genuinely spent 0 tokens does not exist.
+    # Token/rate provenance for a provider-backed apply (#292); absent, never zero-filled, otherwise (invariant 6).
     usage_input_tokens: Optional[int] = None
     usage_output_tokens: Optional[int] = None
     usage_cache_read_tokens: Optional[int] = None
     usage_cache_write_tokens: Optional[int] = None
-    # The rate this revision's calls were actually billed at, `(input, output)` USD per million
-    # tokens — stamped rather than looked up again at render time, so a later price-table edit
-    # cannot retroactively change what an old revision is reported to have cost (`usage.py`'s own
-    # "cost is arithmetic here and nowhere else"). `None` when the calls behind this revision did not
-    # all agree on one rate — a genuine disagreement is refused rather than guessed at.
+    # The rate these calls were billed at, stamped rather than looked up at render time; `None` when
+    # the calls disagreed on one.
     usage_rate_per_mtok: Optional[tuple[float, float]] = None
     usage_priced_as_of: Optional[str] = None   # the rate table's own date, alongside the rate itself
 
 
 class SessionMeta(BaseModel):
-    """The versioned session metadata (`session.json`). `migrate_session()` is the explicit version
-    frontier.
-
-    `extra="allow"` — matching `RevisionRecord` — so a field a *newer* Requivo added survives a
-    round-trip through an older one. Under `extra="ignore"` the older reader loaded the session fine
-    and then dropped the unknown field the moment it wrote the file back, which turns "an old reader
-    tolerates a new field" into "an old reader silently destroys it on first use". Forward
-    compatibility is a promise about the file, not just about the load."""
+    """The versioned session metadata (`session.json`); `migrate_session()` is the version frontier.
+    `extra="allow"`, so an older reader does not destroy a newer field on its first write."""
     model_config = ConfigDict(extra="allow")
 
     format_version: int = SESSION_FORMAT_VERSION
@@ -157,33 +110,22 @@ class SessionMeta(BaseModel):
     context_cards: Optional[list[str]] = None  # the card selection; None == all cards
     request_hash: str = ""               # "sha256:…" of the originating request
     schema_version: int = SCHEMA_VERSION
-    # The session's perimeter (#608), frozen at create_session -- half of identity alongside the
-    # request and the card selection (invariant 11). `None` is a pre-perimeter session and reads as
-    # the software perimeter (`resolve_perimeter`), never a guess: there was only ever one. Unlike
-    # every other field here, an unrecognised *non-None* value is refused by name in `migrate_session`
-    # rather than tolerated -- the deliberate inversion of invariant 8 #608 asks for: a perimeter is
-    # interpreted, not carried through.
+    # The session's perimeter (#608), half of identity (invariant 11); `None` reads as software, and
+    # an unrecognised name is refused in `migrate_session`: a perimeter is interpreted, not carried.
     perimeter: Optional[str] = None
-    # (A session-level `prompt_versions` map lived here and was never written. Prompt identity belongs
-    # to the revision that was reasoned with it, not to the session — see RevisionRecord.prompt_version.
-    # It is listed in _RETIRED_KEYS so `extra="allow"` doesn't carry the dead key forever.)
+    # A session-level `prompt_versions` map lived here and is retired (`_RETIRED_KEYS`).
     current_revision: int = 0            # 0 == session created but no model applied yet
     revisions: list[RevisionRecord] = Field(default_factory=list)  # provenance log, one per applied revision
     artifact_status: dict[str, ArtifactStatus] = Field(default_factory=dict)
 
 
 def _now() -> str:
-    """UTC, second precision, Z-suffixed — one timestamp format across the whole session file."""
+    """UTC, second precision, Z-suffixed: the one timestamp format."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def content_hash(text: str) -> str:
-    """The persisted hash format — `sha256:<hex>` — as `model_hash` and `request_hash` carry it on disk.
-
-    Public because `integrity.py` recomputes it to check a session against its own recorded hashes.
-    A second implementation of this line would drift, and a drifted rehash reports
-    `revision_hash_mismatch` against a file nobody touched.
-    """
+    """The persisted hash format, `sha256:<hex>`; public so `integrity.py` recomputes the same line."""
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -191,10 +133,8 @@ _RETIRED_KEYS = ("prompt_versions",)
 
 
 def migrate_session(data: dict) -> SessionMeta:
-    """The version frontier: turn a raw session.json dict into a `SessionMeta`, upgrading old formats.
-    Only v1 exists today, but the boundary is explicit — a session written by a *newer* Requivo is
-    rejected clearly rather than silently mis-read. Unknown keys are carried through untouched (see
-    `SessionMeta`); known-retired ones are dropped."""
+    """The version frontier: a raw session.json dict to a `SessionMeta`; a newer format is refused
+    clearly, unknown keys are carried through, retired ones dropped."""
     fv = data.get("format_version", SESSION_FORMAT_VERSION)
     if fv > SESSION_FORMAT_VERSION:
         raise UnsupportedFormatVersionError(
@@ -202,10 +142,7 @@ def migrate_session(data: dict) -> SessionMeta:
             "— upgrade requivo.",
             details={"format_version": fv, "supported_format_version": SESSION_FORMAT_VERSION},
         )
-    # The slot vocabulary is a second, independent contract, and it was recorded on every session and
-    # then read by nothing. A model authored against a newer schema can hold slots this build has no
-    # definition for; without this check the first symptom is an `unknown_slot` error naming a slot the
-    # user never typed. An *older* schema is fine — that is ordinary backward compatibility.
+    # A newer slot schema is refused; an older one is ordinary backward compatibility.
     sv = data.get("schema_version", SCHEMA_VERSION)
     if isinstance(sv, int) and sv > SCHEMA_VERSION:
         raise UnsupportedSchemaVersionError(
@@ -213,12 +150,8 @@ def migrate_session(data: dict) -> SessionMeta:
             f"(v{SCHEMA_VERSION}) — upgrade requivo.",
             details={"schema_version": sv, "supported_schema_version": SCHEMA_VERSION},
         )
-    # The perimeter is the one field on this file the permissive-reader rule above is deliberately
-    # inverted for (#608): every other unknown vocabulary this function tolerates (a key, an artifact
-    # type) is carried through unread, because carrying it costs nothing. A perimeter is *interpreted*
-    # -- it selects the schema every later read validates against -- so an unrecognised one is refused
-    # here, by name, before a `SessionMeta` is even built. `None` (absent) is not a name -- it is a
-    # pre-perimeter session, and it resolves to the software default, never a guess.
+    # The one field the permissive rule is inverted for (#608): a perimeter is interpreted, so an
+    # unrecognised one is refused by name; `None` resolves to software.
     resolve_perimeter(data.get("perimeter"))
     return SessionMeta.model_validate({k: v for k, v in data.items() if k not in _RETIRED_KEYS})
 

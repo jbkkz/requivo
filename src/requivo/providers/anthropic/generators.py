@@ -1,16 +1,6 @@
-"""Model → artifact, and request → model: every operation this provider can be asked for.
-
-The discovery turn (`run`/`answer_turn`) and the seven generators, plus the two tables that make
-them reachable through the seam — `_GENERATORS` and `_OP_PROMPTS` — and `prompt_version`, which
-hashes the exact system prompt an operation sends.
-
-`_GENERATORS` and `_OP_PROMPTS` stay **one table each**, which #74 asks for by name: they are the
-registry every surface reaches through, and a registry split across two modules is a registry with
-two answers. Adding a generator is still a prompt asset + a contract + a function here + a writer in
-`render/markdown.py` + a subcommand in `cli.py`.
-
-Every function here is one `_complete()` call in `completion.py`; nothing in this module talks to
-the SDK directly.
+"""Model → artifact, and request → model: every operation this provider can be asked for, and the
+two registries (`_GENERATORS`, `_OP_PROMPTS`, one table each) every surface reaches them through.
+Every function is one `_complete()` call; nothing here talks to the SDK.
 """
 
 from __future__ import annotations
@@ -41,22 +31,9 @@ from requivo.providers.anthropic.completion import _complete
 
 
 def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> None:
-    """A discovery turn must return the whole required slot set, and must say what the thing is for.
-
-    The rules themselves live in `core.validation.completeness_gap`, shared with the deterministic
-    apply path so the two boundaries cannot drift. What is local here is the *shape* of the failure:
-    a plain `ValueError`, which `_complete()`'s retry loop feeds back to the model as a corrective
-    nudge, so it self-corrects instead of the turn dying. Neither rule is in the contract itself,
-    because a partial model is a legitimate internal object (a diff basis, a projection) — it is only
-    a *discovery reply* that owes completeness.
-
-    `perimeter` (#608) must be the one the reply was reasoned against, or this checks the wrong
-    required set entirely: a complete go-to-market reply was refused for missing `business_rules`
-    and every other software-only slot, defaulting silently to software here while `run()`'s own
-    `build_system_prompt`/`context=` calls three lines away already knew better. `run()` closes over
-    its own `perimeter` when it hands this to `_complete()` as the `validate` hook -- this function
-    itself stays a plain, perimeter-agnostic check, callable with either.
-    """
+    """A discovery reply owes the whole required slot set and a non-empty objective
+    (`core.validation.completeness_gap`), raised as a `ValueError` so the retry loop nudges the model.
+    `perimeter` (#608) must be the one the reply was reasoned against; `run()` closes over its own."""
     gap = completeness_gap(out, perimeter)
     if gap is not None:
         raise ValueError(gap.message)
@@ -65,23 +42,11 @@ def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMET
 def run(client, messages: list[dict], retries: int = 2, only: list[str] | None = None,
         carry_from: EngineOutput | None = None, *, reuse_system: bool = True,
         model: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-    """Engine turn: request/answers → filled model. `only` restricts which context cards inform the
-    turn (defaults to all); keep it constant across a session's turns so the prompt cache holds.
-
-    The reply is parsed as a `ModelProposal`, not an `EngineOutput`, because `engine.md` asks for
-    `model`/`questions`/`summary` and nothing else: a turn that says nothing about decisions or
-    challenges is *quiet*, not deleting them. `carry_from` is the model being refined — the established
-    reasoning is carried onto the reply, so what leaves this function is a complete model again.
-
-    `perimeter` (#608) selects the schema and discovery guidance `engine.md` is grounded in, and is
-    passed through as validation context so the reply's slot ids are checked against the same
-    vocabulary -- defaults to software, unchanged for every caller that predates perimeters.
-
-    `reuse_system` is the one thing this function cannot decide, so it is the caller's: only the
-    interactive `discover` loop (`DiscoveryService.draft_turn`) genuinely re-sends this prompt and
-    earns the breakpoint, while `start`/`run_discovery`/`answer` take the one-shot default (#58, #77).
-    Pinned by `test_the_provider_seam_is_single_call_on_both_analyze_branches`. The remaining direct
-    callers of this function are `answer_turn` and `scripts/golden_run.py`; no interface reaches it."""
+    """Engine turn: request/answers → filled model, parsed as a `ModelProposal` (a quiet reply is not
+    a deletion) and resolved against `carry_from`. `only` restricts the cards; `perimeter` (#608)
+    grounds the prompt and the validation context. `reuse_system` is the caller's: only the
+    interactive loop re-sends this prompt (#9, #58, #77).
+    `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
     proposal = _complete(
         client, build_system_prompt("engine.md", only, perimeter=perimeter), messages, ModelProposal,
         retries, validate=lambda o: _require_complete_model(o, perimeter), reuse_system=reuse_system,
@@ -91,17 +56,9 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
 
 def judge_context(client, request: str, cards: list[CardSummary], *,
                   model: str | None = None) -> ContextJudgment:
-    """Does any installed card describe this request's domain? One cheap call, before a session has
-    a card selection at all (`decision: the-engine-writes-the-missing-card`).
-
-    `build_standalone_prompt`, not `build_system_prompt`: this is the one call that must NOT carry
-    the schema and every card, since its whole economy is asking about ~9k of text for the price of
-    a few hundred tokens. `reuse_system=False` for the same reason a one-call verb takes it (#9) --
-    there is no second call of this operation to read the cache it would write.
-
-    The card names are validated against the install here rather than trusted, because an invented
-    name is not inert: it would reach `resolve_cards` as a selection and refuse the discovery the
-    judgment was supposed to ground. Guarded by
+    """Does any installed card describe this request's domain? One cheap standalone call
+    (`decision: the-engine-writes-the-missing-card`), not grounded in the schema and the cards, and
+    `reuse_system=False`. The card names are validated against the install:
     `test_a_judgment_naming_a_card_the_install_does_not_have_is_refused`."""
     known = {c.stem for c in cards}
 
@@ -124,20 +81,9 @@ def judge_context(client, request: str, cards: list[CardSummary], *,
 
 def judge_perimeter(client, request: str, perimeters: list[PerimeterSummary], *,
                     model: str | None = None) -> PerimeterJudgment:
-    """Which installed perimeter, if any, this request's shape belongs to (#601) -- the router,
-    riding `judge_context`'s own seam (#593) rather than a second one beside it: a standalone call,
-    before a session has claimed a perimeter at all, and a typed verdict a validator refuses when
-    its payload disagrees with its own decision.
-
-    `build_standalone_prompt`, not `build_system_prompt`, for the identical reason `judge_context`
-    takes it: this call must NOT carry every installed perimeter's schema, or its whole economy -- a
-    few hundred tokens instead of a share of the ~9k shared prefix -- is gone. `reuse_system=False`
-    for the same reason a one-call verb takes it: there is no second call of this operation to read
-    back a cache it would write.
-
-    The perimeter names are validated against the install here rather than trusted, mirroring
-    `judge_context`'s own guard: an invented id is not inert, it would reach `get_perimeter` as a
-    claim and refuse the very discovery this judgment exists to route."""
+    """Which installed perimeter, if any, this request's shape belongs to (#601): `judge_context`'s
+    seam, a standalone call before a session has claimed a perimeter. The ids are validated against
+    the install rather than trusted."""
     known = {p.id for p in perimeters}
 
     def _names_only_installed_perimeters(judgment: PerimeterJudgment) -> None:
@@ -162,21 +108,9 @@ def judge_perimeter(client, request: str, perimeters: list[PerimeterSummary], *,
 def answer_turn(client, out: EngineOutput, request: str, answers: str,
                 only: list[str] | None = None, *, reuse_system: bool = False,
                 model: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-    """One stateless discovery turn: refine the model with new answers.
-
-    The model IS the accumulated state, so a turn needs only the original request (for context),
-    the current model, and the new answers — no live conversation loop. This is what lets any
-    interface (Claude Code, an API, an MCP) drive discovery turn by turn instead of a blocking TTY.
-
-    `only` is the context-card selection the original discovery used (from its session.json) — passing
-    it keeps a refinement turn reasoning over the same cards, not silently the full set.
-
-    **Single-call by default, hence `reuse_system=False`.** This function *is* the whole turn: it
-    assembles a fresh message list, makes one call and returns, so on its own there is no loop for a
-    cached system block to be read back by -- most callers make one call per operation (`requivo
-    answer`, `POST /sessions/{slug}/answer`, one Claude Code turn). One caller genuinely loops it and
-    passes True to say so: `DiscoveryService.draft_turn`, the interactive `discover` loop, on every
-    turn after the first (#9, #58, #77). Pinned by
+    """One stateless discovery turn: the request, the current model and the new answers, so any
+    interface drives discovery turn by turn. `only` keeps a refinement on the same cards.
+    `reuse_system=False` by default: single-call; the interactive loop passes True (#9, #58, #77).
     `test_a_looping_caller_can_still_ask_for_the_breakpoint_back`."""
     messages = [
         {"role": "user", "content": request},
@@ -188,17 +122,11 @@ def answer_turn(client, out: EngineOutput, request: str, answers: str,
 
 
 # ── Generators (model → artifact) ───────────────────────────────────────────────
-# Every generator threads `only` — the context-card selection its discovery ran against, read from
-# session.json by the CLI — so an artifact is grounded in the same cards discovery used, not silently
-# the full set. None means all cards (the default and the pre-0.6.1 behaviour).
+# Every generator threads `only`, the card selection its discovery ran against; None means all cards.
 
 
-# Every generator below is **one** `_complete` call, so its system prompt was being written to cache
-# and never read back — `reuse_system=False` is the default here for that reason (#9). It stays a
-# parameter rather than a constant because the same function is single-call in production and
-# multi-call in the harness: `scripts/golden_run.py --brief` calls `advise()` K times off one prompt,
-# and that caller should pass `reuse_system=True`. `AnthropicProvider.generate` threads it through
-# `**kwargs`, so a future looping caller has the same escape hatch without another signature change.
+# Every generator is one `_complete` call, so `reuse_system=False` is the default (#9); it stays a
+# parameter because `scripts/golden_run.py --brief` calls `advise()` K times off one prompt.
 
 
 def derive_stories(client, out: EngineOutput, only: list[str] | None = None, *,
@@ -213,12 +141,7 @@ def derive_stories(client, out: EngineOutput, only: list[str] | None = None, *,
 def advise(client, out: EngineOutput, only: list[str] | None = None, *,
            reuse_system: bool = False, model: str | None = None) -> Brief:
     """Finalization stage: a completed model → design considerations, risks, opportunities.
-
-    `brief.md` still says "solution assessment", not "Decision brief" — deliberately, not missed
-    (#166): it is fed into the system prompt verbatim, so renaming it is a `scripts/golden_run.py`
-    spend decision, not a caption fix. See
-    `test_the_declared_exception_records_its_reason_at_the_call_site` in
-    tests/test_vocabulary_boundary.py for the guard and the full reasoning."""
+    `brief.md` still says "solution assessment" (#166): renaming it is a golden-capture spend decision."""
     system = build_system_prompt("brief.md", only)
     user = "Completed requirements model to advise on:\n" + out.model_dump_json()
     return _complete(client, system, [{"role": "user", "content": user}], Brief,
@@ -227,14 +150,9 @@ def advise(client, out: EngineOutput, only: list[str] | None = None, *,
 
 def advise_gtm(client, out: EngineOutput, only: list[str] | None = None, *,
                reuse_system: bool = False, model: str | None = None) -> GoToMarketPlan:
-    """The go-to-market perimeter's one artifact (#609) -- its equivalent of `advise()`, over its
-    own schema and its own prompt. `perimeter=GO_TO_MARKET` is hardcoded, not threaded from a
-    caller: `_require_owned_artifact_type` (services/discovery.py) only ever reaches this function
-    for a session already running that perimeter, so there is no second value it could correctly be
-    called with. Both `build_system_prompt` (which schema/guidance ground the call) and `_complete`'s
-    `context` (which schema the reply's `rests_on`/`source_slot` references are checked against, via
-    `GoToMarketPlan._validate_slot_vocabulary`) have to agree on it, the same pairing `run()` makes
-    for a discovery turn."""
+    """The go-to-market perimeter's one artifact (#609): `advise()` over its own schema and prompt.
+    `perimeter=GO_TO_MARKET` is hardcoded, since `_require_owned_artifact_type` only reaches this
+    for such a session, and the prompt and the validation context must agree on it."""
     system = build_system_prompt("gtm_plan.md", only, perimeter=GO_TO_MARKET)
     user = "Completed go-to-market model to advise on:\n" + out.model_dump_json()
     return _complete(client, system, [{"role": "user", "content": user}], GoToMarketPlan,
@@ -302,16 +220,10 @@ def estimate(client, out: EngineOutput, stories: Stories,
 
 # ── The registry ────────────────────────────────────────────────────────────────
 
-# Every operation reachable through `ReasoningProvider.generate` -- the registry that keeps a surface
-# from reasoning its own pipeline outside the seam (#77). Pinned by
-# `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`.
-#
-# `estimate` is the one entry that does not fit the plain model → contract shape, and it is listed
-# rather than hidden: it takes the prior `stories` through `**kwargs`, and it returns
-# `(EstimateDraft, soft_slots, confidence)` — the last two computed in core from the same model, so a
-# caller cannot get the draft and the confidence out of step. Since #519 it is a saved artifact
-# like the rest: `DiscoveryService.generate("estimate")` reasons the stories first from the same
-# snapshot, saves both, and files them against one revision (`_generate_estimate`).
+# Every operation reachable through `ReasoningProvider.generate` (#77):
+# `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`. `estimate` takes the
+# prior `stories` through `**kwargs` and returns `(EstimateDraft, soft_slots, confidence)`; since
+# #519 `DiscoveryService.generate("estimate")` reasons and saves both.
 _GENERATORS = {
     "brief": advise,
     "stories": derive_stories,
@@ -323,8 +235,7 @@ _GENERATORS = {
     "gtm_plan": advise_gtm,
 }
 
-# The prompt file behind each operation — what `prompt_version()` hashes to identify the reasoning that
-# produced a revision. `analyze` is the discovery turn; the rest are the artifact types.
+# The prompt file behind each operation, what `prompt_version()` hashes; `analyze` is the discovery turn.
 _OP_PROMPTS = {
     "analyze": "engine.md", "brief": "brief.md", "stories": "stories.md", "estimate": "estimate.md",
     "prd": "prd.md", "criteria": "criteria.md", "epic": "epic.md", "release": "release.md",
@@ -332,25 +243,15 @@ _OP_PROMPTS = {
 }
 
 
-# The prompts that are deliberately NOT operations in `_OP_PROMPTS`' sense: they carry no shared
-# leading block, so `build_prompt` (and therefore `prompt_version`) cannot assemble them, and they
-# produce no revision to stamp provenance onto. A second table rather than an exemption, so
-# `test_every_prompt_asset_belongs_to_an_operation` keeps accounting for every file on disk --
-# unclaimed is still dead weight, there are simply two ways to claim one now (#593).
+# Prompts that are not operations: no shared leading block, no revision to stamp. A second table so
+# `test_every_prompt_asset_belongs_to_an_operation` still accounts for every file (#593).
 _STANDALONE_PROMPTS = {"judge_context": "context_judgment.md",
                        "judge_perimeter": "perimeter_judgment.md"}
 
 
 def prompt_version(op: str, only: list[str] | None = None, *,
                    perimeter: str = DEFAULT_PERIMETER) -> str:
-    """`"sha256:…"` over the exact system prompt an operation sends — the prompt file, the schema, and
-    the selected context cards, byte for byte.
-
-    This is what makes a revision traceable rather than merely timestamped. Behaviour here is tuned by
-    editing Markdown and JSON assets, so "which model produced this" answers half the question; the
-    other half is "against which prompt and which context cards", and that is exactly what changes
-    between two runs that look identical in the log. A card added to the set moves the hash, because it
-    genuinely moved the reasoning. `perimeter` (#608) moves it too -- two perimeters never share a
-    schema, so `analyze`'s hash must say which one grounded the call."""
+    """`"sha256:…"` over the exact system prompt an operation sends (prompt file, schema, selected
+    cards, and the perimeter, #608), which is what makes a revision traceable."""
     return "sha256:" + hashlib.sha256(
         build_prompt(_OP_PROMPTS[op], only, perimeter=perimeter).encode("utf-8")).hexdigest()

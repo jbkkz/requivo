@@ -1,27 +1,12 @@
-"""The canonical session store (`.requivo/sessions/<slug>/`) -- package entry point.
-
-Split out of the former `core/persistence.py` by #550 (the lean pass, #548) into a package of six
-modules, each one concern: `atomic.py` (the atomic-write + transient-rename retry),
-`identifiers.py` (slug/filename shape, reserved-name refusal, `derive_slug`), `lock.py` (the OS
-lock + `is_contained`, invariant 17), `scan.py` (the report-only diagnostics tier, frozen per
-CLAUDE.md's "The persistence diagnostics tier is frozen"), `models.py` (the session metadata
-schema + model I/O) and `store.py` (`Store`, the composition root, and the ambient-default
-module-level wrappers every prior caller used).
-
-Every name this module used to define at the top level is re-exported here unchanged, so
-`from requivo.core.persistence import X`, `from requivo.core import persistence as store` +
-`store.X`, and `import requivo.core.persistence as p` + `p.X` all resolve exactly as they did
-before the split -- this is the *only* thing that changed, not any of the twelve call sites across
-the repo that reach into this module by one of those three forms.
+"""The canonical session store (`.requivo/sessions/<slug>/`), a package since #550: `atomic.py`,
+`identifiers.py`, `lock.py`, `scan.py`, `models.py` and `store.py`. Every name is re-exported here,
+so `requivo.core.persistence.X` resolves as before the split.
 """
 from __future__ import annotations
 
-# This package-entry file's whole job is re-export -- see its own docstring -- so every
-# import below is "unused" by the letter of F401 and used by the point of the file.
+# This file's whole job is re-export, so every import below is used by the point of the file.
 # ruff: noqa: F401
-# Re-exported for callers that reach the stdlib/vendor names off this module directly (rare, but a
-# handful of tests patch `store.fcntl` -- see `lock.py`, whose `fcntl`/`msvcrt` this is the same
-# module object as, since Python caches `sys.modules` regardless of which file imports it first).
+# The stdlib/vendor names are re-exported too: a handful of tests patch `store.fcntl`.
 import hashlib
 import json
 import os

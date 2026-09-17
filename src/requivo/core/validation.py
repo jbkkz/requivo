@@ -1,14 +1,6 @@
-"""The single model-validation entry point — provider-agnostic.
-
-Every model update, whoever produces it (the Anthropic provider, a Claude Code proposal, a future
-Web client), passes through here before it is applied. Pydantic already enforces the *shape* and the
-slot *vocabulary* (`EngineOutput._validate_slot_vocabulary`); this layer adds the *completeness*
-boundary (the full required slot set) and, crucially, translates every failure into a structured
-`RequivoError` with a stable `code` — so the CLI's `model validate`/`model apply` can emit a machine
-envelope and Claude Code can act on the `code` instead of scraping a Pydantic message.
-
-This is the same guarantee `run()`'s `validate` hook enforces inside the provider; extracting it here
-means the deterministic CLI path (which never calls an LLM) applies the identical rule.
+"""The single model-validation entry point, provider-agnostic: Pydantic enforces shape and vocabulary,
+this layer adds the completeness boundary and translates every failure into a structured
+`RequivoError` with a stable `code`, the same rule the provider's `validate` hook enforces.
 """
 
 from __future__ import annotations
@@ -25,25 +17,16 @@ from requivo.core.perimeters import DEFAULT_PERIMETER
 
 @dataclass(frozen=True)
 class Incompleteness:
-    """A completeness rule a proposal breaks — the message plus what a structured error needs."""
+    """A completeness rule a proposal breaks: the message plus what a structured error needs."""
     message: str
     path: str
     details: dict = field(default_factory=dict)
 
 
 def completeness_gap(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> Incompleteness | None:
-    """The first completeness rule `out` breaks, or None if it is a complete model.
-
-    One definition of "complete", shared by the two boundaries that enforce it: the provider's retry
-    hook (which raises a plain `ValueError` so `_complete()` can nudge the model into self-correcting)
-    and `validate_proposal` (which raises a structured `RequivoError` so a CLI or Claude Code caller
-    can act on the `code`). They used to state the rules separately, and drifted: the provider required
-    an objective, the CLI did not, so the same model was complete on one surface and not the other.
-
-    Both rules exist because their absence fails *silently*. A missing required slot becomes invisible
-    to readiness and to every view, so a high-impact gap can pass as 'ready'; an empty objective leaves
-    a set of slots with nothing naming what they are about, and renders as a blank heading everywhere.
-    """
+    """The first completeness rule `out` breaks, or None: one definition, shared by the provider's
+    retry hook and `validate_proposal`, which used to state it separately and drifted. A missing
+    required slot is invisible to readiness; an empty objective renders as a blank heading."""
     missing = missing_required_slots(set(out.model), perimeter)
     if missing:
         return Incompleteness(
@@ -57,18 +40,8 @@ def completeness_gap(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> 
 
 
 def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT_CHARS) -> None:
-    """Refuse `text` over `limit` characters before it reaches a provider call or is persisted.
-
-    Invariant 3 (refuse, don't truncate): a request or an answer silently cut mid-paste is reasoned
-    over as if it were the whole thing, and the caller never learns which half the engine saw — so
-    this raises rather than slicing anything. Invariant 14 (the service layer is the integrity
-    boundary, not the interfaces): before #255 this cap existed only in `web/config.py`, checked by
-    the Web routes alone, so `DiscoveryService`/`SessionService` called directly -- the CLI, Claude
-    Code, a future consumer -- accepted unbounded text straight through to a billed provider call.
-
-    `field` names what was too long (`"request"`, `"answers"`) so the message and the structured
-    `details` tell a caller which one to shorten, rather than making them guess from a bare count.
-    """
+    """Refuse `text` over `limit` characters before a provider call or a persist (invariant 3, never
+    truncate; invariant 14, the service is the boundary, #255). `field` names what to shorten."""
     if len(text) > limit:
         raise InputTooLargeError(
             f"{field} exceeds {limit:,} characters", details={"limit": limit, "field": field})
@@ -77,18 +50,9 @@ def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT
 def validate_proposal(data: dict | str, *, require_complete: bool = True,
                       current: EngineOutput | None = None,
                       perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
-    """Validate a proposed model (a dict or a JSON string) into an `EngineOutput`, raising a
-    structured `RequivoError` on any failure.
-
-    `require_complete` gates the completeness boundary: True (the default, matching discovery) rejects
-    a model missing any required slot or an empty objective; False allows a partial projection (used
-    where a caller knowingly works with a subset). The vocabulary check (unknown slots) always runs —
-    a hallucinated key is never acceptable.
-
-    `current` is the model being refined, and it is what makes the reasoning layer's tri-state real
-    (see `ModelProposal`): a proposal that does not mention `decisions` leaves the established ones
-    standing, rather than deleting them by omission. Pass it wherever there is one — the callers that
-    apply to a session always have it."""
+    """Validate a proposed model (dict or JSON string) into an `EngineOutput`, raising a structured
+    `RequivoError`. `require_complete` gates the completeness boundary; the vocabulary check always
+    runs. `current` is the model being refined, which makes the reasoning tri-state real (`ModelProposal`)."""
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -97,8 +61,7 @@ def validate_proposal(data: dict | str, *, require_complete: bool = True,
     if not isinstance(data, dict):
         raise InvalidModelError("proposal must be a JSON object", path="model")
 
-    # Surface a precise slot-vocabulary error *before* Pydantic, so the caller gets `unknown_slot`
-    # with the offending ids rather than a generic validation dump.
+    # A precise `unknown_slot` before Pydantic's generic dump.
     model_slots = data.get("model")
     if isinstance(model_slots, dict):
         bad = unknown_slots(set(model_slots), perimeter)
@@ -111,8 +74,7 @@ def validate_proposal(data: dict | str, *, require_complete: bool = True,
 
     try:
         proposal = ModelProposal.model_validate(data, context={"perimeter": perimeter})
-        # Resolve against what is already there *before* the completeness check, so the rules judge the
-        # model that would actually be stored, not the delta that was sent.
+        # Resolved before the completeness check, so the rules judge the model that would be stored.
         out = proposal.resolve(current, perimeter=perimeter)
     except ValidationError as e:
         raise InvalidModelError(f"proposal does not match the schema: {e}", path="model") from e
