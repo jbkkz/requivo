@@ -56,11 +56,10 @@ def is_example(request_text: str) -> bool:
 
 
 def seed_example(sessions: SessionService, artifacts: ArtifactService | None = None) -> str:
-    """Materialise the bundled example as a real local session; returns the slug it landed under. A second click
-    navigates rather than refusing (idempotent identity); the model applies only at revision 0, and a racing
-    click's `RevisionConflictError` is swallowed (invariant 9) since someone else already seeded this session
-    (test_a_second_click_returns_to_the_same_session_rather_than_making_another). The brief is seeded the same
-    way (#429), gated on presence rather than revision 0, under the same lock, so a concurrent real generation cannot be overwritten."""
+    """Materialise the bundled example as a real session and return its slug. Idempotent: a second
+    click navigates, the model applies only at revision 0, a racing click's conflict is swallowed
+    (test_a_second_click_returns_to_the_same_session_rather_than_making_another); the brief is seeded
+    under the same lock, gated on presence (#429)."""
     artifacts = artifacts if artifacts is not None else ArtifactService(repo=sessions.repo)
     meta = sessions.create_session(example_request(), slug=EXAMPLE_SLUG)
     if meta.current_revision == 0:

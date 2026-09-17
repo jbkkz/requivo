@@ -1,10 +1,4 @@
-"""Requivo Web — the local, single-user, self-hostable browser interface.
-
-A thin FastAPI + Jinja2 + HTMX layer over the *same* application services as the CLI and Claude Code
-(`SessionService`, `ArtifactService`, `DiscoveryService`). It owns no business logic: readiness,
-validation, revisioning and staleness all live in the Core and services. It is deliberately local and
-single-user — no auth, no accounts, no database, no remote storage. That boundary is deliberate and
-load-bearing; see `docs/web.md`.
-
-Nothing here binds a port at import time: `create_app()` is a factory, invoked by `requivo web`.
+"""Requivo Web: the local, single-user browser interface, a thin FastAPI + Jinja2 + HTMX layer over
+the same services, owning no business logic. No auth, no accounts, no database (`docs/web.md`).
+`create_app()` is a factory; nothing binds a port at import.
 """

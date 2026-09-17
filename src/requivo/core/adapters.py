@@ -11,19 +11,10 @@ EPIC_EXPORT_VERSION = 2
 
 
 def epic_export(epic: Epic, slug: str, source_revision: int) -> dict:
-    """A tool-neutral, importable view of an epic — maps cleanly onto GitHub or GitLab issues.
-
-    A stable, versioned envelope an importer (or an n8n flow) can validate and feed to either
-    tracker's API. The epic becomes a tracking issue / GitLab epic; each issue keeps its labels,
-    the shared milestone, and `depends_on` as issue refs so relationships can be wired after create.
-
-    `slug` and `source_revision` (#274) stamp *provenance*, not freshness: this envelope is written
-    outside `ArtifactService`, deliberately, so the staleness graph never tracks it the way `epic.md`
-    is tracked, and without a revision an automation consuming it had no signal that the session had
-    moved on. The basis it names is compared against `requivo status --json`'s `artifacts.epic.stale`,
-    never against a revision number directly (invariant 1). Pinned by
-    `test_epic_export_carries_the_session_slug_and_the_revision_it_was_rendered_from`.
-    """
+    """A tool-neutral, versioned envelope of an epic an importer can feed to either tracker. `slug`
+    and `source_revision` (#274) are provenance, not freshness: compared against `status --json`'s
+    `artifacts.epic.stale`, never a revision number (invariant 1).
+    `test_epic_export_carries_the_session_slug_and_the_revision_it_was_rendered_from`."""
     description = "\n\n".join(
         part
         for part in [
@@ -65,14 +56,9 @@ def epic_export_json(epic: Epic, slug: str, source_revision: int) -> str:
 
 
 def to_github(export: dict, slug: str) -> dict:
-    """Adapter: neutral epic export → a GitHub issue-creation plan (pure, no network).
-
-    An automation (e.g. an n8n flow) creates the child issues first, then the tracking issue.
-    GitHub has no native epic or issue dependency, so we degrade honestly: the epic becomes a
-    tracking issue with a task list, and `depends_on` is stated in each issue body. Every issue
-    carries an idempotency label (`requivo-epic:<slug>`) so a re-run can find-then-skip existing issues
-    instead of duplicating. `milestone` is a name — the automation resolves it to GitHub's numeric id.
-    """
+    """Neutral epic export → a GitHub issue-creation plan, pure. GitHub has no native epic or
+    dependency, so the epic is a tracking issue with a task list and `depends_on` is stated in bodies;
+    every issue carries the `requivo-epic:<slug>` idempotency label; `milestone` is a name."""
     label = f"requivo-epic:{slug}"
     title_by_ref = {i["ref"]: i["title"] for i in export["issues"]}
     epic_title = export["epic"]["title"]
@@ -116,13 +102,8 @@ def to_github_json(epic: Epic, slug: str, source_revision: int) -> str:
 
 
 def to_gitlab(export: dict, slug: str) -> dict:
-    """Adapter: neutral epic export → a GitLab issue-creation plan (pure, no network).
-
-    GitLab maps more faithfully than GitHub: `depends_on` becomes structured issue `links`
-    (`blocks`) an automation wires after create — not body text. Native Epics are Premium-only, so
-    for portability the epic is a tracking issue with a task list on any tier. Each issue carries the
-    `requivo-epic:<slug>` idempotency label; `milestone` is a name the automation resolves to its id.
-    """
+    """Neutral epic export → a GitLab issue-creation plan, pure: `depends_on` becomes issue `links`
+    (`blocks`); the epic is a tracking issue on any tier; the same idempotency label."""
     label = f"requivo-epic:{slug}"
     epic_title = export["epic"]["title"]
 

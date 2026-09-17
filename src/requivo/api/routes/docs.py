@@ -1,26 +1,7 @@
-"""Self-hosted `/docs` and `/redoc` (#504) -- the same OpenAPI docs `create_api()` has always
-turned on (`docs/decisions/0004-the-http-api-facade.md` §4), served from this project's own
-static mount instead of a third-party CDN.
-
-`create_api()` sets `docs_url=None, redoc_url=None` on the `FastAPI(...)` constructor -- the same
-switch `web/app.py` already uses to turn its own docs off entirely -- so neither of FastAPI's
-built-in routes, both of which hardcode a `cdn.jsdelivr.net` URL, is ever wired. These two routes
-replace them, referencing only `/api-static/...` (the mount `create_api()` installs for the
-directory this package ships under `src/requivo/api/static/`) and `/openapi.json` (this app's own
-spec endpoint). `tests/api/test_api_docs_assets.py`'s
-`test_no_external_origin_appears_in_the_served_docs_html` asserts the property directly on the
-returned HTML, so nothing here needs re-auditing by eye.
-
-`fastapi.openapi.docs.get_swagger_ui_html` is deliberately not used for `/docs`. It writes the
-Swagger UI initialization call as an *inline* `<script>` block, which this app's CSP
-(`script-src 'self'`, no `'unsafe-inline'` -- see `api/app.py`) refuses to execute, and its one
-`swagger_js_url` parameter cannot express "load the standalone preset as a second external script
-too" -- `swagger-ui-bundle.js` alone has no `SwaggerUIStandalonePreset` (verified directly against
-the vendored file: zero occurrences of that string). `static/swagger-initializer.js` carries the
-same initialization as an ordinary external file instead, the way `swagger-ui-dist`'s own
-`index.html` structures it. `get_redoc_html` has no equivalent obstacle -- ReDoc needs one external
-script and no inline one -- and is skipped anyway so both pages are defined the same way, in one
-file, rather than one hand-written and one library-generated.
+"""Self-hosted `/docs` and `/redoc` (#504), replacing FastAPI's built-ins, which hardcode a CDN;
+`test_no_external_origin_appears_in_the_served_docs_html` pins it. `get_swagger_ui_html` is not
+used: it writes an inline `<script>` this app's CSP refuses, and cannot load the standalone preset,
+so `static/swagger-initializer.js` carries the initialization as an external file.
 """
 
 from __future__ import annotations
@@ -49,10 +30,7 @@ _SWAGGER_UI_HTML = f"""<!DOCTYPE html>
 </html>
 """
 
-# The one inline `<style>` on this page -- allowed under this app's own widened `style-src` (see
-# `api/app.py` for why: swagger-ui's vendored bundle sets computed layout via inline `style`
-# attributes throughout its DOM, which this same directive already has to permit, so a two-line
-# reset here costs nothing further).
+# The one inline `<style>`, allowed under this app's widened `style-src` (`api/app.py`).
 _REDOC_HTML = f"""<!DOCTYPE html>
 <html>
 <head>

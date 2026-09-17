@@ -1,11 +1,5 @@
-"""Artifact routes -- the freshness listing, one artifact's content, generation, and the
-external-reasoner save (#425, slices 1 and 2).
-
-Generation goes through `DiscoveryService.generate`, which calls the provider and saves via
-`ArtifactService` with the source revision it was actually read at -- so staleness is tracked
-identically to every other surface. The save route is the wire path for content produced elsewhere
-(the Claude Code shape, given an HTTP body instead of the filesystem): `ArtifactService.save`
-directly, no provider call, no `usage` object."""
+"""Artifact routes (#425): the freshness listing, one artifact, generation through
+`DiscoveryService.generate`, and the external-reasoner save through `ArtifactService.save`."""
 
 from __future__ import annotations
 
@@ -25,8 +19,7 @@ router = APIRouter()
 @router.get("/sessions/{slug}/artifacts")
 def list_artifacts(slug: str = Depends(safe_slug),
                     artifacts: ArtifactService = Depends(get_artifacts)) -> dict:
-    """Every recorded artifact and its freshness relative to the current model revision -- the
-    explicit stale flag, never revision drift (invariant 1). `ArtifactService.list`."""
+    """Every recorded artifact and its freshness: the explicit stale flag (invariant 1)."""
     return artifacts.list(slug)
 
 
@@ -37,13 +30,8 @@ def _wants_markdown(request: Request) -> bool:
 @router.get("/sessions/{slug}/artifacts/{artifact_type}")
 def show_artifact(request: Request, artifact_type: str, slug: str = Depends(safe_slug),
                    artifacts: ArtifactService = Depends(get_artifacts)):
-    """One artifact: `Accept: text/markdown` returns the saved document byte-for-byte (the same
-    contract Requivo Web's download route keeps); anything else returns the JSON envelope
-    `{type, filename, source_revision, updated_at, stale, content}`.
-
-    Backed by `ArtifactService.show_with_status` -- content and freshness read as one coherent
-    snapshot rather than two separate calls, so a regeneration landing in between cannot report
-    content from one revision beside metadata describing another (invariant 12)."""
+    """One artifact: `Accept: text/markdown` returns the saved bytes; anything else the JSON envelope
+    `{type, filename, source_revision, updated_at, stale, content}`, read as one snapshot (invariant 12)."""
     content, row = artifacts.show_with_status(slug, artifact_type)
     if _wants_markdown(request):
         return PlainTextResponse(content, media_type="text/markdown")
@@ -55,14 +43,8 @@ def show_artifact(request: Request, artifact_type: str, slug: str = Depends(safe
 @router.post("/sessions/{slug}/artifacts/{artifact_type}")
 def generate_artifact(artifact_type: str, slug: str = Depends(safe_slug),
                       discovery: DiscoveryService = Depends(get_discovery)) -> dict:
-    """Generate an artifact through the provider and save it against the session
-    (`DiscoveryService.generate`). The vocabulary is the service's `GENERATABLE`, not a list kept
-    here, so this surface offers exactly what the shared orchestration can produce.
-
-    Not idempotent -- each call pays and overwrites, documented as such (§3 of the decision record).
-    Paid, so scoped in a `track_api_usage()` ledger (logged on failure too, see `api/usage.py`);
-    the response carries the saved artifact's
-    provenance (`ArtifactStatus`), the typed contract's own dump, and what this call spent."""
+    """Generate an artifact through the provider and save it; the vocabulary is `GENERATABLE`. Not
+    idempotent: each call pays and overwrites. The response carries the status, the contract's dump and the spend."""
     if artifact_type not in GENERATABLE:
         raise UnknownArtifactTypeError(
             f"{artifact_type!r} is not a generated artifact; supported: {', '.join(GENERATABLE)}",
@@ -70,9 +52,8 @@ def generate_artifact(artifact_type: str, slug: str = Depends(safe_slug),
     with track_api_usage(f"api-{artifact_type}") as ledger:
         result = discovery.generate(slug, artifact_type, surface=f"api-{artifact_type}")
         usage = usage_view(ledger)
-    # A runtime `artifact_type` resolves `generate()`'s `str` overload, `Generated[object]` -- the
-    # typed seam pays off only at a literal call site (`decision: typed-generation-seam`). Every
-    # contract it can hand back is a pydantic model, so narrow by the fact rather than by a cast.
+    # A runtime `artifact_type` resolves the `str` overload, `Generated[object]` (`decision: typed-generation-seam`);
+    # every contract is a pydantic model, so narrow by the fact rather than a cast.
     artifact = result.artifact
     if not isinstance(artifact, BaseModel):  # pragma: no cover - every registered contract is one
         raise TypeError(f"generated {artifact_type!r} is not a pydantic contract: {type(artifact)!r}")
@@ -83,11 +64,7 @@ def generate_artifact(artifact_type: str, slug: str = Depends(safe_slug),
 @router.put("/sessions/{slug}/artifacts/{artifact_type}")
 def save_artifact(body: ArtifactSaveRequest, artifact_type: str, slug: str = Depends(safe_slug),
                   artifacts: ArtifactService = Depends(get_artifacts)) -> dict:
-    """The external-reasoner save -- persist content produced elsewhere and tie it to the model
-    revision it was reasoned from (`ArtifactService.save`). No provider call, no `usage` object.
-
-    `source_revision` keeps the service's own optional default in `ArtifactSaveRequest`: omitting it
-    is refused as `unstated_source_revision` (400) by `ArtifactService.save` itself, unchanged --
-    this route adds no requiredness of its own."""
+    """The external-reasoner save: persist content produced elsewhere against its source revision,
+    no provider call. Omitting `source_revision` is the service's own 400."""
     status = artifacts.save(slug, artifact_type, body.content, source_revision=body.source_revision)
     return status.model_dump()

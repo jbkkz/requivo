@@ -1,13 +1,5 @@
-"""`requivo model`: show, validate, apply and diff a session's model.
-
-The model is the product and the artifacts are views of it, so these are the verbs Claude Code
-drives: it reasons a proposal with its own Claude, pipes the JSON in on stdin, and `validate` or
-`apply` decides. The decision is never taken here. `validate_proposal` in Core states the slot
-vocabulary and the completeness rule, and `SessionService.update_model` is the single validated
-apply path, which is what keeps the revision, the diff and the staleness flags in one place.
-
-Part of the deterministic surface, so no LLM and no API key. `register_model(sub)` is composed into
-the package's single `register()` by `deterministic/__init__.py`.
+"""`requivo model`: show, validate, apply and diff a session's model, the verbs Claude Code drives.
+The decision is never taken here: `validate_proposal` and `SessionService.update_model` own it.
 """
 
 from __future__ import annotations
@@ -21,21 +13,14 @@ from requivo.services.sessions import SessionService
 def _cmd_model_show(a, client) -> None:
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
-    # `resolve_slug` does not check existence -- a bare slug it does not recognise passes through
-    # unchanged -- and `load_model` below raises the identical `session_not_found` code whether the
-    # directory is missing entirely or exists with no model yet. Checked here so the two do not share
-    # a message: the pre-existing behaviour already blurred them ("has no model yet" for a slug that
-    # was never created at all), and reusing #250's friendlier wording without this check would have
-    # made that worse -- "only the request was captured" is affirmatively false when nothing was.
+    # `resolve_slug` does not check existence, and `load_model` raises the same code for a missing
+    # directory and a claimed-but-empty session; checked here so the two messages differ (#250).
     if not svc.exists(slug):
         raise svc.no_session(slug)
     try:
         model = svc.load_model(slug)
     except SessionNotFoundError:
-        # The existence check above ruled out "no such session", so this is the narrower "claimed but
-        # never discovered" case -- the same one `cli.py`'s `_resolve_ref` reconstructs for `status`
-        # and `impact` (#250). Kept in sync with that copy rather than shared with it: the two live on
-        # opposite sides of a layer boundary this package does not import across.
+        # The narrower "claimed but never discovered" case, kept in sync with `cli.py`'s `_resolve_ref` (#250).
         raise SessionNotFoundError(
             f"session '{slug}' has no model yet — only the request was captured. Run "
             f"`requivo discover` on the same request to analyse it (or, in Claude Code, "
@@ -46,8 +31,7 @@ def _cmd_model_show(a, client) -> None:
 
 
 def _cmd_model_validate(a, client) -> None:
-    """Validate a proposal file — the gate Claude Code runs before applying. On success prints a tiny
-    confirmation (or `--json` {status: valid}); on failure the structured error surfaces via app()."""
+    """Validate a proposal file, the gate Claude Code runs before applying."""
     data = _read_document(a.proposal)
     require = not a.allow_partial
     out = validate_proposal(data, require_complete=require)
@@ -59,10 +43,8 @@ def _cmd_model_validate(a, client) -> None:
 
 
 def _cmd_model_apply(a, client) -> None:
-    """Apply a proposal as a new revision. Always the complete slot set: `apply` *replaces* the model,
-    and `--allow-partial` used to read as if it merged — it did not, so applying one slot left a
-    one-slot model where fifteen had been. Validating a projection is `model validate --allow-partial`;
-    a real partial update needs a merge semantics this command never had."""
+    """Apply a proposal as a new revision, always the complete slot set: `apply` *replaces* the model,
+    and `--allow-partial` used to read as if it merged."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     data = _read_document(a.proposal)
@@ -92,8 +74,7 @@ def _cmd_model_diff(a, client) -> None:
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     data = _read_document(a.proposal)
-    # `diff` is the dry run of `apply`, so it holds the proposal to the same bar — a projection that
-    # `apply` would refuse must not be previewed here as though it would land.
+    # `diff` holds the proposal to the same bar as `apply`.
     result = svc.diff(slug, data)
     if a.json:
         print_json(result.to_dict())
@@ -116,9 +97,7 @@ def register_model(sub) -> None:
 
     mv = ms.add_parser("validate", help="validate a proposal file (no session write)")
     mv.add_argument("proposal", help="path to a proposed model JSON, or '-' to read it from stdin")
-    # (A `--session` flag lived here, promising validation "against a session's context", and was read
-    # by nothing. Whatever it was going to mean, `model diff <slug> <proposal>` already means it: it
-    # reports exactly what applying the proposal to that session would change, without writing.)
+    # A `--session` flag lived here and was read by nothing; `model diff <slug> <proposal>` already means it.
     mv.add_argument("--allow-partial", action="store_true",
                     help="check a partial projection for well-formedness only — `apply` and `diff` "
                          "always require the full slot set, because applying replaces the model")
