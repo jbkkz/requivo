@@ -8,7 +8,13 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _fakes import FakeClient, Spend, full_slots, seed_session  # noqa: F401  (re-exported for the web suite)
+from _fakes import (  # noqa: F401  (re-exported for the web suite)
+    FakeClient,
+    Spend,
+    engine_reply,
+    full_slots,
+    seed_session,
+)
 from fastapi.testclient import TestClient
 
 from requivo.core.persistence import canonical_dir
@@ -17,19 +23,6 @@ from requivo.web.app import create_app
 from requivo.web.dependencies import get_discovery
 from requivo.web.security import CSRF_HEADER, csrf_token
 from requivo.web.templating import STATIC_DIR
-
-
-def engine_reply(*, converged: bool = False, questions: list[dict] | None = None,
-                 **slot_overrides) -> str:
-    if questions is None:
-        questions = [] if converged else [
-            {"q": "How are exceptions handled?", "slot": "business_rules", "why": "uncertainty × impact"}]
-    return json.dumps({
-        "model": full_slots(**slot_overrides),
-        "questions": questions,
-        "summary": {"objective": "A leave approval system"},
-    })
-
 
 BRIEF_REPLY = json.dumps({"complexity": "medium", "problem": "P", "solution": "S",
                           "risks": ["a race on approval"], "next_steps": ["confirm exceptions"]})
