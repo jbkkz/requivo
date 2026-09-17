@@ -5,23 +5,13 @@ from __future__ import annotations
 import json
 
 import pytest
+from _fakes import FakeClient, Spend, full_slots, seed_session  # noqa: F401  (re-exported for the web suite)
 from fastapi.testclient import TestClient
 
-from requivo.core.contracts import _schema_order, schema_slot_ids
 from requivo.services.discovery import DiscoveryService
-from requivo.services.sessions import SessionService
 from requivo.web.app import create_app
 from requivo.web.dependencies import get_discovery
 from requivo.web.security import CSRF_HEADER, csrf_token
-
-
-def full_model(**overrides) -> dict:
-    """A complete required-slot model (empty/low by default), with per-slot overrides."""
-    _, required = schema_slot_ids()
-    model = {sid: {"completeness": 0, "confidence": "empty", "impact": "low"}
-             for sid in _schema_order() if sid in required}
-    model.update(overrides)
-    return model
 
 
 def engine_reply(*, converged: bool = False, questions: list[dict] | None = None,
@@ -30,7 +20,7 @@ def engine_reply(*, converged: bool = False, questions: list[dict] | None = None
         questions = [] if converged else [
             {"q": "How are exceptions handled?", "slot": "business_rules", "why": "uncertainty × impact"}]
     return json.dumps({
-        "model": full_model(**slot_overrides),
+        "model": full_slots(**slot_overrides),
         "questions": questions,
         "summary": {"objective": "A leave approval system"},
     })
@@ -47,53 +37,6 @@ CRITERIA_REPLY = json.dumps({"title": "Leave approval — acceptance criteria", 
 
 HIGH_EXPLICIT = {"completeness": 90, "confidence": "explicit", "impact": "high"}
 HIGH_INFERRED = {"completeness": 30, "confidence": "inferred", "impact": "high"}
-
-
-def _make_session(slug="leave-approval", **model_over):
-    """Seed a discovered session directly through the service (no provider), for view/security tests."""
-    svc = SessionService()
-    svc.create_session("A leave approval request", slug=slug)
-    model = {"model": full_model(**model_over), "questions": [], "summary": {"objective": "Leave system"}}
-    svc.update_model(slug, json.dumps(model))
-    return slug
-
-
-class Spend:
-    """The token counts the SDK reports on a response, under the names it uses."""
-
-    def __init__(self, input_tokens=0, output_tokens=0, cache_read_input_tokens=0,
-                 cache_creation_input_tokens=0):
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.cache_read_input_tokens = cache_read_input_tokens
-        self.cache_creation_input_tokens = cache_creation_input_tokens
-
-
-class FakeClient:
-    """Returns canned JSON replies in order."""
-
-    def __init__(self, *replies, spend=None):
-        self._replies = list(replies)
-        self._spend = spend
-        self.calls = []
-        self.messages = self  # client.messages.create → self.create
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return _FakeResponse(self._replies.pop(0), self._spend)
-
-
-class _FakeResponse:
-    def __init__(self, text, usage=None):
-        self.content = [_Block(text)]
-        self.stop_reason = "end_turn"
-        self.usage = usage
-
-
-class _Block:
-    def __init__(self, text):
-        self.type = "text"
-        self.text = text
 
 
 @pytest.fixture(autouse=True)
@@ -151,3 +94,10 @@ def with_provider(app):
         return fake
     yield _install
     app.dependency_overrides.clear()
+
+
+def _make_session(slug="leave-approval", **model_over):
+    return seed_session(slug, "A leave approval request", objective="Leave system", **model_over)
+
+
+full_model = full_slots

@@ -3,8 +3,9 @@ backed by exactly one `SessionService` call, offline, over a tmp workspace."""
 
 from __future__ import annotations
 
+from _fakes import full_slots
+
 from requivo.services.sessions import SessionService
-from tests._fakes import full_slots
 from tests.api.conftest import seed_session
 
 
