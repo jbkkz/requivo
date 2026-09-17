@@ -27,31 +27,20 @@ _KIND_TAG = {
 
 
 def _cell(text: str) -> str:
-    """Make text safe for a Markdown table cell: a literal `|` closes the cell and a newline ends the
-    row, so a requirement containing either would break the table. Escape one, flatten the other."""
+    """Make text safe for a table cell: escape a literal `|`, flatten a newline."""
     return text.replace("|", "\\|").replace("\n", " ").strip()
 
 
 def _line(text: str) -> str:
-    """Keep provider free text on the one line it was placed on. A heading or a bullet is a *line*
-    construct, so a newline inside a title makes whatever follows it a line of its own — and the
-    Web's `markdown_to_html` re-parses every physical line, so a title carrying a newline and a `#`
-    would render as a second heading rather than as the title it was. Flattened here, where the
-    document is written, the same way `_cell` flattens a table cell (#519 review). Pinned by
-    `test_a_newline_inside_a_provider_field_cannot_open_a_new_heading`."""
+    """Keep provider free text on one line: a newline inside a title would open a second heading when
+    `markdown_to_html` re-parses the line. `test_a_newline_inside_a_provider_field_cannot_open_a_new_heading`."""
     return " ".join(text.split())
 
 
 def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """The topics carrying a stated value at a given provenance, in schema order, as `**Label** — value`.
-
-    This separates what the client actually said from what the engine filled in on their behalf — the
-    single most useful distinction a scope review can be handed, and one nobody has to take on trust,
-    because it is read off the model rather than written by the provider. The Voice rule holds: the
-    label is the human one and the numbers behind it never appear.
-
-    `perimeter` (#609) is what keeps this projecting the *right* schema's labels — `gtm_plan_markdown`
-    passes `GO_TO_MARKET`; every pre-#609 caller (`brief_markdown`) is unchanged by the default."""
+    """The topics carrying a stated value at a given provenance, in schema order, as `**Label** —
+    value`: read off the model, never restated by the provider (Voice rule). `perimeter` (#609)
+    selects the labels."""
     order = slot_meta(perimeter)[1]
     return [f"- **{slot_label(sid, perimeter)}** — {out.model[sid].value.strip()}"
             for sid in order
@@ -60,12 +49,7 @@ def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_
 
 
 def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """Excluded options, projected off the model rather than written by the provider (#599) — the
-    same split `_stated()` draws: a restatement of "what we are not doing" can drift from the model
-    it restates, and a projection cannot. Each option names what it rests on by label, never by id
-    (the Voice rule). `_line()`-flattened like every other reasoning-item field below, so a newline
-    in a model-supplied option or reason cannot open a forged heading (audit finding on #599).
-    `perimeter` (#609) is threaded the same way `_stated()`'s is."""
+    """Excluded options projected off the model (#599), by label (Voice rule), `_line()`-flattened."""
     lines = []
     for ex in out.exclusions:
         line = f"- **{_line(ex.option)}** — {_line(ex.reason)}"
@@ -76,12 +60,7 @@ def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str
 
 
 def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """Decision thresholds — "at X, do Y" (#604) — projected off the model, the same split
-    `_excluded()` draws for exclusions: a restatement can drift from the model it restates, and a
-    projection cannot. Each names what it rests on by label, never by id (the Voice rule).
-    `_line()`-flattened for the same reason as every other reasoning-item field here — a newline in
-    a model-supplied condition or action cannot open a forged heading. `perimeter` (#609) is
-    threaded the same way `_stated()`'s is."""
+    """Decision thresholds projected off the model (#604), by label, `_line()`-flattened."""
     lines = []
     for th in out.thresholds:
         line = f"- **{_line(th.condition)}** → {_line(th.action)}"
@@ -92,19 +71,10 @@ def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[s
 
 
 def brief_markdown(out: EngineOutput, brief: Brief) -> str:
-    """Render the decision brief — the document a scope review is run from.
-
-    It answers one question: *what would I need to review with a client, a product lead or an
-    engineering lead before estimating this?* So it opens with what is settled and what is merely
-    assumed, and only then gives the judgment (decisions, contested premises, complexity, risks,
-    opportunities). It is deliberately not a PRD; `prd_markdown` is.
-
-    Half of it is deterministic. What is confirmed, what is being assumed, what is out of scope, the
-    decision thresholds and what still blocks are read straight off the model — the provider is never
-    asked to restate facts it was given, because a restatement can drift from the model while a
-    projection cannot. The prose sections are the ones that need judgment. Slot ids and internal
-    signals (completeness, confidence labels) never appear in either half, matching the Voice rule
-    the LLM prose already follows."""
+    """Render the decision brief: what is settled and what is assumed first, then the judgment.
+    Half of it is deterministic: the confirmed, assumed, excluded, threshold and blocking sections are
+    projected off the model, because a restatement can drift and a projection cannot. No slot ids or
+    confidence labels in either half (Voice rule)."""
     blockers = [slot_label(sid) for sid in readiness_blockers(out)]
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Decision Brief{draft}", "",
@@ -139,11 +109,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
                    "build._"]
     section("Important assumptions", assumed)
 
-    # `_line()`-flattened, like `_excluded()` below and `stories_markdown`/`estimate_markdown` --
-    # a newline in a provider-supplied decision could otherwise open a forged heading a step later
-    # (`markdown_to_html`'s heading regex re-parses every physical line). Sibling audit finding on
-    # #599, fixed here alongside the new `_excluded()` since it is the identical defect in the same
-    # function, over the same reasoning layer.
+    # `_line()`-flattened, or a newline in a provider decision opens a forged heading (#599).
     decisions: list[str] = []
     for d in brief.decisions:
         line = f"- **{_line(d.decision)}**"
@@ -185,11 +151,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
         + (f" — reaches {', '.join(o.modules)}" if o.modules else "")
         for o in brief.opportunities])
 
-    # Not a second readiness question. `Ready to estimate?` read as a threshold of its own while
-    # branching on the same blocker list as everywhere else, and asking *ready for a first decision
-    # brief* here would be circular — the reader is holding one. So the one boolean is stated as what
-    # it means for this document (#165). Pinned by
-    # `test_every_surface_asks_the_same_readiness_question`.
+    # Not a second readiness question (#165): `test_every_surface_asks_the_same_readiness_question`.
     section("Are we ready?",
             [f"**Not ready.** This brief is a draft: these topics are still unconfirmed and can move "
              f"the solution — {' · '.join(blockers)}." if blockers
@@ -200,13 +162,8 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
 
 def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
-    """Render the go-to-market perimeter's one artifact (#609) — its equivalent of `brief_markdown`,
-    over its own twelve slots. Follows the identical split: what is confirmed, what is assumed, the
-    resource envelope, the excluded options and the decision thresholds are read straight off the
-    model, never restated by the provider (the same reasons `brief_markdown` gives for the software
-    perimeter); the plan and its rationale are the provider's judgment. Every projection below is
-    called with `GO_TO_MARKET` explicitly — none of the software perimeter's vocabulary is reachable
-    from this function, by construction rather than by care."""
+    """Render the go-to-market perimeter's one artifact (#609): `brief_markdown`'s split, over its own
+    twelve slots, every projection called with `GO_TO_MARKET` explicitly."""
     blockers = [slot_label(sid, GO_TO_MARKET) for sid in readiness_blockers(out, GO_TO_MARKET)]
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Go-to-Market Plan{draft}", "",
@@ -251,8 +208,7 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
         open_items.append(f"- Least explored: {out.summary.blind_spot}")
     section("Unresolved questions", open_items)
 
-    # Not a second readiness question, the same reason `brief_markdown`'s own section gives — see
-    # its comment there. Pinned there by `test_every_surface_asks_the_same_readiness_question`.
+    # Not a second readiness question, as in `brief_markdown`.
     section("Are we ready?",
             [f"**Not ready.** This plan is a draft: these topics are still unconfirmed and can move "
              f"it — {' · '.join(blockers)}." if blockers
@@ -262,14 +218,11 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
 
 
 def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """Render the resource envelope an artifact was planned within (#603), each element naming its
-    own provenance. A slot-sourced element shows the slot's human label (Voice rule — never the raw
-    id, same split `_stated()` draws); an assumed one says so plainly, never as a confidence label.
-    `perimeter` (#609) is threaded the same way `_stated()`'s is — `prd_markdown` (software) is
-    unchanged by the default, `gtm_plan_markdown` passes `GO_TO_MARKET`."""
+    """Render the resource envelope an artifact was planned within (#603): a slot-sourced element by
+    its label, an assumed one said plainly. `perimeter` (#609) selects the labels."""
     lines = []
     for e in elements:
-        # The enum decides, never the field's presence; the contract pins the two together (#603).
+        # The enum decides, never the field's presence (#603).
         slot = e.source_slot if e.origin is EnvelopeOrigin.slot else None
         origin = f"stated in {slot_label(slot, perimeter)}" if slot else "assumption — not stated in the model"
         lines.append(f"- **{_line(e.kind)}** — {_line(e.value)} _({origin})_")
@@ -322,13 +275,8 @@ def prd_markdown(prd: PRD) -> str:
 
 
 def stories_markdown(s: Stories) -> str:
-    """Render user stories as a shareable Markdown document — one section per story, its acceptance
-    as a checklist, and the topics it traces to by their human labels.
-
-    Saveable since #519 (`decision: the-estimate-graduates`): the estimate is reasoned against these
-    stories, so the file beside `estimate.md` is the half of its basis that used to go unrecorded.
-    The Voice rule holds — `Story.slots` are ids the contract validates against the schema, and a
-    reader sees their labels, never the ids."""
+    """Render user stories as Markdown, one section per story; saveable since #519
+    (`decision: the-estimate-graduates`). `Story.slots` are shown by label (Voice rule)."""
     out: list[str] = ["# User stories", "", "> User stories — generated by Requivo", ""]
 
     for st in s.stories:
@@ -345,18 +293,9 @@ def stories_markdown(s: Stories) -> str:
 
 
 def estimate_markdown(draft: EstimateDraft, soft: list[str], confidence: str) -> str:
-    """Render the uncertainty-aware estimate as a shareable Markdown document.
-
-    The same three inputs `render_estimate` prints, because they are the estimate: the provider's
-    draft, and the two facts computed in core from the same model — the soft slots that widen the
-    ranges and the confidence derived from how many there are. Totals are summed here, both ends,
-    so the document cannot carry a total the items do not add up to.
-
-    Saveable since #519 (`decision: the-estimate-graduates`) — the one artifact where being stale
-    costs money, and the file is what lets the dependency graph flag it. The Voice rule holds: the
-    soft slots and each item's `drives` are ids, and the reader sees labels. The spread section is
-    never silently absent — a solid model gets a sentence saying so, because an absent heading reads
-    the same as a rendering that forgot it."""
+    """Render the uncertainty-aware estimate as Markdown from the provider's draft and the two facts
+    computed in core (soft slots, confidence); totals are summed here. Saveable since #519
+    (`decision: the-estimate-graduates`). The spread section is never silently absent."""
     total_low = sum(i.days_low for i in draft.items)
     total_high = sum(i.days_high for i in draft.items)
     out: list[str] = ["# Estimate", "", "> Uncertainty-aware estimate — generated by Requivo", "",

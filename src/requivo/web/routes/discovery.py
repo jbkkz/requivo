@@ -1,9 +1,5 @@
-"""Discovery routes — run the first turn on a captured request, and fold in answers.
-
-Both go through `DiscoveryService`, which reasons via the provider and applies the result through the
-same validated path (validate → diff → revision → stale-flag) as every other surface. The answers turn
-carries `expected_revision` so a stale submission is rejected with a clean conflict instead of clobbering
-a concurrent change.
+"""Discovery routes: run the first turn on a captured request, and fold in answers, through
+`DiscoveryService`. The answers turn carries `expected_revision`, so a stale submission is a clean conflict.
 """
 
 from __future__ import annotations
@@ -29,17 +25,9 @@ router = APIRouter()
 @router.post("/sessions/{slug}/discover")
 def run_discovery(slug: str = Depends(safe_slug),
                   discovery: DiscoveryService = Depends(get_discovery)):
-    """Run the first discovery turn on a 'create session only' session, then show the result.
-
-    The failure is handled the same way the create route handles it (#207): this session already
-    exists and this page already carries the retry button, so a transient provider error goes back to
-    it with the cause stated, rather than to a 500 page that hides both.
-    """
-    # Logged always; carried to the following GET when there is a figure to carry (#253). This path
-    # answers with a 303 so a refresh cannot re-POST a paid call, and a redirect has no body of its
-    # own — `track_web_usage(..., carry_to=slug)` stashes the view server-side for `session_page`'s
-    # GET to pop, rather than putting a forgeable number on the URL. The log line is unconditional and
-    # is what survives the failure arm below, whether or not anything was stashed.
+    """Run the first discovery turn on a 'create session only' session; a provider failure goes back
+    to this page with the cause stated (#207)."""
+    # Logged always; a 303 has no body, so the figure is stashed for the next GET (#253).
     with track_web_usage("web-discover", carry_to=slug):
         try:
             discovery.run_discovery(slug, surface="web-discover")
@@ -57,21 +45,13 @@ def submit_answers(
     discovery: DiscoveryService = Depends(get_discovery),
     sessions: SessionService = Depends(get_sessions),
 ):
-    """Fold the answers into the model as a new revision (optimistic-locked on `expected_revision`),
-    then return the refreshed status region for an HTMX swap. A revision conflict surfaces as a clean
-    error fragment via the app's exception handler."""
-    # A plain form submit (no JS, or JS that has not loaded htmx yet) carries no `HX-Request`
-    # header — that is what tells this route apart from the fragment the form's own `hx-post` asks
-    # for, and is the read-side half of #428's fix: the form now also carries `method="post"
-    # action="…"`, so a no-JS submit reaches this route as a real POST instead of the bare GET a
-    # form with neither attribute falls back to.
+    """Fold the answers into the model as a new revision (optimistic-locked), returning the refreshed
+    status region for an HTMX swap; a conflict is a clean error fragment."""
+    # A plain form submit carries no `HX-Request` header (#428).
     is_htmx = request.headers.get("HX-Request") == "true"
     text = answers.strip()
     if len(text) > MAX_ANSWERS_CHARS:
-        # Refused rather than truncated (invariant 3), and re-rendered with the submission still in
-        # it rather than swapped away by the very fragment that would have deleted it -- a no-JS
-        # request gets the full page instead, since it has no htmx to swap a fragment into (#30,
-        # #428). Pinned by `test_oversized_answers_come_back_in_the_textarea` and
+        # Refused, not truncated (invariant 3), and re-rendered with the submission in it (#30, #428).
         # `test_a_no_js_oversized_answers_submit_keeps_the_typed_text_on_a_full_page`.
         if not is_htmx:
             detail = session_detail(sessions, slug)
@@ -91,18 +71,14 @@ def submit_answers(
             "answers_error_code": InputTooLargeError.code,
             "submitted_answers": text,
         }, status_code=413)
-    # A fragment response carries its own spend footprint (#253); a no-JS submit has no body to put
-    # one in, so it stashes the figure (`carry_to=slug`) for the following GET to read once instead
-    # (#428). Pinned by `test_an_answers_turn_says_what_it_spent` and
+    # A fragment carries its own footprint; a no-JS submit stashes it for the next GET (#253, #428).
     # `test_a_no_js_redirect_does_not_leave_a_stash_the_next_unrelated_view_would_repeat`.
     with track_web_usage("web-answer", carry_to=None if is_htmx else slug) as spend:
         result = discovery.answer(slug, text, expected_revision=expected_revision,
                                   surface="web-answer")
         usage = usage_view(spend)
     if not is_htmx:
-        # No fragment to swap: the session page itself already states what changed (#428). The
-        # spend footprint rides the stash above rather than the response, which is what makes it
-        # visible after the 303 at all. A 303 so a refresh cannot silently re-POST the answers again.
+        # No fragment to swap; a 303 so a refresh cannot re-POST (#428).
         return RedirectResponse(url=f"/sessions/{slug}", status_code=303)
     return templates.TemplateResponse(request, "sessions/_session.html", {
         "s": session_detail(sessions, slug),

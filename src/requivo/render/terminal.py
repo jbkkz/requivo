@@ -29,33 +29,14 @@ STATE_ROWS = [
     ("unknown", "⚪ Unknown"),
 ]
 
-# The static note under the draft banner, pulled out as a constant rather than an inline literal so
-# `test_the_browsable_examples_deterministic_half_matches_the_renderer` (tests/test_cli.py) can
-# import and compare it instead of duplicating the string by hand -- a hand-copied literal drifts
-# silently the same way the banner prefix and the readiness block already had (#172).
+# A constant so `test_the_browsable_examples_deterministic_half_matches_the_renderer` can import it (#172).
 DRAFT_NOTE = "(blocking decisions remain — see Unknowns below)"
 
 
-# Everything below renders **LLM-authored prose**, and a client request is untrusted business data
-# by SECURITY.md's own framing — so a steered reply can carry an embedded newline into a question or
-# a challenge and write the line after it, at column 0, in Requivo's own voice. `display_text` is the
-# neutralizer, the prose sibling of the `display_token` every diagnostic verb already calls (#40).
-#
-# It is applied in two places and both are deliberate. **The two helpers below escape their `text`
-# argument**, because they are what most untrusted prose passes through and a call site cannot
-# forget them. Three, until `_wrap` was deleted as dead in #300 — a count in prose, so it went stale
-# the moment one of the three went away, which is the whole of CLAUDE.md's argument against putting
-# a number in a sentence nothing can go red for.
-# **The bare f-strings below call it explicitly**, because there is no chokepoint that covers them:
-# `streams.py` cannot help (ESC encodes fine in UTF-8, so `backslashreplace` never
-# fires), and a module-wide `print` shim would escape this module's *own* newlines — the layout — as
-# readily as an injected one.
-#
-# So the call sites are a discipline, and a discipline needs a guard rather than a promise:
-# `test_every_llm_authored_string_the_terminal_renders_is_neutralized` forges every field at once
-# and runs every renderer, so a field added later and printed raw goes red under its renderer's name.
-#
-# The label, marker and indent arguments are this module's own literals and are left alone.
+# Everything below renders LLM-authored prose over an untrusted request, so `display_text` neutralizes
+# it (#40): the two helpers escape their `text`, the bare f-strings call it explicitly, and
+# `test_every_llm_authored_string_the_terminal_renders_is_neutralized` forges every field at once.
+# The label, marker and indent arguments are this module's own literals.
 
 
 def _bullet(text: str, marker: str = "•", indent: str = "  ", width: int = 80) -> str:
@@ -80,11 +61,7 @@ def render_understanding(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) 
 
 
 def render_readiness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
-    # One question, in the vocabulary every other surface reads ("are we ready?"), answered with the
-    # one boolean the Core publishes. The length of the blocker list is not a readiness signal — the
-    # list itself is the answer, printed below — so branching on it invents a state the model
-    # contract, the Web and the plugin all forbid (#165). Pinned across surfaces by
-    # `test_readiness_renders_as_one_boolean_on_every_surface`.
+    # One boolean, never the length of the blocker list (#165): `test_readiness_renders_as_one_boolean_on_every_surface`.
     print("ARE WE READY?")
     blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
     status = "Not ready" if blockers else "Ready"
@@ -101,29 +78,20 @@ def render_readiness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> N
 
 
 def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
-    """What is understood and whether it is enough — a turn's checkpoint, without the questions.
-
-    The interactive loops render this and then ask one question at a time at the prompt, so a turn
-    boundary and a checkpoint are the same event and the cadence needs no renderer of its own. A
-    batch printed up front is what made a turn read as a form (#592). Pinned by
-    `test_the_interactive_loop_asks_one_question_per_prompt`.
-
-    `perimeter` (#608) is the session's own -- a go-to-market model rendered against the software
-    default (the pre-#608 behaviour) shows software slots as blockers and raw ids for its own
-    labels, which is exactly the bug this parameter closes."""
+    """A turn's checkpoint without the questions; the interactive loops ask those one at a time
+    (#592, `test_the_interactive_loop_asks_one_question_per_prompt`). `perimeter` (#608) is the
+    session's own, or a go-to-market model shows software slots as blockers."""
     print()
     render_understanding(out, perimeter)
     blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
-    # Same rule as `render_readiness`, and the count is gone from the verdict for the same reason: it
-    # is what the deleted "nearly" arm branched on, and the blockers are named on the line already.
+    # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
 
 
 def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
-    """The checkpoint plus the questions, for the verbs with nobody at a prompt to be asked them one
-    at a time — `discover`, `answer`, `status`, `demo`. The interactive loops render the checkpoint
-    alone and ask through `_prompt_answers` instead (#592)."""
+    """The checkpoint plus the questions, for the verbs with nobody at a prompt (`discover`,
+    `answer`, `status`, `demo`)."""
     render_turn_state(out, perimeter)
     if out.questions:
         print("\nPRIORITY QUESTIONS")
@@ -133,25 +101,14 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
 
 
 def render_context_judgment(grounding, routing=None) -> None:
-    """What the engine made of this request's grounding, before it reasons from it (#593), and --
-    when `routing` is given -- which perimeter it routed to first (#601). Both verdicts are shown
-    before either influences anything, #593's own rule, ridden rather than reinvented for the
-    router: a caller passes `routing` only from `claim_and_ground`, so an older call site (or a
-    grounding-only test) that never sees a router keeps rendering exactly as before.
-
-    Four outcomes and four sentences, because the expensive collapse is between two of them: *no
-    card is needed* and *nobody asked* are not the same fact, and neither is *no card is needed* and
-    *a card is needed and none exists*. `render_grounding` names what a session was scored against;
-    this says whether that was the right thing to score it against.
-
-    `reason` is LLM-authored prose over an untrusted request, so it goes through `display_text` like
-    every other field in this module. Swept by
-    `test_every_llm_authored_string_the_terminal_renders_is_neutralized`."""
+    """What the engine made of this request's grounding (#593) and, with `routing`, which perimeter
+    it routed to (#601), both shown before either influences anything. Four outcomes, four sentences:
+    *no card is needed* and *nobody asked* are different facts. `reason` goes through `display_text`."""
     if routing is not None:
         _render_perimeter_route(routing)
     judgment = grounding.judgment
     if judgment is None:
-        # Not asked. Said plainly rather than skipped: silence here reads as a clean bill.
+        # Not asked, said plainly: silence here reads as a clean bill.
         print(f"\nGrounding      not checked — {display_text(grounding.why_not)}")
         return
     reason = display_text(judgment.reason)
@@ -170,10 +127,8 @@ def render_context_judgment(grounding, routing=None) -> None:
 
 
 def _render_perimeter_route(routing) -> None:
-    """What the router (#601) made of this request's shape, before it routes anything. `ambiguous`
-    never reaches here -- the service refuses before a session is even left claimed under it -- so
-    only `fits` and `none` render a verdict; `judgment is None` is the third state `Routing`'s own
-    docstring warns against collapsing into `none`."""
+    """What the router (#601) made of this request's shape; `ambiguous` never reaches here, and
+    `judgment is None` is the third state, never collapsed into `none`."""
     judgment = routing.judgment
     if judgment is None:
         print(f"\nPerimeter      not routed — {display_text(routing.why_not)}")
@@ -188,50 +143,12 @@ def _render_perimeter_route(routing) -> None:
 
 
 def render_grounding(cards: list[str] | None) -> None:
-    """What this session's impact estimates were scored against — the cards, named, and nothing else.
-
-    **A naming, never a verdict, and that is #492's decision rather than a shortcut.** Context cards
-    can be present, readable, and about a different product entirely; that state renders identically
-    to `ok`, and it matters because `information_value = uncertainty x impact` is the whole driver
-    and the cards are what the impact half is read against. A session grounded on the wrong product
-    reaches `ready` with a question selection nothing on screen accounts for.
-
-    There is no `context.status: mismatched` and there is not going to be one until something
-    changes. Every other value of that vocabulary is decidable from the filesystem; relevance is not
-    -- it needs either a model call in the free deterministic preflight, which puts a paid and
-    fallible judgment in front of the one path whose value is that it is decidable, or a keyword
-    heuristic, which is the combination that is right often enough to be trusted and wrong silently.
-    So the human is the detector, and the product's whole job is to hand them the one fact they can
-    judge instantly. `discover` already does (#257), and `session show` does; this is `status`, the
-    verb a reader comes back to offline, which stated everything about the model and nothing about
-    what it was reasoned against.
-
-    The revisit trigger is written down rather than left to be re-derived: a **third** measured
-    instance of a card diluting its neighbour funds automatic relevance routing, per the golden
-    harness's own known-limit note. Two are on record.
-
-    **Something has changed, and this readout has not** (as of #593 being opened, not landed).
-    `decision: the-engine-writes-the-missing-card` reopens the paragraph above for the *first
-    discovery*, where the human this appoints as the detector has not yet heard of context cards.
-    It does not reopen it here: `status` is offline and decidable, this stays a naming rather than a
-    verdict, and the routing the trigger above gates is a different feature from writing a missing
-    card. Correct this paragraph when #593 lands, not before.
-
-    `None` is not "no cards" -- it is *every card in the install*, re-resolved on each turn, so the
-    names are read now rather than stored. That is why the two branches word it differently: an
-    explicit selection was fixed at creation and is true of every turn this session has taken, and
-    an unnarrowed one is only a claim about the install as it stands today.
-
-    **Reading the install is the one thing here that can fail, and it must not fail `status`.**
-    `available_cards()` enumerates a directory and raises `ContextUnreadableError` when it cannot --
-    a real state this vocabulary already names, and one that has nothing to do with the session
-    being read. Before this line existed, nothing on the `status` path touched that directory at
-    all, so adding a grounding line would have turned an offline read that always succeeded into one
-    that exits non-zero because of a permissions problem next door. Reported as its own third state
-    instead: *could not read the install's cards* is neither a card list nor an empty one, and
-    `doctor` is where the remedy lives. Found in review of #518; pinned by
-    `test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb`.
-    """
+    """The cards this session's impact estimates were scored against: a naming, never a verdict
+    (#492; relevance is not decidable offline, so the human is the detector, until a third measured
+    instance of card dilution funds routing; `decision: the-engine-writes-the-missing-card` reopens
+    this for the first discovery only). `None` is *every card in the install*, re-resolved now. An
+    unreadable card directory is its own third state and must not fail `status`:
+    `test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb`."""
     from requivo.core.context import available_cards
     from requivo.core.errors import ContextUnreadableError
     print("\nGROUNDED ON")
@@ -247,8 +164,7 @@ def render_grounding(cards: list[str] | None) -> None:
                        "`requivo doctor` says which directory and why.", lw=20))
         return
     if not names:
-        # The `empty` state has its own remedy in `doctor`; repeating it here would be a second
-        # implementation of a diagnostic that already exists, so this states the fact and stops.
+        # The `empty` state's remedy lives in `doctor`; this states the fact and stops.
         print(_labeled("Product context",
                        "no cards in this install — impact is estimated from the request alone",
                        lw=20))
@@ -260,49 +176,23 @@ def render_grounding(cards: list[str] | None) -> None:
 
 
 def next_command(payload: dict) -> str | None:
-    """The single next step for a status view, or None when there is not one (#246).
-
-    `status` is the verb a user runs on coming back to a session, and it stopped at the question
-    list. Every other surface here points at the next step once and says so — `discover` closes with
-    `requivo answer`, `answer` closes with either `requivo brief` or "keep going", and the plugin's
-    status skill states the rule outright. This is the CLI's implementation of it.
-
-    **The order is a judgment, not the order the states were listed in.** Open questions outrank a
-    stale artifact, because regenerating a brief against a model that is about to move is a paid call
-    thrown away; a stale artifact outranks the missing-brief case, because something on disk is
-    already wrong. Pinned by `test_open_questions_point_at_answer`.
-
-    Returns `None` rather than always a string, and that third state is the whole discipline. A
-    converged session with a fresh brief has no single next step — `prd`? `epic`? `criteria`? — and
-    printing all three is the menu `status` already was. It is also what a bare `model.json` gets,
-    since it has no session to name and a pointer at a slug that does not exist is worse than none.
-
-    A projection over the payload, not a second computation of it: readiness, questions and artifact
-    staleness are all already decided by the time this runs. Pure, and returns the command without
-    its arrow, so the caller owns the presentation.
-    """
+    """The single next step for a status view, or None when there is not one (#246): open questions
+    outrank a stale artifact, which outranks the missing primary artifact
+    (`test_open_questions_point_at_answer`). None for a converged session with a fresh brief and for
+    a bare `model.json`. A projection over the payload, never a second computation."""
     slug = payload.get("slug")
     artifacts = payload.get("artifacts")
     if not slug or artifacts is None:
         return None                      # a bare model.json — no session behind it to point at
     if payload.get("questions"):
         return f'requivo answer {slug} "<your answers>"'
-    # `stale` is the explicit flag and never a revision comparison — invariant 1. Schema order is
-    # whatever the metadata carries; the first stale artifact is named and `impact` covers the rest,
-    # which is what keeps this one line instead of a list.
+    # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
         if status.get("stale"):
             return (f"requivo {artifact_type} {slug}   (regenerates {status['filename']}; "
                     f"requivo impact {slug} shows what else moved)")
-    # (found in review, same root as the P1/P2 findings above): a perimeter that owns no "brief"
-    # generator (go-to-market, #609's own scope) never has one in `artifacts` either, so this used
-    # to suggest a command that fails outright -- gated on ownership, not only on absence.
-    #
-    # Read off `Perimeter.primary_artifact` (#609's follow-up review, Codex + a deliberate sweep
-    # after it), not a bare `"brief"` literal: that literal is exactly what made this the CLI-side
-    # sibling of the Web's `PRIMARY_ARTIFACT` bug -- a converged, plan-less go-to-market session
-    # (whose primary is `gtm_plan`, never `"brief"`) suggested nothing at all, silently, rather than
-    # its own one next step.
+    # Gated on ownership, read off `Perimeter.primary_artifact` rather than a `"brief"` literal (#609):
+    # a go-to-market session's primary is `gtm_plan`.
     perimeter = payload.get("perimeter") or DEFAULT_PERIMETER
     primary = get_perimeter(perimeter).primary_artifact
     if primary and primary not in artifacts:
@@ -311,17 +201,14 @@ def next_command(payload: dict) -> str | None:
 
 
 def render_next_command(payload: dict) -> None:
-    """Print `next_command`'s answer, once, or nothing. The arrow matches `_cmd_discover`'s and
-    `_cmd_answer`'s closing lines, so the three read as one convention rather than three."""
+    """Print `next_command`'s answer, once, or nothing; the arrow matches `discover`'s and `answer`'s."""
     line = next_command(payload)
     if line:
         print(f"\n→ {line}")
 
 
 # ── `docs` menu (#544) ────────────────────────────────────────────────────────
-# Seven generators, one action -- `DOC_TYPES` fixes the menu order (from `ARTIFACT_FILENAMES`'s own
-# key order), `ARTIFACT_LABELS` is the one user-facing name table (never a second one, CLAUDE.md),
-# and the state reads `ArtifactStatus.stale` -- never a revision comparison (invariant 1).
+# `DOC_TYPES` fixes the order, `ARTIFACT_LABELS` is the one name table, the state is `ArtifactStatus.stale`.
 DOC_TYPES: tuple[str, ...] = tuple(ARTIFACT_FILENAMES)
 
 DOC_BLURBS: dict[str, str] = {
@@ -347,13 +234,8 @@ class DocRow(NamedTuple):
 
 def docs_menu_rows(artifact_status: dict[str, ArtifactStatus],
                    types: tuple[str, ...] = DOC_TYPES) -> list[DocRow]:
-    """The menu rows, in `DOC_TYPES` order -- never `artifact_status`'s own key order, so a forged
-    type key in session.json cannot add or reorder a row. State reads `ArtifactStatus.stale`
-    (invariant 1); `filename` is disk content and is escaped, `revision` is a validated `int`.
-
-    `types` (#609) narrows the menu to what the caller's session may actually produce -- every
-    caller before go-to-market's one artifact joined the global type set had exactly one perimeter,
-    so the default (every registered type) is unchanged for them."""
+    """The menu rows in `DOC_TYPES` order, never `artifact_status`'s key order (a forged key cannot
+    add a row); `filename` is escaped disk content. `types` (#609) narrows to the session's perimeter."""
     rows = []
     for i, doc_type in enumerate(types, 1):
         status = artifact_status.get(doc_type)
@@ -369,7 +251,7 @@ def docs_menu_rows(artifact_status: dict[str, ArtifactStatus],
 
 
 def render_docs_menu(rows: list[DocRow]) -> None:
-    """Data -> str, no side effects beyond printing (render/ owns no logic, per CLAUDE.md)."""
+    """Data -> str, no side effects beyond printing."""
     print("DOCUMENTS")
     for row in rows:
         print(f"  {row.number}. {row.label:<20} {row.state}")
@@ -377,8 +259,7 @@ def render_docs_menu(rows: list[DocRow]) -> None:
 
 
 def render_usage(ledger: UsageLedger) -> None:
-    """One-glance API footprint of the run: calls, tokens (cached vs full-price), latency, and a
-    labelled cost *estimate*. Prints nothing when no API call was made (offline verbs)."""
+    """The run's API footprint: calls, tokens, latency and a labelled cost *estimate*; nothing when offline."""
     processed = ledger.input_tokens + ledger.cache_read_tokens + ledger.cache_write_tokens
     if not ledger.calls or processed + ledger.output_tokens == 0:
         return  # no call, or usage absent (e.g. an offline test fake) — nothing worth printing
@@ -393,59 +274,20 @@ def render_usage(ledger: UsageLedger) -> None:
     if cost is None:
         print(f"  {'Est. cost':<11} n/a — no price on file for {model} (tokens above are exact)")
         return
-    # The rate date comes off the ledger, not off a vendor constant this module imports (#167): the
-    # renderer is told what the calls were priced at, it does not look the prices up. Third state on
-    # purpose — a priced call whose rate table has no date prints without the "rates as of" clause
-    # rather than borrowing a date from somewhere, because an undated estimate that reads as a dated
-    # one is the more expensive of the two mistakes.
+    # The rate date comes off the ledger, never a vendor constant (#167); a priced call with no date
+    # prints without the clause rather than borrowing one.
     as_of = " · ".join(ledger.priced_as_of)
     stamp = f", rates as of {as_of}" if as_of else ""
     print(f"  {'Est. cost':<11} ~${cost:.3f}   ({model} — estimate{stamp})")
 
 
 def render_session_cost(revisions: list) -> None:
-    """The cumulative cost of every provider-backed apply a session has made so far, from the
-    token/rate provenance `RevisionRecord` carries per revision (#292) -- `render_usage`'s three-state
-    shape (exact tokens, a labelled estimate, or "no price on file"), applied across a session's whole
-    history rather than one run.
-
-    `revisions` is `SessionMeta.revisions` — passed as a plain list rather than importing the type,
-    so this stays a projection over data the caller already holds, the same shape every other
-    renderer in this module takes.
-
-    Silent when no revision carries usage: an old session, one applied entirely through Claude Code
-    (which spends no API tokens), or a workspace that never opened a `track_usage()` scope around the
-    calls that produced it. Never `$0.00` -- invariant 6's rule about provenance, applied across a
-    session instead of one call.
-
-    **Partial by construction, and the printed line says so (#292, found in review).** Only a
-    provider-backed *model apply* creates a `RevisionRecord` at all -- `prd`/`criteria`/`epic`/
-    `release` are real, billed `provider.generate()` calls that produce no revision (they save an
-    artifact, not a model change) and so have no `RevisionRecord` to carry usage on. A session that
-    ran those after discovering would otherwise see a "SESSION COST" figure quietly undercounting its
-    real spend with no visible sign anything was left out; the parenthetical on the header line is
-    what keeps the number honest about what it does and does not cover. Stamping those calls' spend
-    too is a real, reachable gap -- it needs `ArtifactStatus` to grow the same fields `RevisionRecord`
-    just did, which is its own change.
-
-    **The cost arithmetic is not this function's own (#389).** It used to re-implement
-    `UsageLedger.cost_usd()` locally -- the same 0.1x cache-read and 1.25x cache-write multipliers,
-    copied rather than called -- which made `usage.py`'s own "cost is arithmetic here and nowhere
-    else" false the moment this renderer existed, silently: a mutation control that moved the
-    cache-read multiplier here alone, leaving `usage.py` untouched, added zero test failures. Each
-    priced revision is now wrapped in a `CallRecord` and handed to a scratch `UsageLedger`, so the
-    one implementation `usage.py` holds is the only one that ever runs --
-    `test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else` is the guard, and
-    it is a mutation control itself: it asserts the exact printed figure, so a multiplier drifting
-    back into a local copy here would print a wrong number rather than pass silently.
-
-    **`usage_priced_as_of` is untrusted, same as any other persisted string (#388).** Unlike
-    `render_usage`'s ledger-sourced `as_of` -- built from this run's own provider calls and never
-    written to disk -- this one is a `RevisionRecord` field read back off `session.json`, and
-    `session import` is the documented channel through which someone else's archive arrives
-    (invariant 14, one field along from `context_cards`). `display_token` is the same chokepoint
-    `deterministic/sessions/` already routes every persisted string it prints through; it is a
-    no-op on an ordinary date and only escapes one that tries to write a line of its own."""
+    """The cumulative cost of every provider-backed apply in a session, from the usage provenance
+    `RevisionRecord` carries (#292); silent, never `$0.00`, when none carries any (invariant 6). Partial
+    by construction and the header says so: generators produce no `RevisionRecord`. The arithmetic is
+    `UsageLedger`'s and nowhere else (#389,
+    `test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else`);
+    `usage_priced_as_of` is a persisted string, so it goes through `display_token` (#388)."""
     priced_revisions = [r for r in revisions if r.usage_input_tokens is not None]
     if not priced_revisions:
         return
@@ -457,13 +299,7 @@ def render_session_cost(revisions: list) -> None:
             cache_read_tokens=r.usage_cache_read_tokens or 0,
             cache_write_tokens=r.usage_cache_write_tokens or 0,
             rate_per_mtok=r.usage_rate_per_mtok,
-            # `or None` rather than passing the field through as-is: `UsageLedger.priced_as_of`
-            # filters on `is not None` (usage.py's own contract -- absent means unpriced, and an
-            # empty string is not a legitimate date under that contract either), while this
-            # renderer's join skips a falsy entry so an empty date never leaves a dangling
-            # separator ("rates as of 2026-01-01 · "). No real provider path ever stamps an empty
-            # string here, but a persisted RevisionRecord is untrusted regardless of what wrote it
-            # (invariant 14), so the normalization has to hold for one anyway (found in review).
+            # `or None`: `priced_as_of` filters on `is not None`, and a persisted empty string is untrusted anyway.
             priced_as_of=r.usage_priced_as_of or None,
         )
         for r in priced_revisions
@@ -485,14 +321,9 @@ def render_session_cost(revisions: list) -> None:
 
 
 def render_brief(out: EngineOutput, brief: Brief) -> None:
-    """The deliverable: a two-tier decision brief — an executive summary a PM reads in seconds, then
-    the full analysis below (including what to *challenge*, not just what was learned). Written in a
-    PM's language, never the engine's internals.
-
-    "Decision brief" is a caption, not an identity: the artifact type is still `brief`, the verb is
-    still `requivo brief`, and the file on disk is still `solution-assessment.md` (#166)."""
-    # While a blocking decision is unresolved the brief rests on unconfirmed ground — label it a
-    # draft so the reader knows it is not yet ready to build from, honestly rather than in the prose.
+    """The two-tier decision brief: an executive summary, then the full analysis, in a PM's language.
+    "Decision brief" is a caption; the type, verb and file stay `brief`/`solution-assessment.md` (#166)."""
+    # A blocking decision unresolved means the brief is a draft, and the label says so.
     draft = bool(readiness_blockers(out))
     print("\n" + "═" * 64)
     print("DRAFT DECISION BRIEF" if draft else "DECISION BRIEF")
@@ -567,7 +398,7 @@ def render_brief(out: EngineOutput, brief: Brief) -> None:
                 for o in group:
                     print(_bullet(o.text, marker="◆", indent="    "))
                     if o.modules:
-                        # A free `list[str]` the model fills — no schema behind it, unlike a slot id.
+                        # A free `list[str]` the model fills, unlike a slot id.
                         print(f"        ↳ reaches: {', '.join(display_text(m) for m in o.modules)}")
 
     if brief.next_steps:
@@ -580,8 +411,7 @@ def render_brief(out: EngineOutput, brief: Brief) -> None:
 
 
 def render_stories(s: Stories) -> None:
-    # Every field here is the model's own text except `slots`, which `Story` validates against the
-    # schema — so it is the one that needs nothing (#213).
+    # Every field is the model's own text except `slots`, validated against the schema (#213).
     print("\n=== USER STORIES ===")
     for st in s.stories:
         print(f"\n[{display_text(st.id)}] {display_text(st.title)}")
@@ -601,9 +431,7 @@ def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str) -> N
     print(f"{'Task':<44} {'Cplx':<5} {'Estimate':<11} Drives")
     for i in draft.items:
         est = f"{i.days_low:g}–{i.days_high:g} d"
-        # Escaped *before* the 43-character cut, so the column stays 43 wide — escaping after would
-        # let one control character push the row out of the table. Either order is equally safe;
-        # only this one keeps the alignment. `drives` is a free list the model fills too (#213).
+        # Escaped *before* the 43-character cut, so the column stays 43 wide (#213).
         title = display_text(i.title)[:43]
         print(f"{title:<44} {i.complexity.value:<5} {est:<11} "
               f"{', '.join(display_text(d) for d in i.drives)}")
@@ -660,15 +488,9 @@ def render_impact(report) -> None:
 
 
 def render_evidence(report) -> None:
-    """Decisions derived from thinner evidence than the session now holds (#493).
-
-    Three states, each its own sentence, because the review can *fail to look* and that must not
-    print the same thing as a clean one: `None` is not reviewed (a bare model.json has no revision
-    history); a report with `reviewed == 0` has no decisions to speak of and prints nothing; a
-    reviewed report either names the decisions worth re-reading -- *worth re-reading*, never
-    "contradicted": whether the new evidence disagrees is a judgment the assessment makes, not a
-    comparison this renderer can -- or says every decision checked out, with the ones it could not
-    check listed by name. The decision text is the model's own, so it goes through `_bullet`."""
+    """Decisions derived from thinner evidence than the session now holds (#493), in three states:
+    `None` is not reviewed, `reviewed == 0` prints nothing, a reviewed report names the decisions
+    *worth re-reading* (never "contradicted") and the ones it could not check."""
     if report is None:
         print("\n  Evidence since derivation: not reviewed — no revision history to compare "
               "against (a session has one; a bare model file does not).")
@@ -693,11 +515,8 @@ def render_evidence(report) -> None:
 
 
 def render_dependency_map(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
-    """No-args overview: for every slot that can still move, what it would invalidate.
-
-    The decision and challenge text is the model's own, so it goes through `display_text` (#213);
-    the slot labels and artifact names either side of it are this repo's tables. `perimeter` (#608)
-    is the session's own -- both the labels and the artifact set `propagate` narrows to come from it."""
+    """No-args overview: for every slot that can still move, what it would invalidate. The model's
+    text goes through `display_text` (#213); `perimeter` (#608) is the session's own."""
     from requivo.core.dependencies import propagate
     print("\n" + "═" * 64)
     print("DEPENDENCY MAP — change a slot, see the blast radius")

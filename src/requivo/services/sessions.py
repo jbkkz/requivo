@@ -1,9 +1,7 @@
-"""SessionService — create sessions and apply model updates through one validated pipeline.
+"""SessionService: create sessions and apply model updates through one validated pipeline.
 
-`update_model` is the single write path for the model, whatever produced the proposal (the Anthropic
-provider, a Claude Code proposal file, Requivo Web): validate → diff against the current
-model → propagate the blast radius → save a new revision → flag the artifacts that went stale →
-compute readiness. It returns a structured `UpdateResult` so any caller can render it or emit `--json`.
+`update_model` is the single write path, whatever produced the proposal: validate → diff → propagate
+→ save a revision → flag stale artifacts → readiness, returned as a structured `UpdateResult`.
 """
 
 from __future__ import annotations
@@ -60,18 +58,9 @@ class Readiness:
 
 @dataclass(frozen=True)
 class SessionSnapshot:
-    """One consistent read of a session: its revision, the model *at* that revision, and the inputs a
-    provider call needs. Taken under the session lock, so the parts cannot disagree.
-
-    Reading the revision and the model as two separate calls looks harmless and is not: a write
-    landing between them yields revision N with the model of N+1. The generation then reasons from the
-    newer model and files the artifact as coming from the older revision — content and provenance
-    describing different sources, which is precisely the claim the product cannot afford to get wrong.
-    Worse, it is undetectable afterwards: the number is plausible.
-
-    The lock is released before the provider call. It is not there to make the whole operation atomic —
-    it cannot be, the call takes minutes — but to make the *basis* coherent. `expected_revision` on the
-    write is what handles the session moving afterwards."""
+    """One consistent read of a session, taken under the lock: revision, the model *at* that
+    revision, and the inputs a provider call needs (invariant 12). The lock is released before the
+    call; `expected_revision` on the write handles the session moving afterwards."""
 
     slug: str
     revision: int
@@ -83,13 +72,9 @@ class SessionSnapshot:
 
 @dataclass(frozen=True)
 class SessionEntry:
-    """One slug in the store, with either its metadata or the reason it could not be read (#7).
-
-    The third state, made representable: without it an aggregate can only raise for the set (one bad
-    session hides every good one) or drop the member (the reader is told nothing is wrong), and both
-    were live. `error` is the exception's own text rather than a code, because the remedy is the part
-    worth keeping. `test_one_unreadable_session_no_longer_takes_the_listing_down` and
-    `test_the_degraded_row_carries_the_reason_because_the_reason_is_the_remedy`."""
+    """One slug in the store, with its metadata or the reason it could not be read (#7): the third
+    state an aggregate needs. `error` is the exception's text, since the remedy is the useful part.
+    `test_one_unreadable_session_no_longer_takes_the_listing_down`."""
 
     slug: str
     meta: SessionMeta | None = None
@@ -97,21 +82,15 @@ class SessionEntry:
 
     @property
     def readable(self) -> bool:
-        """True when the metadata loaded. Named rather than left as `meta is not None` so a caller
-        reads the question it is asking instead of the representation of the answer."""
+        """True when the metadata loaded."""
         return self.meta is not None
 
 
 @dataclass(frozen=True)
 class SessionResolution:
-    """The outcome of resolving a default session for a journey verb given no explicit slug (#541).
-
-    `default` is always a real slug once any session exists -- the tie-break among several falls
-    back to the first (by slug) when none is readable enough to carry an `updated_at`, so a caller
-    never has to handle "several, but no default". `candidates` is empty for the "exactly one"
-    case, where there is nothing to disambiguate, and otherwise lists every session considered --
-    including a degraded row (invariant 15) -- so the caller can show the default was not a guess
-    made in the dark before anything paid happens."""
+    """The default session for a journey verb given no slug (#541). `default` is always a real slug
+    once any session exists; `candidates` is empty for the "exactly one" case and otherwise lists
+    every session considered, degraded rows included (invariant 15)."""
     default: str
     candidates: list[SessionEntry]
 
@@ -142,9 +121,8 @@ class UpdateResult:
     invalidated_thresholds: list[str] = field(default_factory=list)  # threshold conditions now in question
     stale_artifacts: list[str] = field(default_factory=list)        # artifact types now out of date
     readiness: Readiness = field(default_factory=lambda: Readiness(False, []))
-    # What moved in the reasoning layer — ids, per collection. Reported separately from
-    # `changed_slots` because they answer different questions: the slots say the *facts* moved, these
-    # say the *judgment over them* moved. Either can invalidate an artifact on its own.
+    # What moved in the reasoning layer, per collection: the judgment over the facts, which can
+    # invalidate an artifact on its own.
     changed_decisions: list[str] = field(default_factory=list)
     changed_challenges: list[str] = field(default_factory=list)
     changed_opportunities: list[str] = field(default_factory=list)
@@ -176,37 +154,20 @@ def _readiness(model: EngineOutput) -> Readiness:
 
 
 class SessionService:
-    """Create, resolve, load, and mutate sessions through one validated pipeline. Storage is injected
-    as a `SessionRepository` (files by default, Postgres elsewhere), so this orchestration is reused
-    verbatim across backings. Stateless beyond that handle — safe to construct per call (the CLI does)
-    or hold as a singleton (Requivo Web does)."""
+    """Create, resolve, load and mutate sessions through one validated pipeline. Storage is an
+    injected `SessionRepository`; stateless beyond that handle."""
 
     def __init__(self, repo: SessionRepository | None = None):
         self.repo: SessionRepository = repo or default_repository()
 
     # ── resolution ────────────────────────────────────────────────────────────
     def resolve_slug(self, reference: str | Path, *, accept_path: bool = True) -> str:
-        """Turn a user reference into a slug. Accepts a bare slug, a path to a session directory, or a
-        path to a model.json — under either the canonical `.requivo/sessions/` or legacy `out/` root.
+        """Turn a user reference (slug, session directory, or model.json path) into a slug.
 
-        `accept_path=False` refuses anything path-shaped outright, naming the reference exactly as
-        given (#402): the eight generator verbs pass it, because they resolve a *slug* and then read
-        and write the store's own copy, so a path was never a meaningful input for them --
-        `test_resolve_slug_refuses_a_model_json_path_when_the_caller_opted_out`, with
-        `test_resolve_slug_still_accepts_a_bare_slug_when_paths_are_refused` for the other half.
-        "Path-shaped" is decided from the string alone, never from what happens to exist on disk at
-        that name (invariant 17), so filesystem noise cannot refuse a bare slug as a path.
-
-        Where paths are still accepted, **a reference is only mined for a name when a session really
-        is there**: a `model.json`/`session.json` when the file exists (#402), a directory when it
-        carries its own session marker (#414). Mining unconditionally resolved a reference that
-        merely shared its final segment with an unrelated real session *to that session*, which is
-        the wrong-cause class this refuses instead of producing.
-        `test_resolve_slug_no_longer_mines_a_nonexistent_model_json_path`,
-        `test_a_directory_reference_does_not_silently_use_an_unrelated_real_session` and
-        `test_resolve_slug_refuses_a_directory_that_is_not_a_session`, with
-        `test_resolve_slug_still_mines_a_real_saved_model_json` and
-        `test_resolve_slug_still_mines_a_real_session_directory` for the must-fire half."""
+        `accept_path=False` refuses anything path-shaped, decided from the string alone (invariant 17):
+        `test_resolve_slug_refuses_a_model_json_path_when_the_caller_opted_out` (#402). A reference
+        is only mined for a name when a session really is there (#402, #414):
+        `test_a_directory_reference_does_not_silently_use_an_unrelated_real_session`."""
         ref = str(reference)
         p = Path(ref)
         if not accept_path:
@@ -215,9 +176,7 @@ class SessionService:
                 or os.sep in ref or (os.altsep and os.altsep in ref)
             )
             if looks_like_a_path:
-                # `ref` is untrusted input reaching a message printed verbatim, so *every* mention
-                # goes through `display_token` (invariant 14, #40), not only the first: a raw second
-                # occurrence leaves a control character free to forge a line the refusal never wrote.
+                # Every mention of untrusted `ref` goes through `display_token` (invariant 14):
                 # `test_the_path_refusal_cannot_forge_a_second_line_of_its_own_message`.
                 safe_ref = display_token(ref)
                 raise SessionNotFoundError(
@@ -229,10 +188,7 @@ class SessionService:
                 )
             return ref
         if p.name in ("model.json", "session.json"):
-            # `Path.is_file()` swallows ENOENT/ENOTDIR into `False` -- what "mine only a real file"
-            # needs -- but re-raises `PermissionError`, so this gets the same third state `_probe`
-            # exists for rather than a traceback escaping a verb that promises every clean failure
-            # surfaces without one (#402) --
+            # `Path.is_file()` re-raises `PermissionError`; that is the third state, not a traceback.
             # `test_an_unreadable_model_json_path_refuses_cleanly_instead_of_crashing`.
             try:
                 is_real_file = p.is_file()
@@ -242,13 +198,8 @@ class SessionService:
                     details={"ref": ref},
                 ) from e
             return p.parent.name if is_real_file else ref
-        # A directory is mined for its own name only when it carries a session's own marker (#414) --
-        # see the docstring for the wrong-cause class unconditional mining produced. Two probes, and
-        # both re-raise: `p.exists()`/`p.is_dir()` stat `p` itself and fail when an ANCESTOR denies
-        # traversal, a distinct case from the marker probe failing on the directory's own contents,
-        # so guarding only the second left the entry gate able to raise a bare traceback for an
-        # otherwise healthy directory (`test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too`,
-        # `test_an_unreadable_session_directory_refuses_cleanly_instead_of_crashing`).
+        # A directory is mined only when it carries a session marker (#414); both probes re-raise
+        # on a denied ancestor (`test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too`).
         try:
             is_dir = p.exists() and p.is_dir()
         except OSError as e:
@@ -277,62 +228,33 @@ class SessionService:
 
     @staticmethod
     def slug_hint(text: str) -> str:
-        """Turn arbitrary text into a slug-shaped name — the surface's route to slug derivation.
-
-        Not a repository method: deriving a name from a request is a naming policy, the same whatever
-        backs the store. It is a seam because `cli.py` was reaching into `core.persistence` for the
-        derivation itself (#76) — a surface holding a core implementation detail, and what keeps a
-        surface out of the store is this seam rather than the underscore `derive_slug` used to carry
-        (`test_the_surfaces_reach_the_store_only_through_the_named_filesystem_concerns`).
-
-        Two callers, two inputs: `create_session` derives a slug from the request text, and
-        `requivo discover <file>` derives a *hint* from a filename stem — passing a raw
-        "Leave Approval v2.md" stem through turned an ordinary input file into an `invalid_slug`.
-        """
+        """Text to a slug-shaped name: the surface's seam onto slug derivation (#76), used for the
+        request text and for a `discover <file>` filename stem."""
         return store.derive_slug(text)
 
     def exists(self, slug: str) -> bool:
-        """True if a usable session exists (the repository decides what backs it)."""
+        """True if a usable session exists."""
         return self.repo.exists(slug)
 
     def no_session(self, ref: str, *, what: str = "session",
                    details: dict | None = None) -> SessionNotFoundError:
-        """The refusal for "there is no such session" — the surface's route to it (#243).
-
-        The sentence names the sessions root, so it is read off *this service's own repository*, not
-        the process ambient default: an explicitly-rooted `SessionService` naming the ambient
-        workspace here is the silent disagreement #272 exists to close, with every other read on the
-        service going to the right store (`test_no_session_names_the_root_of_an_explicitly_rooted_repository`
-        and `test_no_session_still_names_the_ambient_root_for_the_default_repository`). It is an
-        instance method for that reason alone.
-
-        It is a seam because six sites in `cli.py` and `deterministic/sessions/` raise this, and
-        reaching into `core.persistence` for it would put a *copy* concern in an allowlist of
-        justified **filesystem** concerns (#76) — a message is not a path, even when it contains one.
-
-        `what` widens the noun for `_resolve_ref`, which accepts a path as well as a slug. `details`
-        is explicit for the same caller: its published key is `ref` rather than `slug`, and `details`
-        is a contract (`docs/compatibility.md`), so a rewording of the message must not move it.
-        """
+        """The "no such session" refusal (#243), naming *this service's* root, not the ambient one
+        (#272: `test_no_session_names_the_root_of_an_explicitly_rooted_repository`). `what` widens
+        the noun; `details["ref"]` is a published key (`docs/compatibility.md`)."""
         message = self._store_for_error_text().no_session_message(ref, what=what)
         return SessionNotFoundError(message,
                                     details=details if details is not None else {"slug": ref})
 
     def _store_for_error_text(self) -> Store:
-        """The `core.persistence.Store` this service's own repository addresses, for the one place
-        outside any repository method that reads the workspace root: `no_session`'s error text (#272).
-        Duck-typed against `self.repo.store()` rather than added to the `SessionRepository` protocol,
-        for the reason `DiscoveryService._store_for_repo` gives — a Postgres backing has no
-        filesystem root to hand back, and the fallback below is what this call had unconditionally
-        before #272."""
+        """The `Store` this service's repository addresses, for `no_session`'s root; duck-typed on
+        `repo.store()`, ambient only when there is none (#272)."""
         get_store = getattr(self.repo, "store", None)
         if callable(get_store):
             return cast(Store, get_store())
         return Store(workspace_root())
 
     def _ensure_canonical(self, slug: str) -> None:
-        """Before any mutation, make sure the session is in the mutation-backed store — for a file
-        backing this migrates a legacy `out/<slug>/` session in place on first write."""
+        """Before any mutation: migrate a legacy `out/<slug>/` session in place on first write."""
         self.repo.ensure_writable(slug)
 
     # ── creation ──────────────────────────────────────────────────────────────
@@ -340,26 +262,11 @@ class SessionService:
                         slug: str | None = None, provider: str | None = None,
                         model_name: str | None = None,
                         perimeter: str | None = None) -> SessionMeta:
-        """Create a fresh session from a request (no model yet). If `slug` is omitted it is derived
-        from the request and made collision-safe against existing sessions.
-
-        Creation is idempotent on *identity*, and identity is the request **and its context cards**
-        (invariant 11): the same request read against different cards gets different impact
-        estimates, so keying on the request alone silently returned the first session with cards the
-        caller never asked for — `test_the_same_request_under_different_cards_is_a_different_session`.
-        The claim on a slug is `repo.create` itself, which is atomic; a check-then-create here would
-        let two concurrent callers both decide the session was theirs to make.
-
-        The card selection and the request's size (#255) are both checked here rather than trusted,
-        because the interfaces being careful is not an integrity boundary and an external consumer
-        calls exactly this layer (invariant 14). An unknown card is not inert — an empty resolved
-        selection means *every* card, so a bad name widens the context instead of narrowing it.
-        `test_the_service_refuses_a_context_card_that_does_not_exist` and
-        `test_create_only_refuses_an_oversized_request_too`.
-
-        Thin wrapper over `create_session_report` for every caller that only needs the metadata —
-        which is every caller but one (#425). See that method for why the boolean it also returns
-        exists at all."""
+        """Create a fresh session from a request (no model yet); `slug` defaults to a derivation
+        from the request, made collision-safe. Idempotent on identity, which is the request, its
+        cards and its perimeter (invariant 11); the claim is `repo.create`, atomic. Cards and size
+        are checked here, not trusted (invariant 14):
+        `test_the_service_refuses_a_context_card_that_does_not_exist`."""
         meta, _created = self.create_session_report(
             request, context_cards=context_cards, slug=slug, provider=provider,
             model_name=model_name, perimeter=perimeter)
@@ -370,38 +277,13 @@ class SessionService:
                               model_name: str | None = None, strict_slug: bool = False,
                               perimeter: str | None = None,
                               ) -> tuple[SessionMeta, bool]:
-        """`create_session`, plus two things its return value and its parameters cannot carry without
-        changing every other caller: whether *this call* actually created the session, and (opt-in)
-        whether an explicit slug taken by a different identity is refused rather than silently retried
-        under a different name.
-
-        **The boolean.** `POST /sessions` needs it to answer 201 fresh / 200 idempotent (#425,
-        `docs/decisions/0004-the-http-api-facade.md` §1) — a route may only *select and serialize*,
-        never re-derive, so the fact has to come from the service rather than from a second, racy
-        existence check in the route.
-
-        **`strict_slug`, default `False`, so `create_session` and every existing caller (the CLI, the
-        Web, `DiscoveryService`) are unchanged.** The default behaviour — an explicit slug that
-        collides with a different identity falls through to a hash-suffixed alternate, silently
-        landing the caller on a session under a name they never chose — is not a bug this method
-        introduces; it is a *known, deferred* one. `tests/web/test_web_routing.py`'s own
-        `test_a_taken_session_name_is_suffixed_rather_than_refused` pins it deliberately, in its own
-        words: "choosing between refusing, suffixing loudly, and re-rendering the form is a design
-        decision this change was not briefed to make." Reversing that default here would make exactly
-        that decision, for the Web surface, in a change that was never about the Web.
-
-        The API is not bound by that deferral — nothing has shipped for it to pin, and
-        `docs/decisions/0004-the-http-api-facade.md` §1 already states the wire behaviour: 409
-        `session_exists` when an explicit slug is taken by a different identity. `POST /sessions`
-        passes `strict_slug=True` for exactly that reason; every other caller passes nothing and keeps
-        today's behaviour, tests and all. Found writing this route's own test, which expected the 409
-        the design record's table promises and got a silent 201 under an unrequested slug instead."""
+        """`create_session`, plus whether *this call* created the session (`POST /sessions` answers
+        201/200 off it, #425) and, with `strict_slug`, a 409 `session_exists` when an explicit slug
+        is taken by a different identity. The default keeps the hash-suffixed fallback every other
+        caller relies on (`test_a_taken_session_name_is_suffixed_rather_than_refused` pins it)."""
         require_input_within_bounds(request, field="request")
         context_cards = resolve_cards(context_cards) if context_cards else None
-        # Resolved once, so "no perimeter named" and "software named explicitly" compare equal
-        # below -- the same reading `resolve_perimeter` gives a pre-#608 session on disk, and the
-        # reading `_same_identity` must use or a request explicitly asking for `software` would
-        # never idempotently re-hit the session an earlier caller made without naming one at all.
+        # Resolved once, so "no perimeter named" and an explicit `software` compare equal below.
         resolved_perimeter = resolve_perimeter(perimeter)
         explicit = bool(slug)  # matches the `or` below: an empty string is "no slug", same as None
         base = slug or self.slug_hint(request)
@@ -431,17 +313,8 @@ class SessionService:
     def find_existing_session(self, request: str, *, context_cards: list[str] | None = None,
                               perimeter: str | None = None, slug: str | None = None
                               ) -> SessionMeta | None:
-        """Whether a session already exists under this exact identity (request, cards, perimeter) --
-        a pure, read-only lookup, `None` when nothing matches. Unlike `create_session_report`, this
-        never claims anything: it exists for a caller that must ask *"does a repeat of this identity
-        already exist"* under a perimeter it has not yet settled on, without paying to find out
-        (#601's router -- see `DiscoveryService.claim_and_ground`, which calls this once per
-        installed perimeter before claiming or routing at all).
-
-        Mirrors `create_session_report`'s own slug-candidate derivation (`base`, then the
-        hash-suffixed fallback) so the two agree on which two names an identity could be sitting
-        under — a lookup that checked a different set of names than the writer would silently miss
-        the exact collision the writer exists to catch."""
+        """Whether a session exists under this exact identity, read-only, `None` when none does; the
+        router's free lookup before claiming (#601). Mirrors `create_session_report`'s candidates."""
         context_cards = resolve_cards(context_cards) if context_cards else None
         resolved_perimeter = resolve_perimeter(perimeter)
         base = slug or self.slug_hint(request)
@@ -451,35 +324,20 @@ class SessionService:
         return None
 
     def ensure_canonical(self, slug: str) -> None:
-        """Public form of the migrate-on-first-mutation guard — call before writing an artifact to a
-        session that may still live only in the legacy `out/` store."""
+        """Public form of the migrate-on-first-mutation guard."""
         self._ensure_canonical(slug)
 
     # ── deletion ─────────────────────────────────────────────────────────────
     def delete_session(self, slug: str) -> None:
-        """Irreversibly remove a session (#238). Refuses a missing slug with the structured
-        `session_not_found` error, raised by the repository's own *locked* existence check rather
-        than a separate check here — a check here-and-there is the precondition-not-held-across-the-
-        write shape invariant 9 is written against
-        (`test_deleting_a_nonexistent_slug_is_refused_with_session_not_found`).
-
-        A thin delegation on purpose: the ordering that matters (lock, remove the directory, release,
-        unlink the lock file last) is the repository/store's own concern, so a Postgres backing can
-        implement the identical guarantee its own way underneath this call."""
+        """Irreversibly remove a session (#238); a missing slug is refused by the repository's own
+        locked check (invariant 9): `test_deleting_a_nonexistent_slug_is_refused_with_session_not_found`."""
         self.repo.delete(slug)
 
     @staticmethod
     def _identity_hash(request: str, context_cards: list[str] | None,
                        perimeter: str = DEFAULT_PERIMETER) -> str:
-        """The fallback slug suffix: a short hash over what makes a discovery distinct. The cards join
-        the hash only when there are some, so the ordinary no-cards case keeps the slugs it had.
-
-        `perimeter` (#608) joins the hash for the same reason the cards do: identity is the request,
-        the card selection, *and* the perimeter (invariant 11) -- two requests with identical text
-        and cards but different perimeters must not collide on the same fallback slug, or the second
-        one's `create` would be refused by the first's and fall to `_same_identity` to sort out.
-        Always a real perimeter (never `None`): callers resolve it once before hashing, so this
-        cannot silently treat a `software`-hashed slug and a not-yet-resolved one as different."""
+        """The fallback slug suffix: a short hash over the identity. Cards join only when present, so
+        the no-cards slugs stay; `perimeter` always joins, resolved by the caller (#608)."""
         parts = [request.strip(), perimeter]
         if context_cards:
             parts.append(",".join(sorted(context_cards)))
@@ -487,15 +345,8 @@ class SessionService:
 
     def _same_identity(self, slug: str, request: str, context_cards: list[str] | None,
                        perimeter: str = DEFAULT_PERIMETER) -> bool:
-        """Whether an existing session is the same discovery: same request, same context selection,
-        same perimeter. `None` (every card) and an explicit list are different selections, not the
-        same one. `perimeter` is compared *resolved* on both sides (#608): a session written before
-        perimeters existed carries `None` on disk, and that must read as identical to an explicit
-        `software` request -- not as a mismatch invariant 11 would then refuse to reuse. Without this
-        check, a `go-to-market` request landing on a `software` session's slug would be silently
-        treated as the same discovery, reasoned under the requested perimeter, and then refused by
-        `update_model`'s own vocabulary check *after* the paid call -- invariant 13's exact failure
-        shape, one identity check over."""
+        """Same discovery: same request, same card selection (`None` and a list differ), same
+        perimeter compared *resolved* on both sides, so a pre-#608 session reads as `software`."""
         if not self.repo.has_meta(slug):
             return False  # a legacy-only session has no recorded cards to compare
         existing = self.repo.context_cards(slug)
@@ -507,18 +358,15 @@ class SessionService:
 
     # ── reads ─────────────────────────────────────────────────────────────────
     def meta(self, slug: str) -> SessionMeta:
-        """The session metadata. A legacy-only session has no metadata, so callers that need it for a
-        read-only op should use `load_model`, which tolerates the legacy layout."""
+        """The session metadata; a legacy-only session has none (use `load_model` for reads)."""
         return self.repo.read_meta(slug)
 
     def load_model(self, slug: str) -> EngineOutput:
-        """The current model. Reads the mutation-backed store, falling back to a legacy `out/<slug>/`
-        model for read-only operations (status/impact) so they work without forcing a migration."""
+        """The current model, falling back to a legacy `out/<slug>/` model for read-only operations."""
         return self.repo.load_model(slug)
 
     def exists_meta(self, slug: str) -> bool:
-        """True if the session is in the mutation-backed store — i.e. `meta()` will succeed. A legacy
-        `out/` session is readable but has no metadata until its first write migrates it."""
+        """True if the session is in the mutation-backed store, i.e. `meta()` will succeed."""
         return self.repo.has_meta(slug)
 
     def load_revision(self, slug: str, revision: int) -> EngineOutput:
@@ -526,43 +374,16 @@ class SessionService:
         return self.repo.load_revision(slug, revision)
 
     def list_sessions(self) -> list[SessionMeta]:
-        """Every session's metadata, raising on the first one that will not load.
-
-        The strict read, kept as such. A caller acting on one session it named is right to want the
-        failure; what must not use this is an **aggregate**, because one unreadable member then
-        raises before any row exists to degrade. Those call `list_entries` instead.
-        """
+        """Every session's metadata, raising on the first that will not load; an aggregate uses
+        `list_entries` instead."""
         return [self.repo.read_meta(s) for s in self.repo.list_slugs()]
 
     def list_entries(self) -> list[SessionEntry]:
-        """Every session, degrading per member instead of raising for the whole set (#7).
-
-        This is the *source* of the rows, and where invariant 15 has to be enforced: guarding the
-        calls made on each row leaves the comprehension that produced them unguarded, which is the
-        line that breaks first. A member that cannot be read is reported, never dropped — a listing
-        that silently omits it tells the reader nothing is wrong and loses the session.
-        `test_one_unreadable_session_no_longer_takes_the_listing_down` and
-        `test_the_degraded_row_states_no_fact_it_could_not_read`.
-
-        The catch is bare `Exception`, deliberately: an aggregate's contract is that one member
-        cannot take the view down, and the set of ways a member can be broken is open, so naming a
-        family here is how a guard ends up nominally on and effectively off for the next failure
-        mode — the shape of #7 itself. `doctor`'s `_session_health` already made this call for the
-        same question. `BaseException` is *not* caught: a `KeyboardInterrupt` is not a broken
-        session.
-
-        Failing to list the slugs at all is **not** caught here and propagates: that is not one
-        member failing but the aggregate having no members to speak for, and answering `[]` would
-        tell a reader their sessions were deleted.
-
-        **Between those two sits a third source of rows** (#80) — `list_unexaminable`, the names the
-        store found and could not decide about. Dropping one loses it silently and calling it a
-        session claims what nobody established, so it is a degraded row like any other:
-        `test_one_unexaminable_entry_no_longer_takes_the_whole_listing_down` and
-        `test_the_row_states_no_fact_it_could_not_read`. Sorted by slug at the end so the two
-        sources interleave into one listing; `list_slugs` is already sorted, so a workspace with
-        nothing unexaminable comes back in exactly the order it always did.
-        """
+        """Every session, degrading per member instead of raising for the set (#7, invariant 15).
+        Bare `Exception`, deliberately: the ways a member can be broken are open. Failing to list the
+        slugs at all propagates. Unexaminable entries (#80) are degraded rows too, interleaved by slug.
+        `test_one_unreadable_session_no_longer_takes_the_listing_down`,
+        `test_one_unexaminable_entry_no_longer_takes_the_whole_listing_down`."""
         entries = []
         for slug in self.repo.list_slugs():
             try:
@@ -574,12 +395,9 @@ class SessionService:
         return sorted(entries, key=lambda e: e.slug)
 
     def resolve_default_session(self) -> SessionResolution:
-        """The one resolver behind `run`/`status`/`impact` when the caller names no session (#541):
-        exactly one session -> that one; several -> the most recently written (`session.json`
-        `updated_at`, never directory mtime) is the default, with every candidate returned so the
-        CLI can list them, default marked, before anything paid happens; none -> a `RequivoError`
-        naming `run`. A read over `list_entries()`, so one degraded row never hides the others
-        (invariant 15). An explicit slug never reaches this -- it always wins at the call site."""
+        """The default session when a journey verb names none (#541): one → it; several → the most
+        recently written by `updated_at`, with every candidate returned; none → a `RequivoError`
+        naming `run`. Reads `list_entries()`, so a degraded row hides nothing (invariant 15)."""
         entries = self.list_entries()
         if not entries:
             raise SessionNotFoundError(
@@ -592,7 +410,7 @@ class SessionService:
         return SessionResolution(default=default, candidates=entries)
 
     def cards(self, slug: str) -> list[str] | None:
-        """The context-card selection recorded for a session (None == all cards)."""
+        """The context-card selection recorded for a session (None means every card)."""
         return self.repo.context_cards(slug)
 
     def request_text(self, slug: str) -> str:
@@ -600,15 +418,10 @@ class SessionService:
         return self.repo.request_text(slug)
 
     def snapshot(self, slug: str) -> SessionSnapshot:
-        """One coherent read of everything a provider call needs — see `SessionSnapshot`. The session
-        must be in the mutation-backed store; call `ensure_canonical` first for one that may still be
-        legacy, which is what every provider-backed operation does anyway before it writes."""
+        """One coherent read of everything a provider call needs; the session must be canonical."""
         if not self.repo.has_meta(slug):
-            # `self.no_session(slug)`, not the module-level ambient `store.no_session_message` --
-            # #457, one call site over from what #272 already fixed for `no_session` itself. The
-            # ambient wrapper always names the *process* workspace; this service may be addressing an
-            # explicitly-rooted repository instead, and the refusal has to name the store it actually
-            # asked. See test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one.
+            # `self.no_session`, not the ambient message: the refusal names the store it asked (#457).
+            # test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one.
             raise self.no_session(slug)
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)  # `migrate_session` already refused an unknown perimeter
@@ -622,29 +435,10 @@ class SessionService:
             )
 
     def impact(self, slug: str, slots: list[str]) -> ImpactReport:
-        """Pure query over the model's dependency graph: what rests on the named slots. No provider
-        call, no write -- the XS addition the HTTP API's `/impact` route needs so it stays
-        translation-only (#425) rather than composing `resolve_slots` and `propagate` itself: exactly
-        `requivo impact`'s own two calls (`cli.py`'s `_cmd_impact`), moved behind the service seam so
-        a second surface does not restate them.
-
-        `slots` are user-typed tokens -- slot ids or label substrings, matched the same
-        case-insensitive, substring-friendly way the CLI matches them. A token matching nothing is
-        refused rather than silently dropped: `UnknownSlotError` names every one, so a caller gets a
-        single structured 400 instead of the CLI's own print-a-warning-and-keep-going, which a
-        terminal reader can see happen and a JSON response cannot represent partially
-        (`test_impact_refuses_an_unknown_slot_naming_it_in_details`). An empty list is not a refusal
-        -- `resolve_slots([])` reads it as "no slots named" and returns a `report.empty`-true report,
-        the correct answer to "what does changing nothing reach?"
-        (`test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal`).
-
-        Deliberately narrower than `requivo impact` with no arguments at all, which renders a full
-        per-slot dependency map (`render_dependency_map`) -- a different shape (many small reports,
-        one per schema slot) that this method does not attempt to produce; the API route requires
-        `slots` for that reason (see #425's own report for the boundary)."""
-        # One lock around both reads (invariant 12): the blast radius and the evidence review must
-        # describe the same revision, and the review re-reads the model under the lock itself (the
-        # lock is re-entrant per thread, so its inner take is free).
+        """What rests on the named slots: a pure query, the API's `/impact` behind the seam (#425).
+        A token matching nothing is refused (`test_impact_refuses_an_unknown_slot_naming_it_in_details`);
+        an empty list is an empty report (`test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal`)."""
+        # One lock around both reads (invariant 12); the lock is re-entrant per thread.
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             perimeter = resolve_perimeter(meta.perimeter)
@@ -656,38 +450,17 @@ class SessionService:
                     "(e.g. 'permissions', 'workflow', 'reporting').",
                     details={"unmatched": unmatched})
             report = propagate(model, resolved, perimeter)
-            # Not narrowed to `slots` on purpose (#493): the review is a fact about the session, and
-            # the slot that thickened is exactly the one nobody thinks to ask about.
+            # Not narrowed to `slots` (#493): the slot that thickened is the one nobody asks about.
             report.evidence = self.thinner_evidence(slug)
         return report
 
     def thinner_evidence(self, slug: str) -> EvidenceReport:
-        """Which decisions were derived while a slot they rest on was thinner than it is now (#493).
-
-        The comparison itself is `core.dependencies.thinner_evidence`, pure. What this method adds
-        is the *derivation revision*: for each decision in the current model, the earliest frozen
-        revision that carries its content-derived `id` (invariant 5), found by walking
-        `revisions/0001..NNNN` in order. That is also the accepted limit -- a reworded decision is
-        a new id, first recorded at its rewording, so it is compared against the evidence of that
-        later revision and not the earlier one a reader would call the same decision
-        (`test_a_reworded_decision_counts_as_newly_derived_at_its_rewording`).
-
-        Reads under the session lock -- the revision number, the current model and the frozen
-        revisions it walks -- so the whole comparison is one snapshot (invariant 12). No write, no
-        provider call.
-
-        Three states, and the third does not fold into the first (invariant 15): a revision this
-        Requivo cannot read -- missing, or persisted by an older one without the fields the
-        comparison needs -- makes every decision not yet located a `could_not_tell` naming that
-        revision, because a later revision that also carries the decision is not where it was
-        derived. Never a flag, never a crash
-        (`test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_tell`).
-        """
-        # The whole walk runs under the lock, and not only the two reads that can move. A frozen
-        # revision file never changes -- but `session import --force` swaps the entire session
-        # directory under this same lock, after which `revisions/NNNN-model.json` names a different
-        # history and a walk outside the lock would compare `now` against it, silently. The cost is
-        # the lock held for the length of the walk: measured at 300 revisions, well under 100 ms.
+        """Which decisions were derived while a slot they rest on was thinner than now (#493). The
+        derivation revision is the earliest frozen one carrying the decision's id (invariant 5), so
+        a reworded decision counts as new (`test_a_reworded_decision_counts_as_newly_derived_at_its_rewording`).
+        A revision this version cannot read makes the unlocated decisions `could_not_tell`, never a
+        flag (`test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_tell`)."""
+        # The whole walk under the lock: `session import --force` swaps the directory under it.
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             perimeter = resolve_perimeter(meta.perimeter)
@@ -729,36 +502,17 @@ class SessionService:
             elif state == "unknown":
                 report.could_not_tell.append(item)
             elif d.id in pending:
-                # Located in no readable revision: either the walk stopped at an unreadable one, or
-                # the decision is in `model.json` and in no frozen file (a hand-edited model).
+                # In no readable revision: the walk stopped, or the model was hand-edited.
                 report.could_not_tell.append(EvidenceUnknown(
                     d.decision, d.id, unreadable or "recorded in no frozen revision"))
         return report
 
     def rescope(self, slug: str, context_cards: list[str] | None) -> RescopeResult:
-        """Re-scope an existing session's context-card selection (`session rescope`).
-
-        Four questions, argued out in #168 and each decided in a test rather than restated here:
-
-        1. **New revision, or mutate in place?** Both, depending on what is on disk — a plain
-           metadata write at revision 0, its own revision (unchanged model, unchanged hash,
-           `surface="session-rescope"`) once one exists, so the history cannot claim a switch never
-           happened. `test_rescope_before_any_model_only_mutates_metadata` and
-           `test_rescope_after_a_model_records_a_new_revision_with_unchanged_content`.
-        2. **Does it mark existing artifacts stale?** No — context is not a fifth kind of dependency
-           edge, and the model has not moved (invariant 1).
-           `test_rescope_does_not_mark_existing_artifacts_stale`, with
-           `test_a_model_change_still_marks_the_same_artifact_stale` as its positive control.
-        3. **Does it re-run anything?** No; writing the selection *is* the whole effect, and the
-           next turn reasons against it.
-           `test_rescope_does_not_re_run_anything_the_next_snapshot_reads_the_new_cards`.
-        4. **Untrusted input, same as creation.** `resolve_cards` runs here too — a re-scope is
-           invariant 14's second entrance onto a persisted `context_cards`.
-           `test_rescope_resolves_and_normalizes_cards_like_creation`.
-
-        Re-scoping to the selection a session already has (order aside — this is a set) is a no-op:
-        `test_rescope_to_the_current_selection_is_a_no_op`.
-        """
+        """Re-scope a session's context-card selection (`session rescope`, #168): a metadata write
+        at revision 0, its own revision once a model exists; no artifact goes stale (invariant 1);
+        nothing re-runs; cards are resolved as at creation (invariant 14); a same-set re-scope is a no-op.
+        `test_rescope_after_a_model_records_a_new_revision_with_unchanged_content`,
+        `test_rescope_does_not_mark_existing_artifacts_stale`, `test_rescope_to_the_current_selection_is_a_no_op`."""
         self._ensure_canonical(slug)
         resolved = resolve_cards(context_cards) if context_cards else None
         with self.repo.lock(slug):
@@ -774,16 +528,11 @@ class SessionService:
                 model = self.load_model(slug)
                 revision, meta = self.repo.save_revision(slug, model,
                                                          provenance={"surface": "session-rescope"})
-                # The second `save_revision` call site here (`_plan`'s is the first): a re-scope
-                # mints a real revision even with unchanged content, so an operator watching this
-                # logger for "a revision landed" must see it too (#435) --
+                # A re-scope mints a revision, so it is logged like one (#435):
                 # `test_a_rescope_that_mints_a_revision_is_logged_too`.
                 logger.info("session rescoped: slug=%s revision=%d", slug, revision)
             else:
-                # No model yet — nothing was reasoned under `previous`, so there is no revision to
-                # mint. `save_revision` bumps `updated_at` for the branch above; this branch is the
-                # only writer here, so it has to stamp it itself. `store._now()` rather than a second
-                # implementation of "UTC, second precision, Z-suffixed" — one format, one place.
+                # No revision to mint; this branch stamps `updated_at` itself, in the store's one format.
                 meta.updated_at = store._now()
             meta.context_cards = resolved
             self.repo.write_meta(slug, meta)
@@ -792,8 +541,7 @@ class SessionService:
 
     # ── the write path ──────────────────────────────────────────────────────────
     def diff(self, slug: str, proposal: dict | str, *, require_complete: bool = True) -> UpdateResult:
-        """Dry run of `update_model`: validate the proposal and report what *would* change, without
-        writing anything (`model diff`). `revision` is the revision that would be created."""
+        """Dry run of `update_model`: what *would* change, nothing written. `revision` is the one that would be created."""
         current = self.load_model(slug) if self.exists(slug) else None
         perimeter = resolve_perimeter(self.meta(slug).perimeter) if self.exists_meta(slug) else DEFAULT_PERIMETER
         new = validate_proposal(proposal, require_complete=require_complete, current=current,
@@ -802,24 +550,12 @@ class SessionService:
 
     def update_model(self, slug: str, proposal: dict | str, *, require_complete: bool = True,
                      expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
-        """Validate a proposal and apply it as a new revision (`model apply`): saves the prior model
-        as a revision, flags stale artifacts, and returns the structured outcome. A session that lives
-        only in the retired `out/` layout is *named in the error*, not migrated behind your back —
-        `ensure_writable` raises pointing at `requivo session migrate`.
-
-        `expected_revision` is the optimistic-locking precondition (see `persistence.save_revision`):
-        omit it for the single-user CLI, pass the client's last-known revision from a concurrent
-        service. `provenance` records who produced the revision (provider / surface / model)."""
+        """Validate a proposal and apply it as a new revision: save the prior model, flag stale
+        artifacts, return the outcome. A legacy-only session is named in the error, not migrated.
+        `expected_revision` is the optimistic-locking precondition; `provenance` records who produced it."""
         self._ensure_canonical(slug)
-        # One lock for the whole update. Reading the current model, saving the revision and rewriting
-        # the artifact flags are three storage calls that must see one consistent session: without
-        # this, a writer that lands between the read and the flag rewrite has its staleness silently
-        # reverted by ours.
-        #
-        # Validation is *inside* the lock rather than before it, because a proposal is resolved against
-        # the model it refines (`ModelProposal.resolve`): the reasoning it carries forward has to come
-        # from the same model the diff is computed against, or a concurrent write could slip between
-        # the two and the carried reasoning would describe a model that is no longer there.
+        # One lock for the read, the revision save and the flag rewrite; validation is inside it
+        # because a proposal is resolved against the model it refines.
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             perimeter = resolve_perimeter(meta.perimeter)
@@ -832,24 +568,15 @@ class SessionService:
     def _plan(self, slug: str, current: EngineOutput | None, new: EngineOutput, *, apply: bool,
               perimeter: str = DEFAULT_PERIMETER,
               expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
-        # A first model (no prior) counts every present slot as changed, so the whole blast radius is
-        # reported; otherwise only the slots that materially moved.
+        # A first model counts every present slot as changed.
         changed = diff_models(current, new) if current is not None else list(new.model.keys())
-        # The reasoning layer moves independently of the slots, and every generator is prompted with
-        # it, so it invalidates artifacts on its own. On a first apply there is nothing to compare
-        # against — the reasoning arrived with the model it describes.
+        # The reasoning layer invalidates on its own; on a first apply there is nothing to compare against.
         reasoning = diff_reasoning(current, new) if current is not None else ReasoningDiff()
-        # Artifacts rest on slots via the static ARTIFACT_SLOTS map, so the blast radius is basis-neutral
-        # — any model with these `changed` slots yields the same artifact set.
+        # Artifacts rest on slots through the static ARTIFACT_SLOTS map, so the blast radius is basis-neutral.
         report = propagate(new, changed, perimeter)
 
-        # Reasoning invalidation is about the *prior established* reasoning a change unseats — it exists
-        # only when the current model on disk carries decisions/challenges/exclusions/thresholds (a
-        # refinement turn often drops them from its reply, so `new` may have none). On a first apply —
-        # `current is None` — the reasoning in `new` was proposed *for* this very state; it is not
-        # stale, so nothing is invalidated. Computing this against `new` (the old `basis` fallback)
-        # was the bug: it reported a model's own freshly-proposed decisions and challenges as
-        # invalidated on their first apply.
+        # Reasoning invalidation is about the *prior* reasoning a change unseats; on a first apply
+        # `new`'s reasoning was proposed for this very state and nothing is invalidated.
         if current is not None and (current.decisions or current.challenges or current.exclusions
                                     or current.thresholds):
             prior = propagate(current, changed, perimeter)
@@ -862,10 +589,8 @@ class SessionService:
             invalidated_exclusions, invalidated_thresholds = [], []
 
         def _resolve_stale(generated: set[str]) -> list[str]:
-            # The blast radius, intersected with what actually exists on disk. Two edge sets feed it:
-            # the slots an artifact consumes (ARTIFACT_SLOTS), and — when the reasoning layer moved —
-            # REASONING_CONSUMERS, which is every generator, since each is prompted with the full
-            # model. The saved assessment needs no special case in either: it rests on every slot.
+            # The blast radius intersected with what exists on disk; REASONING_CONSUMERS is every
+            # generator when the reasoning moved (invariant 1).
             hit = set(report.artifacts) | (REASONING_CONSUMERS if reasoning.changed else set())
             return [t for t in ARTIFACT_FILENAMES if t in hit and t in generated]
 
@@ -908,18 +633,14 @@ class SessionService:
 
     # ── status ──────────────────────────────────────────────────────────────────
     def status(self, slug: str) -> dict:
-        """A machine-readable status snapshot for `status --json` — rich enough that Claude Code and a
-        the Web render the full picture (understanding checklist, priority questions, gaps,
-        context) without rebuilding the presentation logic in another language. Everything here is a
-        pure projection of the model plus the session metadata."""
+        """A machine-readable status for `status --json`: a pure projection of the model plus metadata."""
         meta = self.repo.read_meta(slug) if self.repo.has_meta(slug) else None
         perimeter = resolve_perimeter(meta.perimeter) if meta else DEFAULT_PERIMETER
         model = self.load_model(slug)
         artifacts = {}
         if meta:
             for t, st in meta.artifact_status.items():
-                # Explicit stale flag only — revision is provenance, not an invalidation rule. See
-                # ArtifactService.list for the rationale (dependency-graph freshness, not revision drift).
+                # The explicit stale flag only; revision is provenance (invariant 1).
                 artifacts[t] = {"revision": st.revision, "filename": st.filename, "stale": st.stale}
         return {
             "slug": slug,

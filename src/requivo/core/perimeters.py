@@ -1,14 +1,7 @@
-"""The perimeter registry (#608) — one vocabulary per session, not one per install.
-
-A perimeter owns a slot schema, an elicitation spec, discovery guidance specific to it, and the
-artifact types it can produce (`decision: the-job-not-the-artifact-type`). The Core stays perimeter-
-free: `Slot`, `Confidence`, `Impact`, the dependency graph, the session store, all reason over slot
-ids and never care which vocabulary they came from. This module is the one place that resolves a
-perimeter id to the assets it owns.
-
-Deliberately data, not code: adding a perimeter is a directory under `assets/perimeters/` plus one
-row below naming which artifact types it may produce -- never a new code path through `core/`,
-`services/` or a provider.
+"""The perimeter registry (#608): one vocabulary per session. A perimeter owns a slot schema, an
+elicitation spec, discovery guidance and the artifact types it produces
+(`decision: the-job-not-the-artifact-type`); the Core reasons over slot ids and never cares which.
+Data, not code: adding a perimeter is a directory under `assets/perimeters/` plus one row here.
 """
 
 from __future__ import annotations
@@ -24,35 +17,20 @@ from requivo.paths import PERIMETERS
 SOFTWARE = "software"
 GO_TO_MARKET = "go-to-market"
 
-# A session written before perimeters existed carries none, and reads as this one -- a default,
-# never a guess, because there was only ever one (#608's migration note).
+# A pre-perimeter session carries none and reads as this one: a default, never a guess (#608).
 DEFAULT_PERIMETER = SOFTWARE
 
-# Which artifact types each perimeter may produce, per #607's cost rule ("each new perimeter ships
-# with exactly one artifact... a second is added when a user asks"). Software carries every generator
-# that exists today; go-to-market ships exactly its one (#609: `gtm_plan`), registered the same way
-# in every table `test_the_real_artifact_registries_agree_on_their_key_sets` cross-checks.
+# Which artifact types each perimeter may produce (#607's cost rule: one per new perimeter).
+# `test_the_real_artifact_registries_agree_on_their_key_sets` cross-checks every table.
 _ARTIFACT_TYPES: dict[str, frozenset[str]] = {
     SOFTWARE: frozenset(
         {"brief", "prd", "stories", "estimate", "criteria", "epic", "release"}),
-    # #609: go-to-market's one artifact, per #607's cost rule -- its equivalent of the decision
-    # brief, over its own twelve slots. A distinct key from "brief" on purpose: the two are
-    # different contracts (`GoToMarketPlan` vs `Brief`) reasoned from different schemas, and the
-    # registries below (`_GENERATORS`, `_WRITERS`, `ARTIFACT_FILENAMES`, ...) are keyed globally,
-    # not per perimeter -- reusing "brief" here would collide with software's own entry.
+    # Go-to-market's one artifact (#609), a distinct key from "brief" since the registries are keyed globally.
     GO_TO_MARKET: frozenset({"gtm_plan"}),
 }
 
-# The one type each perimeter's page/next-step hint leads with -- everything else is available, one
-# click or one command further (a Web "More documents" disclosure, `requivo docs`'s menu). A second,
-# genuinely central fact, not a caption: `web/viewmodels/sessions.py`'s `session_detail()` and
-# `render/terminal.py`'s `next_command()` each used to read it off a software-only local default
-# (`PRIMARY_ARTIFACT = "brief"`, and a bare `"brief"` literal) regardless of which perimeter they
-# were actually serving, so a go-to-market session -- whose only artifact is never `"brief"` -- had
-# no primary on either surface: the Web buried it under "More documents" and posted its generate
-# form to a route that does not exist, and `requivo status` on a converged, plan-less go-to-market
-# session suggested nothing at all (#609's follow-up review, Codex + a deliberate sweep after it).
-# One table, read by both surfaces, so the two cannot drift the way that duplication did.
+# The one type each perimeter's page and next-step hint lead with, read by both surfaces so the Web
+# and the CLI cannot drift the way a software-only local default did (#609).
 _PRIMARY_ARTIFACT: dict[str, str] = {
     SOFTWARE: "brief",
     GO_TO_MARKET: "gtm_plan",
@@ -61,16 +39,12 @@ _PRIMARY_ARTIFACT: dict[str, str] = {
 
 @dataclass(frozen=True)
 class Perimeter:
-    """One installed perimeter: its id, the directory its assets live under, the artifact types it
-    may produce, and which of those leads a reader to it first. `schema_path`/`elicitation_path`/
-    `engine_guidance_path` are its three owned files -- a directory holding model_schema.json,
-    elicitation.md and engine_guidance.md."""
+    """One installed perimeter: its id, its asset directory, the artifact types it may produce, and the primary one."""
 
     id: str
     dir: Path
     artifact_types: frozenset[str]
-    # `None` for a perimeter this install has not been told a primary for -- every caller must read
-    # that as *nothing leads*, never fall back to another perimeter's primary (#609's follow-up).
+    # `None` means *nothing leads*; never fall back to another perimeter's primary (#609).
     primary_artifact: str | None = None
 
     @property
@@ -83,16 +57,12 @@ class Perimeter:
 
     @property
     def engine_guidance_path(self) -> Path:
-        """The perimeter-specific fragment substituted into `engine.md`'s `{{PERIMETER_GUIDANCE}}` --
-        the one piece of discovery guidance the issue names explicitly: a software heuristic like
-        "primary objects first" must never reach a session running a different perimeter."""
+        """The perimeter-specific fragment substituted into `engine.md`'s `{{PERIMETER_GUIDANCE}}`."""
         return self.dir / "engine_guidance.md"
 
     @property
     def router_hint_path(self) -> Path:
-        """One short paragraph naming the kind of request this perimeter fits -- read by the router
-        (#601) so it can judge which installed perimeter a request belongs to without paying to send
-        its whole schema or elicitation spec."""
+        """One short paragraph naming the kind of request this perimeter fits, read by the router (#601)."""
         return self.dir / "router_hint.md"
 
 
@@ -104,14 +74,12 @@ def _registry() -> dict[str, Perimeter]:
 
 
 def known_perimeter_ids() -> tuple[str, ...]:
-    """Every installed perimeter's id, sorted -- the vocabulary `doctor` and a `--perimeter` flag
-    report against."""
+    """Every installed perimeter's id, sorted."""
     return tuple(sorted(_registry()))
 
 
 def get_perimeter(perimeter_id: str) -> Perimeter:
-    """The installed perimeter named `perimeter_id`, or `UnknownPerimeterError` -- refused by name,
-    never tolerated or defaulted (#608's deliberate inversion of invariant 8)."""
+    """The installed perimeter named `perimeter_id`, or `UnknownPerimeterError`: refused by name, never defaulted (#608)."""
     try:
         return _registry()[perimeter_id]
     except KeyError:
@@ -124,9 +92,8 @@ def get_perimeter(perimeter_id: str) -> Perimeter:
 
 
 def resolve_perimeter(name: str | None) -> str:
-    """A session's recorded perimeter id, or the software default for one recorded as `None` (a
-    pre-perimeter session -- there was only ever one, so this is the migration, not a guess). Raises
-    `UnknownPerimeterError` for a *named* perimeter this install does not have."""
+    """A session's recorded perimeter id, or the software default for `None` (a pre-perimeter session);
+    a named unknown raises `UnknownPerimeterError`."""
     if name is None:
         return DEFAULT_PERIMETER
     get_perimeter(name)  # raises by name if unknown
@@ -134,10 +101,7 @@ def resolve_perimeter(name: str | None) -> str:
 
 
 class PerimeterSummary(NamedTuple):
-    """One installed perimeter, reduced to what a routing judgment (#601) needs to decide whether it
-    fits a request: its id and the one paragraph naming the kind of request it is for. `unreadable`
-    mirrors `core.context.CardSummary`'s own third state -- the asset is there and could not be
-    read, which is not the same as a perimeter whose hint is empty."""
+    """One installed perimeter reduced to what a routing judgment (#601) needs; `unreadable` is the third state."""
 
     id: str
     hint: str
@@ -145,9 +109,7 @@ class PerimeterSummary(NamedTuple):
 
 
 def perimeter_summaries() -> list[PerimeterSummary]:
-    """Every installed perimeter as one line, for a routing judgment that must not pay to send every
-    schema and elicitation spec in full. A per-perimeter read failure degrades that row and never the
-    listing (invariant 15), the same discipline `core.context.card_summaries()` applies to cards."""
+    """Every installed perimeter as one line for the router; a per-perimeter read failure degrades its row (invariant 15)."""
     out = []
     for pid in known_perimeter_ids():
         try:

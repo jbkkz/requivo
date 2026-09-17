@@ -1,25 +1,8 @@
 """One call to the model: the request, the retry loop, the JSON extraction, the truncation check.
 
-Everything here is about a single `_complete()` — what is sent, what comes back, and what is billed
-for it. The discovery turn and the generators are `generators.py`; they all funnel through here.
-
-**The one constraint this module owes another one.** `_complete` records the spend into
-`requivo.usage`, and it must do so **before** it surfaces a clean failure, on every exit — a failed
-call is still billed for whatever it consumed. That used to be two adjacent lines in one file and is
-now a cross-module contract, which is exactly what #74 flagged as the thing most likely to break
-quietly in the split. There are four exits and all four record: the success return, the transport
-failure and the truncation refusal (both through `_stop()`, which exists so the two clean failures
-have one place to get it right), and the retry give-up. Only `_stop()` reads as obviously about
-billing, which is why the give-up carries its own line saying so.
-`test_a_failed_call_is_still_recorded_on_every_exit` goes red when any exit stops recording.
-
-**`requivo.providers.anthropic.completion`, silent by default (#435).** This is the one place every
-provider call's attempts and latency are actually known — every other layer only sees the typed
-result or a raised error — so it is where "a call completed, or gave up, after N attempts in M ms"
-is logged, at DEBUG (success) and WARNING (any of the three failure exits). A caller who wants the
-per-verb view (which *operation* — discovery vs. a named generator) attaches a handler here or to
-its `requivo.providers` parent; nobody does by default, so this prints nothing on its own
-(invariant 7, and see `requivo/__init__.py`'s `NullHandler`).
+Every exit of `_complete()` records the spend before it surfaces a failure (the success return, the
+two clean failures through `_stop()`, and the retry give-up): `test_a_failed_call_is_still_recorded_on_every_exit`.
+Attempts and latency are logged here, at DEBUG/WARNING, silent unless a handler is attached (#435, invariant 7).
 """
 
 from __future__ import annotations
@@ -52,44 +35,17 @@ from requivo.usage import CallRecord, record_call
 
 logger = logging.getLogger(__name__)
 
-# How many failed replies `.requivo/debug/` keeps before the oldest are pruned -- documented here
-# because #283's acceptance criteria calls for a stated retention, not just a bounded one. Kept
-# generous: these are debugging artifacts a user attaches to a bug report, and a directory holding
-# the last 20 malformed replies costs at most a few hundred KB.
+# How many failed replies `.requivo/debug/` keeps before the oldest are pruned (#283).
 _DEBUG_RETENTION = 20
 
 
 def _save_failed_reply(raw: str, contract: str) -> Path | None:
     """Write the final raw reply that never validated, so a bug report has something to attach
-    (#283). Called only from the retry loop's give-up exit, and only there.
-
-    **Best-effort.** A failure here -- a read-only workspace, a full disk -- must not shadow the
-    `ProviderOutputError` this exists to make debuggable; every exception is caught and `None` is
-    returned, so the error message simply doesn't name a file rather than replacing a clean failure
-    with an unrelated traceback. `ensure_store_dir` is the same call every other writer under
-    `.requivo/` goes through, so this directory gets the privacy `.gitignore` for free the first time
-    the store root is created -- see `debug_root()`'s own docstring in `paths.py`.
-
-    **The retention bound below is a soft cap, not a lock-guarded invariant, and that is deliberate.**
-    A strict "exactly N files" guarantee needs the list-then-prune sequence serialised against every
-    other writer, and the only lock this codebase has (`session_lock`) is keyed by session slug --
-    this directory is not one, and taking a new global lock just for a debugging aid is a cost this
-    feature does not justify. Every unlink below is `missing_ok=True`, so two processes pruning at
-    once at worst transiently retain a few more than `_DEBUG_RETENTION` files -- corrected on the very
-    next write, by whichever process happens to run it -- and never race destructively, because
-    nothing here is ever read back by a running process; a human reads these by hand.
-
-    **The write and the prune are two separate failure domains, deliberately** (found in review). A
-    prune failure -- this codebase already knows a `PermissionError` on an open handle is real and
-    platform-specific, invariant 18's own `_replace_with_retry` exists because of it -- must not
-    discard the path of a reply the write just saved successfully: that would report "nothing was
-    captured" about a reply that genuinely was, which is worse than the soft cap being late for one
-    cycle. `test_a_prune_failure_does_not_discard_an_already_saved_reply` pins it.
-    """
+    (#283). Best-effort: every failure returns `None` rather than shadowing the `ProviderOutputError`.
+    The retention bound is a soft cap, not lock-guarded, and a prune failure must not discard the
+    path of a reply just saved: `test_a_prune_failure_does_not_discard_an_already_saved_reply`."""
     try:
-        # Ambient on purpose, not threaded from a triggering session's repository: this path may
-        # land its debug dump under the wrong workspace on a process serving more than one (#272).
-        # `decision: debug-dump-ambient-root`
+        # Ambient on purpose, not the triggering session's repository (#272). `decision: debug-dump-ambient-root`
         root = debug_root()
         ensure_store_dir(root)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
@@ -105,56 +61,37 @@ def _save_failed_reply(raw: str, contract: str) -> Path | None:
 
 
 def _prune_debug_dir(root: Path) -> None:
-    """Keep the newest `_DEBUG_RETENTION` files, oldest-first by name -- the leading UTC timestamp in
-    every filename makes lexicographic and chronological order the same sort. See `_save_failed_reply`
-    for why this is a soft cap rather than a locked one."""
+    """Keep the newest `_DEBUG_RETENTION` files; the leading UTC timestamp makes name order chronological."""
     files = sorted(root.glob("*.txt"))
     for stale in files[: max(0, len(files) - _DEBUG_RETENTION)]:
         stale.unlink(missing_ok=True)
 
 
-# Output-token ceiling per call. Discovery emits a full slot model + questions + summary; on a rich
-# multi-feature request that JSON exceeds 8k output tokens and the whole reply is discarded as
-# truncated (observed: a messy 5-feature request truncated at 8k). claude-sonnet-5 actually caps at
-# 128k output, but this path is a *non-streaming* client.messages.create(), and the SDK raises / risks
-# HTTP timeouts above ~16k without streaming — so 16k is the safe ceiling here. It fits a rich
-# discovery run with headroom, and you pay only for tokens generated, so raising it costs nothing on
-# smaller outputs (and never changes an output that already fit — golden baselines are unaffected).
-# Going higher (32k–128k) needs the call switched to streaming; a per-generator budget (the assessment
-# needs less than an epic) is a further refinement. One safe ceiling first.
+# Output-token ceiling per call: a rich discovery exceeds 8k, and this non-streaming call risks HTTP
+# timeouts above ~16k. Going higher needs streaming.
 MAX_OUTPUT_TOKENS = 16000
 
 
 def _record(rec: CallRecord) -> None:
-    """Price the call at Anthropic's rates, then file it against whatever ledger is active.
-
-    The one place this provider meets `requivo.usage`, so the vendor's price table is consulted here
-    and the ledger stays neutral (#167). Called exactly once per `CallRecord` -- `_complete` builds
-    one and reaches one exit with it -- which is why `price_call` needs no first-write-wins guard and
-    deliberately has none.
-    """
+    """Price the call at the vendor's rates, then file it against the active ledger: the one place this
+    provider meets `requivo.usage` (#167). Called exactly once per `CallRecord`."""
     record_call(price_call(rec))
 
 
 def _log_completed(rec: CallRecord) -> None:
-    """DEBUG: a call returned a validated result. See the module docstring (#435)."""
+    """DEBUG: a call returned a validated result (#435)."""
     logger.debug("provider call completed: operation=%s model=%s attempts=%d latency_ms=%d",
                 rec.operation, rec.model, rec.attempts, rec.latency_ms)
 
 
 def _log_gave_up(rec: CallRecord, reason: str) -> None:
-    """WARNING: a call will not be retried again — a transport failure, a truncated reply, or the
-    retry loop exhausted. `reason` is a short label, not the full user-facing message: the latter is
-    already raised as a structured error, and this line is for an operator scanning logs, not a
-    duplicate of that error text (#435)."""
+    """WARNING: a call will not be retried again; `reason` is a short label for an operator (#435)."""
     logger.warning("provider call gave up: operation=%s model=%s attempts=%d latency_ms=%d reason=%s",
                   rec.operation, rec.model, rec.attempts, rec.latency_ms, reason)
 
 
 def _response_text(resp) -> str:
-    """All text blocks of the response, concatenated — skips thinking/tool_use blocks. Joining
-    (rather than taking only the first) means a reply split across text blocks isn't silently
-    truncated to its opening fragment before JSON extraction."""
+    """All text blocks of the response, concatenated, so a reply split across blocks is not truncated."""
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
@@ -177,43 +114,13 @@ _EPHEMERAL = {"type": "ephemeral"}
 
 def _system_blocks(system: str | SystemPrompt, reuse_system: bool) -> list[dict]:
     """The `system` argument for one request: the shared leading block behind a cache breakpoint on
-    every call, and the operation's own remainder behind one only when something will re-read it.
-
-    A `cache_control` breakpoint bills the block at **1.25x** input to write and **0.1x** to read, so
-    it saves money from the second send of a byte-identical prefix and loses ~25% if there is never a
-    second send. The two blocks answer that question differently, which is why they are two blocks.
-
-    **The shared block always carries one (#258).** Every template opens with the same schema +
-    product-context block (`SHARED_PROMPT_HEAD`, ~9k tokens with the bundled cards), so it is the
-    prefix of every operation of a session and the second operation in a sitting reads it at 0.1x
-    instead of re-sending it at full price -- a five-op pipeline sends ~25k system tokens instead of
-    ~56k. The accepted cost, stated: a lone one-call verb with no second op inside the 5-minute TTL
-    pays the write premium once, 0.25 x ~9k ~= 2.3k token-equivalents. Pinned by
-    `test_a_one_call_verb_caches_the_shared_block_and_only_that` and
-    `test_the_shared_block_is_byte_identical_across_two_operations_in_one_sitting`.
-
-    **The remainder carries one only under `reuse_system=True`**, the unchanged contract: it pays
-    *within* one operation -- a JSON retry re-sends the identical system, `converse()` runs up to 8
-    discovery turns off one prompt, a golden capture runs K of them -- and the caller's loop is the
-    only thing that can predict it, hence the parameter rather than a rule here. Pinned by
-    `test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call` and
-    `test_every_generator_drives_a_real_call_without_a_cache_write`.
-
-    **The retry case is an accepted cost of `reuse_system=False`, not an oversight.**
-    `decision: retry-regression-under-reuse-system-false` -- since #258 the regression is on the
-    remainder only (~1-3k tokens); the shared block is a cache read on the retry either way.
-
-    A plain `str` has no shared block to split off, so it is sent as one block with the breakpoint
-    per `reuse_system`, exactly as before #258 -- the arm the offline fakes drive, and a real caller
-    with a custom system prompt would take. Pinned by
-    `test_a_bare_string_system_has_no_shared_block_to_cache`.
-    """
-    # `dict[str, object]`, not the inferred `dict[str, str]` an untyped literal would give this
-    # (#271): the value at `"text"` is a `str`, the value at `"cache_control"` is a nested `dict`, and
-    # a dict's value type is invariant across every key once inferred -- assigning the nested dict
-    # into a `dict[str, str]`-inferred `block` is what pyright refused. `list[dict]` is a wide return
-    # annotation on this function already; this is the same looseness stated one level down, at the
-    # dict literals that actually mix value shapes.
+    every call (#258, `test_a_one_call_verb_caches_the_shared_block_and_only_that`), and the
+    operation's remainder behind one only under `reuse_system=True`, when the caller's own loop will
+    re-send it (`test_cache_breakpoint_rides_a_reused_prefix_and_not_a_single_call`). A breakpoint
+    costs 1.25x to write and 0.1x to read; the retry under `reuse_system=False` is an accepted cost,
+    `decision: retry-regression-under-reuse-system-false`. A plain `str` is one block:
+    `test_a_bare_string_system_has_no_shared_block_to_cache`."""
+    # `dict[str, object]`: the values mix `str` and a nested dict, which pyright refused inferred (#271).
     if isinstance(system, str):
         block: dict[str, object] = {"type": "text", "text": system}
         if reuse_system:
@@ -228,14 +135,9 @@ def _system_blocks(system: str | SystemPrompt, reuse_system: bool) -> list[dict]
 
 
 def _transport_message(e: Exception) -> str:
-    """What to tell the operator about a transport failure, and whether retrying is worth advising.
-
-    Three outcomes rather than one. A credential failure is not transient and must not suggest it
-    is; a rate limit is transient but has its own remedy (wait, do not hammer); everything else --
-    a connection drop, a timeout, a 5xx -- keeps the original wording, which was right for it all
-    along. The SDK's own class name is still included in every branch: it is the only part of this
-    that a bug report can be diagnosed from.
-    """
+    """What to tell the operator about a transport failure, in three outcomes: a credential failure
+    is not transient, a rate limit has its own remedy, everything else keeps the retry advice. The
+    SDK's class name rides every branch."""
     detail = f"({type(e).__name__}: {e})"
     if isinstance(e, (AuthenticationError, PermissionDeniedError)):
         return (
@@ -259,41 +161,12 @@ def _transport_message(e: Exception) -> str:
 def _complete(client, system: str | SystemPrompt, messages: list[dict], out_model, retries: int = 2,
               validate=None, *, reuse_system: bool = True, model: str | None = None,
               operation: str | None = None, context: dict | None = None):
-    """One call → validated `out_model`. Retries with a nudge on malformed/non-conformant JSON.
-    The nudge lives in a local copy so the caller's clean history is never polluted.
-
-    `system` is what `build_system_prompt` assembled -- the shared leading block and the operation's
-    remainder, sent as two text blocks so the first can sit behind a cache breakpoint on every call
-    (#258, see `_system_blocks`). A plain string is accepted and sent as one block.
-
-    `operation` is the verb this call is for — `"analyze"`, `"brief"`, `"stories"`, ... the same
-    vocabulary `_OP_PROMPTS` already uses — stamped onto the `CallRecord` purely as provenance:
-    nothing here branches on it, and `None` (the default) is a legitimate value, not a missing one
-    (#435). Pinned by `test_run_stamps_the_analyze_operation_onto_the_call_record` and
-    `test_call_record_operation_defaults_to_none`.
-
-    `validate` is an optional semantic post-check `(instance) -> None` that raises `ValueError` to
-    reject an output Pydantic accepted but the caller still considers incomplete (e.g. a discovery
-    model missing required slots). It rides the same retry loop, so the model self-corrects.
-
-    `reuse_system` is the caller's answer to "will this exact system prompt be sent again inside the
-    cache TTL?" — see `_system_blocks`; since #258 it decides the breakpoint on the op-specific
-    remainder only, the shared block being cached regardless. It defaults to True because that is
-    the safe answer to an unknown: mistakenly caching costs 25% once, mistakenly not caching costs
-    the full price of every repeat. Only a caller that *knows* it makes one call should say False.
-
-    `context` (#608) is forwarded to `out_model.model_validate` as pydantic validation context --
-    `{"perimeter": ...}` for `analyze`, so `ModelProposal`'s slot-vocabulary check validates against
-    the right schema. `None` (the default) is what every non-discovery generator still passes.
-
-    `model` is the id to call and to bill against — threaded down from `AnthropicProvider(model=...)`,
-    or `None` to fall back to `current_model_name()`'s env-chain resolution exactly as before.
-    Resolved **once, here**: an explicit id must make zero env reads, so a caller pinning a model can
-    share a process with another one without racing the other's `REQUIVO_MODEL` (#434). Pinned by
-    `test_a_constructed_model_makes_no_env_read` and
-    `test_two_constructed_providers_record_and_price_independently`.
-
-    Every exit records the spend first — see this module's docstring, and `_stop()` below."""
+    """One call → validated `out_model`, retrying with a nudge in a local message copy on malformed
+    or non-conformant JSON. `system` is the split prompt (#258). `operation` is provenance only
+    (#435). `validate` is a semantic post-check raising `ValueError` to ride the retry loop.
+    `reuse_system` decides the breakpoint on the remainder; True is the safe default. `context`
+    (#608) is pydantic validation context. `model` is resolved once, here, with zero env reads for
+    an explicit id (#434, `test_a_constructed_model_makes_no_env_read`). Every exit records the spend first."""
     attempt = messages
     last_err = None
     model = model if model is not None else current_model_name()
@@ -301,11 +174,8 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     started = time.perf_counter()
 
     def _stop(msg: str) -> EngineError:
-        # Record the spend and stamp latency before surfacing a clean failure — a failed call still
-        # billed for whatever it consumed, and the ledger should reflect it. Both *clean* failure
-        # exits go through here so there is one place to get it right; the retry give-up below is
-        # the third and records inline. See the module docstring, pinned by
-        # `test_a_failed_call_is_still_recorded_on_every_exit`.
+        # Record the spend and stamp latency before surfacing a clean failure; both clean exits come
+        # through here. `test_a_failed_call_is_still_recorded_on_every_exit`.
         rec.latency_ms = int((time.perf_counter() - started) * 1000)
         _record(rec)
         _log_gave_up(rec, msg.splitlines()[0] if msg else "(no message)")
@@ -321,33 +191,19 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
                 messages=attempt,
             )
         except APIError as e:
-            # Anything from the transport, turned into a clean message instead of a raw traceback.
-            # The saved model is untouched (nothing was written yet) on every branch.
-            #
-            # Branched, because one message for all of them was actively wrong for the most likely
-            # failure: `AuthenticationError`, `PermissionDeniedError` and `RateLimitError` are all
-            # `APIError` subclasses, so a rejected key was told to "retry the command in a moment"
-            # -- advice that never works on a 401 -- with the real cause buried in a parenthetical
-            # class name (#201). Retrying is only safe advice where retrying can help.
-            # Pinned by `test_an_auth_failure_names_the_key_and_does_not_advise_retry`.
+            # Transport failures become a clean message, branched: a rejected key must not be told to
+            # retry (#201). `test_an_auth_failure_names_the_key_and_does_not_advise_retry`.
             raise _stop(_transport_message(e)) from e
         except TypeError as e:
-            # The belt, and it is a belt rather than the fix: `new_client()` refuses upfront when no
-            # credential is visible, so this arm should be unreachable. It exists because the shape
-            # of #201 was an SDK raising a *bare builtin* out of its own auth resolution -- not an
-            # `APIError`, so the arm above did not see it, and not a `RequivoError`, so `cli.app()`
-            # did not either. Whatever the next such change looks like, it stops being a traceback
-            # here. Deliberately not narrowed by matching the SDK's wording: a verdict that depends
-            # on a foreign string is one that goes quiet when that string is reworded.
-            # Pinned by `test_a_typeerror_out_of_the_sdk_is_not_a_traceback`.
+            # The belt: the SDK once raised a bare builtin out of its own auth resolution (#201), and
+            # this is not narrowed on its wording. `test_a_typeerror_out_of_the_sdk_is_not_a_traceback`.
             raise _stop(
                 f"The Anthropic client could not build the request ({type(e).__name__}: {e}).\n"
                 "This is usually an unresolved credential -- check ANTHROPIC_API_KEY, and see "
                 "`requivo doctor`. If a working key is set, it is a provider-SDK incompatibility "
                 "worth reporting. The model on disk was not modified."
             ) from e
-        # Accumulate usage across every attempt — a retry spends tokens too (fields absent on the
-        # test fake, so default to 0 and this stays a no-op offline).
+        # Accumulate usage across every attempt; the fields are absent on the test fake.
         u = getattr(resp, "usage", None)
         if u is not None:
             rec.input_tokens += getattr(u, "input_tokens", 0) or 0
@@ -366,11 +222,8 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
             return result
         except (json.JSONDecodeError, ValueError, ValidationError) as e:
             last_err = e
-            # A reply cut off at the token ceiling can't be salvaged by retrying (the same ceiling
-            # truncates again), so surface it as a clean, specific failure. We check this *only on a
-            # parse/validation failure*: a response can hit the ceiling yet still contain complete,
-            # valid JSON — those must succeed above, not be rejected. (Rich discovery outputs run
-            # right up against the ceiling; MAX_OUTPUT_TOKENS gives them headroom so this stays rare.)
+            # A reply cut at the ceiling cannot be salvaged by retrying; checked parse-first, since a
+            # reply flagged `max_tokens` can still carry complete JSON.
             if truncated:
                 raise _stop(
                     "The model's reply was cut off at the output limit "
@@ -384,22 +237,15 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     rec.latency_ms = int((time.perf_counter() - started) * 1000)
     _record(rec)  # record the spend even on give-up — those tokens were still billed
     _log_gave_up(rec, f"retries exhausted against the {out_model.__name__} contract")
-    # The final raw reply never validated, and give-up is the one exit where that reply is worth
-    # keeping (#283): a user filing "the provider returned output that did not match the contract"
-    # otherwise has nothing to attach, and the maintainer cannot tell a prompt regression from a
-    # model-side change. `raw` is whatever the last loop iteration set it to -- every iteration that
-    # reaches this point in the function has already assigned it, so it is always defined here.
-    # Best-effort: `_save_failed_reply` swallows its own failures and returns None rather than ever
-    # raising something that shadows the ProviderOutputError below.
+    # The give-up is the one exit where the raw reply is worth keeping (#283); `raw` is assigned by
+    # every iteration that reaches here. Best-effort.
     debug_path = _save_failed_reply(raw, out_model.__name__)
     details = {"contract": out_model.__name__, "attempts": retries + 1, "last_error": str(last_err)}
     saved_note = ""
     if debug_path is not None:
         details["raw_reply_path"] = str(debug_path)
         saved_note = f" — the reply that failed validation was saved to {debug_path}"
-    # A structured Requivo error, not a bare RuntimeError: exhausting the retry loop is a *known*
-    # provider condition with an actionable cause, and every surface catches RequivoError. Raised as
-    # anything else, it escaped the CLI's handler and reached the user as a traceback.
+    # A structured error: exhausting the retry loop is a known condition every surface catches.
     raise ProviderOutputError(
         f"the provider returned output that did not match the {out_model.__name__} contract after "
         f"{retries + 1} attempts — the last failure was: {last_err}{saved_note}",
