@@ -47,15 +47,13 @@ guard that goes red when the reasoning above stops being true, not only by this 
 
 **Dismiss the 31 alerts as false positives, each dismissal naming the guard that would go red if its
 sanitizer stopped holding, and add the guard the open-redirect class was missing** —
-`tests/web/test_web_security.py`'s `test_the_discover_redirect_never_leaves_this_origin_under_a_hostile_slug`,
-`test_the_answers_redirect_never_leaves_this_origin_under_a_hostile_slug`,
-`test_the_generate_artifact_redirect_never_leaves_this_origin_under_a_hostile_slug`,
-`test_the_create_session_failure_redirect_never_leaves_this_origin_under_a_hostile_slug`, with
+`tests/web/test_web_security.py`'s `test_a_redirect_never_leaves_this_origin_under_a_hostile_slug`
+(parametrised over the discover, answers, generate and create-session-failure redirects), with
 `test_the_redirect_refusal_is_the_slug_guard_and_not_merely_a_missing_session` as the must-fire half
 (a 404 from a nonsense slug would prove nothing) and `test_a_legitimate_slug_still_redirects_where_it_should`
 as the must-not-fire control. These four sites had no equivalent before #500. A guard of the same
 shape over the path-injection class, through the API's own `{slug}`/`{artifact_type}` parameters, is
-in the tree now: #499 (issue #425) added `tests/api/test_api_traversal.py`, whose
+in the tree now: #499 (issue #425) added `tests/api/test_api_guards.py`, whose
 `test_no_slug_shaped_traversal_reaches_the_filesystem` and
 `test_no_artifact_type_traversal_reaches_the_filesystem` cover the two parameters and whose
 `test_the_refusal_is_the_slug_guard_and_not_merely_a_missing_session` is the must-fire half -- named

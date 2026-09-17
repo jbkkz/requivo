@@ -861,7 +861,7 @@ def _cmd_docs(a, client) -> None:
         type_tokens = _resolve_doc_types(type_tokens, owned_types)
     if a.all:
         if type_tokens:
-            # `--all` with explicit types is ambiguous, so refused: `test_docs_all_combined_with_an_explicit_type_is_refused`.
+            # `--all` with explicit types is ambiguous, so refused: `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session`.
             raise RequivoError(
                 f"--all takes no types ({', '.join(display_token(t) for t in type_tokens)} given) "
                 "-- drop the type names, or drop --all and name only the ones you want.")

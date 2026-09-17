@@ -13,6 +13,6 @@
    be off or those tags would be shown instead of applied, which is the whole point of #235; the
    escaping therefore happens in the renderer, before Jinja sees anything.
    `test_hostile_markup_in_a_saved_artifact_is_shown_not_executed` drives this exact path with a
-   tampered file on disk, and `tests/test_render_html.py` owns the per-construct proof. #}
+   tampered file on disk, and `tests/test_render.py` owns the per-construct proof. #}
 <article class="artifact">{{ document | safe }}</article>
 {% endblock %}

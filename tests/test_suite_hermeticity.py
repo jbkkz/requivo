@@ -25,15 +25,8 @@ def test_no_ambient_credential_reaches_a_test():
 
 def test_the_net_fires_when_a_credential_is_ambient():
     """The must-fire half: run the probe in a child pytest whose environment carries a planted key (#419)."""
-    env = dict(os.environ)
-    env["ANTHROPIC_API_KEY"] = "sk-test-ambient-should-never-survive"
-    # Same pin as `_run_in`, for the same reason (#420).
-    env["PYTHONPATH"] = str(_REPO_ROOT / "src")
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_suite_hermeticity.py::test_no_ambient_credential_reaches_a_test"],
-        cwd=_REPO_ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120,
-    )
+    proc = _child(_REPO_ROOT, _PYTEST + ["tests/test_suite_hermeticity.py::test_no_ambient_credential_reaches_a_test"],
+                  ANTHROPIC_API_KEY="sk-test-ambient-should-never-survive")
     assert proc.returncode == 0, (
         "the probe failed under a planted ambient key — the net no longer scrubs:\n"
         + proc.stdout + proc.stderr
@@ -74,20 +67,28 @@ def test_a_verb_still_reads_the_dotenv_file(tmp_path):
     )
 
 
+_PYTEST = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+
+
+def _child(cwd, argv, *, tests_on_path=False, **env_extra):
+    """A child interpreter on this checkout's `src` (#420), with the canary and the workspace scrubbed."""
+    env = {k: v for k, v in os.environ.items() if k not in ("REQUIVO_HERMETICITY_CANARY", "REQUIVO_WORKSPACE")}
+    names = ("src", "tests") if tests_on_path else ("src",)
+    env["PYTHONPATH"] = os.pathsep.join(str(_REPO_ROOT / name) for name in names)
+    env.update(env_extra)
+    return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120)
+
+
 def _run_in(cwd, script):
-    """A child interpreter running this checkout's `requivo`, wherever the venv's install points."""
-    env = {k: v for k, v in os.environ.items() if k != "REQUIVO_HERMETICITY_CANARY"}
-    env["PYTHONPATH"] = str(_REPO_ROOT / "src")
-    return subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120,
-    )
+    return _child(cwd, [sys.executable, "-c", script])
 
 
 def test_the_incomplete_model_test_leaves_the_callers_workspace_untouched(tmp_path):
     """#432: a fake reply missing required slots exhausted retries without isolating its workspace."""
-    target = _REPO_ROOT / "tests" / "test_provider_characterization.py"
-    proc = _workspace_pytest(tmp_path, f"{target}::test_run_rejects_a_model_missing_required_slots")
+    name = "test_run_rejects_a_model_missing_required_slots"
+    target = next(p for p in sorted((_REPO_ROOT / "tests").glob("test_*.py"))
+                  if f"def {name}(" in p.read_text(encoding="utf-8"))   # found by name: the file may move
+    proc = _workspace_pytest(tmp_path, f"{target}::{name}")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert not (tmp_path / ".requivo").exists(), (
         "the incomplete-model test wrote into its caller's workspace instead of its own tmp_path"
@@ -187,10 +188,4 @@ def _workspace_probe(cwd, body):
 
 
 def _workspace_pytest(cwd, target):
-    env = dict(os.environ)
-    env.pop("REQUIVO_WORKSPACE", None)
-    env["PYTHONPATH"] = os.pathsep.join(str(_REPO_ROOT / name) for name in ("src", "tests"))
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", target],
-        cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=120,
-    )
+    return _child(cwd, _PYTEST + [target], tests_on_path=True)

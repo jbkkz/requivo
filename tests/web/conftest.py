@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 from _fakes import FakeClient, Spend, full_slots, seed_session  # noqa: F401  (re-exported for the web suite)
 from fastapi.testclient import TestClient
 
+from requivo.core.persistence import canonical_dir
 from requivo.services.discovery import DiscoveryService
 from requivo.web.app import create_app
 from requivo.web.dependencies import get_discovery
 from requivo.web.security import CSRF_HEADER, csrf_token
+from requivo.web.templating import STATIC_DIR
 
 
 def engine_reply(*, converged: bool = False, questions: list[dict] | None = None,
@@ -37,6 +42,10 @@ CRITERIA_REPLY = json.dumps({"title": "Leave approval — acceptance criteria", 
 
 HIGH_EXPLICIT = {"completeness": 90, "confidence": "explicit", "impact": "high"}
 HIGH_INFERRED = {"completeness": 30, "confidence": "inferred", "impact": "high"}
+
+# Enough tokens that the rendered figure is unmistakable in a page of other numbers: 9000 + 400 + 3000.
+PAID = Spend(input_tokens=9000, output_tokens=3000, cache_read_input_tokens=400)
+PAID_TOKENS = "12,400"
 
 
 @pytest.fixture(autouse=True)
@@ -67,8 +76,7 @@ _HTMX_POST_PATHS = ("/answers", "/artifacts/")
 
 @pytest.fixture
 def client(raw_client):
-    """The everyday client: `raw_client` plus the CSRF token every rendered form carries (as a header, so
-    tests can keep posting plain `data=` dicts) and `HX-Request: true` on the two htmx-post forms (#428)."""
+    """`raw_client` plus the CSRF token as a header and `HX-Request: true` on the two htmx-post forms (#428)."""
     raw_client.headers[CSRF_HEADER] = csrf_token()
     original_post = raw_client.post
 
@@ -85,8 +93,7 @@ def client(raw_client):
 
 @pytest.fixture
 def with_provider(app):
-    """Swap in a DiscoveryService backed by a FakeClient (shared across requests, so replies pop in order over
-    a multi-step flow)."""
+    """Swap in a DiscoveryService backed by a FakeClient shared across requests, so replies pop in order."""
     def _install(*replies, spend=None):
         fake = FakeClient(*replies, spend=spend)
         disco = DiscoveryService(client=fake)
@@ -97,7 +104,42 @@ def with_provider(app):
 
 
 def _make_session(slug="leave-approval", **model_over):
+    """Seed a discovered session directly through the service (no provider), for view/security tests."""
     return seed_session(slug, "A leave approval request", objective="Leave system", **model_over)
 
 
-full_model = full_slots
+def seed_row(slug: str, *, analysed: bool = True, updated_at: str | None = None) -> str:
+    """A listing row, offline, optionally pinned to a chosen `updated_at` instant."""
+    seed_session(slug, analysed=analysed, objective=f"Objective for {slug}")
+    if updated_at is not None:
+        p = canonical_dir(slug) / "session.json"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["updated_at"] = updated_at
+        p.write_text(json.dumps(data), encoding="utf-8")
+    return slug
+
+
+def create_via_post(client, slug="leave-approval", provider="anthropic", request_text="x", follow=False):
+    """`POST /sessions` through the everyday client; the browser's own door onto a session."""
+    return client.post("/sessions", data={"request_text": request_text, "slug": slug, "provider": provider},
+                       follow_redirects=follow)
+
+
+def analysed_via_post(client, with_provider, *replies, spend=PAID):
+    """A session at revision 1, created through the web (redirect followed) by a provider that reports `spend`."""
+    fake = with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED), *replies, spend=spend)
+    create_via_post(client, request_text="A leave approval system", follow=True)
+    return fake
+
+
+def run_js_harness(name: str, what: str, issue: str):
+    """Execute the real `static/js/app.js` under `tests/web/<name>.js` on node, or skip naming what went untested."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip(f"node is not on PATH, so {what} in static/js/app.js was NOT asserted in this run — "
+                    f"it is browser behaviour and nothing else in this suite can see it ({issue})")
+    harness = Path(__file__).parent / f"{name}.js"
+    proc = subprocess.run([node, str(harness), str(STATIC_DIR / "js" / "app.js")], capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", timeout=60)
+    assert proc.returncode == 0, "the harness itself failed, so nothing was observed:\n" + proc.stderr
+    return json.loads(proc.stdout)

@@ -1,115 +1,78 @@
-"""#257's own guard: the measured per-card byte/token cost stated in `docs/context-cards.md` and printed by
-the CLI's default-cards disclosure must agree with the actual bundled cards on disk."""
+"""The context cards: the measured cost `docs/context-cards.md` states (#257), the card summaries the grounding
+judgment reads (#593), and the one artifact caption the assets may not drift from (#166)."""
 import re
 from pathlib import Path
 
 import pytest
 
-from requivo.core.context import available_cards, card_byte_size
+from requivo.core import context as ctx
+from requivo.core.context import (
+    available_cards,
+    average_card_byte_size,
+    build_prompt,
+    build_standalone_prompt,
+    card_byte_size,
+)
 from requivo.paths import CONTEXT
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+_CONTEXT_DOC = _REPO_ROOT / "docs" / "context-cards.md"
 
 
 def _bundled_card_sizes() -> dict[str, int]:
-    # `card_byte_size`, not `st_size`: the figure being pinned is what a card contributes to a prompt, and on Windows those differ by one byte per line (see that function's own docstring).
-    return {
-        p.stem: card_byte_size(p)
-        for p in sorted(CONTEXT.glob("*.md"))
-        if not p.name.startswith("_")
-    }
+    # `card_byte_size`, not `st_size`: what a card contributes to a prompt, which on Windows differs by one byte per line.
+    sizes = {p.stem: card_byte_size(p) for p in sorted(CONTEXT.glob("*.md")) if not p.name.startswith("_")}
+    assert sizes, "no bundled context cards found -- this test is not exercising anything"
+    return sizes
 
 
 def test_the_docs_stated_bundled_card_byte_total_matches_the_files_on_disk():
     sizes = _bundled_card_sizes()
-    assert sizes, "no bundled context cards found -- this test is not exercising anything"
-    total = sum(sizes.values())
-    doc = (_REPO_ROOT / "docs" / "context-cards.md").read_text(encoding="utf-8")
-    m = re.search(r"([\d,]+) bytes, ~[\d.]+k tokens", doc)
-    assert m, ("docs/context-cards.md no longer states a 'N bytes, ~Xk tokens' figure for the "
-               "bundled cards -- update this test's pattern if the wording moved.")
-    documented = int(m.group(1).replace(",", ""))
-    assert documented == total, (
-        f"docs/context-cards.md says {documented} bytes for the bundled cards; the real total is "
-        f"{total} from {sizes}. A card was added, removed or resized -- re-measure and update the "
-        "doc (and the CLI/web disclosure text, if the count of cards changed).")
+    assert len(available_cards()) >= len(sizes)
+    m = re.search(r"([\d,]+) bytes, ~[\d.]+k tokens", _CONTEXT_DOC.read_text(encoding="utf-8"))
+    assert m, "docs/context-cards.md no longer states a 'N bytes, ~Xk tokens' figure -- update this pattern if the wording moved"
+    documented, total = int(m.group(1).replace(",", "")), sum(sizes.values())
+    assert documented == total, f"docs/context-cards.md says {documented} bytes; the real total is {total} from {sizes}"
 
 
-def test_the_docs_stated_bundled_card_count_matches_available_cards():
-    # `available_cards()` includes any user-installed cards too, so in an ordinary dev environment (no REQUIVO_CONTEXT_DIR cards) it is exactly the bundled set -- the same set the CLI's default disclosure enumerates.
-    cards = available_cards()
+def test_average_card_byte_size_matches_an_independent_computation(monkeypatch):
     sizes = _bundled_card_sizes()
-    assert len(cards) >= len(sizes) >= 1
-
-
-def test_average_card_byte_size_matches_an_independent_computation():
-    """Found in review."""
-    from requivo.core.context import average_card_byte_size
-
-    sizes = _bundled_card_sizes()
-    assert sizes, "no bundled context cards found -- this test is not exercising anything"
-    expected = sum(sizes.values()) // len(sizes)
-    assert average_card_byte_size() == expected
+    assert average_card_byte_size() == sum(sizes.values()) // len(sizes)
+    monkeypatch.setattr(ctx, "_card_paths", lambda: {})
+    assert ctx.average_card_byte_size() is None, "the defined empty-install branch"
 
 
 def test_a_card_weighs_the_same_whatever_its_line_endings(tmp_path):
     """The Windows leg, reproduced on any platform (#257)."""
     body = "# card\n\nline one\nline two\n"
-    lf = tmp_path / "lf.md"
-    crlf = tmp_path / "crlf.md"
+    lf, crlf = tmp_path / "lf.md", tmp_path / "crlf.md"
     lf.write_bytes(body.encode("utf-8"))
     crlf.write_bytes(body.replace("\n", "\r\n").encode("utf-8"))
-
-    assert crlf.stat().st_size == lf.stat().st_size + body.count("\n"), (
-        "must fire: the fixture is not actually staging two different on-disk sizes")
+    assert crlf.stat().st_size == lf.stat().st_size + body.count("\n"), "must fire: two different on-disk sizes"
     assert card_byte_size(crlf) == card_byte_size(lf) == len(body.encode("utf-8"))
 
 
-def test_average_card_byte_size_is_none_on_an_empty_install(monkeypatch):
-    """The defined empty-install branch (also found in review)."""
-    import requivo.core.context as context_module
-
-    monkeypatch.setattr(context_module, "_card_paths", lambda: {})
-    assert context_module.average_card_byte_size() is None
-
-
 def test_the_docs_stated_prompt_weight_range_matches_a_live_measurement():
-    """The percentage claim ("65-78% of every call's system prompt") was unguarded."""
-    from requivo.core.context import build_prompt
-
-    sizes = _bundled_card_sizes()
-    card_total = sum(sizes.values())
-    assert card_total, "no bundled context cards found -- this test is not exercising anything"
-    names = ["engine.md", "brief.md", "stories.md", "estimate.md", "prd.md", "criteria.md",
-             "epic.md", "release.md"]
+    card_total = sum(_bundled_card_sizes().values())
+    names = ["engine.md", "brief.md", "stories.md", "estimate.md", "prd.md", "criteria.md", "epic.md", "release.md"]
     percentages = [card_total / len(build_prompt(n).encode("utf-8")) * 100 for n in names]
     low, high = round(min(percentages)), round(max(percentages))
-
-    doc = (_REPO_ROOT / "docs" / "context-cards.md").read_text(encoding="utf-8")
-    flat = re.sub(r"\s+", " ", doc)  # the range and its trailing words wrap across a source line
+    flat = re.sub(r"\s+", " ", _CONTEXT_DOC.read_text(encoding="utf-8"))
     m = re.search(r"(\d+)[-–](\d+)% of every call.s system prompt", flat)
-    assert m, ("docs/context-cards.md no longer states an 'N-M% of every call's system prompt' "
-               "range -- update this test's pattern if the wording moved.")
-    documented_low, documented_high = int(m.group(1)), int(m.group(2))
-    assert (documented_low, documented_high) == (low, high), (
-        f"docs/context-cards.md says {documented_low}-{documented_high}%; a live measurement across "
-        f"the eight generator prompts gives {low}-{high}% (from {list(zip(names, percentages))}). "
-        "Re-measure and update the doc.")
+    assert m, "docs/context-cards.md no longer states an 'N-M% of every call's system prompt' range"
+    assert (int(m.group(1)), int(m.group(2))) == (low, high), (
+        f"docs/context-cards.md says {m.group(1)}-{m.group(2)}%; a live measurement gives {low}-{high}% ({list(zip(names, percentages))})")
 
 
-# ── the grounding judgment's deterministic half (#593) ────────────────────────────────────────────
+# ── the grounding judgment's deterministic half (#593) ───────────────────────────
 
 
 def test_one_unreadable_card_degrades_its_own_summary_row(tmp_path, monkeypatch):
-    """Invariant 15, one listing further along: a card that cannot be read reports itself as unreadable and
-    the other rows still arrive."""
-    from requivo.core import context as ctx
-
+    """Invariant 15, one listing further along: an unreadable card reports itself and the other rows still arrive."""
     good, bad = tmp_path / "good.md", tmp_path / "bad.md"
     good.write_text("# Card\n\n- Business domain: dentistry\n", encoding="utf-8")
     bad.write_text("unreadable", encoding="utf-8")
     monkeypatch.setattr(ctx, "_card_paths", lambda: {"good": good, "bad": bad})
-
     real_read = type(bad).read_text
 
     def refuse_one(self, *a, **kw):
@@ -119,50 +82,56 @@ def test_one_unreadable_card_degrades_its_own_summary_row(tmp_path, monkeypatch)
 
     monkeypatch.setattr(type(bad), "read_text", refuse_one)
     rows = {c.stem: c for c in ctx.card_summaries()}
-
     assert rows["bad"].unreadable is True and rows["bad"].domain == ""
-    assert rows["good"].unreadable is False, "a readable neighbour was dragged down with it"
-    assert rows["good"].domain == "dentistry"
+    assert rows["good"].unreadable is False and rows["good"].domain == "dentistry"
 
 
 def test_a_business_domain_is_joined_across_the_lines_it_wraps_onto(tmp_path, monkeypatch):
-    """The bundled cards wrap their long domain lines, and a domain cut at the wrap reads as a different
-    domain to the judgment that has to recognise it."""
-    from requivo.core import context as ctx
-
     card = tmp_path / "wrapped.md"
     card.write_text("- Business domain: financial reporting — consolidating operational\n"
-                    "  data into figures a finance team acts on\n"
-                    "- Product type: platform\n", encoding="utf-8")
+                    "  data into figures a finance team acts on\n- Product type: platform\n", encoding="utf-8")
     monkeypatch.setattr(ctx, "_card_paths", lambda: {"wrapped": card})
-
     domain = ctx.card_summaries()[0].domain
-    assert domain.endswith("a finance team acts on"), domain
-    assert "Product type" not in domain, "the join ran past the field it was reading"
+    assert domain.endswith("a finance team acts on") and "Product type" not in domain, domain
 
 
 def test_a_standalone_prompt_that_carries_the_shared_head_is_refused(tmp_path, monkeypatch):
-    """The mirror of `build_system_prompt`'s own refusal."""
-    from requivo.core import context as ctx
-
-    bad = tmp_path / "carries_head.md"
-    bad.write_text(ctx.SHARED_PROMPT_HEAD + "then some instructions\n", encoding="utf-8")
+    """The mirror of `build_system_prompt`'s own refusal; an ordinary standalone template still builds (must fire)."""
+    (tmp_path / "carries_head.md").write_text(ctx.SHARED_PROMPT_HEAD + "then some instructions\n", encoding="utf-8")
+    (tmp_path / "ok.md").write_text("Judge this: {{REQUEST}}\n", encoding="utf-8")
     monkeypatch.setattr(ctx, "PROMPTS", tmp_path)
-
     with pytest.raises(ValueError, match="shared leading block"):
         ctx.build_standalone_prompt("carries_head.md", {})
-
-    # Must fire: an ordinary standalone template still builds, and substitutes.
-    ok = tmp_path / "ok.md"
-    ok.write_text("Judge this: {{REQUEST}}\n", encoding="utf-8")
-    assert ctx.build_standalone_prompt("ok.md", {"{{REQUEST}}": "a leave system"}) == (
-        "Judge this: a leave system\n")
+    assert ctx.build_standalone_prompt("ok.md", {"{{REQUEST}}": "a leave system"}) == "Judge this: a leave system\n"
 
 
 def test_the_shipped_judgment_prompt_is_standalone_and_names_both_its_placeholders():
-    """The asset itself, not a fixture: it has to be buildable by the builder the generator uses."""
-    from requivo.core.context import build_standalone_prompt
-
     text = build_standalone_prompt("context_judgment.md", {"{{REQUEST}}": "R", "{{CARDS}}": "- c: d"})
-    assert "R" in text and "- c: d" in text
-    assert "{{" not in text, "a placeholder reached the provider unsubstituted"
+    assert "R" in text and "- c: d" in text and "{{" not in text, "a placeholder reached the provider unsubstituted"
+
+
+# ── the artifact `brief` has one user-facing name; an asset keeping the older one is a declared exception (#166) ──
+
+ASSETS = _REPO_ROOT / "src" / "requivo" / "assets"
+GENERATORS = _REPO_ROOT / "src" / "requivo" / "providers" / "anthropic" / "generators.py"
+ELICITATION = ASSETS / "perimeters" / "software" / "elicitation.md"
+BRIEF_PROMPT = ASSETS / "prompts" / "brief.md"
+_OLD_PHRASE = re.compile(r"solution assessment", re.IGNORECASE)
+_DECLARED_EXCEPTIONS = {BRIEF_PROMPT}  # golden-measured prompts keep their wording; the reason is at the call site
+
+
+def test_every_asset_not_declared_an_exception_uses_the_current_vocabulary():
+    files = sorted(p for p in ASSETS.rglob("*.md") if not p.name.startswith("_"))
+    assert BRIEF_PROMPT in files and ELICITATION in files, f"the scan is not seeing the asset tree under {ASSETS}"
+    assert _OLD_PHRASE.search(BRIEF_PROMPT.read_text(encoding="utf-8")), "the positive control: brief.md dropped the old wording"
+    offenders = [p for p in files if p not in _DECLARED_EXCEPTIONS and _OLD_PHRASE.search(p.read_text(encoding="utf-8"))]
+    assert not offenders, "these assets still say \"solution assessment\" and are not in _DECLARED_EXCEPTIONS:\n" + "\n".join(map(str, offenders))
+
+
+def test_the_declared_exception_records_its_reason_at_the_call_site():
+    """`brief.md` cannot carry its own exemption comment; `elicitation.md` is not golden-measured so it renames outright."""
+    elicitation = ELICITATION.read_text(encoding="utf-8")
+    assert not _OLD_PHRASE.search(elicitation) and "Decision brief" in elicitation, "elicitation.md should name the current caption"
+    text = GENERATORS.read_text(encoding="utf-8")
+    assert "brief.md" in text and "#166" in text, "the reason brief.md keeps the old wording must be recorded at the call site"
+    assert re.search(r"golden_run|golden_diff|golden harness", text, re.IGNORECASE), "the #166 note must name the golden harness"

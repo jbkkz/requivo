@@ -17,7 +17,7 @@ _VENDOR_DIRS = (
     "src/requivo/web/static/vendor",
 )
 
-# `shasum -a 256` output, verbatim and with no comment lines, so `shasum -a 256 -c THIRD-PARTY-DIGESTS.txt` (and GNU `sha256sum -c`) verifies the tree from the repository root with no argument and no parsing of ours.
+# `shasum -a 256` output verbatim, so `shasum -a 256 -c THIRD-PARTY-DIGESTS.txt` verifies the tree with no parsing of ours.
 _DIGESTS = REPO_ROOT / "THIRD-PARTY-DIGESTS.txt"
 
 
@@ -51,7 +51,7 @@ def _sha256(rel: str) -> str:
 
 _VENDORED_BUNDLES = tuple(_vendored_files())
 
-# The must-fire half (#503's own review found this exact gap in the two docstrings this file corrects, one file along): a file this policy does not name, so a check that always answers "unset" would pass whether or not `.gitattributes` said anything at all.
+# The must-fire half: files the policy does not name, so a check that always answers "unset" cannot pass (#503).
 _NOT_VENDORED = (
     "src/requivo/web/templates/base.html",
     "src/requivo/web/static/css/app.css",
@@ -88,8 +88,7 @@ def test_every_vendored_file_has_a_recorded_digest_and_every_digest_a_file():
 
 
 def test_the_membership_check_notices_each_direction_it_claims_to():
-    """Must-fire control for the row above (`test_a_single_changed_byte_fails_the_digest` is its byte-content
-    sibling)."""
+    """Must-fire control for the row above; `test_a_single_changed_byte_fails_the_digest` is its byte-content sibling."""
     assert _membership_gap(["a"], {"a": "x"}) == ([], [])
     assert _membership_gap(["a", "b"], {"a": "x"}) == (["b"], []), "a file with no digest"
     assert _membership_gap(["a"], {"a": "x", "b": "y"}) == ([], ["b"]), "a digest with no file"
@@ -108,21 +107,20 @@ def test_every_vendored_file_matches_its_recorded_digest(rel):
 
 
 def test_a_single_changed_byte_fails_the_digest(tmp_path):
-    """Must-fire control. Without it, a digest function that returned a constant, or a comparison that always
-    held, would pass every row above."""
+    """Must-fire control: a constant digest or an always-true comparison would pass every row above."""
     rel = _VENDORED_BUNDLES[0]
     original = (REPO_ROOT / rel).read_bytes()
     altered = tmp_path / "altered"
     altered.write_bytes(original + b" ")
     assert hashlib.sha256(altered.read_bytes()).hexdigest() != _recorded_digests()[rel]
-    # And the other half: the unmodified bytes do match, so the inequality above is about the change rather than about the comparison being broken in both directions.
+    # The unmodified bytes do match, so the inequality above is about the change.
     assert hashlib.sha256(original).hexdigest() == _recorded_digests()[rel]
 
 
 # -- #504: nothing normalizes their line endings -------------------------------------------------
 
 
-# Two classes merged into one table (#555): every vendored bundle must be exempt (-text) from line-ending normalization, and -- the must-fire control -- an ordinary first-party file must NOT be swept into that exemption.
+# Every vendored bundle is exempt (-text) from normalization; an ordinary first-party file is not swept into the exemption.
 @pytest.mark.parametrize("rel, expected", (
     [(rel, "unset") for rel in _VENDORED_BUNDLES]
     + [(rel, "unspecified") for rel in _NOT_VENDORED]

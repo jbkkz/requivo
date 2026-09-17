@@ -1,10 +1,11 @@
-"""Shared fixtures for the Requivo API tests (#425) -- no network, no real provider, no port bound:
-`TestClient` drives the ASGI app in-process, exactly like `tests/web/conftest.py`'s `client`."""
+"""Shared fixtures for the Requivo API tests (#425): `TestClient` drives the ASGI app in-process, no network."""
 
 from __future__ import annotations
 
+import json
+
 import pytest
-from _fakes import FakeClient, Spend  # noqa: F401  (re-exported for the api suite)
+from _fakes import FakeClient, Spend, full_model  # noqa: F401  (re-exported for the api suite)
 from _fakes import seed_session as _seed_session
 from fastapi.testclient import TestClient
 
@@ -12,10 +13,13 @@ from requivo.api.app import create_api
 from requivo.api.dependencies import get_discovery
 from requivo.services.discovery import DiscoveryService
 
+JSON = {"Content-Type": "application/json"}
+BODY = b'{"request": "A leave approval system."}'
+HIGH_EXPLICIT = {"completeness": 90, "confidence": "explicit", "impact": "high"}
+
 
 @pytest.fixture(autouse=True)
 def workspace(tmp_path, monkeypatch):
-    """Isolate every test's sessions under a fresh temp workspace."""
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
     return tmp_path
 
@@ -33,14 +37,12 @@ def raw_client(app):
 
 @pytest.fixture
 def client(raw_client):
-    """The everyday client: same as `raw_client`, plus `Content-Type: application/json` on every write."""
+    """`raw_client` plus `Content-Type: application/json` on every write."""
     original_request = raw_client.request
 
     def _request(method, url, *args, **kwargs):
         if method.upper() in ("POST", "PUT", "PATCH", "DELETE"):
-            headers = dict(kwargs.get("headers") or {})
-            headers.setdefault("Content-Type", "application/json")
-            kwargs["headers"] = headers
+            kwargs["headers"] = {**JSON, **(kwargs.get("headers") or {})}
         return original_request(method, url, *args, **kwargs)
 
     raw_client.request = _request
@@ -49,8 +51,7 @@ def client(raw_client):
 
 @pytest.fixture
 def with_provider(app):
-    """Swap in a `DiscoveryService` backed by a `FakeClient` (shared across requests, so replies pop in order
-    over a multi-step flow)."""
+    """A `DiscoveryService` over a `FakeClient`, shared across requests so replies pop in order."""
     def _install(*replies, spend=None):
         fake = FakeClient(*replies, spend=spend)
         disco = DiscoveryService(client=fake)
@@ -62,3 +63,7 @@ def with_provider(app):
 
 def seed_session(slug: str = "leave-approval", **model_overrides) -> str:
     return _seed_session(slug, "A leave approval request", **model_overrides)
+
+
+def engine_reply(**overrides) -> str:
+    return json.dumps(full_model(**overrides))

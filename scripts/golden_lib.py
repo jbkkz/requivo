@@ -755,7 +755,7 @@ def turn_movements(old: list[list[Turn]] | None, new: list[list[Turn]] | None, *
 #         different question than `golden_diff` reported it as answering, for a month.
 #   #410  `ba526f6` dropped `indent=2` from the JSON `generators.py` sends as the *user* message for
 #         every `--brief` capture (`advise(...)`'s `out.model_dump_json()`). `prompt_version()` only
-#         hashes the *system* prompt and `tests/test_golden_baselines.py` only compares `request`/
+#         hashes the *system* prompt and `tests/test_golden_harness.py` only compares `request`/
 #         `answers` against `requests.md`, so nothing in the tree could see it: every committed
 #         `--brief` baseline was captured against a user message the tree no longer sends, three
 #         commits after the #405 fix landed, and the suite stayed green throughout.

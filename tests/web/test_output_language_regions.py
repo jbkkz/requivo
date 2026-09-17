@@ -7,7 +7,7 @@ import re
 from html.parser import HTMLParser
 
 from requivo.services.sessions import SessionService
-from tests.web.conftest import HIGH_EXPLICIT, HIGH_INFERRED, full_model
+from tests.web.conftest import HIGH_EXPLICIT, HIGH_INFERRED, full_slots
 
 # A French request and a French reasoning turn -- the shape #277 is about.
 REQUEST_FR = "Nous aimerions que les managers approuvent les demandes de congé des employés."
@@ -67,7 +67,7 @@ def _french_session(slug: str = "conge-approbation") -> str:
     svc = SessionService()
     svc.create_session(REQUEST_FR, slug=slug)
     svc.update_model(slug, json.dumps({
-        "model": full_model(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
+        "model": full_slots(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
         "questions": [{"q": QUESTION_FR, "slot": "business_rules", "why": WHY_FR}],
         "summary": {"objective": OBJECTIVE_FR, "scope": SCOPE_FR,
                     "assumptions": [ASSUMPTION_FR], "blind_spot": BLIND_SPOT_FR},
@@ -86,41 +86,15 @@ def _french_session(slug: str = "conge-approbation") -> str:
 
 # -- must fire: the engine's and the client's own words are not announced as English --------------
 
-def test_the_clients_own_request_is_not_announced_in_the_pages_language(client):
-    """The blockquote is the client's text verbatim."""
+def test_the_clients_and_the_engines_own_words_are_not_announced_in_the_pages_language(client):
+    """The request verbatim, the objective, scope, assumptions and blind spot, and each question with its stake (#277)."""
     slug = _french_session()
-
-    page = client.get(f"/sessions/{slug}").text
-    regions = _regions(page)
-
+    regions = _regions(client.get(f"/sessions/{slug}").text)
+    tagged = " ".join(regions.unknown_language)
     assert any(REQUEST_FR in t for t in regions.unknown_language), (
-        'the request blockquote is not inside an element declaring an empty `lang`, so it inherits '
-        f'the document lang="en". Text found outside any such region: {regions.inherited_language}'
-    )
-
-
-def test_the_engines_own_prose_is_not_announced_in_the_pages_language(client):
-    """The objective, the scope, the assumptions and the blind spot are all written by the engine in the
-    request's language under this policy -- every one of them, not just the headline."""
-    slug = _french_session()
-
-    regions = _regions(client.get(f"/sessions/{slug}").text)
-    tagged = " ".join(regions.unknown_language)
-
-    for prose in (OBJECTIVE_FR, SCOPE_FR, ASSUMPTION_FR, BLIND_SPOT_FR):
+        f'the request blockquote inherits lang="en". Text outside any such region: {regions.inherited_language}')
+    for prose in (OBJECTIVE_FR, SCOPE_FR, ASSUMPTION_FR, BLIND_SPOT_FR, QUESTION_FR, WHY_FR):
         assert prose in tagged, f'engine-authored prose still inherits lang="en": {prose!r}'
-
-
-def test_a_question_and_its_stake_are_not_announced_in_the_pages_language(client):
-    """`q.why` sits beside the English label "Why it matters", so tagging the question alone leaves half the
-    sentence mis-announced -- which is why the label and the prose are separate elements."""
-    slug = _french_session()
-
-    regions = _regions(client.get(f"/sessions/{slug}").text)
-    tagged = " ".join(regions.unknown_language)
-
-    assert QUESTION_FR in tagged, 'the question text still inherits lang="en"'
-    assert WHY_FR in tagged, "the question's stake still inherits the document language"
 
 
 # Six questions is the contract's own ceiling and one more than `PRIORITY_QUESTIONS`.
@@ -138,7 +112,7 @@ def test_the_overflow_questions_under_traceability_are_tagged_too(client):
                  for slot in OVERFLOW_SLOTS[:-1]]
     questions.append({"q": OVERFLOW_Q_FR, "slot": OVERFLOW_SLOTS[-1], "why": OVERFLOW_WHY_FR})
     svc.update_model(slug, json.dumps({
-        "model": full_model(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
+        "model": full_slots(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
         "questions": questions,
         "summary": {"objective": OBJECTIVE_FR},
     }))

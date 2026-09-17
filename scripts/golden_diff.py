@@ -531,7 +531,7 @@ def main(argv: list[str]) -> int:
         # A perimeter change is a different situation from either of the two above — it was
         # re-captured, and it may be byte-different from HEAD — so it earns its own count rather than
         # folding into `stale`, the same "three genuinely different situations" rule
-        # `tests/test_golden_baselines.py` already applies to drift (#621).
+        # `tests/test_golden_harness.py` already applies to drift (#621).
         line += (f"  ⚠ {mismatched} could not be compared — captured under a different perimeter "
                  f"than its baseline.")
     print(f"\n{'─' * 60}\n{line}")
