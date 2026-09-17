@@ -25,11 +25,17 @@ body carries the same story, its reproduction and the review that closed it.
 - **A decision record exists for a *decision*** — a choice between alternatives a reader could
   reopen — never for an incident. The records this repository already holds are read against that
   bar in #549, and the ones that are incident reports become one line in the test they belong to.
-- **CLAUDE.md states rules and the map.** Its invariants are one paragraph each. A count in prose
-  that no test can falsify comes out — that part of the older rule stands.
+- **CLAUDE.md states rules and the map.** Its invariants are one line each, naming the test that
+  goes red (one paragraph each as first written; #627 measured 646 lines and put the file under a
+  ceiling in `tests/lean_budget.toml`). A count in prose that no test can falsify comes out.
 - **The issue number is never lost.** It is the only pointer that survives every rename, and it is
   what makes the tracker the archive. `tests/test_narrative_references.py` keeps checking that test
   names resolve; nothing new checks issue numbers — the second-instance bar (#483) was not met.
+- **A citation may name a test file, not only a test function.** *Corrected 2026-09-17 by #627.*
+  As written, this record pinned ~40% of test names by exact-string citation, and #555 measured that
+  a parametrise-merge, which deletes one of two names, was therefore blocked for most clusters. A
+  citation of `tests/test_<subject>.py` resolves like a citation of `test_<name>`; the reference
+  guard accepts both. A function name is still the better pointer when one test holds the rule.
 
 This is not a licence to delete a *reason attached to a guard* or a MUST-FIRE note. Those are the
 rule, not the story, and they stay on the line.

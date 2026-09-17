@@ -2127,6 +2127,34 @@ def _lean_budget_breaches(budget: dict) -> list[str]:
             f"docs/compatibility.md is {compat_lines} lines, over the "
             f"{budget['docs']['compatibility_max_lines']} ceiling"
         )
+
+    # #627: the four ceilings added with tranche 1 -- src/ docstrings, decision records, CLAUDE.md.
+    src_mod_len, src_mod_where = src.docstring_max("module")
+    if src_mod_len > budget["src"]["module_docstring_max_lines"]:
+        breaches.append(
+            f"{src_mod_where}'s module docstring is {src_mod_len} lines, over the "
+            f"{budget['src']['module_docstring_max_lines']} ceiling"
+        )
+    src_fn_len, src_fn_where = src.docstring_max("function")
+    if src_fn_len > budget["src"]["function_docstring_max_lines"]:
+        breaches.append(
+            f"{src_fn_where}'s docstring is {src_fn_len} lines, over the "
+            f"{budget['src']['function_docstring_max_lines']} ceiling"
+        )
+    records = sorted(REPO_ROOT.glob("docs/decisions/0*.md"))
+    if records:
+        longest = max(records, key=prose_measure.line_count)
+        longest_lines = prose_measure.line_count(longest)
+        if longest_lines > budget["docs"]["decision_record_max_lines"]:
+            breaches.append(
+                f"{longest.relative_to(REPO_ROOT)} is {longest_lines} lines, over the "
+                f"{budget['docs']['decision_record_max_lines']} ceiling"
+            )
+    claude_lines = prose_measure.line_count(REPO_ROOT / "CLAUDE.md")
+    if claude_lines > budget["claude_md"]["max_lines"]:
+        breaches.append(
+            f"CLAUDE.md is {claude_lines} lines, over the {budget['claude_md']['max_lines']} ceiling"
+        )
     return breaches
 
 
@@ -2142,13 +2170,13 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
     the real TOML is caught, not silently passed, and each is named -- not only the first."""
     text = LEAN_BUDGET_TOML.read_text(encoding="utf-8")
     zeroed, count = re.subn(r"(?m)^(\w[\w.]*\s*=\s*)[0-9][0-9.]*\s*$", r"\g<1>0", text)
-    assert count == 8, f"expected 8 numeric ceilings in the real TOML, the scratch edit zeroed {count}"
+    assert count == 12, f"expected 12 numeric ceilings in the real TOML, the scratch edit zeroed {count}"
     scratch = tmp_path / "lean_budget.toml"
     scratch.write_text(zeroed, encoding="utf-8")
 
     breaches = _lean_budget_breaches(_load_budget(scratch))
 
-    assert len(breaches) == 8, breaches
+    assert len(breaches) == 12, breaches
     joined = "\n".join(breaches)
 
     # The largest src/ and non-estate tests/ module names are measured here, not hardcoded: a
@@ -2164,5 +2192,6 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
 
     for expected in (
         "src/", largest_src, "code ratio", largest_tests, "docstring", "meta-guard estate", "compatibility.md",
+        "docs/decisions/", "CLAUDE.md",
     ):
         assert expected in joined, f"a zeroed ceiling should have named {expected!r}: {joined}"
