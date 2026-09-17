@@ -1,10 +1,8 @@
 """The boundary contracts, the driver `uncertainty × impact` feeds, and readiness as one boolean (#72, #165)."""
-import io
 import re
-from contextlib import redirect_stdout
 
 import pytest
-from _fakes import out, slot
+from _fakes import out, printed, slot
 from pydantic import ValidationError
 
 from requivo.core.analysis import (
@@ -86,11 +84,10 @@ def test_output_allows_a_partial_but_known_model_and_six_questions():
 
 
 def test_contracts_reject_a_field_the_schema_does_not_define():
-    """Invariant 4: boundary contracts are strict (#286)."""
-    with pytest.raises(ValidationError):
-        EngineOutput.model_validate({**_ONE_SLOT, "confidence_score": 0.8})
-    with pytest.raises(ValidationError):
-        EngineOutput.model_validate({**_ONE_SLOT, "model": {"workflow": {**slot(60, "inferred", "high"), "source": "guessed"}}})
+    """Invariant 4: boundary contracts are strict (#286), at the top level and inside a slot."""
+    for payload in ({**_ONE_SLOT, "confidence_score": 0.8}, {**_ONE_SLOT, "model": {"workflow": {**slot(60, "inferred", "high"), "source": "guessed"}}}):
+        with pytest.raises(ValidationError):
+            EngineOutput.model_validate(payload)
 
 
 def test_a_testable_slot_with_no_test_plan_is_refused():
@@ -194,10 +191,8 @@ def test_a_judgment_whose_payload_contradicts_its_decision_is_refused(payload):
 
 def test_the_three_judgments_that_agree_with_themselves_all_validate():
     """The must-fire control: a validator that refused everything would pass the test above."""
-    assert ContextJudgment.model_validate({"decision": "none", "reason": "r"}).cards == []
-    assert ContextJudgment.model_validate({"decision": "uncovered", "reason": "r"}).cards == []
-    installed = ContextJudgment.model_validate({"decision": "installed", "reason": "r", "cards": ["b2b-platform"]})
-    assert installed.decision is ContextDecision.installed
+    assert all(ContextJudgment.model_validate({"decision": d, "reason": "r"}).cards == [] for d in ("none", "uncovered"))
+    assert ContextJudgment.model_validate({"decision": "installed", "reason": "r", "cards": ["b2b-platform"]}).decision is ContextDecision.installed
 
 
 # ── the driver: information_value = uncertainty × impact ───────────────────────
@@ -230,8 +225,7 @@ def test_readiness_blockers_are_high_impact_unconfirmed(overrides, blocked, clea
 
 def test_readiness_flags_a_missing_high_impact_slot_as_blocker():
     # A required high-impact slot the model omitted entirely must not vanish from readiness.
-    _, required = schema_slot_ids()
-    model_dict = {sid: slot(90, "explicit", "high") for sid in required if sid != "business_rules"}
+    model_dict = {sid: slot(90, "explicit", "high") for sid in schema_slot_ids()[1] if sid != "business_rules"}
     assert "business_rules" in readiness_blockers(EngineOutput.model_validate({"model": model_dict, "questions": [], "summary": {}}))
 
 
@@ -277,28 +271,16 @@ BRIEF_READINESS_HEADING = "## Are we ready?"
 
 def _model_with(n_blockers: int):
     """A complete model whose only unresolved high-impact topics are the first `n_blockers` ones."""
-    _, required = schema_slot_ids()
-    ordered = [sid for sid in _schema_order() if sid in required]
+    ordered = [sid for sid in _schema_order() if sid in schema_slot_ids()[1]]
     assert len(ordered) > max(BLOCKER_COUNTS), "the schema no longer has enough required slots"
     return out({sid: slot(0 if i < n_blockers else 90, "empty" if i < n_blockers else "explicit", "high")
                 for i, sid in enumerate(ordered)})
 
 
-def _printed(fn, model) -> str:
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        fn(model)
-    return buf.getvalue()
-
-
-def _status_cell(model) -> str:
-    line = next(ln for ln in _printed(render_readiness, model).splitlines() if ln.strip().startswith("Status"))
-    return line.split("Status", 1)[1].strip()
-
-
-def _turn_verdict(model) -> str:
-    line = next(ln for ln in _printed(render_turn, model).splitlines() if "Ready?" in ln)
-    return line.split("Ready?", 1)[1].split("→")[0].strip()
+def _after(text: str, marker: str, stop: str | None = None) -> str:
+    """What follows `marker` on the first line carrying it, cut at `stop`."""
+    tail = next(ln for ln in text.splitlines() if marker in ln).split(marker, 1)[1]
+    return (tail.split(stop)[0] if stop else tail).strip()
 
 
 def _brief_verdict(model) -> str:
@@ -308,8 +290,9 @@ def _brief_verdict(model) -> str:
     return match.group(1)
 
 
-SURFACES = [("terminal status", _status_cell), ("terminal turn", _turn_verdict), ("decision brief", _brief_verdict),
-            ("web", lambda model: readiness_view(model_status(model))["headline"])]
+SURFACES = [("terminal status", lambda m: _after(printed(render_readiness, m), "Status")),
+            ("terminal turn", lambda m: _after(printed(render_turn, m), "Ready?", "→")), ("decision brief", _brief_verdict),
+            ("web", lambda m: readiness_view(model_status(m))["headline"])]
 
 
 def test_the_core_answers_readiness_with_one_boolean():
@@ -329,7 +312,7 @@ def test_readiness_renders_as_one_boolean_on_every_surface(surface, extract):
 
 def test_every_surface_asks_the_same_readiness_question():
     model = _model_with(2)
-    terminal = _printed(render_readiness, model)
+    terminal = printed(render_readiness, model)
     markdown = brief_markdown(model, Brief(complexity="low"))
     assert "ARE WE READY?" in terminal and "READY FOR IMPLEMENTATION?" not in terminal
     assert BRIEF_READINESS_HEADING in markdown and "Ready to estimate?" not in markdown

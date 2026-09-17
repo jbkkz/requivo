@@ -15,6 +15,8 @@ PROJECT_SETTINGS_LOCAL = ".claude/settings.local.json"   # the per-machine half,
 ALLOWED_SETTINGS_KEYS = frozenset()
 COMMAND_KEYS = {"hooks", "statusline", "command"}        # key names whose value is something Claude Code runs
 EXECUTABLE_SUFFIXES = {".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".ts", ".rb", ".pl", ".exe", ".bat", ".cmd", ".ps1"}
+HOOKS = {"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash x.sh"}]}]}}
+PLUGINS = {"enabledPlugins": {"oss@dpt-plugins": True}}
 
 
 def _looks_executable(rel: str) -> bool:
@@ -74,16 +76,12 @@ def _tracked_settings_documents(tracked=None) -> list:
     """Every tracked JSON document under `.claude/`, parsed -- and a failure when there are none."""
     documents = []
     for rel in (_tracked_under_dot_claude() if tracked is None else tracked):
-        if not rel.endswith(".json"):
-            continue
-        try:
-            documents.append((rel, json.loads(_tracked_content(rel))))
-        except json.JSONDecodeError as exc:
-            pytest.fail(f"{rel!r}: tracked settings must be readable JSON ({exc})")
-        except (OSError, subprocess.CalledProcessError) as exc:
-            pytest.fail(f"{rel!r}: git lists it but could not produce its content ({exc})")
-    assert documents, ("scanned no tracked JSON under .claude/ -- expected at least the project settings; point this "
-                       "helper at whatever a clone now receives rather than answering green about an empty set")
+        if rel.endswith(".json"):
+            try:
+                documents.append((rel, json.loads(_tracked_content(rel))))
+            except (json.JSONDecodeError, OSError, subprocess.CalledProcessError) as exc:
+                pytest.fail(f"{rel!r}: tracked settings must be readable JSON git can produce ({exc})")
+    assert documents, "scanned no tracked JSON under .claude/ -- expected at least the project settings"
     return documents
 
 
@@ -91,54 +89,31 @@ def _tracked_settings_documents(tracked=None) -> list:
 
 
 def test_the_guard_refuses_a_scan_it_could_not_make():
-    """The scan set must still contain the two files these guards are about."""
+    """The scan set must still contain the two files these guards are about, and never the personal half (#215)."""
     tracked = _tracked_under_dot_claude()
     assert PROJECT_SETTINGS in tracked, f"{PROJECT_SETTINGS} is not tracked any more; point this guard at the new file set"
     assert RULE_LAYER in tracked, f"{RULE_LAYER} is not tracked any more (#2 argued for that); update this file to match"
+    assert PROJECT_SETTINGS_LOCAL not in tracked, f"{PROJECT_SETTINGS_LOCAL} is tracked: one developer's setup for everyone"
 
 
-def test_the_hook_detector_fires_on_a_settings_file_that_does_register_hooks():
-    """The must-fire half of `test_the_repository_registers_no_hooks`."""
-    assert _declares_hooks({"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash x.sh"}]}]}})
-    assert not _declares_hooks({"enabledPlugins": {"oss@dpt-plugins": True}})
-    assert not _declares_hooks({"hooks": {}}), "an empty hooks block registers nothing"
-    assert not _declares_hooks(["hooks"]), "a non-mapping document registers nothing"
-
-
-def test_the_script_detector_fires_on_the_shapes_a_hook_could_point_at():
-    """The must-fire half of `test_no_hook_script_is_tracked_under_dot_claude`."""
-    for rel in (".claude/hooks/pre.sh", ".claude/x.py", ".claude/x.PS1", ".claude/nested/a.bat"):
-        assert _looks_executable(rel), f"{rel!r} should be flagged as a script"
-    for rel in (".claude/settings.json", ".claude/jit-context/tools/01-oss/00-index.tsv", ".claude/remember/identity.md",
-                ".claude/no-suffix"):
-        assert not _looks_executable(rel), f"{rel!r} is data and must not be flagged"
-
-
-def test_the_command_detector_fires_on_every_shape_that_names_something_to_run():
-    """The must-fire half of `test_no_tracked_settings_document_names_anything_to_execute` (#215)."""
+@pytest.mark.parametrize(("detector", "fires", "inert"), [
+    (_declares_hooks, [HOOKS], [PLUGINS, {"hooks": {}}, ["hooks"]]),
+    (_looks_executable, [".claude/hooks/pre.sh", ".claude/x.py", ".claude/x.PS1", ".claude/nested/a.bat"],
+     [".claude/settings.json", ".claude/jit-context/tools/01-oss/00-index.tsv", ".claude/remember/identity.md", ".claude/no-suffix"]),
+    (_command_surface, [{"statusLine": {"type": "command", "command": "python3 x.py"}}, HOOKS, {"STATUSLINE": {"command": "x"}},
+                        {"someFutureKey": {"nested": [{"type": "command", "command": "curl example.invalid"}]}}],
+     [{}, PLUGINS, {"hooks": {}}, {"statusLine": {}}, {"permissions": {"allow": ["Bash(ls)"]}}, ["hooks"], "hooks"]),
+    (_enables_plugins, [PLUGINS], [{"enabledPlugins": {}}, {"statusLine": {"type": "command", "command": "x"}}, ["enabledPlugins"]]),
+    (lambda case: _documented_in(*case), [("env", "the `env` block sets variables"), ("statusLine", "the `statusLine` key names a command")],
+     [("env", "run it in a clean environment first"), ("statusLine", "a statusLine, written in prose with no code span")]),
+], ids=["hooks", "scripts", "commands", "plugins", "documented-as-a-key"])
+def test_each_detector_fires_on_its_shapes_and_stays_quiet_on_the_inert_ones(detector, fires, inert):
+    """The must-fire halves of the guards below, one detector per row (#2, #215)."""
+    for case in fires:
+        assert detector(case), f"{case!r} should be flagged"
+    for case in inert:
+        assert not detector(case), f"{case!r} names nothing"
     assert "statusLine" in _command_surface({"statusLine": {"type": "command", "command": "python3 x.py"}})
-    assert _command_surface({"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash x.sh"}]}]}})
-    assert _command_surface({"someFutureKey": {"nested": [{"type": "command", "command": "curl example.invalid"}]}})
-    assert _command_surface({"STATUSLINE": {"command": "x"}}), "key matching must be case-folded"
-    for inert in ({}, {"enabledPlugins": {"oss@dpt-plugins": True}}, {"hooks": {}}, {"statusLine": {}},
-                  {"permissions": {"allow": ["Bash(ls)"]}}, ["hooks"], "hooks"):
-        assert not _command_surface(inert), f"{inert!r} names nothing to execute"
-
-
-def test_the_plugin_enablement_detector_fires_on_a_settings_file_that_switches_one_on():
-    """The must-fire half of `test_no_tracked_settings_document_enables_a_plugin`."""
-    assert _enables_plugins({"enabledPlugins": {"oss@dpt-plugins": True}})
-    assert not _enables_plugins({"enabledPlugins": {}}), "an empty block enables nothing"
-    assert not _enables_plugins({"statusLine": {"type": "command", "command": "x"}})
-    assert not _enables_plugins(["enabledPlugins"]), "a non-mapping document enables nothing"
-
-
-def test_the_documentation_matcher_refuses_a_key_hiding_inside_a_longer_word():
-    """The must-fire half of `test_every_tracked_project_settings_key_is_described_to_contributors`."""
-    assert _documented_in("env", "the `env` block sets environment variables for the session")
-    assert not _documented_in("env", "run it in a clean environment before opening a pull request")
-    assert not _documented_in("statusLine", "a statusLine, written in prose with no code span")
-    assert _documented_in("statusLine", "the `statusLine` key names a command")
 
 
 def test_the_empty_scan_refusal_fires_when_there_is_nothing_to_scan():
@@ -159,10 +134,15 @@ def test_a_settings_key_cannot_forge_a_line_in_this_file_s_own_failure_output():
 # -- the guards themselves ----------------------------------------------------------------------
 
 
-def test_the_repository_registers_no_hooks():
-    """A tracked hook runs for everyone who clones, including a contributor with none of the maintainer's plugins (#2)."""
-    for rel, data in _tracked_settings_documents():
-        assert not _declares_hooks(data), f"{rel!r} registers hooks; if deliberate, CONTRIBUTING.md must name it as a requirement"
+@pytest.mark.parametrize(("detector", "what"), [
+    (_declares_hooks, "registers hooks; if deliberate, CONTRIBUTING.md must name it as a requirement"),
+    (_command_surface, f"names something to execute; personal automation goes in {PROJECT_SETTINGS_LOCAL}"),
+    (_enables_plugins, "enables a plugin; maintainer plugins belong at the user level"),
+], ids=["no-hooks", "nothing-to-execute", "no-plugin-enabled"])
+def test_no_tracked_settings_document_names_anything_to_run_for_a_cloner(detector, what):
+    """A tracked hook, command or plugin runs for everyone who clones, plugins or not (#2, #186)."""
+    offenders = {rel: found for rel, data in _tracked_settings_documents() if (found := detector(data))}
+    assert not offenders, f"{sorted(offenders)} {what}: {offenders}"
 
 
 def test_no_hook_script_is_tracked_under_dot_claude():
@@ -179,35 +159,12 @@ def test_the_contributor_baseline_is_written_down():
 
 
 def test_the_tracked_project_settings_carry_only_allowlisted_keys():
-    """`.claude/settings.json` may carry only keys this file names, and today it names none (#215)."""
+    """`.claude/settings.json` may carry only keys this file names and CONTRIBUTING.md describes (#215)."""
     assert PROJECT_SETTINGS in _tracked_under_dot_claude(), f"{PROJECT_SETTINGS} is not tracked; point this test at what a clone receives"
     data = json.loads(_tracked_content(PROJECT_SETTINGS))
     assert isinstance(data, dict), f"{PROJECT_SETTINGS} must be a JSON object, not {type(data).__name__}"
     extra = sorted(set(data) - ALLOWED_SETTINGS_KEYS)
-    assert not extra, (f"{PROJECT_SETTINGS} carries key(s) {extra} this guard does not allow: a per-machine key goes in "
-                       f"{PROJECT_SETTINGS_LOCAL}; one that must ship is allowlisted and described in CONTRIBUTING.md (#215)")
-
-
-def test_no_tracked_settings_document_names_anything_to_execute():
-    """No tracked JSON under `.claude/` may name a command, at any depth, under any key (#186)."""
-    offenders = {rel: found for rel, data in _tracked_settings_documents() if (found := _command_surface(data))}
-    assert not offenders, f"tracked settings name something to execute: {offenders}; personal automation goes in {PROJECT_SETTINGS_LOCAL}"
-
-
-def test_no_tracked_settings_document_enables_a_plugin():
-    """Nothing this repository tracks may switch a Claude Code plugin on (#2)."""
-    offenders = [rel for rel, data in _tracked_settings_documents() if _enables_plugins(data)]
-    assert not offenders, f"tracked settings enable plugins: {offenders}; maintainer plugins belong at the user level"
-
-
-def test_the_untracked_local_settings_file_stays_untracked():
-    """`.claude/settings.local.json` is where the personal half goes, so it must never be committed (#215)."""
-    assert PROJECT_SETTINGS_LOCAL not in _tracked_under_dot_claude(), f"{PROJECT_SETTINGS_LOCAL} is tracked: one developer's setup for everyone"
-
-
-def test_every_tracked_project_settings_key_is_described_to_contributors():
-    """A key that ships to a cloner must be a key the cloner can read about (#215)."""
-    data = json.loads(_tracked_content(PROJECT_SETTINGS))
+    assert not extra, f"{PROJECT_SETTINGS} carries key(s) {extra} this guard does not allow; a per-machine key goes in {PROJECT_SETTINGS_LOCAL}"
     contributing = (REPO / "CONTRIBUTING.md").read_text(encoding="utf-8")
     undocumented = sorted(key for key in data if not _documented_in(key, contributing))
     assert not undocumented, f"{PROJECT_SETTINGS} carries key(s) {undocumented} that CONTRIBUTING.md never names"

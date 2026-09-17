@@ -6,13 +6,12 @@ import ast
 import builtins
 import io
 import json
-import os
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from _fakes import full_model, slot
+from _fakes import deny_access, full_model, printed, seed_session, slot
 from test_source_form import _force_default_encoding  # the one control that can move the ambient encoding
 
 from requivo.cli import _build_parser, _wrote
@@ -37,19 +36,6 @@ from requivo.services.sessions import SessionService
 pytestmark = pytest.mark.usefixtures("workspace")
 
 
-def deny_access(d: Path, request, untested: str) -> Path:
-    """`chmod 000` a directory so a probe into it raises, or skip naming what went untested (wanted in _fakes)."""
-    request.addfinalizer(lambda: d.chmod(0o755))
-    if os.name == "nt":
-        pytest.skip(f"POSIX mode bits do not deny traversal on Windows. UNTESTED HERE: {untested}")
-    d.chmod(0o000)
-    try:
-        (d / "session.json").exists()
-    except PermissionError:
-        return d
-    pytest.skip(f"chmod 000 did not deny the probe on this run (running as root?). UNTESTED HERE: {untested}")
-
-
 def _legacy(slug: str, marker: str, request_text: str | None = None) -> Path:
     """A legacy out/<slug>/ session whose `problem` slot is identifiable."""
     d = store.legacy_dir(slug)
@@ -67,14 +53,12 @@ def _problem(slug: str, revision: int | None = None) -> str:
 
 def _session(slug: str, value: str = "") -> FileSessionRepository:
     """A session at revision 1, plus the repository an external consumer would hold."""
-    svc = SessionService()
-    svc.create_session("Something.", slug=slug)
-    svc.update_model(slug, full_model(problem=slot(80, "explicit", "high", value)))
+    seed_session(slug, "Something.", problem=slot(80, "explicit", "high", value))
     return FileSessionRepository()
 
 
 def _migrate() -> tuple[dict, int]:
-    """`session migrate --json` through its command function: the receipt and the exit code."""
+    """`session migrate --json` through its command function, so a refusal reaches the test: receipt and exit code."""
     buf, code = io.StringIO(), 0
     with redirect_stdout(buf):
         try:
@@ -93,37 +77,34 @@ def test_the_privacy_gitignore_is_written_once_and_never_restored(workspace):
     svc = SessionService()
     svc.create_session("A leave approval system", slug="first")
     assert marker.read_text(encoding="utf-8").splitlines()[-1] == "*", "the pattern is the self-ignoring `*`"
-
     marker.unlink()                                         # deleted on purpose: the team commits sessions
     svc.create_session("A room booking tool", slug="second")
     svc.update_model("second", full_model())
     assert not marker.exists(), "a later session operation restored an ignore file the user deleted"
-
     marker.write_text("sessions/secret-*\n", encoding="utf-8")   # edited on purpose: survives byte for byte
     svc.create_session("A third thing", slug="third")
     assert marker.read_text(encoding="utf-8") == "sessions/secret-*\n"
+
+
+def _creates_a_tree(node: ast.Call) -> bool:
+    name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+    return name == "makedirs" or (name == "mkdir" and any(k.arg == "parents" for k in node.keywords))
 
 
 def test_no_store_directory_is_created_outside_ensure_store_dir():
     """The guard behind #211: fixing every call site leaves the next one."""
     src = Path(__file__).resolve().parent.parent / "src" / "requivo"
     exempt = {("core/persistence/store.py", "create_session"), ("core/persistence/store.py", "ensure_store_dir")}
-    seen, offenders, scanned = set(), [], 0
-    for path in sorted(src.rglob("*.py")):
-        rel, scanned = path.relative_to(src).as_posix(), scanned + 1
+    seen, offenders, modules = set(), [], sorted(src.rglob("*.py"))
+    for path in modules:
+        rel = path.relative_to(src).as_posix()
         for fn in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for node in ast.walk(fn):
-                if not isinstance(node, ast.Call):
-                    continue
-                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-                if name == "makedirs" or (name == "mkdir" and any(k.arg == "parents" for k in node.keywords)):
-                    if (rel, fn.name) in exempt:
-                        seen.add((rel, fn.name))
-                    else:
-                        offenders.append(f"{rel}:{node.lineno} in {fn.name}()")
-    assert scanned > 20, f"the scan found only {scanned} modules under {src.as_posix()}"
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Call) and _creates_a_tree(node):
+                        (seen.add if (rel, fn.name) in exempt else offenders.append)(
+                            (rel, fn.name) if (rel, fn.name) in exempt else f"{rel}:{node.lineno} in {fn.name}()")
+    assert len(modules) > 20, f"the scan found only {len(modules)} modules under {src.as_posix()}"
     assert not offenders, "these create a directory tree without `ensure_store_dir` (#211):\n  " + "\n  ".join(offenders)
     assert seen == exempt, f"an exemption names no real call site: {sorted(exempt - seen)}"
 
@@ -142,7 +123,6 @@ def test_a_failed_marker_write_leaves_no_root_behind_to_suppress_the_next_attemp
         SessionService().create_session("A confidential client request.", slug="one")
     assert ei.value.code != "", "the failure must be structured, not a bare OSError"
     assert not (workspace / ".requivo").exists(), "the store root outlived the failed marker write"
-
     monkeypatch.setattr(builtins, "open", real_open)
     SessionService().create_session("A confidential client request.", slug="one")
     assert (workspace / ".requivo" / ".gitignore").exists()
@@ -155,7 +135,6 @@ def test_the_store_root_is_created_without_probing_whether_it_exists(workspace, 
     monkeypatch.setattr(Path, "exists", lambda self, *a, **kw: (called.append(str(self)), real_exists(self, *a, **kw))[1])
     SessionService().create_session("Something.", slug="probe")
     assert not any(c.endswith(".requivo") for c in called), called
-
     monkeypatch.setattr(Path, "mkdir", lambda self, *a, **kw: (_ for _ in ()).throw(PermissionError(13, "denied")))
     with pytest.raises(RequivoError):
         store.ensure_store_dir(workspace / ".requivo" / "sessions")
@@ -165,13 +144,12 @@ def test_the_store_root_is_created_without_probing_whether_it_exists(workspace, 
 
 
 def test_migrating_onto_a_live_session_is_refused_rather_than_overwriting_it():
-    """#4: `migrate_legacy` checked only that the *legacy* model existed."""
+    """#4: `migrate_legacy` checked only that the *legacy* model existed; a revision-0 shell is a claim too."""
     svc = SessionService()
     svc.create_session("A real request.", slug="dup")
     svc.update_model("dup", full_model(problem=slot(80, "explicit", "high", "REAL v1")))
     svc.update_model("dup", full_model(problem=slot(90, "explicit", "high", "REAL v2")))
     _legacy("dup", "LEGACY")
-
     with pytest.raises(RequivoError) as ei:
         store.migrate_legacy("dup")
     assert ei.value.code == "session_exists"
@@ -181,7 +159,6 @@ def test_migrating_onto_a_live_session_is_refused_rather_than_overwriting_it():
     assert check_session("dup") == []
     assert (store.legacy_dir("dup") / "model.json").exists()   # the originals are preserved on refusal too
 
-    # The other half of the claim: a session created but never analysed is still a claim on the slug.
     SessionService().create_session("A real request.", slug="fresh", provider="claude-code")
     claimed = store.read_meta("fresh").session_id
     _legacy("fresh", "LEGACY")
@@ -199,27 +176,21 @@ def test_migrating_a_free_slug_still_works():
     (legacy / "prd.md").write_text("# Legacy PRD\n", encoding="utf-8")
     (legacy / "session.json").write_text(json.dumps(
         {"created_at": "2026-01-02T03:04:05Z", "provider": "anthropic", "model_name": "claude-x"}), encoding="utf-8")
-
     meta = store.migrate_legacy("free")
-    assert meta.current_revision == 1
-    assert (_problem("free", 1), _problem("free")) == ("LEGACY", "LEGACY")
-    assert meta.artifact_status["prd"].revision == 1
-    assert (store.canonical_dir("free") / "artifacts" / "prd.md").read_text(encoding="utf-8") == "# Legacy PRD\n"
-    assert (store.canonical_dir("free") / "request.md").read_text(encoding="utf-8") == "Legacy request."
-    assert check_session("free") == []
-    assert (legacy / "model.json").exists()
+    d = store.canonical_dir("free")
+    assert (meta.current_revision, _problem("free", 1), _problem("free"), meta.artifact_status["prd"].revision) == (1, "LEGACY", "LEGACY", 1)
+    assert (d / "artifacts" / "prd.md").read_text(encoding="utf-8") == "# Legacy PRD\n"
+    assert (d / "request.md").read_text(encoding="utf-8") == "Legacy request."
+    assert check_session("free") == [] and (legacy / "model.json").exists()
     assert (meta.created_at, meta.provider, meta.model_name) == ("2026-01-02T03:04:05Z", "anthropic", "claude-x")
     assert meta.session_id == store.read_meta("free").session_id
 
 
 def test_the_bulk_migrate_command_skips_a_slug_that_is_already_taken():
     """A refusal degrades one row rather than aborting the pass (invariant 15, applied to a loop)."""
-    svc = SessionService()
-    svc.create_session("A real request.", slug="aaa-taken")
-    svc.update_model("aaa-taken", full_model(problem=slot(80, "explicit", "high", "REAL")))
+    seed_session("aaa-taken", "A real request.", problem=slot(80, "explicit", "high", "REAL"))
     _legacy("aaa-taken", "LEGACY")
     _legacy("zzz-free", "LEGACY")
-
     out, code = _migrate()
     assert (code, out["migrated"], out["skipped_already_present"]) == (0, ["zzz-free"], ["aaa-taken"])
     assert (_problem("aaa-taken", 1), _problem("zzz-free", 1)) == ("REAL", "LEGACY")
@@ -230,19 +201,13 @@ def test_the_bulk_migrate_command_degrades_a_bad_session_rather_than_aborting(br
     """#262: an unparseable legacy `model.json`, or a canonical `session.json` that cannot be read, is one row."""
     _legacy("aaa-first", "FIRST")
     _legacy("mmm-broken", "NEVER-COPIED")
-    if break_it == "legacy-model":
-        (store.legacy_dir("mmm-broken") / "model.json").write_text("{not valid json", encoding="utf-8")
-    else:
-        store.canonical_dir("mmm-broken").mkdir(parents=True, exist_ok=True)
-        (store.canonical_dir("mmm-broken") / "session.json").write_text("{not valid json", encoding="utf-8")
+    broken = store.legacy_dir("mmm-broken") / "model.json" if break_it == "legacy-model" else store.canonical_dir("mmm-broken") / "session.json"
+    broken.parent.mkdir(parents=True, exist_ok=True)
+    broken.write_text("{not valid json", encoding="utf-8")
     _legacy("zzz-last", "LAST")
-
     out, code = _migrate()
-    assert code == EXIT_DEGRADED
-    assert sorted(out["migrated"]) == ["aaa-first", "zzz-last"]
-    assert out["skipped_already_present"] == []
-    assert [e["slug"] for e in out["errors"]] == ["mmm-broken"]
-    assert out["errors"][0]["error"]
+    assert (code, sorted(out["migrated"]), out["skipped_already_present"]) == (EXIT_DEGRADED, ["aaa-first", "zzz-last"], [])
+    assert [e["slug"] for e in out["errors"]] == ["mmm-broken"] and out["errors"][0]["error"]
     assert (_problem("aaa-first", 1), _problem("zzz-last", 1)) == ("FIRST", "LAST")
 
 
@@ -250,10 +215,8 @@ def test_an_interrupted_migration_is_reported_distinctly_from_already_present():
     """#262: a revision-0 shell whose request matches the legacy one is the crash window, not a taken slug."""
     _legacy("half-done", "NEVER-COPIED")
     SessionService().create_session("", slug="half-done")   # `migrate_legacy`'s own fallback request text
-
     out, code = _migrate()
-    assert code == EXIT_DEGRADED
-    assert (out["migrated"], out["skipped_already_present"], out["interrupted"]) == ([], [], ["half-done"])
+    assert (code, out["migrated"], out["skipped_already_present"], out["interrupted"]) == (EXIT_DEGRADED, [], [], ["half-done"])
     assert SessionService().repo.read_meta("half-done").current_revision == 0
 
 
@@ -272,10 +235,8 @@ def test_the_bulk_migrate_command_degrades_an_unreadable_legacy_directory_rather
     d.mkdir(parents=True, exist_ok=True)
     deny_access(d, request, "the could-not-examine arm of the legacy-root scan")
     _legacy("zzz-last", "LAST")
-
     out, code = _migrate()
-    assert code == EXIT_DEGRADED
-    assert sorted(out["migrated"]) == ["aaa-first", "zzz-last"]
+    assert (code, sorted(out["migrated"])) == (EXIT_DEGRADED, ["aaa-first", "zzz-last"])
     assert [e["name"] for e in out["unreadable"]] == ["mmm-blocked"] and out["unreadable"][0]["error"]
     assert (_problem("aaa-first", 1), _problem("zzz-last", 1)) == ("FIRST", "LAST")
 
@@ -317,8 +278,7 @@ def test_every_artifact_door_refuses_a_name_that_is_not_a_filename(workspace, do
         assert name.startswith(ei.value.details["filename"]), name   # the refusal names what it refused
     assert (workspace / "ESCAPED.md").read_text(encoding="utf-8") == "TOP SECRET"
     assert list((store.canonical_dir("trav") / "artifacts").iterdir()) == []
-    assert store.read_meta("trav").artifact_status == {}   # nothing recorded for a refused write
-    assert check_session("trav") == []
+    assert store.read_meta("trav").artifact_status == {} and check_session("trav") == []
 
 
 def test_the_artifact_doors_still_serve_a_real_name_and_answer_none_for_a_missing_one():
@@ -331,8 +291,7 @@ def test_the_artifact_doors_still_serve_a_real_name_and_answer_none_for_a_missin
     assert store.save_session_artifact("doors", "brief", ARTIFACT_FILENAMES["brief"], "# A brief\n", source_revision=1).revision == 1
     assert repo.load_artifact("doors", ARTIFACT_FILENAMES["brief"]) == "# A brief\n"
     assert repo.load_artifact("doors", ARTIFACT_FILENAMES["prd"]) is None
-    assert set(store.read_meta("doors").artifact_status) == {"brief"}
-    assert check_session("doors") == []
+    assert set(store.read_meta("doors").artifact_status) == {"brief"} and check_session("doors") == []
 
 
 def test_both_name_guards_anchor_at_the_end_of_the_string_not_before_a_newline():
@@ -348,6 +307,14 @@ def test_both_name_guards_anchor_at_the_end_of_the_string_not_before_a_newline()
             validate_filename(bad)
 
 
+def _artifact_status(slug: str, **entries) -> None:
+    """Rewrite entries of a session's recorded `artifact_status`, the way a hand edit or an import can."""
+    p = store.canonical_dir(slug) / "session.json"
+    meta = json.loads(p.read_text(encoding="utf-8"))
+    meta["artifact_status"].update(entries)
+    p.write_text(json.dumps(meta), encoding="utf-8")
+
+
 def test_integrity_cannot_be_made_to_print_a_line_break_by_a_recorded_filename():
     """The reachable consequence of the anchor above (#40)."""
     _session("anch")
@@ -355,11 +322,7 @@ def test_integrity_cannot_be_made_to_print_a_line_break_by_a_recorded_filename()
     (store.canonical_dir("anch") / "artifacts" / "prd.md").unlink()
     problems = check_session("anch")
     assert [p.code for p in problems] == ["missing_artifact_file"] and "\n" not in problems[0].message
-
-    p = store.canonical_dir("anch") / "session.json"
-    meta = json.loads(p.read_text(encoding="utf-8"))
-    meta["artifact_status"]["prd"]["filename"] = "prd.md\n"
-    p.write_text(json.dumps(meta), encoding="utf-8")
+    _artifact_status("anch", prd=dict(store.read_meta("anch").artifact_status["prd"].__dict__, filename="prd.md\n"))
     reported = check_session("anch")
     assert reported and all("\n" not in problem.message for problem in reported)
 
@@ -370,7 +333,6 @@ def test_an_artifact_round_trips_non_ascii_content(workspace, monkeypatch):
     body = "# Brief\n\nAn em-dash — a café — and a curly quote: “ready”.\n"
     store.save_session_artifact("read-utf8", "brief", ARTIFACT_FILENAMES["brief"], body, source_revision=1)
     assert repo.load_artifact("read-utf8", ARTIFACT_FILENAMES["brief"]) == body
-
     with monkeypatch.context() as m:
         if not _force_default_encoding(m, workspace, "ascii"):
             pytest.skip("the ambient default encoding could not be forced on this interpreter. UNTESTED ON THIS "
@@ -385,38 +347,27 @@ def _recorded(filename: str) -> store.ArtifactStatus:
     return store.ArtifactStatus(revision=1, filename=filename, updated_at="2026-08-19T00:00:00Z")
 
 
-def _run_command(argv: list) -> str:
-    ns = _build_parser().parse_args(argv)
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        ns.func(ns, None)
-    return buf.getvalue()
-
-
 @pytest.mark.parametrize("site", ["cli._wrote", "artifact save"])
 def test_a_display_site_prints_only_a_path_inside_the_session(workspace, tmp_path, monkeypatch, site):
     """#23, #36: a path that is only printed is still a path this code built, so both sites use the chokepoint."""
     _session("say-where")
     (workspace / "ESCAPED.md").write_text("TOP SECRET", encoding="utf-8")
-    artifacts = store.canonical_dir("say-where") / "artifacts"
     doc = tmp_path / "brief.md"
     doc.write_text("# A brief\n", encoding="utf-8")
     argv = ["artifact", "save", "say-where", "--type", "brief", "--file", str(doc), "--revision", "1"]
 
     def shown(filename: str | None) -> str:
-        if site == "artifact save":
-            if filename is not None:
-                monkeypatch.setattr(ArtifactService, "save", lambda *a, **k: _recorded(filename))
-            return _run_command(argv)
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            name = ARTIFACT_FILENAMES["prd"] if filename is None else filename
-            _wrote("say-where", SimpleNamespace(status=_recorded(name)), "PRD")
-        return buf.getvalue()
+        if site == "cli._wrote":
+            status = _recorded(ARTIFACT_FILENAMES["prd"] if filename is None else filename)
+            return printed(_wrote, "say-where", SimpleNamespace(status=status), "PRD")
+        if filename is not None:
+            monkeypatch.setattr(ArtifactService, "save", lambda *a, **k: _recorded(filename))
+        ns = _build_parser().parse_args(argv)
+        return printed(ns.func, ns, None)   # the command function itself, so the refusal reaches the test
 
     # The positive control first, and it is the load-bearing half: a real name prints, inside artifacts/.
     expected = ARTIFACT_FILENAMES["brief" if site == "artifact save" else "prd"]
-    assert str(artifacts / expected) in shown(None)
+    assert str(store.canonical_dir("say-where") / "artifacts" / expected) in shown(None)
     for name in ESCAPES:
         with pytest.raises(InvalidFilenameError):
             shown(name)
@@ -432,36 +383,33 @@ class _InjectedCrash(BaseException):
 @contextmanager
 def _crashing_after(after: int):
     """Let `after` writes through, then refuse the rest: ENOSPC, a SIGKILL, a pulled plug."""
-    real = store_module._atomic_write
-    record: dict = {"attempted": []}
+    real, attempted = store_module._atomic_write, []
 
     def crashing(path, content):
-        record["attempted"].append(path.name)
-        if len(record["attempted"]) > after:
+        attempted.append(path.name)
+        if len(attempted) > after:
             raise _InjectedCrash(f"simulated death after write {after}")
         return real(path, content)
 
-    with pytest.MonkeyPatch.context() as mp:
+    with pytest.MonkeyPatch.context() as mp, pytest.raises(_InjectedCrash):
         mp.setattr(store_module, "_atomic_write", crashing)
-        yield record
-    assert len(record["attempted"]) == after + 1, f"the injection did not fire where aimed: {record['attempted']}"
+        yield attempted
+    assert len(attempted) == after + 1, f"the injection did not fire where aimed: {attempted}"
 
 
-def _tear_revision_two(*, after: int) -> dict:
+def _tear_revision_two(*, after: int) -> list:
     """A session at revision 1 holding 'first', interrupted `after` writes into revision 2."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", full_model(problem=slot(10, "explicit", "low", "first")))
+    seed_session("s", "Something.", problem=slot(10, "explicit", "low", "first"))
     model = store.load_session_model("s")
     model.model["problem"].value = "second"
-    with _crashing_after(after) as record, pytest.raises(_InjectedCrash):
+    with _crashing_after(after) as attempted:
         store.save_revision("s", model)
-    return record
+    return attempted
 
 
 def _tear_first_apply(slug: str, *, after: int) -> None:
     SessionService().create_session("Something.", slug=slug)
-    with _crashing_after(after), pytest.raises(_InjectedCrash):
+    with _crashing_after(after):
         SessionService().update_model(slug, full_model(problem=slot(10, "explicit", "low", "one")))
 
 
@@ -473,24 +421,20 @@ def _current_model_is_the_recorded_revision(slug: str) -> bool:
 
 def test_a_crash_after_the_first_payload_write_still_reads_as_the_recorded_revision():
     """The window `save_revision` writes the frozen revision file first in order to make benign (#261)."""
-    record = _tear_revision_two(after=1)
-    assert store.read_meta("s").current_revision == 1
-    assert _current_model_is_the_recorded_revision("s")
-    assert store.load_session_model("s").model["problem"].value == "first"
+    attempted = _tear_revision_two(after=1)
+    assert store.read_meta("s").current_revision == 1 and _current_model_is_the_recorded_revision("s")
+    assert _problem("s") == "first"
     assert {p.code for p in check_session("s")} == {"orphan_revision_file"}
     # The mechanism: the one write that landed went to `revisions/`, which no read path consults.
-    assert record["attempted"][0] == "0002-model.json"
     orphan = store.canonical_dir("s") / "revisions" / "0002-model.json"
-    assert orphan.is_file() and "second" in orphan.read_text(encoding="utf-8")
+    assert attempted[0] == orphan.name and orphan.is_file() and "second" in orphan.read_text(encoding="utf-8")
 
 
 def test_the_next_apply_reclaims_the_orphan_and_verifies_clean():
     """The revision number was never spent, so the orphan is overwritten by the next apply."""
     _tear_revision_two(after=1)
     SessionService().update_model("s", full_model(problem=slot(20, "explicit", "low", "healed")))
-    assert store.read_meta("s").current_revision == 2
-    assert store.load_session_model("s").model["problem"].value == "healed"
-    assert store.load_revision_model("s", 2).model["problem"].value == "healed"
+    assert (store.read_meta("s").current_revision, _problem("s"), _problem("s", 2)) == (2, "healed", "healed")
     assert check_session("s") == []
 
 
@@ -499,14 +443,12 @@ def test_the_windows_the_reorder_does_not_close_are_still_reported_as_inconsiste
     _tear_revision_two(after=2)
     assert store.read_meta("s").current_revision == 1 and not _current_model_is_the_recorded_revision("s")
     assert {p.code for p in check_session("s")} == {"orphan_revision_file", "model_is_not_the_last_revision"}
-
     _tear_first_apply("gap-one", after=1)
     assert store.read_meta("gap-one").current_revision == 0
     assert not (store.canonical_dir("gap-one") / "model.json").exists()
     with pytest.raises(SessionNotFoundError):
         store.load_session_model("gap-one")     # "no model yet", which is the truth
     assert {p.code for p in check_session("gap-one")} == {"orphan_revision_file"}
-
     _tear_first_apply("gap-two", after=2)
     assert store.read_meta("gap-two").current_revision == 0
     assert {p.code for p in check_session("gap-two")} == {"orphan_revision_file", "model_without_revision"}
@@ -535,44 +477,33 @@ def test_derive_slug_yields_the_documented_handle(request_text, expected):
 def test_the_stopword_list_keeps_the_words_its_own_comment_promises_to_keep():
     """#245: the guard the comment above `_SLUG_STOPWORDS` needed rather than a second copy of it."""
     from requivo.core.persistence import _SLUG_STOPWORDS
-    for word in ("son", "hay", "sin", "man", "war", "bin", "hat"):
-        assert word not in _SLUG_STOPWORDS, f"{word!r} is an ordinary English content word"
+    assert not {"son", "hay", "sin", "man", "war", "bin", "hat"} & _SLUG_STOPWORDS, "ordinary English content words"
     assert {"the", "nous", "der", "para"} <= _SLUG_STOPWORDS
-    assert "son" in derive_slug("Track the son of the account owner").split("-")
+    assert derive_slug("Track the son of the account owner") == "track-son-account-owner"
 
 
 def test_folding_expands_a_latin_letter_that_carries_no_combining_mark():
     """#245: NFKD does not decompose ß or Œ, so they are expanded by hand."""
-    assert "strassenverkehr" in derive_slug("Straßenverkehr melden").split("-")
-    assert "oekosystem" in derive_slug("Œkosystem pflegen").split("-")
+    assert (derive_slug("Straßenverkehr melden"), derive_slug("Œkosystem pflegen")) == ("strassenverkehr-melden", "oekosystem-pflegen")
 
 
 def test_a_non_latin_request_still_derives_the_documented_discovery_fallback():
     """#245: the residual limit, stated rather than fixed."""
-    assert derive_slug("休暇承認システムが必要です") == "discovery"
-    assert derive_slug("Нам нужна система одобрения отпусков") == "discovery"
+    assert (derive_slug("休暇承認システムが必要です"), derive_slug("Нам нужна система одобрения отпусков")) == ("discovery", "discovery")
 
 
-def test_invalid_slug_is_rejected_before_touching_the_filesystem():
-    for bad in ("../../escaped", "a/b", "..", ".", "", "/abs", "Upper", "under_score"):
+_RESERVED = ("con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10)))
+
+
+def test_reserved_windows_device_names_are_refused_as_slugs():
+    """#221, #372: refused by `validate_slug` and by `canonical_dir`, the door `create_session` takes; not a slug at all is refused before any filesystem touch."""
+    for bad in ("../../escaped", "a/b", "..", ".", "", "/abs", "Upper", "under_score", *_RESERVED, *(n.upper() for n in _RESERVED)):
         with pytest.raises(InvalidSlugError):
             validate_slug(bad)
         with pytest.raises(InvalidSlugError):
             store.canonical_dir(bad)
-    assert validate_slug("leave-approval") == "leave-approval"
-
-
-def test_reserved_windows_device_names_are_refused_as_slugs():
-    """#221, #372: refused by `validate_slug` and by `canonical_dir`, the door `create_session` actually takes."""
-    reserved = ("con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10)))
-    for name in reserved:
-        for spelling in (name, name.upper()):
-            with pytest.raises(InvalidSlugError):
-                validate_slug(spelling)
-    for ok in ("console", "com0", "lpt", "con-approval", "prnter"):
+    for ok in ("leave-approval", "console", "com0", "lpt", "con-approval", "prnter"):
         assert validate_slug(ok) == ok
-    with pytest.raises(InvalidSlugError):
-        store.canonical_dir("con")
     with pytest.raises(InvalidSlugError):
         store.create_session("con", "A request that would slug to a reserved name.")
     with pytest.raises(InvalidSlugError):
@@ -602,11 +533,9 @@ def test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_ve
         "session_id": "deadbeef", "slug": "con", "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-01T00:00:00Z", "provider": None, "model_name": None, "context_cards": None,
         "current_revision": 0, "format_version": 1, "revisions": [], "artifact_status": {}}), encoding="utf-8")
-
     assert store.session_exists("con") is True and store.canonical_dir("con") == d
-    assert store.read_meta("con").slug == "con"
+    assert store.read_meta("con").slug == "con" and "con" in store.list_session_slugs()
     assert store.session_request("con") == "A request captured before #221 shipped."
-    assert "con" in store.list_session_slugs()
     with store.session_lock("con"):                        # `session export`'s own read-consistency lock
         pass
     assert SessionService().create_session("A request captured before #221 shipped.", slug="con").session_id == "deadbeef"
@@ -634,19 +563,17 @@ def test_a_corrupt_model_is_a_structured_error_from_every_door(corruption):
     d = store.canonical_dir(slug)
     for target in (d / "model.json", d / "revisions" / "0001-model.json"):
         target.write_text(corruption, encoding="utf-8")
-
-    for call in (lambda: store.load_session_model(slug), lambda: store.load_revision_model(slug, 1),
-                 lambda: load_model(d / "model.json")):
+    doors = {"session": lambda: store.load_session_model(slug), "revision": lambda: store.load_revision_model(slug, 1),
+             "file": lambda: load_model(d / "model.json")}
+    for name, call in doors.items():
         with pytest.raises(ModelUnreadableError) as ei:
             call()
-        assert str(d) in str(ei.value)
-    with pytest.raises(ModelUnreadableError) as ei:
-        store.load_session_model(slug)
-    assert f"requivo session verify {slug}" in str(ei.value) and "revisions/" in str(ei.value)
-    assert ei.value.details["slug"] == slug
-    with pytest.raises(ModelUnreadableError) as ei:
-        store.load_revision_model(slug, 1)
-    assert ei.value.details["revision"] == 1
+        assert str(d) in str(ei.value), name
+        if name != "file":
+            assert f"requivo session verify {slug}" in str(ei.value) and "revisions/" in str(ei.value)
+            assert ei.value.details["slug"] == slug
+        if name == "revision":
+            assert ei.value.details["revision"] == 1
 
 
 def test_a_missing_model_is_not_reported_as_a_corrupt_one():
