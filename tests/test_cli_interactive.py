@@ -1,21 +1,4 @@
-"""The interactive `discover` loop, driven end to end over a stub provider.
-
-`converse()` is the CLI's TTY loop and, until #77, was also a second orchestration of discovery: it
-called `run()` and then `advise()` itself and used `DiscoveryService` only for the final write. The
-seam guard in `tests/test_boundaries.py` pins that those imports are gone. This file pins the other
-half -- that the loop still does the same work through the service, because "the import list is
-clean" is a claim about the file, not about the behaviour.
-
-The provider is a stub implementing `ReasoningProvider`, injected into `DiscoveryService`, so nothing
-here needs the Anthropic SDK, a key, or the network. `input()` is patched, since the whole point of
-this path is that a human is on the other end of it.
-
-Split by #555, once this file outgrew one module: `test_cli_discover_run.py` covers interrupt handling
-across entry points (#206) and the `run` verb (#540/#541); this file keeps the loop itself (this
-section) and the #202 rescue-after-a-paid-turn guarantee, which share every helper below.
-`_at_a_terminal`/`_fail_draft_turn_on` are duplicated in the sibling rather than imported, per this
-suite's own convention of keeping test-module helpers local (`tests/_fakes.py` makes the argument).
-"""
+"""The interactive `discover` loop, driven end to end over a stub provider (#77)."""
 from __future__ import annotations
 
 import builtins
@@ -41,18 +24,11 @@ ARROW = "→"  # the separator converse() puts between a question and its answer
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(workspace):
-    """An isolated temp workspace for every test here, never the real repo -- `workspace`
-    (conftest.py) does the pointing; autouse means no test here has to ask.
-
-    The `converse()` tests write nothing, so for them this is protection rather than a requirement.
-    The `app()`-driven ones at the foot of the file really do claim sessions on disk.
-    """
+    """An isolated temp workspace for every test here, never the real repo."""
 
 
 def _model(*, objective: str, questions: list[Question] | None = None) -> EngineOutput:
-    """A model complete enough to be a real turn's output. The loop reads `questions` and hands the
-    whole object back on the next turn, so the slot is there to make it a plausible `EngineOutput`
-    rather than a shell that would pass an identity check and nothing else."""
+    """A model complete enough to be a real turn's output."""
     return EngineOutput(
         model={"problem": Slot(completeness=80, confidence="explicit", impact="high", value="v")},
         summary=Summary(objective=objective),
@@ -65,12 +41,7 @@ def _question() -> Question:
 
 
 class StubProvider:
-    """Records every call and replays a scripted list of turns.
-
-    Deliberately not a Mock: the assertions below are about *what the loop handed the seam* -- the
-    request, the carried model, the answers, the cards -- and a recorded call list says that in one
-    place. `name`/`model_name`/`provenance` are present because the protocol declares them.
-    """
+    """Records every call and replays a scripted list of turns."""
 
     name = "stub"
 
@@ -107,11 +78,7 @@ def _service(provider: StubProvider) -> DiscoveryService:
 
 
 def _converse(disco, request, answers=(), only=None, prompts=None):
-    """Run the loop with `answers` fed to `input()` in order, capturing stdout.
-
-    `prompts`, when a list is passed, collects every prompt string `input()` was handed -- the
-    questions live there rather than in stdout since #592, so a test about how they are asked has
-    nowhere else to look."""
+    """Run the loop with `answers` fed to `input()` in order, capturing stdout (#592)."""
     supplied = iter(answers)
     buf = io.StringIO()
     real_input = builtins.input
@@ -131,10 +98,7 @@ def _converse(disco, request, answers=(), only=None, prompts=None):
 
 
 def test_the_stub_satisfies_the_provider_protocol():
-    """The control for every test in this file. A stub that had drifted from `ReasoningProvider`
-    would let the loop pass against a seam the real provider does not offer -- the failure this
-    fixture exists to catch, wearing a green tick. The `Drifted` class is the must-fire control
-    for the control: it passes `isinstance` and fails the signature comparison."""
+    """The control for every test in this file."""
     assert isinstance(StubProvider(), ReasoningProvider)
     for name in ("analyze", "generate"):
         declared = set(inspect.signature(getattr(ReasoningProvider, name)).parameters)
@@ -164,8 +128,7 @@ def test_the_stub_satisfies_the_provider_protocol():
 
 
 def test_the_loop_reasons_through_the_service_and_carries_the_model_not_a_transcript():
-    """#77's behavioural half. Each turn goes through `DiscoveryService.draft_turn`, which hands the
-    provider the request, the model so far and the answers just given."""
+    """#77's behavioural half. Each turn goes through `DiscoveryService.draft_turn`."""
     first = _model(objective="one", questions=[_question()])
     second = _model(objective="two")
     provider = StubProvider(first, second)
@@ -183,11 +146,8 @@ def test_the_loop_reasons_through_the_service_and_carries_the_model_not_a_transc
 
 
 def test_the_loop_declares_its_repeated_prompt_at_the_seam():
-    """A drafting loop sends one system prompt several times, so the breakpoint is genuinely read
-    back and is worth its write -- it has to survive the move from `converse()` passing
-    `reuse_system=True` to `run()` directly, or the interactive path silently pays full price on
-    every turn after the first (#9, #58). MUST-FIRE control in the same fixture: a single-call
-    operation must still say the opposite."""
+    """A drafting loop sends one system prompt several times, so the breakpoint is genuinely read back and is
+    worth its write."""
     provider = StubProvider(_model(objective="done"), _model(objective="done"))
     disco = _service(provider)
 
@@ -201,8 +161,7 @@ def test_the_loop_declares_its_repeated_prompt_at_the_seam():
 
 
 def test_the_context_cards_are_held_constant_across_every_turn():
-    """A card selection is what the impact estimates are read against, so a turn that quietly widened
-    to the full set would reason a different session from the one before it."""
+    """A card selection is what the impact estimates are read against."""
     provider = StubProvider(
         _model(objective="one", questions=[_question()]),
         _model(objective="two"),
@@ -216,11 +175,7 @@ def test_the_context_cards_are_held_constant_across_every_turn():
     ([""], "No answer provided"),   # every question skipped -- nothing to feed back
 ])
 def test_stopping_early_stops_reasoning_and_says_so(answers, expected):
-    """A stop is a stop: the loop makes no further call and flags itself as stopped, so
-    `_cmd_discover` knows not to buy a decision brief the user did not ask for. The call count is
-    what matters -- "it stopped" would also be true of a loop that kept reasoning and threw the
-    result away. #202 changed what it returns
-    (`test_stopping_early_keeps_the_turns_it_paid_for` pins that half)."""
+    """A stop is a stop: the loop makes no further call and flags itself as stopped (#202)."""
     provider = StubProvider(_model(objective="one", questions=[_question()]))
     drafted, printed = _converse(_service(provider), "a request", answers)
     assert drafted.stopped is True
@@ -230,8 +185,7 @@ def test_stopping_early_stops_reasoning_and_says_so(answers, expected):
 
 
 def test_the_turn_limit_still_bounds_the_loop():
-    """`MAX_TURNS` is the only thing between a model that keeps asking questions and an unbounded
-    spend. Every scripted turn carries a question, so nothing but the limit can end this."""
+    """`MAX_TURNS` is the only thing between a model that keeps asking questions and an unbounded spend."""
     asking = [_model(objective=f"turn {i}", questions=[_question()]) for i in range(MAX_TURNS)]
     provider = StubProvider(*asking)
     drafted, printed = _converse(_service(provider), "a request", ["an answer"] * MAX_TURNS)
@@ -268,10 +222,7 @@ def _questions(n: int) -> list[Question]:
 
 
 def test_the_interactive_loop_asks_one_question_per_prompt():
-    """A turn printed every question it produced and *then* walked the same list at the prompt, so
-    the user read a wall before answering the first one. The wall is what moved (#592): stdout
-    carries the checkpoint and no question, and each question reaches exactly one `input()`.
-    `PRIORITY QUESTIONS` is `render_turn`'s heading, which the non-interactive verbs keep."""
+    """A turn printed every question it produced and *then* walked the same list at the prompt (#592)."""
     provider = StubProvider(_model(objective="one", questions=_questions(3)),
                             _model(objective="two"))
     prompts: list[str] = []
@@ -287,9 +238,8 @@ def test_the_interactive_loop_asks_one_question_per_prompt():
 
 
 def test_only_the_checkpoint_window_is_asked_and_the_remainder_is_dropped():
-    """`MAX_QUESTIONS` is what a turn may return; `QUESTIONS_PER_CHECKPOINT` is what the terminal
-    asks before compiling. The surplus is not carried into the next turn -- the next turn re-derives
-    its own questions against the updated model (invariant 10)."""
+    """`MAX_QUESTIONS` is what a turn may return; `QUESTIONS_PER_CHECKPOINT` is what the terminal asks before
+    compiling."""
     surplus = _questions(MAX_QUESTIONS)
     provider = StubProvider(_model(objective="one", questions=surplus), _model(objective="two"))
     prompts: list[str] = []
@@ -303,9 +253,7 @@ def test_only_the_checkpoint_window_is_asked_and_the_remainder_is_dropped():
 
 
 def test_a_full_window_still_reaches_the_provider_as_one_turn():
-    """The compile half. This pins forward rather than reproducing a defect -- the old loop was one
-    turn per batch too -- because a loop that sent a turn per question would satisfy every assertion
-    above and multiply the spend by the window."""
+    """The compile half. This pins forward rather than reproducing a defect."""
     provider = StubProvider(_model(objective="one", questions=_questions(QUESTIONS_PER_CHECKPOINT)),
                             _model(objective="two"))
     _converse(_service(provider), "a request", ["a", "b", "c", "d"])
@@ -317,8 +265,8 @@ def test_a_full_window_still_reaches_the_provider_as_one_turn():
 
 
 def test_stopping_mid_window_keeps_the_turn_it_paid_for():
-    """#202's guarantee, at the new boundary: quitting on the second of four questions still hands
-    the caller the turn already drafted, and buys no further one."""
+    """#202's guarantee, at the new boundary: quitting on the second of four questions still hands the caller
+    the turn already drafted, and buys no further one."""
     provider = StubProvider(_model(objective="one", questions=_questions(QUESTIONS_PER_CHECKPOINT)))
     drafted, printed = _converse(_service(provider), "a request", ["an answer", "q"])
 
@@ -329,17 +277,12 @@ def test_stopping_mid_window_keeps_the_turn_it_paid_for():
 
 
 def test_the_checkpoint_window_fits_inside_the_contract_cap():
-    """A window above the cap would silently mean "ask them all" and put the wall back. The two
-    numbers live in different modules -- the cap is a contract constraint, the window a journey
-    one -- so nothing but this compares them."""
+    """A window above the cap would silently mean "ask them all" and put the wall back."""
     assert 0 < QUESTIONS_PER_CHECKPOINT <= MAX_QUESTIONS
 
 
 # ── the entry-point gate, driven through `app()` (#133) ────────────────────────────────────────────
-# Everything above injects a stub provider into the service and drives `converse()` directly. The
-# three below drive the real `requivo discover` over a `FakeClient`, because what they pin is the
-# *position* of a precondition relative to the first billed call — and a position is only visible
-# from the whole verb.
+# Everything above injects a stub provider into the service and drives `converse()` directly.
 
 _REQUEST = "a leave approval system, discovered twice"
 _BRIEF_REPLY = json.dumps({"complexity": "low", "solution": "S"})
@@ -351,9 +294,7 @@ _ASKING_REPLY = json.dumps({
 
 
 def _at_a_terminal(monkeypatch) -> None:
-    """`_cmd_discover` picks its branch on `--once` *or* the absence of a TTY, and under pytest stdin
-    is never one. Patched for both legs of the tests below, so the flag is the only difference between
-    them — which is what "the two entry points refuse identically" has to mean."""
+    """`_cmd_discover` picks its branch on `--once` *or* the absence of a TTY."""
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
 
@@ -363,8 +304,7 @@ def test_both_discover_entry_points_refuse_a_refined_session_before_paying(monke
     _at_a_terminal(monkeypatch)
     _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))  # → revision 1
 
-    # Scripted with a turn *and* an assessment, so an ungated run gets all the way to the old refusal
-    # point and the count below reports how much it spent rather than dying on an exhausted stub.
+    # Scripted with a turn *and* an assessment, so an ungated run gets all the way to the old refusal point and the count below reports how much it spent rather than dying on an exhausted stub.
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
     with pytest.raises(SystemExit) as exit_:
         app(["discover", _REQUEST, *argv_tail], client=fake)
@@ -379,28 +319,18 @@ def test_both_discover_entry_points_refuse_a_refined_session_before_paying(monke
 
 @pytest.mark.parametrize("argv_tail, calls", [(["--once"], 3), ([], 4)], ids=["once", "interactive"])
 def test_a_first_discovery_still_reaches_the_provider_on_both_paths(monkeypatch, argv_tail, calls):
-    """The must-fire half of the test above. `fake.calls == []` is also true of a verb that never ran,
-    a stub that was never reached and a harness that broke — so a gate refusing *everything* would
-    pass that test and fail this one. Each path pays for the perimeter route (#601), then the
-    grounding judgment (#593), then the turn; the interactive one also pays for the assessment,
-    since `--once` does not finalize."""
+    """The must-fire half of the test above. `fake.calls == []` is also true of a verb that never ran, a stub
+    that was never reached and a harness that broke (#601)."""
     _at_a_terminal(monkeypatch)
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY, _BRIEF_REPLY)
     _run_app(["discover", _REQUEST, *argv_tail], client=fake)
     assert len(fake.calls) == calls
-    # Two revisions on the interactive path, and the second one is #202's fix showing through. The
-    # converged model is applied first (revision 1), *then* `generate(slug, "brief")` absorbs the
-    # assessment's reasoning as a revision of its own (revision 2) — the same two steps every other
-    # surface takes to produce a brief. It used to be one apply, because the assessment was reasoned
-    # before anything was written, which is exactly what made a failure there cost all eight turns.
-    # Nothing documents a finished discovery as revision 1; the number is provenance, not a contract.
+    # Two revisions on the interactive path, and the second one is #202's fix showing through.
     assert [m.current_revision for m in SessionService().list_sessions()] == [1 if argv_tail else 2]
 
 
 def test_stopping_early_keeps_the_turns_it_paid_for(monkeypatch, capsys):
-    """Stopping is not a reason to lose what you already bought (#202). The count is three since
-    #601: the perimeter route, the grounding judgment, then the turn — and *not* a decision brief
-    nobody asked for."""
+    """Stopping is not a reason to lose what you already bought (#202)."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "q")
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
@@ -420,11 +350,8 @@ def test_stopping_early_keeps_the_turns_it_paid_for(monkeypatch, capsys):
 
 
 def test_the_golden_harness_answers_a_turn_in_exactly_the_words_this_loop_does():
-    """The golden harness's multi-turn capture drives `draft_turn` off a scripted answer sheet rather
-    than a TTY, and it is only a measurement of this loop for as long as it hands the seam the same
-    bytes (#137). The answer block is the one thing it has to reproduce and the one thing that can
-    silently drift, because a differently-shaped `Client answers:` body still reasons and still
-    produces a plausible model — the capture would just be of a shape no user ever meets."""
+    """The golden harness's multi-turn capture drives `draft_turn` off a scripted answer sheet rather than a
+    TTY."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     from golden_lib import AnswerSheet, answers_for_turn
 
@@ -444,9 +371,7 @@ def test_the_golden_harness_answers_a_turn_in_exactly_the_words_this_loop_does()
 
 
 def _fail_draft_turn_on(monkeypatch, nth: int, exc: BaseException) -> None:
-    """Let the real `draft_turn` run, then raise `exc` on the `nth` call. Patched at the service
-    rather than in the transport because what these pin is `_cmd_discover`'s handling of a failed
-    turn, not how the SDK's error becomes an `EngineError` — `tests/test_provider.py` owns that."""
+    """Let the real `draft_turn` run, then raise `exc` on the `nth` call."""
     real = DiscoveryService.draft_turn
     calls = {"n": 0}
 
@@ -482,12 +407,8 @@ def test_a_failed_assessment_leaves_the_discovery_saved_and_names_the_retry(monk
 
 
 def test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_traceback(monkeypatch, capsys):
-    """[P2, review] A perimeter with no "brief" generator (go-to-market, #609's own scope) used to
-    call `disco.generate(slug, "brief")` unconditionally once the interactive loop converged --
-    `_require_owned_artifact_type` raises a bare `ValueError` there, uncaught by the
-    `RequivoError`/`KeyboardInterrupt` handler, *after* `finalize_discovery` had already saved the
-    session. Drives a real go-to-market discovery to convergence and checks it exits cleanly rather
-    than surfacing that traceback over an already-saved session."""
+    """[P2, review] A perimeter with no "brief" generator (go-to-market, #609's own scope) used to call
+    `disco.generate(slug, "brief")` unconditionally once the interactive loop converged."""
     from requivo.core.contracts import schema_slot_ids
     from requivo.core.perimeters import GO_TO_MARKET
 
@@ -506,18 +427,12 @@ def test_a_finished_go_to_market_discovery_ends_with_the_saved_session_not_a_tra
     sessions = SessionService().list_sessions()
     assert [m.current_revision for m in sessions] == [1], "the discovery was not saved"
     assert "brief" not in out.lower(), "a brief-generation attempt was made for a perimeter with none"
-    # The rendering half of the same review finding: `converse()`'s checkpoint used to render every
-    # turn against the software default, so a fully-explicit go-to-market model showed software
-    # slots as blockers and go-to-market ids unlabelled instead of "Capacity" etc.
+    # The rendering half of the same review finding.
     assert "Capacity" in out and "business_rules" not in out
 
 
 def test_a_software_only_verb_on_a_go_to_market_session_refuses_cleanly(monkeypatch, capsys):
-    """#609 (flagged as out of scope, then asked for): `requivo brief <go-to-market-slug>` used to
-    reach `_require_owned_artifact_type`, which raised a bare `ValueError` -- not a `RequivoError`,
-    so it missed `app()`'s `except RequivoError` arm entirely and tracebacked past it instead of
-    exiting cleanly. Now a structured `ArtifactTypeNotOwnedError`: exit 1, the message on stderr,
-    no traceback."""
+    """#609 (flagged as out of scope, then asked for)."""
     from requivo.core.contracts import schema_slot_ids
     from requivo.core.perimeters import GO_TO_MARKET
     from requivo.services.sessions import SessionService
@@ -576,11 +491,8 @@ def test_a_first_turn_that_fails_leaves_the_session_at_revision_zero(monkeypatch
 
 
 def test_an_interrupt_inside_a_draft_turn_is_not_a_traceback(monkeypatch, capsys):
-    """`converse`'s existing catch wraps the `input()` loop, so a Ctrl-C landing *inside* the provider
-    call — the several-second window where it is most likely to land — went past it. It is not a
-    `RequivoError` either, so `app()` let it out as a raw traceback with the claimed session unnamed
-    and the drafted turn lost.
-    """
+    """`converse`'s existing catch wraps the `input()` loop, so a Ctrl-C landing *inside* the provider call —
+    the several-second window where it is most likely to land — went past it."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "the line manager approves")
     _fail_draft_turn_on(monkeypatch, 2, KeyboardInterrupt())
@@ -596,8 +508,7 @@ def test_an_interrupt_inside_a_draft_turn_is_not_a_traceback(monkeypatch, capsys
 
 
 def test_an_interrupt_during_the_brief_reports_the_saved_session(monkeypatch, capsys):
-    """#320. #202's changelog promised that a Ctrl-C inside a provider call is no longer a traceback,
-    and delivered it only for `draft_turn`."""
+    """#320. #202's changelog promised that a Ctrl-C inside a provider call is no longer a traceback."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(DiscoveryService, "generate",
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
@@ -616,8 +527,7 @@ def test_an_interrupt_during_the_brief_reports_the_saved_session(monkeypatch, ca
 
 
 def test_a_rescue_that_cannot_save_says_so_and_still_names_the_original_failure(monkeypatch, capsys):
-    """#320. The rescue's own save was unguarded, in the code path whose entire job is keeping the
-    work."""
+    """#320. The rescue's own save was unguarded, in the code path whose entire job is keeping the work."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "the line manager approves")
     _fail_draft_turn_on(monkeypatch, 2, EngineError("API unavailable (529)."))

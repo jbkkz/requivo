@@ -1,7 +1,4 @@
-"""End-to-end tests of `requivo.deterministic.model` — `model validate`, `apply` and `diff`.
-
-Split out of `test_cli_deterministic.py` by #141; the shared harness is `tests/_cli_harness.py`.
-"""
+"""End-to-end tests of `requivo.deterministic.model` — `model validate`, `apply` and `diff` (#141)."""
 from __future__ import annotations
 
 import io
@@ -29,10 +26,7 @@ def test_model_validate_ok_and_invalid_exit(workspace, tmp_path):
 
 
 def test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one(workspace, tmp_path):
-    """`--allow-partial` on `apply` read as "apply a patch"; it merged nothing. It only relaxed the
-    completeness check, and the incomplete model then *replaced* the complete one — a fifteen-slot
-    model became a one-slot model, reported as fourteen changed slots. `apply` replaces, so it takes
-    the full slot set and nothing else; validating a projection is `model validate --allow-partial`."""
+    """`--allow-partial` on `apply` read as "apply a patch"; it merged nothing."""
     _run(["session", "init", "Something.", "--slug", "s"])
     full = tmp_path / "full.json"
     full.write_text(json.dumps(_full_model()))
@@ -70,8 +64,7 @@ def test_model_apply_and_status_and_artifact_flow(workspace, tmp_path):
 
 
 def test_model_validate_has_no_flag_it_does_not_honour():
-    # `--session` was declared and read by nothing. A flag that parses and changes nothing is worse
-    # than a missing one: the caller believes a check ran. `model diff` is the real answer.
+    # `--session` was declared and read by nothing.
     with pytest.raises(SystemExit):
         _build_parser().parse_args(["model", "validate", "p.json", "--session", "s"])
     assert _build_parser().parse_args(["model", "diff", "s", "p.json"]).func.__name__ == "_cmd_model_diff"
@@ -89,8 +82,7 @@ def test_apply_invalid_proposal_emits_error_envelope(workspace, tmp_path):
 
 
 def test_a_refused_apply_writes_nothing_and_answers_like_validate(workspace, tmp_path):
-    """The plugin's mutating skills apply a proposal directly instead of validating it first, and
-    that rests on two properties of `apply` rather than on care in the prompt (#511)."""
+    """The plugin's mutating skills apply a proposal directly instead of validating it first (#511)."""
     _run(["session", "init", "X.", "--slug", "s"])
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({"model": {"ghost": _slot()}, "summary": {"objective": "o"}}))
@@ -107,8 +99,7 @@ def test_a_refused_apply_writes_nothing_and_answers_like_validate(workspace, tmp
     assert apply_code == validate_code == 1
     assert apply_env == validate_env, "a refused apply must answer exactly as `model validate` does"
 
-    # ...and the refusal left the store as it found it, so the caller's `--expected-revision` is
-    # still current and the corrected proposal can be applied against the same N.
+    # ...and the refusal left the store as it found it, so the caller's `--expected-revision` is still current and the corrected proposal can be applied against the same N.
     assert SessionService().repo.read_meta("s").current_revision == 0
     d = store.canonical_dir("s")
     assert not (d / "model.json").exists(), "a refused apply must not write a model"
@@ -177,10 +168,8 @@ def test_a_corrupt_model_gives_the_json_envelope_its_own_code(workspace):
 
 
 def test_status_and_model_show_agree_on_a_revision_zero_session(workspace, capsys):
-    """The issue as filed claimed `status` exits 1 and `model show` exits 0 on the identical
-    revision-0 session, printing the identical message. Reproducing it against this tree found both
-    already exiting 1 -- so this pins the agreement rather than a fix, and guards the real copy fix:
-    engine jargon replaced by the actual remedy, naming `requivo discover`."""
+    """The issue as filed claimed `status` exits 1 and `model show` exits 0 on the identical revision-0
+    session, printing the identical message."""
     _run(["session", "init", "A tiny tool to track something.", "--slug", "rev0"])
 
     for argv in (["status", "rev0"], ["model", "show", "rev0"]):
@@ -197,10 +186,7 @@ def test_status_and_model_show_agree_on_a_revision_zero_session(workspace, capsy
 def test_model_show_does_not_claim_a_request_was_captured_for_a_session_that_never_existed(
     workspace, capsys,
 ):
-    """The trap on the other side of the copy fix above: the friendlier revision-zero wording says
-    "only the request was captured", which is true of a claimed session and false of a slug nobody
-    has ever used. `load_session_model` raises the identical `session_not_found` code either way, so
-    the CLI has to tell the two apart itself rather than trust the message it is handed."""
+    """The trap on the other side of the copy fix above."""
     with pytest.raises(SystemExit) as e:
         _run(["model", "show", "no-such-slug-at-all"])
     assert e.value.code == 1
@@ -224,9 +210,7 @@ def test_impact_on_an_unmatched_slot_exits_1_not_0(workspace, tmp_path):
 
 
 def test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path(workspace, tmp_path):
-    """#599: the service reported an unseated exclusion and this printer did not, so a change that
-    unseated only an exclusion was announced by `impact`, `--json` and the Web and by nothing on the
-    text path — the half-registered shape invariant 1 fails through."""
+    """#599: the service reported an unseated exclusion and this printer did not."""
     _run(["session", "init", "Something.", "--slug", "exc"])
     first = tmp_path / "first.json"
     first.write_text(json.dumps(_full_model(
@@ -249,8 +233,8 @@ def test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path(wor
 
 
 def test_a_threshold_only_invalidation_is_still_announced_on_the_apply_path(workspace, tmp_path):
-    """#604, mirroring #599's fix: the same half-registered shape (invariant 1) is checked in
-    advance for the fifth reasoning collection rather than found by a second-pass reviewer."""
+    """#604, mirroring #599's fix: the same half-registered shape (invariant 1) is checked in advance for the
+    fifth reasoning collection rather than found by a second-pass reviewer."""
     _run(["session", "init", "Something.", "--slug", "thr"])
     first = tmp_path / "first.json"
     first.write_text(json.dumps(_full_model(

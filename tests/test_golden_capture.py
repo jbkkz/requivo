@@ -1,14 +1,4 @@
-"""The golden harness's interactive capture loop, driven offline.
-
-`capture_interactive` is the only part of the harness that spends money, and it is the part whose
-bugs are least visible: a loop that stopped one turn early, or recorded an answer the engine never
-saw, still writes a well-formed baseline that every lens downstream reads without complaint. The
-numbers would just be about a conversation that did not happen (#137).
-
-Nothing here touches the network. `DiscoveryService.draft_turn` is replaced with a scripted stand-in
-and the capture directory is redirected, so this is a pure test of the loop's own decisions: what it
-sends, when it stops, and what it writes down about each turn.
-"""
+"""The golden harness's interactive capture loop, driven offline (#137)."""
 from __future__ import annotations
 
 import io
@@ -31,8 +21,7 @@ from requivo.services.discovery import DiscoveryService  # noqa: E402
 
 
 def _model(*slots: str) -> EngineOutput:
-    """A turn's reply that asks about each named slot. One filled slot keeps it a plausible model
-    rather than a shell."""
+    """A turn's reply that asks about each named slot."""
     return EngineOutput(
         model={"problem": Slot(value="v", completeness=60, confidence="inferred", impact="high")},
         questions=[Question(q=f"about {s}?", slot=s, why="it drives the shape") for s in slots],
@@ -42,18 +31,8 @@ def _model(*slots: str) -> EngineOutput:
 
 @pytest.fixture
 def capture(tmp_path, monkeypatch):
-    """Run `capture_interactive` over a scripted provider, and hand back the calls, the file, and
-    everything the run printed.
-
-    `GOLDEN` is redirected before the run: the harness writes its baseline into the repository's own
-    fixtures directory, and a test that forgot this would quietly overwrite a committed baseline with
-    stub data.
-
-    The printed output is returned rather than discarded because `capture_interactive` is the one
-    path where the #163 diagnosis has to reach a human: it prints its own SHALLOW verdict and
-    unreached-sheet-layers line right where the API calls were just spent, and the offline
-    `golden_diff.py` pass this module otherwise mirrors cannot stand in for that print (#163).
-    """
+    """Run `capture_interactive` over a scripted provider, and hand back the calls, the file, and everything
+    the run printed (#163)."""
     monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
 
     def run(replies: list[EngineOutput], answers: dict[str, list[str]], *, k: int = 1,
@@ -64,13 +43,7 @@ def capture(tmp_path, monkeypatch):
 
         def fake_draft_turn(self, request, *, current_model=None, answers=None, cards=None,
                             perimeter="__UNSET__"):
-            # No real default: a stub that quietly fell back to `DEFAULT_PERIMETER` on its own would
-            # make `test_a_request_with_no_perimeter_key_still_threads_the_software_default` pass even
-            # if `capture_interactive` stopped passing the keyword at all (#621).
-            # `current_model is None` is how the loop says "this is turn 1", so the script replays
-            # from the top for each of the K runs. A stand-in that indexed on the total call count
-            # would hand run 2 the tail of run 1's script and end it immediately — the runs would
-            # differ for a reason that came from the fixture rather than from the engine.
+            # No real default: a stub that quietly fell back to `DEFAULT_PERIMETER` on its own would make `test_a_request_with_no_perimeter_key_still_threads_the_software_default` pass even if `capture_interactive` stopped passing the keyword at all (#621).
             if current_model is None:
                 position["turn"] = 0
             calls.append({"request": request, "current_model": current_model,
@@ -86,20 +59,10 @@ def capture(tmp_path, monkeypatch):
                "answers": answers}
         if perimeter is not None:
             req["perimeter"] = perimeter
-        # `redirect_stdout` to a StringIO, which is the pattern `tests/test_cli_interactive.py`'s
-        # `_converse` already uses and for the same reason: `capture_interactive` ends by printing
-        # `✓` and `—`, and a StringIO never encodes. Without it these tests write those glyphs to the
-        # real `sys.stdout`, and pass on Windows only because pytest's own capture happens to open
-        # its buffer as UTF-8 — measured both ways: green under `pytest -q`, five
-        # `UnicodeEncodeError`s under `pytest -q -s` with a cp1252 stdout. A test that is safe only
-        # while a capture setting holds is a platform claim resting on something nobody stated, and
-        # the maintainer who reaches for `-s` to debug one of these is the person it breaks for.
+        # `redirect_stdout` to a StringIO, which is the pattern `tests/test_cli_interactive.py`'s `_converse` already uses and for the same reason: `capture_interactive` ends by printing `✓` and `—`, and a StringIO never encodes.
         buf = io.StringIO()
         with redirect_stdout(buf):
-            # A stand-in client object rather than `None`: `capture_interactive` now constructs
-            # `AnthropicProvider(client, model=...)` so the id it records is the id the calls were
-            # given (#515), and `AnthropicProvider(None)` would fall through to `new_client()` and
-            # want a credential. Nothing is called on it -- `draft_turn` is stubbed above.
+            # A stand-in client object rather than `None` (#515).
             golden_run.capture_interactive(client=object(), req=req, model="claude-sonnet-5")
         captured = load_turns((tmp_path / "scripted.runs.json").read_text(encoding="utf-8"))
         return calls, captured, buf.getvalue()
@@ -108,37 +71,29 @@ def capture(tmp_path, monkeypatch):
 
 
 def test_the_capture_threads_the_requests_own_perimeter_to_draft_turn(capture):
-    """#621: the request's own `perimeter` -- read off the parsed `requests.md` block, or the
-    software default for a fixture that predates the key -- must reach `draft_turn`, not the
-    library's own default read a second time at the call site."""
+    """#621: the request's own `perimeter` -- read off the parsed `requests.md` block."""
     calls, _, _ = capture([_model()], {}, perimeter="go-to-market")
     assert calls[0]["perimeter"] == "go-to-market"
 
 
 def test_a_request_with_no_perimeter_key_still_threads_the_software_default(capture):
-    """must not fire -- every other test in this module builds a request dict with no `perimeter`
-    key at all, the shape every fixture here had before #621. `capture_interactive` must still pass
-    a perimeter explicitly rather than omitting the keyword, or the stub above would silently fall
-    back to its own default and this would pass even if the production call forgot the argument."""
+    """must not fire -- every other test in this module builds a request dict with no `perimeter` key at all,
+    the shape every fixture here had before #621."""
     calls, _, _ = capture([_model()], {})
     assert calls[0]["perimeter"] == DEFAULT_PERIMETER
 
 
 def test_the_interactive_capture_records_the_model_it_reasoned_on(capture, tmp_path):
-    """#515: the envelope records a capture's *input* and, until this, nothing about the conditions
-    it ran under. The id is fixed on the provider the loop reasons through -- `AnthropicProvider`
-    with an explicit `model` does no environment read at all on that path (#434) -- so what lands in
-    the file is what reasoned, not a second read of `REQUIVO_MODEL` at write time."""
+    """#515: the envelope records a capture's *input* and, until this, nothing about the conditions it ran
+    under."""
     capture([_model()], {})
     text = (tmp_path / "scripted.runs.json").read_text(encoding="utf-8")
     assert captured_model(text) == "claude-sonnet-5"
 
 
 def test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list(capture):
-    """The whole validity of the measurement. `draft_turn` is the production interactive path and the
-    shape #77 changed; a loop that assembled its own message list here would capture a conversation no
-    surface has held since. Turn 1 carries the request alone, and every turn after it carries the
-    model so far plus the answers just given -- exactly what `converse()` sends."""
+    """The whole validity of the measurement. `draft_turn` is the production interactive path and the shape
+    #77 changed."""
     calls, _, _ = capture([_model("problem"), _model("actors"), _model()],
                           {"problem": ["p"], "actors": ["a"]})
     assert calls[0]["current_model"] is None and calls[0]["answers"] is None
@@ -149,9 +104,8 @@ def test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list
 
 
 def test_a_run_stops_when_the_sheet_has_nothing_left_to_say(capture):
-    """The fixture client running out of answers is the same event as a user pressing Enter on every
-    question, and `converse()` stops there. Continuing would pay for turns carrying no new input and
-    would let a run look deep without being it."""
+    """The fixture client running out of answers is the same event as a user pressing Enter on every question,
+    and `converse()` stops there."""
     calls, captured, _ = capture([_model("problem"), _model("risks")], {"problem": ["p"]}, turns=5)
     assert len(calls) == 2, "the capture kept paying after the client had nothing left to say"
     assert [t.index for t in captured[0]] == [1, 2]
@@ -164,10 +118,8 @@ def test_a_run_stops_when_the_engine_stops_asking(capture):
 
 
 def test_the_final_turn_records_no_answer_it_never_sent(capture):
-    """`answered` is what the *conversation* covered, and the re-ask count is measured against exactly
-    that set. Recording the sheet's reply to the last turn -- which no call ever carried -- would put
-    a slot in the covered set that the engine was never told about, and every finding downstream
-    would be about a turn that did not happen."""
+    """`answered` is what the *conversation* covered, and the re-ask count is measured against exactly that
+    set."""
     _, captured, _ = capture([_model("problem"), _model("actors"), _model("risks")],
                              {"problem": ["p"], "actors": ["a"], "risks": ["r"]}, turns=3)
     turns = captured[0]
@@ -175,9 +127,8 @@ def test_the_final_turn_records_no_answer_it_never_sent(capture):
 
 
 def test_every_run_starts_the_sheet_over(capture):
-    """K runs are K independent conversations. A sheet shared across them would leave run 2 with the
-    layers run 1 had not used, so the runs would not be comparable and the consensus would be over
-    inputs that differed."""
+    """K runs are K independent conversations. A sheet shared across them would leave run 2 with the layers
+    run 1 had not used."""
     calls, captured, _ = capture([_model("problem"), _model("problem"), _model()],
                                  {"problem": ["first", "second"]}, k=2)
     per_run_first_answer = [calls[1]["answers"], calls[4]["answers"]]
@@ -187,12 +138,7 @@ def test_every_run_starts_the_sheet_over(capture):
 
 # -- #163: the sheet layers a SHALLOW live capture never got to ---------------------------------
 #
-# `capture_interactive` prints its own SHALLOW verdict and the unreached-sheet-layers line right
-# where the API calls were just spent -- the point a maintainer actually reads, as opposed to the
-# offline `golden_diff.py` pass this module otherwise mirrors. A reviewer found that the live print
-# was not wired to `unreached_layers` at all until it was added alongside `golden_diff.py`'s; these
-# two cases are what stop that regressing silently, since nothing else in this file's suite reads
-# `capture_interactive`'s own stdout.
+# `capture_interactive` prints its own SHALLOW verdict and the unreached-sheet-layers line right where the API calls were just spent -- the point a maintainer actually reads, as opposed to the offline `golden_diff.py` pass this module otherwise mirrors.
 
 @pytest.mark.parametrize(
     "replies, answers, must_report",
@@ -205,10 +151,7 @@ def test_every_run_starts_the_sheet_over(capture):
 )
 def test_capture_reports_unreached_sheet_layers_only_when_shallow(capture, replies, answers,
                                                                    must_report):
-    """#163: a run that converges early must name the sheet layers it never reached -- the live
-    print has to say so right where the API calls were just spent. A run that used the loop's own
-    five-turn cap must not: the sheet is deliberately authored deeper than the cap, so leftover
-    layers there are by design and reporting them would be noise on every healthy capture."""
+    """#163: a run that converges early must name the sheet layers it never reached."""
     _, _, output = capture(replies, answers)
     assert ("sheet layers never reached" in output) is must_report, output
     if must_report:

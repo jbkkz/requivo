@@ -1,12 +1,4 @@
-"""`web/config.py`'s provider probe -- #332.
-
-`provider_status()` used to read `ANTHROPIC_API_KEY` alone while the runner (`new_client()`, in
-`providers/anthropic/client.py`) also accepts `ANTHROPIC_AUTH_TOKEN` (#201) -- so a working
-bearer-token install reported `key_present=False`, `available=False`, and the web surface fell back
-to "create session only" for a provider that would actually have worked. It now reads
-`credential_present()`, the one definition `new_client()` itself reads, rather than keeping its own
-copy of the environment-variable name.
-"""
+"""`web/config.py`'s provider probe -- #332."""
 from __future__ import annotations
 
 from requivo.web.config import provider_status
@@ -18,8 +10,8 @@ def _no_credentials(monkeypatch):
 
 
 def test_no_credential_reports_absent(monkeypatch):
-    """The negative half of the pair below -- a probe that always said "present" would not be caught
-    by the bearer-token test alone."""
+    """The negative half of the pair below -- a probe that always said "present" would not be caught by the
+    bearer-token test alone."""
     _no_credentials(monkeypatch)
     status = provider_status()
     assert status.key_present is False

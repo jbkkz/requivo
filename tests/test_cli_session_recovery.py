@@ -1,11 +1,4 @@
-"""End-to-end tests of `session verify` and `session restore` — the documented recovery path (#210).
-
-Split out of `test_cli_sessions.py` by #555, once that file outgrew one module: `verify` diagnoses a
-torn session, `restore` repairs it, and the two share `_cards_unreadable`/`_apply_two_revisions`, so
-they stay together here rather than splitting apart from each other. The rest of the `session` noun
-(init/list/show/migrate/rescope/delete) is in `test_cli_sessions.py`; the archive half
-(export/import) is in `test_cli_session_archives.py`. The shared harness is `tests/_cli_harness.py`.
-"""
+"""End-to-end tests of `session verify` and `session restore` — the documented recovery path (#210)."""
 from __future__ import annotations
 
 import io
@@ -40,21 +33,12 @@ def test_session_verify_reports_a_broken_history_and_exits_non_zero(workspace, t
 
 # ── session verify: three answers, three exit codes (#86) ────────────────────────
 #
-# `_card_health` already renders three states and `_cmd_session_verify` collapsed two of them into
-# exit 1. These tests patch `check_selection` rather than denying reads on a real card directory:
-# the state under test is "the card layer raised", the raise is what the verb branches on, and a
-# POSIX mode bit is one platform's way of producing it. The real filesystem route is already covered
-# above by `test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty`, loudly skipped where
-# the platform cannot deny a read; pinning the exit code to that route too would leave this rule
-# untested on Windows.
+# `_card_health` already renders three states and `_cmd_session_verify` collapsed two of them into exit 1. These tests patch `check_selection` rather than denying reads on a real card directory: the state under test is "the card layer raised", the raise is what the verb branches on, and a POSIX mode bit is one platform's way of producing it.
 
 
 def _cards_unreadable(monkeypatch) -> None:
-    """The card layer itself cannot be enumerated, so `check_selection` propagates rather than
-    returning a verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look*.
-    Patched on `deterministic.remedies`, not `deterministic.doctor`: `_card_health` and the
-    `check_selection` call inside it moved there in #556, so that is the module whose global
-    `check_selection` binding `_card_health` actually reads."""
+    """The card layer itself cannot be enumerated, so `check_selection` propagates rather than returning a
+    verdict — `_card_health`'s `{"checked": False}` arm, which is *we could not look* (#556)."""
     from requivo.core.errors import ContextUnreadableError
     from requivo.deterministic import remedies as det
 
@@ -67,10 +51,7 @@ def _cards_unreadable(monkeypatch) -> None:
 
 
 def test_session_verify_exits_four_when_it_could_not_check_the_product_context(workspace, monkeypatch):
-    """*Checked, and it is broken* and *could not check* are two different answers and had one exit
-    code. The verb already printed them differently — the second has a glyph of its own — and then
-    exited 1 beside a session that really is inconsistent, in the command whose whole job is to say
-    whether a session is sound."""
+    """*Checked, and it is broken* and *could not check* are two different answers and had one exit code."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     healthy = _run_json(["session", "verify", "s", "--json"])
     assert healthy["ok"] is True                                    # must fire
@@ -97,11 +78,7 @@ def test_session_verify_exits_four_when_it_could_not_check_the_product_context(w
 
 
 def test_session_verify_exits_four_when_the_lock_could_not_be_taken(workspace, monkeypatch):
-    """The sibling of the test above, on the other new probe (#263, #265): a lock `inspect_session`
-    could not take within the deadline is *could not check*, exactly like an unreadable product
-    context, and must not be reported as `problems` -- that is the accusation shape #263 exists to
-    remove. Same structure as `test_session_verify_exits_four_when_it_could_not_check_the_product_context`:
-    the clean run is the must-fire control, and the exit code is checked on both surfaces."""
+    """The sibling of the test above, on the other new probe (#263, #265)."""
     from requivo.core.errors import SessionLockedError
     from requivo.deterministic.sessions import verify as sessions_mod
 
@@ -134,8 +111,7 @@ def test_session_verify_exits_four_when_the_lock_could_not_be_taken(workspace, m
 
 
 def test_session_verify_lets_a_firm_negative_outrank_a_partial_one(workspace, monkeypatch):
-    """Both at once: a session that really is inconsistent *and* whose product context could not be
-    checked. It exits **1**, not 4."""
+    """Both at once: a session that really is inconsistent *and* whose product context could not be checked."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
     (store.canonical_dir("s") / "revisions" / "0001-model.json").unlink()
@@ -159,9 +135,7 @@ def test_session_verify_lets_a_firm_negative_outrank_a_partial_one(workspace, mo
 
 
 def test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken(workspace, tmp_path):
-    """The other firm negative, and the one most easily confused with the new 4: the cards *were*
-    read and the selection does not resolve. That is a complete answer about a session that is not
-    usable, so it stays at 1 — 4 is for the answer nobody could produce."""
+    """The other firm negative, and the one most easily confused with the new 4."""
     cards = tmp_path / "cards"
     cards.mkdir()
     card = cards / "lost-domain.md"
@@ -177,10 +151,7 @@ def test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken(wor
         with redirect_stdout(buf), pytest.raises(SystemExit) as e:
             app(["session", "verify", "s", "--json"], client=None)
 
-        # The text branch as well, and not for symmetry: it is the only arm that binds a local to a
-        # card-problem *code* string, so an exit status computed into a name that collides with it
-        # leaves SystemExit carrying `unknown_context_card` instead of a number. Reproduced while
-        # writing this change.
+        # The text branch as well, and not for symmetry.
         text = io.StringIO()
         with redirect_stdout(text), pytest.raises(SystemExit) as e_text:
             app(["session", "verify", "s"], client=None)
@@ -193,15 +164,11 @@ def test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken(wor
 
 
 # ── session restore: the documented recovery path (#210) ────────────────────
-# Before this, `session verify` diagnosed a torn model.json and stopped there -- the fact that
-# `revisions/` holds every applied model, and that an earlier one can be copied over the broken one,
-# lived nowhere a user reading the output would find it. `session restore` is the explicit,
-# user-invoked repair; `session verify`'s remedy line is what points a reader at it.
+# Before this, `session verify` diagnosed a torn model.json and stopped there.
 
 
 def _apply_two_revisions(workspace, tmp_path):
-    """Init a session and apply two revisions, the second changing `workflow` -- the fixture every
-    test below builds on. Returns the slug."""
+    """Init a session and apply two revisions, the second changing `workflow`."""
     _run(["session", "init", "Something.", "--slug", "s"])
     p1, p2 = tmp_path / "p1.json", tmp_path / "p2.json"
     p1.write_text(json.dumps(_full_model()))
@@ -238,11 +205,7 @@ def test_session_verify_names_the_restorable_revision_and_restore_repairs_it(wor
 
 def test_session_verify_says_it_could_not_check_whether_restore_would_help(workspace, tmp_path,
                                                                             monkeypatch):
-    """Found in review: `_restore_remedy_line` takes its own, later, unlocked read of the session
-    metadata -- a second read after `inspect_session`'s, already released by the time this one runs.
-    A session that locks up in that gap must not read as "nothing to suggest", the stronger, wrong
-    claim a silent `None` made; the third state is a printed line, the same rule `session.checked`
-    already follows a few lines up."""
+    """Found in review: `_restore_remedy_line` takes its own, later, unlocked read of the session metadata."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
@@ -270,9 +233,8 @@ def test_session_verify_says_it_could_not_check_whether_restore_would_help(works
 
 
 def test_session_verify_names_no_remedy_for_a_problem_restore_cannot_fix(workspace, tmp_path):
-    """The must-fire control for the test above: the remedy line is scoped to the codes `session
-    restore` can actually address, not printed for every problem. A missing revision *file* is a
-    broken history, which restoring model.json does nothing about."""
+    """The must-fire control for the test above: the remedy line is scoped to the codes `session restore` can
+    actually address, not printed for every problem."""
     slug = _apply_two_revisions(workspace, tmp_path)
     (store.canonical_dir(slug) / "revisions" / "0001-model.json").unlink()
 
@@ -296,10 +258,7 @@ def test_session_restore_defaults_to_the_newest_readable_revision(workspace, tmp
 
 
 def test_session_restore_skips_a_broken_revision_when_searching_for_the_default(workspace, tmp_path):
-    """Falling back to an older revision is a *partial* repair, and the receipt says so -- found in
-    review: the original version of this test only checked that the fallback landed on the right
-    file, and would have passed unchanged against a claim that `session verify` reads clean
-    afterwards, which is false here (revision 3's own content is genuinely gone)."""
+    """Falling back to an older revision is a *partial* repair, and the receipt says so."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     p3 = tmp_path / "p3.json"
@@ -315,9 +274,7 @@ def test_session_restore_skips_a_broken_revision_when_searching_for_the_default(
     assert (d / "model.json").read_text(encoding="utf-8") == \
         (d / "revisions" / "0002-model.json").read_text(encoding="utf-8")
 
-    # honest afterwards: model.json now holds a real historical state, but this is not the full
-    # repair -- revision 3's own content is unrecoverable, and verify must keep saying so rather
-    # than reading as fixed.
+    # honest afterwards: model.json now holds a real historical state, but this is not the full repair.
     buf = io.StringIO()
     with redirect_stdout(buf), pytest.raises(SystemExit):
         app(["session", "verify", slug, "--json"], client=None)
@@ -327,9 +284,7 @@ def test_session_restore_skips_a_broken_revision_when_searching_for_the_default(
 
 
 def test_session_restore_default_search_also_skips_a_tampered_revision(workspace, tmp_path):
-    """The hash check, not just the parse check: a revision file hand-edited after being frozen still
-    parses as a valid model, and the default search must not trust it any more than it trusts one
-    that fails to parse at all."""
+    """The hash check, not just the parse check."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     f = d / "revisions" / "0002-model.json"
@@ -344,8 +299,7 @@ def test_session_restore_default_search_also_skips_a_tampered_revision(workspace
 
 def test_session_restore_accepts_an_explicit_revision_even_when_a_newer_one_is_healthy(workspace,
                                                                                         tmp_path):
-    """A named target is honoured exactly, never silently upgraded to the newest -- the whole point
-    of `--revision` is picking one deliberately."""
+    """A named target is honoured exactly, never silently upgraded to the newest."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
 
@@ -374,9 +328,7 @@ def _corrupt_json(f: Path) -> None:
     ("1", _corrupt_json),
 ], ids=["hash-mismatch", "out-of-range", "missing-file", "unparseable"])
 def test_session_restore_refuses_a_broken_explicit_target(workspace, tmp_path, revision, corrupt):
-    """Four ways an explicit `--revision N` target can fail to resolve cleanly, all refused the same
-    way -- `model.json` untouched. Merged from four separately-named tests with no issue number of
-    their own (#555): pure input variations of one rule, not four distinct incidents."""
+    """Four ways an explicit `--revision N` target can fail to resolve cleanly (#555)."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     before = (d / "model.json").read_text(encoding="utf-8")
@@ -402,11 +354,8 @@ def test_session_restore_refuses_when_nothing_in_the_history_is_readable(workspa
 
 
 def test_session_restore_survives_a_transient_permission_error(workspace, tmp_path, monkeypatch):
-    """Windows' `rename` can fail with a transient `PermissionError` when a scanner or the Search
-    Indexer briefly opens the destination microseconds after it is written -- the same cause
-    invariant 18's `_atomic_write` retries for in `core/persistence/atomic.py`. `_replace_with_retry` is
-    this module's own small statement of the identical shape, for the one write here that is not
-    routed through that helper."""
+    """Windows' `rename` can fail with a transient `PermissionError` when a scanner or the Search Indexer
+    briefly opens the destination microseconds after it is written."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
@@ -430,8 +379,8 @@ def test_session_restore_survives_a_transient_permission_error(workspace, tmp_pa
 
 def test_session_restore_still_gives_up_on_a_permanent_permission_error(workspace, tmp_path,
                                                                           monkeypatch):
-    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail
-    loudly and quickly rather than hang forever on a retry that never gives up."""
+    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail loudly and
+    quickly rather than hang forever on a retry that never gives up."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))
@@ -445,8 +394,7 @@ def test_session_restore_still_gives_up_on_a_permanent_permission_error(workspac
     monkeypatch.setattr(Path, "replace", always_denied)
     with pytest.raises(PermissionError):
         app(["session", "restore", slug], client=None)
-    # The attempt count is what makes this a test of the *retry* rather than of `replace`: without
-    # it every assertion here holds identically with the loop deleted (found in review of #483).
+    # The attempt count is what makes this a test of the *retry* rather than of `replace` (#483).
     assert attempts["n"] == _REPLACE_ATTEMPTS, (
         f"expected exactly {_REPLACE_ATTEMPTS} attempts before giving up, got {attempts['n']}")
     assert (d / "model.json").read_text(encoding="utf-8") == torn  # unreplaced, not half-written
@@ -461,9 +409,8 @@ def test_session_restore_refuses_a_session_with_no_applied_revision_yet(workspac
 
 
 def test_session_restore_does_not_touch_the_revision_log(workspace, tmp_path):
-    """The acceptance criterion, checked directly: restoring is model.json catching up with a history
-    that was already the truth, not a new fact about the session -- no new revision file, no bump to
-    `current_revision`, no new entry in the provenance log."""
+    """The acceptance criterion, checked directly: restoring is model.json catching up with a history that was
+    already the truth, not a new fact about the session."""
     slug = _apply_two_revisions(workspace, tmp_path)
     d = store.canonical_dir(slug)
     (d / "model.json").write_text((d / "revisions" / "0001-model.json").read_text(encoding="utf-8"))

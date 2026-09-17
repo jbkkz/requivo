@@ -92,9 +92,8 @@ Four moments from one session, in order. The engine's own vocabulary — slots, 
 is not on any of these screens; the translation is defined once in `web/viewmodels/labels.py`.
 
 All four are produced by `python scripts/shoot_doc_images.py`, from the bundled example seeded as a
-real session — no key, no network. `tests/test_doc_images.py` fails when the web surface moves after
-they were taken, which is the half that was missing when two of them went stale in content and
-nothing noticed (#329).
+real session — no key, no network. `python scripts/shoot_doc_images.py --check` says whether the web
+surface has moved since they were taken (#329); re-shoot when it has.
 
 ![The home page: a single request box, with the sessions already in progress listed below it.](images/web-home.webp)
 

@@ -1,13 +1,5 @@
-"""End-to-end tests of `requivo.deterministic.sessions` — `session init`, `list`, `show`, `migrate`,
-`rescope` and `delete`.
-
-Split out of `test_cli_deterministic.py` by #141. `session export` and `session import` are the
-archive half of the same module and live in `test_cli_session_archives.py`; `session verify` and
-`session restore` moved to `test_cli_session_recovery.py` by #555, once this file outgrew one module
-— the two are one continuous story (a broken session, diagnosed, then repaired) that shares two local
-helpers, so it was worth splitting away from lifecycle/rescope/delete rather than splitting itself in
-two. The shared harness is `tests/_cli_harness.py`.
-"""
+"""End-to-end tests of `requivo.deterministic.sessions` — `session init`, `list`, `show`, `migrate`, `rescope`
+and `delete` (#141)."""
 from __future__ import annotations
 
 import io
@@ -31,9 +23,7 @@ def test_session_init_creates_a_session(workspace):
 
 
 def test_session_show_reads_freshness_from_the_dependency_graph_not_the_revision(workspace, tmp_path):
-    # `session show` used to call an artifact stale whenever the session had moved past its source
-    # revision — which contradicted `artifact list` and the status JSON in the same binary, and made
-    # every artifact look out of date after any unrelated change. The stale flag is the whole rule.
+    # `session show` used to call an artifact stale whenever the session had moved past its source revision.
     _run(["session", "init", "X.", "--slug", "s"])
     proposal = tmp_path / "m.json"
     proposal.write_text(json.dumps(_full_model()))
@@ -73,13 +63,7 @@ def test_session_list_and_show(workspace, tmp_path):
                      "Windows machine; it follows from the documented behaviour #221 already relies "
                      "on for the reserved-name refusal itself.")
 def test_a_reserved_slug_already_on_disk_is_readable_by_list_show_and_verify(workspace):
-    # #372: `.requivo/sessions/con/` already on disk (created before #221 shipped, or on a platform
-    # that never refused the name) must stay reachable through every read verb this module owns,
-    # `session export` and `session import` excluded — those live in `test_cli_session_archives.py`,
-    # a file this lane does not own this round; `core/persistence/`'s own
-    # `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it`
-    # covers the lock `session export` takes. Built by hand, not through `session init`, which must
-    # keep refusing to *create* one — that half is pinned in `test_persistence.py`.
+    # #372: `.requivo/sessions/con/` already on disk (created before #221 shipped, or on a platform that never refused the name) must stay reachable through every read verb this module owns, `session export` and `session import` excluded — those live in `test_cli_session_archives.py`, a file this lane does not own this round; `core/persistence/`'s own `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it` covers the lock `session export` takes.
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -116,20 +100,14 @@ def test_session_migrate_moves_legacy_sessions(workspace, tmp_path):
 
 
 def test_session_migrate_survives_one_undecodable_legacy_request_beside_a_healthy_session(workspace):
-    # #371: a legacy `request.md` that is not valid UTF-8 used to abort the whole pass with a raw
-    # traceback and no receipt at all, taking every other slug in the sweep down with it. Two members
-    # in one fixture, deliberately -- a fixture with only the broken one would pass on the pre-fix
-    # code too (nothing else was there to prove survived), and a fixture with only the healthy one
-    # never reaches the bug at all.
+    # #371: a legacy `request.md` that is not valid UTF-8 used to abort the whole pass with a raw traceback and no receipt at all, taking every other slug in the sweep down with it.
     #
-    # "bad" sorts before "zzz-good", so on the pre-fix code the traceback fires before the healthy
-    # slug is even reached -- reproducing "no receipt printed at all" rather than "one row missing".
+    # "bad" sorts before "zzz-good", so on the pre-fix code the traceback fires before the healthy slug is even reached -- reproducing "no receipt printed at all" rather than "one row missing".
     bad_legacy = store.legacy_dir("bad")
     bad_legacy.mkdir(parents=True)
     bad_legacy.joinpath("model.json").write_text(json.dumps(_full_model()))
     bad_legacy.joinpath("request.md").write_bytes(b"legacy \xff\xfe request")
-    # A canonical session already occupies the slug, at revision 0 -- the branch that reads
-    # `_legacy_request_text` to decide `interrupted` vs. `skipped` (see `_cmd_session_migrate`).
+    # A canonical session already occupies the slug, at revision 0.
     store.create_session("bad", "Whatever the canonical request happened to be.")
 
     good_legacy = store.legacy_dir("zzz-good")
@@ -154,19 +132,7 @@ def test_session_migrate_survives_one_undecodable_legacy_request_beside_a_health
                      "refuses to create at the OS level. REASONED, NOT OBSERVED -- same limit as the "
                      "sibling #372 fixtures.")
 def test_session_migrate_survives_a_reserved_name_legacy_directory_beside_a_healthy_one(workspace):
-    # #371 (found in review of that same fix): `repo.exists(slug)` -- the check that decides whether
-    # a slug is "occupied" -- is itself outside any per-slug guard, and it resolves through
-    # `canonical_dir`, which #372 lets refuse a *legacy-only* slug that is a reserved Windows device
-    # name (correctly: migrating one would create a brand-new reserved-name directory, which #221 and
-    # invariant 11 both say must stay refused). What must not happen is that refusal escaping the loop
-    # uncaught -- the identical "abort the whole pass, no receipt" shape #371 closed for the two reads
-    # a few lines further in. `app()`'s own top-level `except RequivoError` catches it before it
-    # becomes a raw traceback, but the effect on this verb is the same one #371 fixed: exit 1 with
-    # the generic error envelope instead of `4` with the migrate receipt, and no per-slug outcome for
-    # anything in the sweep -- not even "zzz-good", sorted after "con" and never reached.
-    # `store.legacy_dir("con")` would itself refuse -- nothing exists there yet either, so building
-    # the fixture has to bypass the same guard the test is about, exactly like the persistence-level
-    # #372 tests do for a canonical session.
+    # #371 (found in review of that same fix): `repo.exists(slug)`.
     con_legacy = store.output_root() / "con"
     con_legacy.mkdir(parents=True)
     con_legacy.joinpath("model.json").write_text(json.dumps(_full_model()))
@@ -186,14 +152,12 @@ def test_session_migrate_survives_a_reserved_name_legacy_directory_beside_a_heal
     assert "zzz-good" in r["migrated"]
     assert store.session_exists("zzz-good")
     assert [err["slug"] for err in r["errors"]] == ["con"]
-    # `store.session_exists("con")` would itself raise for this same reason -- the reserved name was
-    # never created, so it is still refused, not tolerated -- so the raw path is the honest check.
+    # `store.session_exists("con")` would itself raise for this same reason.
     assert not (store.session_root() / "con").exists()  # refused, never half-created
 
 
 # ── the revision contract on the CLI surface ────────────────────────────────────
-# These are the primitives the Claude Code skills drive, so their JSON shape is part of the contract:
-# a skill reads `revision`, reasons, then hands it back on apply and on save.
+# These are the primitives the Claude Code skills drive, so their JSON shape is part of the contract.
 
 
 def test_session_init_json_reports_the_revision(workspace, tmp_path):
@@ -202,8 +166,7 @@ def test_session_init_json_reports_the_revision(workspace, tmp_path):
 
     (tmp_path / "p.json").write_text(json.dumps(_full_model()))
     _run(["model", "apply", r["slug"], str(tmp_path / "p.json"), "--json"])
-    # `init` is idempotent: re-running it on the same request returns the session as it now stands,
-    # so a caller about to apply learns it is no longer at revision 0.
+    # `init` is idempotent: re-running it on the same request returns the session as it now stands.
     again = _run_json(["session", "init", "Build a leave approval system.", "--json"])
     assert again["slug"] == r["slug"]
     assert again["revision"] == 1
@@ -211,8 +174,7 @@ def test_session_init_json_reports_the_revision(workspace, tmp_path):
 
 
 # ── session rescope (#168) ───────────────────────────────────────────────────
-# The verb `docs/context-cards.md` used to say did not exist: re-scoping a session's context cards
-# without hand-editing `session.json`.
+# The verb `docs/context-cards.md` used to say did not exist.
 
 
 def test_session_rescope_records_a_new_revision(workspace, tmp_path):
@@ -278,9 +240,7 @@ def test_session_rescope_reports_when_nothing_changed(workspace):
 
 
 def test_session_rescope_recovers_a_session_whose_card_no_longer_resolves_here(workspace, tmp_path):
-    """The scenario the issue was filed about: a card that only exists on one machine. Before this
-    verb the documented recovery was hand-editing `session.json`; now `session verify` fails loudly,
-    `session rescope` fixes it without touching a file directly, and `session verify` passes again."""
+    """The scenario the issue was filed about: a card that only exists on one machine."""
     cards = tmp_path / "cards"
     cards.mkdir()
     (cards / "lost-domain.md").write_text("# Lost domain\n", encoding="utf-8")
@@ -316,8 +276,7 @@ def test_session_delete_removes_the_session(workspace):
 
 
 def test_session_delete_refuses_a_nonexistent_slug_with_session_not_found(workspace):
-    """The issue's own acceptance criterion, verbatim: the structured `session_not_found` error, not
-    a bare traceback or a generic refusal."""
+    """The issue's own acceptance criterion, verbatim."""
     buf = io.StringIO()
     with redirect_stdout(buf), pytest.raises(SystemExit) as e:
         app(["session", "delete", "does-not-exist", "--json"], client=None)
@@ -326,8 +285,7 @@ def test_session_delete_refuses_a_nonexistent_slug_with_session_not_found(worksp
 
 
 def test_session_delete_then_recreating_the_same_slug_succeeds(workspace):
-    """The issue's own acceptance criterion at the CLI's own door: the slug claim is genuinely
-    released, so a second `session init` for the identical slug must succeed."""
+    """The issue's own acceptance criterion at the CLI's own door."""
     _run(["session", "init", "The first occupant of this slug.", "--slug", "reused"])
     _run(["session", "delete", "reused"])
 

@@ -1,8 +1,4 @@
-"""`requivo docs` (#544): one verb over the seven generators, a menu when no type is given.
-
-Mirrors `test_cli.py`'s harness (`tests/_fakes.py`) rather than reaching into that module directly
--- its own docstring says why a cross-file reach into a sibling test module is the wrong move.
-"""
+"""`requivo docs` (#544): one verb over the seven generators, a menu when no type is given."""
 from __future__ import annotations
 
 import pytest
@@ -27,9 +23,7 @@ def _isolate_workspace(workspace):
 
 
 def test_doc_generation_order_drops_the_duplicate_stories_write():
-    """Picking `estimate` and `stories` together must write stories once -- `estimate`'s own
-    `generate()` call already saves both against one revision (invariant 6). Canonical order
-    otherwise. Pinned for #544."""
+    """Picking `estimate` and `stories` together must write stories once (#544)."""
     assert _doc_generation_order(["estimate", "stories"]) == ["estimate"]
     assert _doc_generation_order(["release", "brief"]) == ["brief", "release"]
     assert _doc_generation_order(["stories"]) == ["stories"]
@@ -53,17 +47,16 @@ def test_prompt_doc_selection_parses_numbers_names_and_all(monkeypatch):
 
 
 def test_prompt_doc_selection_refuses_an_unknown_token_before_any_call(monkeypatch):
-    """The interactive pick, like the command-line one above, refuses before any generator runs
-    (invariant 3) rather than silently dropping the bad token."""
+    """The interactive pick, like the command-line one above, refuses before any generator runs (invariant 3)
+    rather than silently dropping the bad token."""
     monkeypatch.setattr("builtins.input", lambda prompt="": "prd, nope")
     with pytest.raises(RequivoError):
         _prompt_doc_selection()
 
 
 def test_docs_menu_rows_state_reads_artifact_status_not_revision_arithmetic():
-    """A saved-at-rev-1 artifact on a rev-2 session whose change touched none of its consumed slots
-    still reads *up to date* -- the state is `ArtifactStatus.stale`, never a comparison of revision
-    numbers (invariant 1). `criteria` does not consume `problem`, which is what moves here."""
+    """A saved-at-rev-1 artifact on a rev-2 session whose change touched none of its consumed slots still
+    reads *up to date*."""
     slug = "clitest-docs-menu-rows"
     store.create_session(slug, "A request.")
     store.save_revision(slug, _built_model({"problem": slot(80, "explicit", "high")}))
@@ -94,8 +87,7 @@ def test_docs_prd_writes_the_same_file_and_provenance_as_the_prd_verb():
 
 
 def test_docs_stories_and_estimate_together_write_stories_once():
-    """Exactly two replies -- stories, then the estimate read against them. A `docs` that generated
-    `stories` separately before `estimate` would exhaust the fake and raise, not merely double-write."""
+    """Exactly two replies -- stories, then the estimate read against them."""
     fake = FakeClient(
         '{"stories": [{"id": "S1", "title": "T"}]}',
         '{"items": [{"story_id": "S1", "title": "T", "complexity": "S", "days_low": 1, "days_high": 2}]}',
@@ -144,10 +136,8 @@ def test_docs_refuses_an_unknown_type_argument_before_any_call(capsys):
 
 
 def test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session(capsys):
-    """P1 from an independent review of #544: `docs <bad-slug> --all` fell through to the
-    workspace's default session and generated every document there, silently -- `--all` discarded
-    the unmatched token instead of refusing it (invariant 3). A second real session is present so a
-    fix that merely picked the *right* default would still fail this."""
+    """P1 from an independent review of #544: `docs <bad-slug> --all` fell through to the workspace's default
+    session and generated every document there, silently."""
     fake = FakeClient()
     with _model_in_out("clitest-docs-all-other-session") as other:
         with pytest.raises(SystemExit) as exit_:

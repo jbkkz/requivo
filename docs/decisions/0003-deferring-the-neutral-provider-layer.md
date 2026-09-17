@@ -56,7 +56,7 @@ something false about the cost, not about the protocol:
   provider is a constructor argument"*
 
 Both are true of the **protocol** -- `DiscoveryService` really does take a `ReasoningProvider` and
-nothing else, and `tests/test_boundaries.py` keeps that honest from both ends. Both are false of the
+nothing else, and `tests/test_source_form.py` keeps that honest from both ends. Both are false of the
 **build cost**: a contributor reads them and plans for an afternoon, then finds that a working second
 provider means re-implementing or copying about 400 lines that have nothing to do with their vendor.
 Both now say the protocol half and the cost half separately, and point here.

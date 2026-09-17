@@ -1,27 +1,4 @@
-"""A decision derived while its evidence was thinner than it is now (#493).
-
-`propagate` answers *a slot changed, what rests on it?* What it could not represent is the case the
-external validation on #489 hit: a slot moved *toward* being filled -- an empty `current_process`
-became a measured one -- and the measurement undermined a decision recorded against the earlier,
-thinner state of that same slot. Everyone is pleased the slot got filled, so nobody re-reads the
-decision.
-
-The cheap, mechanical version is what ships here, and its wording is deliberate: a decision is
-*derived from thinner evidence than exists now, worth re-reading* -- never *contradicted*. Whether a
-measurement disagrees with a decision is a judgment over both, which belongs to the assessment and
-costs a provider call; this is a comparison of two confidence values and costs nothing.
-
-Three layers, three tests each way:
-
-* `core.dependencies.thinner_evidence` -- two models in, a report out, no IO. Both directions are
-  asserted, plus the two ways it can *fail to look*, because a check that prints the same thing for
-  *clean* and *could not look* is not finished (`CLAUDE.md`, "Build the third state").
-* `SessionService.thinner_evidence` -- walks the frozen revisions to find where each decision was
-  first recorded, which is the derivation revision. Content-derived ids (invariant 5) mean a
-  reworded decision counts as newly derived at its rewording; that is the accepted limit and it is
-  pinned here rather than left implicit.
-* `web.viewmodels.status.evidence_view` -- translation only (`CLAUDE.md`, "Two vocabularies").
-"""
+"""A decision derived while its evidence was thinner than it is now (#493)."""
 
 from __future__ import annotations
 
@@ -41,13 +18,11 @@ from requivo.web.viewmodels.status import evidence_view
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(workspace):
-    """Every test here writes through `SessionService`; autouse folds conftest's `workspace` setup
-    in so no test needs to request it by name."""
+    """Every test here writes through `SessionService`."""
 
 
 DECISION = "Cut the CI matrix to four legs"
-# The schema's own label for `current_process`, read rather than restated so a relabel in
-# `model_schema.json` does not turn this file red for a reason unrelated to its name.
+# The schema's own label for `current_process`, read rather than restated so a relabel in `model_schema.json` does not turn this file red for a reason unrelated to its name.
 CURRENT_PROCESS = slot_label("current_process")
 
 
@@ -72,9 +47,7 @@ def _decision(*derived_from):
     ids=["empty-to-explicit", "inferred-to-explicit", "testable-to-explicit"],
 )
 def test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged(completeness, start_confidence, test_plan):
-    """The `testable` leg is the case #610 was opened for: a decision taken while the answer could
-    only be tested, against a test that has since returned, is the one nobody goes back to re-read.
-    Codex found `_THIN` had been widened nowhere when the fourth confidence value landed."""
+    """The `testable` leg is the case #610 was opened for."""
     then = _model(_decision("current_process"),
                   current_process=slot(completeness, start_confidence, "high", test_plan))
     now = _model(_decision("current_process"), current_process=slot(90, "explicit", "high"))
@@ -85,8 +58,8 @@ def test_a_decision_derived_from_a_thin_slot_that_is_now_explicit_is_flagged(com
 
 
 def test_a_decision_whose_slot_was_already_explicit_is_not_flagged():
-    """The must-not-fire half. `reviewed == 1` is what separates *looked and found nothing* from
-    *never looked*: a report that is empty because no decision was examined reads identically."""
+    """The must-not-fire half. `reviewed == 1` is what separates *looked and found nothing* from *never
+    looked*: a report that is empty because no decision was examined reads identically."""
     then = _model(_decision("current_process"), current_process=slot(70, "explicit", "high"))
     now = _model(_decision("current_process"), current_process=slot(95, "explicit", "high"))
     report = thinner_evidence(then, now)
@@ -95,8 +68,7 @@ def test_a_decision_whose_slot_was_already_explicit_is_not_flagged():
 
 
 def test_a_slot_the_decision_does_not_rest_on_never_flags_it():
-    """`workflow` thickens, but the decision rests on `permissions` only -- the DAG edge is the
-    whole rule, exactly as it is for `propagate`."""
+    """`workflow` thickens, but the decision rests on `permissions` only."""
     then = _model(_decision("permissions"), workflow=slot(0, "empty", "high"),
                   permissions=slot(60, "explicit", "high"))
     now = _model(_decision("permissions"), workflow=slot(90, "explicit", "high"),
@@ -106,8 +78,7 @@ def test_a_slot_the_decision_does_not_rest_on_never_flags_it():
 
 
 def test_a_slot_that_thinned_or_stayed_thin_is_not_a_flag():
-    """Only the *thickened* direction is the finding. explicit -> inferred is a slot that moved,
-    which `propagate`/`diff_models` already report; inferred -> inferred is nothing."""
+    """Only the *thickened* direction is the finding. explicit -> inferred is a slot that moved."""
     thinned = thinner_evidence(
         _model(_decision("workflow"), workflow=slot(70, "explicit", "high")),
         _model(_decision("workflow"), workflow=slot(40, "inferred", "high")))
@@ -119,8 +90,7 @@ def test_a_slot_that_thinned_or_stayed_thin_is_not_a_flag():
 
 
 def test_a_decision_with_no_derived_from_is_could_not_tell_not_clean():
-    """A decision recording no slots it rests on cannot be reviewed. That is the third state, not a
-    clean bill: `reviewed` counts it and `could_not_tell` names it."""
+    """A decision recording no slots it rests on cannot be reviewed."""
     then = _model(_decision(), current_process=slot(0, "empty", "high"))
     now = _model(_decision(), current_process=slot(90, "explicit", "high"))
     report = thinner_evidence(then, now)
@@ -139,8 +109,8 @@ def test_a_decision_absent_from_the_earlier_model_is_could_not_tell():
 
 
 def test_a_slot_missing_from_the_earlier_model_is_could_not_tell():
-    """Permissive read (invariant 8): a frozen model from a Requivo whose schema lacked the slot is
-    not a flag and not a crash -- the decision is named as unreviewable, with the slot it needed."""
+    """Permissive read (invariant 8): a frozen model from a Requivo whose schema lacked the slot is not a flag
+    and not a crash -- the decision is named as unreviewable, with the slot it needed."""
     then = _model(_decision("current_process"), current_process=slot(0, "empty", "high"))
     then_dict = then.model_dump()
     del then_dict["model"]["current_process"]
@@ -163,8 +133,7 @@ def test_the_report_dict_carries_all_three_states_and_the_impact_report_carries_
     assert set(d["flagged"][0]) == {"decision", "id", "thickened", "derived_at"}
     # The pure comparison knows no revision numbers; `derived_at` is the service's to fill.
     assert d["flagged"][0]["derived_at"] is None
-    # `propagate` alone has no revision history to review against: `evidence` is None -- *not
-    # reviewed* -- and the wire shape says so rather than pretending an empty review happened.
+    # `propagate` alone has no revision history to review against: `evidence` is None.
     assert propagate(now, ["current_process"]).to_dict()["evidence"] is None
     rep = ImpactReport(changed=[], evidence=EvidenceReport())
     assert rep.to_dict()["evidence"] == {"reviewed": 0, "flagged": [], "could_not_tell": []}
@@ -184,9 +153,7 @@ def _walk(svc, slug, *models):
 
 
 def test_the_issues_own_shape_fires_on_impact():
-    """The session #493 describes: a decision derived while `current_process` was empty, then the
-    slot measured. `requivo impact <slug> current_process` names the decision as worth re-reading,
-    with the revision it was derived at."""
+    """The session #493 describes: a decision derived while `current_process` was empty."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -205,10 +172,7 @@ def test_the_issues_own_shape_fires_on_impact():
 
 
 def test_a_decision_derived_after_the_slot_was_measured_is_not_flagged_on_impact():
-    """The must-not-fire control for the test above, through the same verb: the slot thickened at
-    revision 2 and the decision was first recorded at revision 3, so it rests on the measured
-    value and there is nothing to re-read. `reviewed == 1` keeps this from passing on a review that
-    never ran."""
+    """The must-not-fire control for the test above, through the same verb."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -224,9 +188,8 @@ def test_a_decision_derived_after_the_slot_was_measured_is_not_flagged_on_impact
 
 
 def test_the_derivation_revision_is_the_earliest_that_carries_the_decision():
-    """Three revisions: derived at 1 (empty), still present at 2 (inferred), explicit at 3. The
-    comparison runs against revision 1, not 2 -- a later revision that also carries the decision is
-    not where it was derived."""
+    """Three revisions: derived at 1 (empty), still present at 2 (inferred), explicit at 3. The comparison
+    runs against revision 1, not 2."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -238,10 +201,7 @@ def test_the_derivation_revision_is_the_earliest_that_carries_the_decision():
 
 
 def test_a_reworded_decision_counts_as_newly_derived_at_its_rewording():
-    """The accepted limit (invariant 5: ids are content-derived). Reworded at revision 2 after the
-    slot was measured, the decision is a *new* id first recorded against explicit evidence, so it is
-    not flagged even though a reader would call it the same decision. Pinned so the limit is a
-    sentence somebody can read rather than a surprise."""
+    """The accepted limit (invariant 5: ids are content-derived)."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -253,10 +213,7 @@ def test_a_reworded_decision_counts_as_newly_derived_at_its_rewording():
 
 
 def test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_tell():
-    """Permissive read, service side (invariant 8). A frozen revision this Requivo cannot read --
-    here, one whose slot carries no `confidence` at all -- makes every decision not yet located a
-    *could not tell*, naming the revision. Never a flag, never a crash; `requivo impact` still
-    answers."""
+    """Permissive read, service side (invariant 8)."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -281,8 +238,7 @@ def test_a_revision_from_an_older_requivo_without_confidence_data_is_could_not_t
 
 
 def test_a_bare_model_file_is_not_reviewed_and_says_so(tmp_path):
-    """`impact` also accepts a model.json path, which has no revision history to walk. That is
-    *not reviewed*, rendered as such -- distinct from a session where every decision checked out."""
+    """`impact` also accepts a model.json path, which has no revision history to walk."""
     p = tmp_path / "loose" / "model.json"
     p.parent.mkdir()
     p.write_text(_model(_decision("current_process"),
@@ -294,10 +250,7 @@ def test_a_bare_model_file_is_not_reviewed_and_says_so(tmp_path):
 
 
 def test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name(tmp_path):
-    """Found in review. `_resolve_ref` names a loose file's parent directory as its slug, and a real
-    session of that name has a revision history -- so `svc.exists(slug)` would have reviewed *that*
-    session and printed its flagged decisions under a file that holds none of them. The split is
-    the file predicate, never the slug's existence."""
+    """Found in review. `_resolve_ref` names a loose file's parent directory as its slug."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -326,8 +279,7 @@ def test_the_full_map_form_reviews_the_evidence_too():
 
 
 def test_the_service_impact_report_carries_the_review():
-    """`SessionService.impact` is what the HTTP API's `/impact` route returns; it carries the
-    review under `evidence` rather than leaving the API to compose a second call."""
+    """`SessionService.impact` is what the HTTP API's `/impact` route returns."""
     svc = SessionService()
     svc.create_session("Speed up CI.", slug="ci")
     _walk(svc, "ci",
@@ -381,9 +333,8 @@ def test_the_traceability_panel_marks_the_decision_worth_re_reading(client):
 
 @pytest.fixture
 def client():
-    """The Web's own everyday client, built the way `tests/web/conftest.py` builds it (a cross-site
-    token on every request); imported here rather than reached into, because that conftest is scoped
-    to its directory."""
+    """The Web's own everyday client, built the way `tests/web/conftest.py` builds it (a cross-site token on
+    every request)."""
     fastapi = pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 

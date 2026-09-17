@@ -57,7 +57,7 @@ when written — `0006`'s *"carried 31 open alerts at the time this record was w
 dismissed"* is the shape. Do not silently rewrite it into the present: the argument is the record,
 and when it was made is part of it.
 
-This is a convention and not a guard, deliberately. `tests/test_narrative_references.py` resolves a
+This is a convention and not a guard, deliberately. `tests/test_source_form.py`'s reference guard resolves a
 name and has no opinion about tense, and nothing mechanical can have one —
 `CLAUDE.md`'s meta-guard budget says a taste does not get a test. It is written down because the
 two-instance bar this repo applies is met: **#505** (`0006` describing a traversal guard on an
@@ -69,7 +69,6 @@ posture the API did not have), one release apart, in two records.
 **By slug, never by path.** Paths in this repository move: the package was renamed once, a module
 became a package, and a 2147-line test file became seven, all inside a fortnight. A slug is greppable
 and survives every one of those. Write it as `` `decision: <slug>` `` at the line that rests on it, on
-one line — a wrap makes it unfindable, which is the failure
-`tests/test_narrative_references.py` exists to catch for test names.
+one line, so it can be grepped; `tests/test_source_form.py`'s reference guard checks that it resolves.
 
 The filename carries a number for ordering and the slug for meaning. The number is not the reference.

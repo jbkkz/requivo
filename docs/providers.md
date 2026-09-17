@@ -56,9 +56,8 @@ anything. `requivo demo` is free and needs no key at all.
 | A complete session, end to end | 16 | — | — | **$0.47–$1.05** |
 
 Priced at **$2.00 / $10.00 per million tokens** (input / output) for `claude-sonnet-5`, rates as of
-**2026-08-29**. An estimate, never a bill — and a *derived* one: `tests/test_cost_claims.py`
-recomputes every figure in that table from the rate table in `providers/anthropic/pricing.py` and
-fails when the two disagree, so a price change breaks this page instead of quietly outdating it.
+**2026-08-29**. An estimate, never a bill. The rate table is `providers/anthropic/pricing.py`; the figures
+here are arithmetic over it at the date shown, and a price change is the cue to redo them.
 
 Two honest limits, because a number with an unstated method is worth less than no number.
 

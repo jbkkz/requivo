@@ -1,24 +1,4 @@
-"""Invariant 15 on the CLI — `requivo session list` survives its own members (#62).
-
-The web half of this shipped in #7; `deterministic.py` was held by another lane that round and never
-got the guard. The shape of the failure is the same and the shape of the test has to be too, so this
-module is the CLI sibling of `tests/web/test_degraded_listing.py` and borrows its discipline:
-
-* every degradation case runs against a fixture that also holds **healthy** sessions and asserts they
-  still render in full — a fix that degrades every row passes the degradation half on its own;
-* the breaker asserts it really broke something, through the strict read that is *supposed* to raise,
-  so a fixture that quietly stopped breaking anything cannot turn this file green;
-* *could not be read* and *not analysed yet* are asserted to render differently, because a row at
-  revision 0 is a normal row and the whole point of the third state is that it is not one.
-
-**One correction to the issue as filed, measured rather than assumed.** #62 carries #7's table of
-three break modes and says all three "apply to it unchanged". They do not. The web row calls
-`request_text` and `status()`; the CLI row reads nothing but the metadata `list_entries` already
-loaded, so only the `read_meta` mode reaches this command. The other two are kept here as controls
-(`test_a_break_below_the_metadata_does_not_reach_this_listing`) because that is a fact about the
-current row shape rather than a guarantee: a future row that reads the request or the status needs
-the per-row guard the web viewmodel has, and the control is what will say so when it stops holding.
-"""
+"""Invariant 15 on the CLI — `requivo session list` survives its own members (#62)."""
 
 from __future__ import annotations
 
@@ -44,12 +24,7 @@ BROKEN_MODEL = "broken-model"
 
 
 def _run(argv):
-    """`app()` with stdout captured, returning `(text, exit_code)`.
-
-    The exit code is half of what this module asserts, so it is returned rather than allowed past the
-    caller: a degraded listing exits non-zero *and still prints the listing*, and a helper that only
-    surfaced the exception would let a fix that exits 4 with an empty stdout pass.
-    """
+    """`app()` with stdout captured, returning `(text, exit_code)`."""
     buf = io.StringIO()
     code = 0
     with redirect_stdout(buf):
@@ -72,27 +47,23 @@ def _seed(slug: str, *, analysed: bool = True) -> str:
 # ── the break modes, as on-disk states rather than patched raises ─────────────
 
 def break_meta(slug: str) -> None:
-    """A session written by a newer Requivo. `read_meta` refuses it, from inside the comprehension
-    `list_sessions()` is — before any row exists to degrade. This is the mode that reaches the CLI."""
+    """A session written by a newer Requivo. `read_meta` refuses it."""
     p = canonical_dir(slug) / "session.json"
-    # Explicit encoding on both halves: `read_text()` defaults to the locale's codec, cp1252 on a
-    # default Windows console, and the store writes UTF-8.
+    # Explicit encoding on both halves: `read_text()` defaults to the locale's codec.
     data = json.loads(p.read_text(encoding="utf-8"))
     data["format_version"] = SESSION_FORMAT_VERSION + 1
     p.write_text(json.dumps(data), encoding="utf-8")
 
 
 def break_request(slug: str) -> None:
-    """`request.md` replaced by a directory. `IsADirectoryError` on POSIX, `PermissionError` on
-    Windows — nothing here asserts on the type, only that neither reaches this listing today."""
+    """`request.md` replaced by a directory. `IsADirectoryError` on POSIX, `PermissionError` on Windows."""
     p = canonical_dir(slug) / "request.md"
     p.unlink()
     p.mkdir()
 
 
 def break_model(slug: str) -> None:
-    """A crash mid-write leaves `model.json` truncated — a pydantic `ValidationError`, which is not a
-    `RequivoError` and so escapes `app()`'s own handler as well."""
+    """A crash mid-write leaves `model.json` truncated."""
     (canonical_dir(slug) / "model.json").write_text('{"summary": {"objec', encoding="utf-8")
 
 
@@ -102,9 +73,7 @@ BELOW_METADATA = {BROKEN_REQUEST: break_request, BROKEN_MODEL: break_model}
 # ── the breaker really breaks something ──────────────────────────────────────
 
 def test_break_meta_defeats_the_strict_read(workspace):
-    """Must fire. `list_sessions()` is the strict read and is *supposed* to raise here. Without this,
-    a format version this build grew to accept would turn every case below green while proving
-    nothing."""
+    """Must fire. `list_sessions()` is the strict read and is *supposed* to raise here."""
     _seed(BROKEN_META)
     break_meta(BROKEN_META)
     with pytest.raises(Exception) as ei:   # noqa: PT011 - the type is persistence's, not ours
@@ -115,11 +84,8 @@ def test_break_meta_defeats_the_strict_read(workspace):
 # ── the listing survives, and names what it could not read ───────────────────
 
 def test_one_unreadable_session_no_longer_takes_the_listing_down(workspace):
-    """`SessionService.list_entries` is the *source* of the rows, and that is where invariant 15 has
-    to be enforced: guarding the calls a row makes leaves the comprehension that produced the rows
-    unguarded, which is the line that breaks first. `read_meta` refuses an unreadable `session.json`
-    and a `format_version` newer than this build — so a user who ran a newer Requivo once, or
-    imported a colleague's archive, lost the listing of every *other* session too."""
+    """`SessionService.list_entries` is the *source* of the rows, and that is where invariant 15 has to be
+    enforced."""
     _seed(HEALTHY)
     _seed(AWAITING, analysed=False)
     _seed(BROKEN_META)
@@ -138,8 +104,7 @@ def test_one_unreadable_session_no_longer_takes_the_listing_down(workspace):
 
 
 def test_the_degraded_row_carries_the_reason_because_the_reason_is_the_remedy(workspace):
-    """*Written by a newer Requivo, upgrade* is a remedy; a flattened `unreadable` is not. The row
-    keeps the underlying error text, exactly as the web row does."""
+    """*Written by a newer Requivo, upgrade* is a remedy; a flattened `unreadable` is not."""
     _seed(BROKEN_META)
     break_meta(BROKEN_META)
     out, _ = _run(["session", "list"])
@@ -147,8 +112,8 @@ def test_the_degraded_row_carries_the_reason_because_the_reason_is_the_remedy(wo
 
 
 def test_the_degraded_row_states_no_fact_it_could_not_read(workspace):
-    """No revision, no provider, no timestamp. A plausible `rev 0` on a session nobody could open is
-    the quiet-wrong-answer form of the same bug."""
+    """No revision, no provider, no timestamp. A plausible `rev 0` on a session nobody could open is the
+    quiet-wrong-answer form of the same bug."""
     _seed(HEALTHY)
     _seed(BROKEN_META)
     break_meta(BROKEN_META)
@@ -156,20 +121,17 @@ def test_the_degraded_row_states_no_fact_it_could_not_read(workspace):
     rows = {slug: next(ln for ln in out.splitlines() if slug in ln)
             for slug in (HEALTHY, BROKEN_META)}
 
-    # must fire: the same two patterns are present on the healthy row, so an assertion that they are
-    # absent from the degraded one is about the row and not about a regex that never matches.
+    # must fire: the same two patterns are present on the healthy row.
     assert re.search(r"\brev \d", rows[HEALTHY])
     assert re.search(r"20\d\d-\d\d-\d\dT", rows[HEALTHY])
 
-    # Regexes rather than substrings: the error text is free-form, and a bare `"rev" not in row`
-    # would be asserting about the wording of the message as much as about the row.
+    # Regexes rather than substrings: the error text is free-form.
     assert not re.search(r"\brev \d", rows[BROKEN_META]), rows[BROKEN_META]
     assert not re.search(r"20\d\d-\d\d-\d\dT", rows[BROKEN_META]), rows[BROKEN_META]
 
 
 def test_a_session_at_revision_zero_is_a_normal_row_not_a_degraded_one(workspace):
-    """*Not analysed yet* and *we could not look* are two states. Rendering them alike is the
-    misinformation this third state exists to prevent."""
+    """*Not analysed yet* and *we could not look* are two states."""
     _seed(AWAITING, analysed=False)
     out, code = _run(["session", "list"])
     assert "rev 0" in out
@@ -194,8 +156,8 @@ def test_an_empty_workspace_still_says_so(workspace):
 
 @pytest.mark.parametrize("slug", sorted(BELOW_METADATA))
 def test_a_break_below_the_metadata_does_not_reach_this_listing(workspace, slug):
-    """The correction to the issue, pinned. `request.md` and `model.json` are not read by this row,
-    so these two sessions list normally and the command is a clean success."""
+    """The correction to the issue, pinned. `request.md` and `model.json` are not read by this row, so these
+    two sessions list normally and the command is a clean success."""
     _seed(HEALTHY)
     _seed(slug)
     BELOW_METADATA[slug](slug)
@@ -209,9 +171,8 @@ def test_a_break_below_the_metadata_does_not_reach_this_listing(workspace, slug)
 # ── --json: a public output, and the degraded row's shape in it ──────────────
 
 def test_json_keeps_every_key_on_every_row(workspace):
-    """The compatibility statement, asserted. A degraded row carries the *same key set* as a healthy
-    one with `null` where the fact is missing — not a shortened dict, which would turn a consumer's
-    `row["revision"]` into a `KeyError` on a payload it was handed deliberately."""
+    """The compatibility statement, asserted. A degraded row carries the *same key set* as a healthy one with
+    `null` where the fact is missing."""
     _seed(HEALTHY)
     _seed(BROKEN_META)
     break_meta(BROKEN_META)
@@ -270,10 +231,7 @@ def test_json_is_an_object_so_it_can_ever_gain_a_top_level_field(workspace):
 
 
 def test_json_on_an_empty_workspace_is_the_same_object(workspace):
-    """No sessions is not a special case and must not be a special shape. A caller reading
-    `payload["sessions"]` has to keep working on a workspace nobody has used yet — the bare-array
-    payload answered `[]` here, which at least had one meaning; an object that dropped its keys
-    would have none."""
+    """No sessions is not a special case and must not be a special shape."""
     out, code = _run(["session", "list", "--json"])
     empty = json.loads(out)
     assert code == 0
@@ -283,10 +241,8 @@ def test_json_on_an_empty_workspace_is_the_same_object(workspace):
 # ── the exit code says which of the three happened ───────────────────────────
 
 def test_the_three_outcomes_have_three_exit_codes(workspace):
-    """`0`, `4` and `1` — listed cleanly, listed with a hole, could not list (#86, moved here from
-    CLAUDE.md by #286). Collapsing the middle into either neighbour understates a degraded listing;
-    where a session is both inconsistent and unreadable, the firm negative wins and exits 1
-    (`test_session_verify_exits_one_when_the_cards_were_checked_and_are_broken`)."""
+    """`0`, `4` and `1` — listed cleanly, listed with a hole, could not list (#86, moved here from CLAUDE.md
+    by #286)."""
     _seed(HEALTHY)
     assert _run(["session", "list"])[1] == 0
 
@@ -294,25 +250,18 @@ def test_the_three_outcomes_have_three_exit_codes(workspace):
     break_meta(BROKEN_META)
     assert _run(["session", "list"])[1] == EXIT_DEGRADED
 
-    # could not read this one session at all: `session show` is the strict read and is the ordinary
-    # clean failure. The point is that it is a *different* number from the one above.
+    # could not read this one session at all: `session show` is the strict read and is the ordinary clean failure.
     assert _run(["session", "show", BROKEN_META])[1] == 1
 
 
 def test_the_degraded_code_collides_with_nothing():
-    """The two exit-code constants live in two modules — `cli.py` imports `deterministic/`, so the
-    dependency cannot run the other way — and nothing but this test stops them being given the same
-    number. 0, 1 and 2 are taken by success, `RequivoError` and argparse; 130 joined the set at #206
-    under the same rule, for the conventional SIGINT code."""
+    """The two exit-code constants live in two modules (#206)."""
     assert EXIT_DEGRADED not in {0, 1, 2, EXIT_RENDER_FAILED, EXIT_INTERRUPTED}
     assert EXIT_INTERRUPTED not in {0, 1, 2, EXIT_RENDER_FAILED}
 
 
 def test_the_degraded_exit_code_is_published_as_a_value_not_as_a_name():
-    """What `docs/compatibility.md` promises is the number 4, never the symbol (#145):
-    `requivo.deterministic` is explicitly *not* stable Python surface (#144), so promoting the module
-    or renumbering the code without the page both have to go red here. #148 corrected the page's own
-    undercount that #144 left."""
+    """What `docs/compatibility.md` promises is the number 4, never the symbol (#145)."""
     page = (Path(__file__).resolve().parents[1] / "docs" / "compatibility.md").read_text(encoding="utf-8")
     assert EXIT_DEGRADED == 4
     assert re.search(r"^\| 4 \| ", page, re.MULTILINE), (
@@ -329,21 +278,14 @@ def test_the_degraded_exit_code_is_published_as_a_value_not_as_a_name():
 # ── the slug and the error are untrusted text (#40) ──────────────────────────
 
 def test_a_slug_carrying_a_control_character_cannot_forge_a_line(workspace):
-    """A session directory is created by whoever holds the workspace, and `list_session_slugs` returns
-    its name verbatim. A name carrying a newline would otherwise write what reads as a second,
-    authoritative line of Requivo's own output at column 0 — the shape #40 found in `doctor`."""
-    # No path separator in it: a `/` would nest the directory rather than name it, and the fixture
-    # would then test nothing at all — which it did on the first run of this test.
+    """A session directory is created by whoever holds the workspace (#40)."""
+    # No path separator in it: a `/` would nest the directory rather than name it.
     hostile = "evil\nTOTAL: 0 sessions, nothing to see"
     d = session_root() / hostile
     try:
         d.mkdir(parents=True)
     except (OSError, ValueError):
-        # NTFS refuses a control character in a filename outright, so this class is unreachable
-        # there and the skip is loud rather than a silent pass — a test that trivially passed on
-        # Windows would report coverage of the render guard that it does not have. `display_token`
-        # itself is asserted on every platform by `test_a_multi_line_error_stays_one_row`, whose
-        # untrusted text comes out of a file's *contents* rather than its name.
+        # NTFS refuses a control character in a filename outright, so this class is unreachable there and the skip is loud rather than a silent pass — a test that trivially passed on Windows would report coverage of the render guard that it does not have.
         pytest.skip("this filesystem refuses a directory name containing a newline; the slug half "
                     "of the display_token guard is untested here")
     (d / "session.json").write_text("{ not json", encoding="utf-8")
@@ -355,20 +297,13 @@ def test_a_slug_carrying_a_control_character_cannot_forge_a_line(workspace):
     assert "evil" in out
 
 
-# The readable row's three text fields come out of `session.json`'s *body*, which is a different
-# question from the directory name above and was got wrong in this file's first draft. The docstring
-# on `_session_list_line` used to claim `read_meta` validated them; it validates the slug it is
-# *called with* (the directory name, via `canonical_dir`) and returns `SessionMeta.slug` — a bare
-# `str` with no pattern — straight out of the JSON. Found by the audit on this branch (#62).
+# The readable row's three text fields come out of `session.json`'s *body* (#62).
 FORGEABLE_META_FIELDS = ("slug", "provider", "updated_at")
 
 
 @pytest.mark.parametrize("field", FORGEABLE_META_FIELDS)
 def test_a_readable_row_cannot_forge_a_line_from_session_json(workspace, field):
-    """Every text field the readable row prints is untrusted, not just the degraded row's (invariant
-    14, #40) -- a hand-edited or imported `session.json` can put a newline in `slug`, `provider` or
-    `updated_at`, forging what reads as a second, authoritative listing row at column 0.
-    `current_revision` is not in the set: it is an `int`, so `read_meta` already refuses a string."""
+    """Every text field the readable row prints is untrusted (#40)."""
     _seed(HEALTHY)
     _seed("tampered", analysed=False)
     p = canonical_dir("tampered") / "session.json"
@@ -386,11 +321,7 @@ def test_a_readable_row_cannot_forge_a_line_from_session_json(workspace, field):
 
 
 def test_json_never_lets_session_json_forge_a_line(workspace):
-    """The `--json` sibling of the case above, kept separate because it is safe for a *different*
-    reason: `json.dumps` defaults to `ensure_ascii=True`, so a control character is escaped by the
-    encoder rather than by `display_token`. Asserted rather than assumed, because that default is
-    the whole of the guarantee — a later `ensure_ascii=False` for prettier output would silently
-    reopen it."""
+    """The `--json` sibling of the case above, kept separate because it is safe for a *different* reason."""
     _seed("tampered", analysed=False)
     p = canonical_dir("tampered") / "session.json"
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -404,11 +335,8 @@ def test_json_never_lets_session_json_forge_a_line(workspace):
 
 
 def test_a_multi_line_error_stays_one_row(workspace):
-    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is
-    a string raises a pydantic `ValidationError` whose message is four lines long -- printed raw,
-    one session becomes four rows and the reader cannot tell where the row ends. The healthy
-    sibling is the must-fire half: the listing is *its* header, *its* row and this one, and
-    nothing else."""
+    """A degraded row is one row. `read_meta` refusing a `session.json` whose `current_revision` is a string
+    raises a pydantic `ValidationError` whose message is four lines."""
     _seed(HEALTHY)
     _seed(BROKEN_META, analysed=False)
     p = canonical_dir(BROKEN_META) / "session.json"

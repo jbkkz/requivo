@@ -1,17 +1,4 @@
-"""`doctor` (and `session list`) on what is under the session root that is not a session — #67.
-
-Split out of `test_cli_doctor.py` by #555, once that file outgrew one module; `test_cli_doctor.py`
-covers the verb's own health checks (credentials, model source, context cards), and
-`test_cli_doctor_lock_residue.py` covers the lock-root partition (#180). The shared harness is
-`tests/_cli_harness.py`; `_check_line` is duplicated from `test_cli_doctor.py` rather than imported,
-per this suite's own convention of keeping test-module helpers local (`tests/_fakes.py` makes the
-argument).
-
-Two tests here drive `session list` and the store's own three-way partition rather than `doctor`.
-They are the same finding read from the other side — a listing must not grow a row for something
-that is not a session — and they share `_lock_ghost` and the #67 narrative with the rest of this
-file, so they stay where that argument is written down.
-"""
+"""`doctor` (and `session list`) on what is under the session root that is not a session — #67."""
 from __future__ import annotations
 
 import io
@@ -30,22 +17,14 @@ from requivo.services.sessions import SessionService
 
 
 def _check_line(text: str, name: str) -> str:
-    """The status line for the named doctor check — the one carrying a tick.
-
-    Matched on the two-space indent a check line has, because the indented detail lines beneath it
-    mention the same words (`     sessions        <path>` sits right above `  ✅ sessions …`), and a
-    tick asserted against the wrong line is an assertion about nothing."""
+    """The status line for the named doctor check — the one carrying a tick."""
     return next(ln for ln in text.splitlines()
                 if ln.startswith("  ") and not ln.startswith("   ") and name in ln)
 
 
 # ── something under the session root that is not a session (#67) ────────────────
 #
-# The state under test cannot be produced by the current code: #22 stopped `session_lock` creating
-# the session directory it opened `.lock` inside, which is exactly why these are only ever found on
-# disk and never in a fresh run. So the fixture builds one by hand. Going through `session_lock`
-# instead would assert against a state this version cannot reach, and would go green on the day the
-# report stopped working.
+# The state under test cannot be produced by the current code (#22).
 
 
 def _lock_ghost(name: str = "leave-approval") -> Path:
@@ -57,11 +36,7 @@ def _lock_ghost(name: str = "leave-approval") -> Path:
 
 
 def test_doctor_names_what_is_under_the_session_root_and_is_not_a_session(workspace):
-    """Nothing could see one of these: `list_session_slugs` filters on `session.json`, so a directory
-    holding only `.lock` reached no verb at all -- `doctor` printed a green `0 in this workspace`
-    over it. Invariant 11's second half (#67): `scan_session_root` answers from one listing so two
-    scans don't miss a name landing between them; `doctor` reports what is there, never concluding
-    what it is."""
+    """Nothing could see one of these: `list_session_slugs` filters on `session.json` (#67)."""
     clean = _run_json(["doctor", "--json"])["sessions"]
     assert clean["non_sessions"] == [], "the control: an untouched workspace must produce no finding"
     assert "other entries" not in _run(["doctor"])
@@ -69,8 +44,7 @@ def test_doctor_names_what_is_under_the_session_root_and_is_not_a_session(worksp
     _lock_ghost()
     found = _run_json(["doctor", "--json"])["sessions"]
 
-    # What was found, never what it was taken to mean: there is no `is_lock_ghost` key anywhere. A
-    # half-extracted archive is this shape too, and the directory is the only evidence there is.
+    # What was found, never what it was taken to mean: there is no `is_lock_ghost` key anywhere.
     assert [e["name"] for e in found["non_sessions"]] == ["leave-approval"]
     entry = found["non_sessions"][0]
     assert entry["kind"] == "directory"
@@ -89,10 +63,7 @@ def test_doctor_names_what_is_under_the_session_root_and_is_not_a_session(worksp
 
 
 def test_the_silent_slug_substitution_the_report_names_is_the_one_that_happens(workspace):
-    """The finding is only worth a line because of what it costs, so the cost is pinned rather than
-    described. `create_session`'s rename is the only claim on a slug (invariant 11) and it loses to a
-    non-empty directory, after which `SessionService` falls through to its hash-suffixed candidate:
-    the user gets a session under a name they did not ask for, with nothing saying why."""
+    """The finding is only worth a line because of what it costs, so the cost is pinned rather than described."""
     _lock_ghost()
     assert "will not get it" in _run(["doctor"]), "the report names the finding but not its cost"
 
@@ -103,10 +74,7 @@ def test_the_silent_slug_substitution_the_report_names_is_the_one_that_happens(w
 
 
 def test_a_file_where_a_session_name_would_go_costs_the_same_and_is_named_as_a_file(workspace):
-    """Swept rather than assumed: the rename onto an existing *file* fails too, `d.exists()` is true,
-    and the caller gets the identical substitution. Reporting only directories would have left an
-    identical symptom with an identical remedy invisible, so each entry says what it is instead of
-    the report assuming they are all directories."""
+    """Swept rather than assumed: the rename onto an existing *file* fails too."""
     store.session_root().mkdir(parents=True)
     (store.session_root() / "leave-approval").write_text("half a download\n", encoding="utf-8")
 
@@ -122,14 +90,7 @@ def test_a_file_where_a_session_name_would_go_costs_the_same_and_is_named_as_a_f
 
 
 def _deny_listing(directory: Path) -> None:
-    """Make `directory` traversable but not listable — `--x`, the mode under which `stat` on a child
-    succeeds and `iterdir` does not — or skip loudly naming what went untested.
-
-    Deliberately not `chmod 000`, which denies the `session.json` probe in `_scan_session_root` as
-    well and so exercises a *different* state: the entry never reaches `_describe_non_session` at
-    all, because the partition above it could not decide what the entry is. That is #80, fixed since,
-    and it has its own module — `tests/test_persistence_scan.py`. What this fixture is for is the
-    entry the partition *did* place, whose contents then could not be listed."""
+    """Make `directory` traversable but not listable (#80)."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny listing on Windows — the entry-level "
                     "could-not-look arm is untested on this platform")
@@ -145,9 +106,7 @@ def _deny_listing(directory: Path) -> None:
 
 def test_a_symlink_is_reported_as_one_and_its_target_is_not_read(workspace, tmp_path):
     """`Path.is_dir()` follows a symlink, so a link at a slug name pointing elsewhere reported `kind:
-    "directory"`, and `iterdir` beneath it listed the **target's** filenames into a report about this
-    workspace. Found by review; a symlink is a third shape this module already treats as the case a
-    containment guard has to answer for (invariant 17)."""
+    "directory"`."""
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     (elsewhere / "secret-project.md").touch()
@@ -168,11 +127,7 @@ def test_a_symlink_is_reported_as_one_and_its_target_is_not_read(workspace, tmp_
 
 
 def test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken(workspace):
-    """`slug_shaped` asked `_SLUG_RE` alone, and validity is the pattern **and** the length: an
-    81-character kebab-case directory matched the pattern and was marked `[name taken]`, under a
-    sentence promising a silent hash-suffixed substitution, and `canonical_dir` refuses that name
-    outright instead. Found by review. The 80-character sibling beside it is the must-fire
-    control: same shape, one character shorter, and it *is* reachable."""
+    """`slug_shaped` asked `_SLUG_RE` alone, and validity is the pattern **and** the length."""
     over = "a" * (store.MAX_SLUG_LENGTH + 1)
     at_limit = "b" * store.MAX_SLUG_LENGTH
     for name in (over, at_limit):
@@ -197,11 +152,7 @@ def test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken(workspace):
                      "#408, and unreachable there, since a `con` directory can never exist to be "
                      "described in the first place.")
 def test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken(workspace):
-    """#408: `_describe_non_session` asked `is_slug` for `slug_shaped` -- the unconditional,
-    creation-time refusal -- so a `con` directory holding no `session.json` read `slug_shaped: False`
-    and `doctor` stayed silent, while `create_session('con', ...)` disagrees via #372's conditional
-    read-time rule -- exactly the `[name taken]` consequence. `leave-approval` is the must-fire
-    control."""
+    """#408: `_describe_non_session` asked `is_slug` for `slug_shaped`."""
     store.session_root().mkdir(parents=True)
     (store.session_root() / "con").mkdir()
     (store.session_root() / "con" / ".lock").touch()   # non-empty: rename(2) would collide, not win
@@ -222,11 +173,7 @@ def test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken(wo
 
 
 def test_an_empty_directory_is_still_reported_and_still_marked(workspace):
-    """The one shape whose cost is platform-dependent, and the report deliberately does not try to be
-    clever: POSIX `rename(2)` replaces an empty destination so `create_session` still wins the name
-    here, Windows refuses any existing destination so it does not. `slug_shaped` therefore does not
-    exempt an empty directory -- occasionally conservative beats right-on-one-platform-silent-on-
-    another."""
+    """The one shape whose cost is platform-dependent, and the report deliberately does not try to be clever."""
     store.session_root().mkdir(parents=True)
     (store.session_root() / "leave-approval").mkdir()
 
@@ -262,10 +209,7 @@ def test_the_name_taken_hint_names_what_import_does_about_it(workspace):
 
 
 def test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty(workspace):
-    """The third state one level below the one `_session_health` already has: the root listed fine,
-    this directory did not. `entries: []` would say we looked and it holds nothing — the one reading
-    that makes the finding worthless, since on POSIX a directory holding nothing is the single shape
-    that does not cost the caller its slug at all (`rename(2)` replaces an empty destination)."""
+    """The third state one level below the one `_session_health` already has."""
     d = _lock_ghost()
 
     # The must-fire control, on the same directory, with only its mode changing.
@@ -287,10 +231,7 @@ def test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty(works
 
 
 def test_a_name_read_off_disk_cannot_forge_a_line_of_the_report_that_names_it(workspace):
-    """#40 in a new render site. The entry's own name and the names it holds are both read off disk,
-    untrusted exactly as a stored context-card name is. Printed bare, one carrying a newline does not
-    merely look odd: it ends the line and starts another at whatever column it chooses, immediately
-    under a row of `doctor`'s own output."""
+    """#40 in a new render site. The entry's own name and the names it holds are both read off disk."""
     d = _lock_ghost()
     try:
         (d / "x\n  ✅ forged          all clear").touch()
@@ -302,13 +243,11 @@ def test_a_name_read_off_disk_cannot_forge_a_line_of_the_report_that_names_it(wo
     assert "\\n" in text, "the newline reached the terminal unescaped"
     assert "  ✅ forged          all clear" not in text.splitlines()
 
-    # `--json` was never affected and must stay that way: json.dumps escapes a control character
-    # before it can reach a line of its own, so the finding keeps its bytes verbatim.
+    # `--json` was never affected and must stay that way.
     entry = _run_json(["doctor", "--json"])["sessions"]["non_sessions"][0]
     assert any("\n" in n for n in entry["entries"])
 
-    # The other permutation, on the entry's *own* name rather than a name it holds. The two reach
-    # the report through different f-strings, so one covering the other is an assumption.
+    # The other permutation, on the entry's *own* name rather than a name it holds.
     (store.session_root() / "y\n  ✅ forged          all clear").mkdir()
     both = _run(["doctor"])
     assert both.count("\\n") >= 2, "the directory's own name reached the terminal unescaped"
@@ -330,20 +269,16 @@ def test_a_forged_name_that_holds_a_session_json_cannot_forge_a_line_either(work
     lines = text.splitlines()
 
     # must fire: the entry really did reach the *sessions* bucket rather than the non-session one.
-    # Without this the assertions below would pass against a report that never mentioned it at all.
     assert any("inconsistent" in ln for ln in lines), text
 
     assert "\\n" in text, "the newline reached the terminal unescaped"
     assert "     └─ ok: all clear`" not in lines, "a stored name wrote a line of doctor's report"
-    # One row for one entry. The forged text is built to look like a second, so counting the rows is
-    # what separates *escaped* from *merely reordered*.
+    # One row for one entry.
     assert len([ln for ln in lines if ln.startswith("     └─ ")]) == 1, text
 
 
 def test_session_list_does_not_call_one_of_these_a_session(workspace):
-    """The other half of the partition, and why this is not `session list`'s finding to report: a
-    listing of sessions must not grow a row for something that is not one. The real session beside it
-    is the must-fire control — without it this passes against a listing that lists nothing at all."""
+    """The other half of the partition, and why this is not `session list`'s finding to report."""
     _run(["session", "init", "A real one.", "--slug", "real", "--json"])
     _lock_ghost()
 
@@ -356,11 +291,7 @@ def test_session_list_does_not_call_one_of_these_a_session(workspace):
 
 
 def test_the_parts_of_the_session_root_are_one_partition(workspace):
-    """The three parts of the session root come out of one predicate (#67), worth having as a set
-    only while nothing can fall between them. Three rather than two since #80: an entry the
-    predicate could not decide about belongs in neither of the other two. Read through
-    `scan_session_root` since #300 -- the only way to the second part now -- so all three come from
-    one listing, which is what makes the partition claim real."""
+    """The three parts of the session root come out of one predicate (#67)."""
     _run(["session", "init", "A real one.", "--slug", "real", "--json"])
     _lock_ghost()
     (store.session_root() / ".real.new-1-abcdef12").mkdir()
@@ -371,8 +302,7 @@ def test_the_parts_of_the_session_root_are_one_partition(workspace):
     blind = {e.name for e in scanned_blind}
     on_disk = {p.name for p in store.session_root().iterdir()}
 
-    # must fire: the slugs half of the scan agrees with the dedicated reader, so the partition
-    # asserted below is over the same names every other call path sees.
+    # must fire: the slugs half of the scan agrees with the dedicated reader.
     assert slugs == set(store.list_session_slugs())
 
     assert slugs == {"real"} and others == {"leave-approval"}
@@ -382,10 +312,7 @@ def test_the_parts_of_the_session_root_are_one_partition(workspace):
 
 
 def test_doctor_and_verify_flag_a_session_whose_context_card_is_gone(workspace, tmp_path):
-    """A session's `context_cards` are validated once, at creation. The cards live *outside* the
-    session directory, so the answer can change afterwards without the session changing — and since
-    `load_context` refuses an unresolvable selection (#13), the session is hard-stopped at its next
-    (paid) turn while doctor still calls it healthy."""
+    """A session's `context_cards` are validated once, at creation (#13)."""
     cards = tmp_path / "cards"
     cards.mkdir()
     card = cards / "lost-domain.md"
@@ -438,10 +365,7 @@ def test_doctor_and_verify_flag_a_session_whose_context_card_is_gone(workspace, 
 
 def test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken(workspace, monkeypatch):
     """#263/#265: a first draft of `SessionLockedError` handling in `_session_health` still built a
-    default-severity `IntegrityProblem`, driving the same ❌ glyph a genuinely broken session gets --
-    exactly the accusation shape this issue family exists to remove. A lock timeout must land in
-    its own bucket and the warning glyph, never the failure one. Must-fire control: the same
-    session, unpatched, still reports ✅ with an empty `inconsistent`."""
+    default-severity `IntegrityProblem`, driving the same ❌ glyph a genuinely broken session gets."""
     from requivo.core.errors import SessionLockedError
     from requivo.deterministic import doctor as doctor_mod
 
@@ -477,9 +401,7 @@ def test_doctor_reports_a_locked_session_as_could_not_check_not_as_broken(worksp
 
 
 def test_a_note_does_not_move_the_sessions_glyph(workspace, monkeypatch):
-    """`noted` is deliberately absent from the glyph expression in `_print_sessions`: a note is not
-    a defect and not a could-not-look, so it must not pull the tick down to the warning glyph the
-    way `locked`/`blind`/`unchecked` do. It is still counted and named in the notes below the line."""
+    """`noted` is deliberately absent from the glyph expression in `_print_sessions`."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
     _run_stdin(["artifact", "save", "s", "--type", "prd", "--file", "-", "--revision", "1",
@@ -501,11 +423,7 @@ def test_a_note_does_not_move_the_sessions_glyph(workspace, monkeypatch):
 
 
 def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(workspace):
-    """Review finding on #483: the sessions-row glyph docstring in `doctor.py` says `unexaminable`
-    (`blind`) shares the middle glyph with `locked`/`unchecked`, and only the `locked` half of that
-    claim had a test -- `test_persistence_scan.py`'s own doctor test never checks the glyph at
-    all. A blocked entry with no other finding must not tick clean: a could-not-look reading as
-    looked-and-found-nothing is the exact defect `_session_health` exists to prevent."""
+    """Review finding on #483."""
     from requivo.core.persistence import UnexaminableEntry
     from requivo.deterministic import doctor as det
 
@@ -529,8 +447,7 @@ def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(
 
 
 def test_context_can_be_asked_for_by_session(workspace):
-    # A session's card selection is held constant across its turns; a later turn that reads every card
-    # reasons from a wider context than the model was built on. Asking by session makes that unmissable.
+    # A session's card selection is held constant across its turns.
     _run(["session", "init", "Something.", "--slug", "narrow", "--context", "b2b-platform", "--json"])
     _run(["session", "init", "Something else.", "--slug", "wide", "--json"])
     narrow = _run(["context", "--session", "narrow"])

@@ -1,12 +1,5 @@
-"""The session lock (#22, #113, #265) and `delete_session` (#238) -- the two guards around a
-session's lifecycle rather than its content. Split from a single `core/persistence/` guards module
-by #550 and again by #555; `test_persistence.py`, `test_persistence_slugs.py` and
-`test_persistence_store.py` cover the rest of the store.
-
-Invariant 9: a precondition is held across the writes it authorises. The lock file lives outside
-the session directory since #113 (`.requivo/locks/<slug>.lock`), so a delete's own unlink races the
-same hazard a session directory rename does -- both are pinned here, together.
-"""
+"""The session lock (#22, #113, #265) and `delete_session` (#238) -- the two guards around a session's
+lifecycle rather than its content."""
 from __future__ import annotations
 
 import json
@@ -25,10 +18,7 @@ from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import RequivoError
 from requivo.core.integrity import check_session
 
-# `_acquire`/`_release`/`_LOCK_TIMEOUT_SECONDS` moved to `core/persistence/lock.py` by #550, and
-# `Store.session_lock` (in `lock.py`'s own `_LockMixin`) reads them off *that* module's globals --
-# patching the package-level re-export (`store._acquire`) is a second binding that does not reach
-# the call site, so the lock-behaviour tests below patch this module directly instead.
+# `_acquire`/`_release`/`_LOCK_TIMEOUT_SECONDS` moved to `core/persistence/lock.py` by #550.
 from requivo.core.persistence import lock as store_lock
 from requivo.services.artifacts import ArtifactService
 from requivo.services.repository import FileSessionRepository
@@ -59,18 +49,13 @@ def _problem(slug: str, revision: int | None = None) -> str:
 
 
 def _ghost_locking_calls() -> dict:
-    """Every route that takes the session lock on a slug the caller has not proven exists.
-
-    Named as a table rather than tested one by one because the defect was never in any of them: it
-    was in the lock, and each of these is only a way to reach it. A route added later that locks
-    before it reads belongs here, not in a test of its own."""
+    """Every route that takes the session lock on a slug the caller has not proven exists."""
 
     def take_the_lock(slug):
         with store.session_lock(slug):
             pass
 
-    # The keys become slugs, so they are hyphenated: an underscore is not a legal slug character and
-    # `validate_slug` would refuse the name before the lock could be reached at all.
+    # The keys become slugs, so they are hyphenated.
     return {
         "session-lock": take_the_lock,
         "save-revision": lambda slug: store.save_revision(slug, _engine_output()),
@@ -81,11 +66,7 @@ def _ghost_locking_calls() -> dict:
 
 
 def test_a_lock_on_a_slug_with_no_session_leaves_no_trace(workspace):
-    """The lock created `canonical_dir(slug)` before opening `.lock` inside it, so taking it on a slug
-with no session left a directory behind holding nothing else. That directory is invisible to
-`list_session_slugs` (no session.json) and non-empty, so `create_session`'s rename — the *only*
-claim on a slug under invariant 11 — lost to a session nobody had created, and the user was told
-one already existed that neither they nor the tool could see."""
+    """The lock created `canonical_dir(slug)` before opening `.lock` inside it."""
     SessionService().create_session("A real request.", slug="real")
     before = sorted(p.name for p in store.session_root().iterdir())
     assert before == ["real"], "the control session is not where this test is looking"
@@ -101,11 +82,7 @@ one already existed that neither they nor the tool could see."""
 
 
 def test_a_session_deleted_before_the_lock_is_granted_is_refused(workspace, monkeypatch):
-    """The race an existence check taken *before* the lock cannot close. This used to be closed by
-accident: the lock file lived inside the session, so `os.open` raised `FileNotFoundError` when
-the directory had gone and that arm mapped it onto "no such session". #113 moved the lock out of
-the session directory, and with it that accident — opening `.requivo/locks/<slug>.lock` says
-nothing at all about whether `<slug>` is a session."""
+    """The race an existence check taken *before* the lock cannot close (#113)."""
     SessionService().create_session("A real request.", slug="vanishing")
     real_acquire = store_lock._acquire
 
@@ -127,8 +104,7 @@ nothing at all about whether `<slug>` is a session."""
 
 
 def test_a_slug_a_failed_lock_touched_can_still_be_created(workspace):
-    """The reproduction from the issue, end to end. `list_session_slugs` and `create_session` have to
-    agree about whether a slug is taken — the refusal was false precisely because they did not."""
+    """The reproduction from the issue, end to end."""
     with pytest.raises(RequivoError):
         store.save_session_artifact("later", "brief", ARTIFACT_FILENAMES["brief"], "x", source_revision=1)
 
@@ -140,10 +116,7 @@ def test_a_slug_a_failed_lock_touched_can_still_be_created(workspace):
 
 
 def test_a_migration_onto_such_a_slug_is_performed_not_reported_as_skipped(workspace, capsys):
-    """Why this is more than a misleading message. `migrate_legacy` claims its slug through
-    `create_session`, and the bulk sweep turns `SessionExistsError` into `skipped_already_present` —
-    a row that reads as a decision. A ghost directory made the sweep report a session it had refused
-    to migrate as one that was already there, and the legacy work silently never landed."""
+    """Why this is more than a misleading message."""
     from requivo.deterministic.sessions import _cmd_session_migrate
 
     _legacy("stale-lock", "LEGACY")
@@ -158,10 +131,7 @@ def test_a_migration_onto_such_a_slug_is_performed_not_reported_as_skipped(works
 
 
 def test_the_lock_still_guards_a_session_that_exists(workspace):
-    """The other direction, and the one a fix here can break silently. The lock's job is the compound
-mutations on sessions that *do* exist: `save_revision` and `save_session_artifact` write files
-under a session directory while holding it, and the service layer nests it around several core
-calls. See #113."""
+    """The other direction, and the one a fix here can break silently (#113)."""
     svc = SessionService()
     svc.create_session("A real request.", slug="live")
     svc.update_model("live", _full_model(**{"problem": _slot(80, "explicit", "high", "REAL")}))
@@ -173,8 +143,7 @@ calls. See #113."""
         "the lock is back inside the directory `session import --force` renames")
 
     with store.session_lock("live"):
-        # Re-entrant within the thread: the service takes it around a whole update and every core
-        # call inside takes it again. A guard that refused the second acquisition would deadlock.
+        # Re-entrant within the thread: the service takes it around a whole update and every core call inside takes it again.
         store.save_session_artifact("live", "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n",
                                     source_revision=1)
         rev, meta = store.save_revision(
@@ -190,11 +159,7 @@ calls. See #113."""
                      "equivalent here, and the msvcrt branch already had a bounded wait. "
                      "REASONED, NOT OBSERVED on Windows -- see #265.")
 def test_a_contended_lock_raises_within_the_deadline_instead_of_hanging(workspace, monkeypatch):
-    """#265. `_LOCK_TIMEOUT_SECONDS` was honoured only in the `msvcrt` branch; on POSIX,
-`fcntl.flock(fd, fcntl.LOCK_EX)` blocked forever with no message, so a stuck holder (a SIGSTOPped
-process, a debugger, an NFS-mounted workspace) froze the CLI on the primary platforms instead of
-raising the `SessionLockedError` Windows already had. The deadline is shortened so this proves
-the bound rather than the hang."""
+    """#265. `_LOCK_TIMEOUT_SECONDS` was honoured only in the `msvcrt` branch."""
     SessionService().create_session("A real request.", slug="contended")
     monkeypatch.setattr(store_lock, "_LOCK_TIMEOUT_SECONDS", 0.3)
 
@@ -214,9 +179,7 @@ the bound rather than the hang."""
 
     assert ei.value.code == "session_locked"
     assert "contended" in str(ei.value)
-    # Bounded, not instant (a spin that returns before the holder ever really contended would prove
-    # nothing) and not the unbounded hang it replaces (an unpatched 30s deadline here would make
-    # this assertion the reason the whole suite takes half a minute to fail).
+    # Bounded, not instant (a spin that returns before the holder ever really contended would prove nothing) and not the unbounded hang it replaces (an unpatched 30s deadline here would make this assertion the reason the whole suite takes half a minute to fail).
     assert 0.25 <= elapsed < 5.0, elapsed
 
     # The session is otherwise unharmed: once the holder releases, an ordinary acquisition succeeds.
@@ -226,11 +189,7 @@ the bound rather than the hang."""
 
 def test_reentrant_acquisition_within_a_thread_still_never_touches_the_lock_twice(workspace,
                                                                                    monkeypatch):
-    """The POSIX branch moved from one blocking `flock` call to a polling loop (#265); this pins that
-the re-entrancy invariant 9 relies on is unaffected, because it is decided one layer above
-`_acquire` and never reaches it on a nested call. `session_lock`'s own `_held_locks` depth
-counter is what makes nested acquisition safe -- a second `with session_lock(slug):` on the same
-thread increments the counter and returns without calling `_acquire` again at all."""
+    """The POSIX branch moved from one blocking `flock` call to a polling loop (#265)."""
     svc = SessionService()
     svc.create_session("A real request.", slug="nested")
     svc.update_model("nested", _full_model())
@@ -257,11 +216,7 @@ thread increments the counter and returns without calling `_acquire` again at al
                      "Windows -- see #265.")
 def test_a_non_contention_lock_error_fails_immediately_instead_of_waiting_out_the_deadline(
         workspace, monkeypatch):
-    """Caught in review before this shipped: a first draft caught a bare `OSError` around the poll loop,
-which also catches `ENOLCK`, `EBADF` or a filesystem that refuses `flock` outright -- none of
-which will ever resolve by waiting. Masking one of those behind the retry loop for up to 30
-seconds and then raising `SessionLockedError` ("locked by another process") would trade a loud,
-honest failure for a quiet, misleading one. Only `BlockingIOError`"""
+    """Caught in review before this shipped: a first draft caught a bare `OSError` around the poll loop."""
     import errno
 
     SessionService().create_session("A real request.", slug="broken-lock")
@@ -292,11 +247,7 @@ honest failure for a quiet, misleading one. Only `BlockingIOError`"""
 
 
 def _platform_unlinks_a_file_it_still_holds(tmp_path) -> bool:
-    """Does this platform permit unlinking a file this process holds an open fd on?
-
-    Measured, not derived from `sys.platform`: the question is what the filesystem and the open mode
-    actually allow here, and a name-based guess is the shape invariant 17's sequel was written about
-    -- a check whose answer depends on where it runs rather than on what it looked at."""
+    """Does this platform permit unlinking a file this process holds an open fd on?"""
     probe = tmp_path / "held.probe"
     fd = os.open(probe, os.O_RDWR | os.O_CREAT, 0o600)
     try:
@@ -310,9 +261,7 @@ def _platform_unlinks_a_file_it_still_holds(tmp_path) -> bool:
 
 
 def test_delete_session_removes_the_directory_and_the_lock_file(workspace):
-    """The uncontended positive control every negative test below needs: deleting a session that
-    nothing else is touching must actually remove both the directory and the lock file the issue's
-    own acceptance criteria name, not merely refuse to error."""
+    """The uncontended positive control every negative test below needs."""
     svc = SessionService()
     svc.create_session("A real request.", slug="gone-soon")
     svc.update_model("gone-soon", _full_model())
@@ -330,18 +279,13 @@ def test_deleting_a_nonexistent_slug_is_refused_with_session_not_found(workspace
     with pytest.raises(RequivoError) as ei:
         store.delete_session("never-existed")
     assert ei.value.code == "session_not_found"
-    # Refusing must not conjure anything -- no directory, no lock file, for a slug nothing ever
-    # claimed (the same must-not-fire shape `test_a_lock_on_a_slug_with_no_session_leaves_no_trace`
-    # already pins for the lock alone).
+    # Refusing must not conjure anything -- no directory, no lock file, for a slug nothing ever claimed (the same must-not-fire shape `test_a_lock_on_a_slug_with_no_session_leaves_no_trace` already pins for the lock alone).
     assert not store.canonical_dir("never-existed").exists()
     assert not store.lock_path("never-existed").exists()
 
 
 def test_deleting_then_recreating_the_same_slug_succeeds(workspace):
-    """The issue's own acceptance criterion, verbatim: the slug claim is genuinely released.
-    Invariant 11's claim on a slug is `create_session`'s rename -- if delete left anything behind
-    that rename could lose to (a ghost directory, a stale lock treated as an occupant), re-creating
-    the identical slug would either fail or silently inherit residue from the deleted session."""
+    """The issue's own acceptance criterion, verbatim: the slug claim is genuinely released."""
     svc = SessionService()
     svc.create_session("The first occupant of this slug.", slug="reused")
     svc.update_model("reused", _full_model(**{"problem": _slot(80, "explicit", "high", "FIRST")}))
@@ -355,8 +299,8 @@ def test_deleting_then_recreating_the_same_slug_succeeds(workspace):
 
 def test_a_writer_racing_an_in_flight_delete_is_refused_rather_than_writing_into_a_half_removed_directory(
         workspace, monkeypatch):
-    """The issue's own acceptance criterion: a delete racing a concurrent writer must not leave a
-half-removed directory."""
+    """The issue's own acceptance criterion: a delete racing a concurrent writer must not leave a half-removed
+    directory."""
     SessionService().create_session("A real request.", slug="racer")
     writer_may_start = threading.Event()
     real_acquire = store_lock._acquire
@@ -395,11 +339,7 @@ half-removed directory."""
 
 def test_the_lock_file_is_gone_before_the_lock_is_released_not_after(workspace, tmp_path,
                                                                     monkeypatch):
-    """Found in review: the first draft unlinked the lock file *after* `session_lock`'s own release,
-which reopens the exact "unlinking a lock file a concurrent process may be holding" hazard
-`session_lock`'s own docstring says #22 rejected as a repair -- because invariant 11 lets a
-second actor `create_session` the identical slug the instant `session_exists` goes false, which
-is the moment `rmtree` returns, still inside this method's own critical section."""
+    """Found in review: the first draft unlinked the lock file *after* `session_lock`'s own release (#22)."""
     SessionService().create_session("A real request.", slug="ordered")
     lock_path = store.lock_path("ordered")
     real_release = store_lock._release
@@ -418,13 +358,7 @@ is the moment `rmtree` returns, still inside this method's own critical section.
             "the lock file must already be gone by the time the lock is released, not unlinked "
             "afterwards -- see delete_session's own docstring for why the other ordering is unsafe")
     else:
-        # The third state, and it is a claim rather than a shrug (#469). Where the platform refuses a
-        # same-process unlink of a held file, the zero-window ordering above is not merely untested --
-        # it is unreachable, and asserting it here would redden a store behaving as correctly as the
-        # platform permits. What must still hold is that the file does not survive the call, which the
-        # assertion below states for both branches. The fallback path's own guard,
-        # test_a_delete_whose_in_lock_unlink_is_refused_still_removes_the_lock_file, stages this
-        # refusal on every platform, so nothing about it goes unexercised on the legs that pass here.
+        # The third state, and it is a claim rather than a shrug (#469).
         assert observed.get("lock_file_existed_at_release") is True, (
             "this platform refuses to unlink a file it still holds, so the in-lock unlink cannot "
             "have succeeded -- if it did, this probe is measuring the wrong thing")
@@ -434,11 +368,8 @@ is the moment `rmtree` returns, still inside this method's own critical section.
 
 def test_a_delete_whose_in_lock_unlink_is_refused_still_removes_the_lock_file(workspace, tmp_path,
                                                                               monkeypatch):
-    """#469. On Windows `os.open` takes no share-delete, so `delete_session`'s unlink of the lock file
-it is still holding is refused every time -- not "can raise instead", which is how the method's
-docstring first put it. The old code swallowed that `OSError` and left the file, so every Windows
-`session delete` left residue `doctor --json` then reported as `unmatched`: the install
-diagnostic accusing the user of a state Requivo had just created."""
+    """#469. On Windows `os.open` takes no share-delete, so `delete_session`'s unlink of the lock file it is
+    still holding is refused every time."""
     svc = SessionService()
     svc.create_session("A real request.", slug="refused")
     svc.update_model("refused", _full_model())   # create_session is lock-free (invariant 11); an
@@ -468,11 +399,7 @@ diagnostic accusing the user of a state Requivo had just created."""
 
 
 def test_a_lock_taken_without_a_delete_never_removes_its_lock_file(workspace):
-    """The must-not-fire twin of the fallback above. `_LockHandle` records its request against the
-    lock *key* on a thread-local, so a bug that let the flag survive one `session_lock` into the next
-    would silently unlink the lock file of every subsequently locked session -- reopening exactly the
-    "unlinking a lock file a concurrent process may be holding" hazard #22 rejected, from the
-    opposite direction and with nothing else in the suite watching for it."""
+    """The must-not-fire twin of the fallback above (#22)."""
     svc = SessionService()
     svc.create_session("A real request.", slug="deleted-one")
     svc.create_session("Another real request.", slug="survivor")
@@ -486,11 +413,7 @@ def test_a_lock_taken_without_a_delete_never_removes_its_lock_file(workspace):
 
 
 def test_delete_waits_for_a_concurrent_writer_then_removes_what_it_wrote(workspace):
-    """The paired must-succeed half of the race above: a writer already using the session when
-    delete is asked for must not be interrupted mid-write, and delete must still succeed once the
-    writer is done -- genuinely serialised, not merely lucky. The middle assertion is the one that
-    would catch a regression to an unlocked or best-effort delete: it proves `delete_session` is
-    still blocked while the writer holds the lock, not that it happens to finish after it."""
+    """The paired must-succeed half of the race above."""
     svc = SessionService()
     svc.create_session("A real request.", slug="patient")
     svc.update_model("patient", _full_model())

@@ -1,5 +1,5 @@
 {
-  "_comment": "Written by scripts/shoot_doc_images.py. Each image carries the `surface_digest` of the tree it was shot against; tests/test_doc_images.py compares each one against the tree, so a shot left out of a partial re-run stays flagged - re-run the script.",
+  "_comment": "Written by scripts/shoot_doc_images.py. Each image carries the `surface_digest` of the tree it was shot against; `--check` compares each one against the tree, so a shot left out of a partial re-run stays flagged - re-run the script.",
   "shot_at": "2026-09-16",
   "viewport": {
     "width": 1280,

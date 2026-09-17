@@ -1,18 +1,4 @@
-"""Cross-operation prompt caching (#258): one byte-identical leading block, cached on every call.
-
-Every prompt template opens with the same block -- the model schema and the product context, the
-~9k tokens every operation shares -- and `build_system_prompt` splits the assembled system prompt
-exactly at that block's end. `_system_blocks` sends it as its own text block with a
-`cache_control` breakpoint on **every** call, so the second operation in a sitting reads the block
-at 0.1x instead of re-sending it at full price; the op-specific remainder carries a breakpoint only
-under the existing `reuse_system=True` contract. `prompt_version()` still hashes the whole string.
-
-Three claims, three guards, and each negative half has its positive control in the same fixture:
-the eight templates really share the block (and a perturbed template is refused rather than sent
-with a shorter or empty prefix); the request carries the breakpoint where the design says; and the
-split is exactly the block's end, so what the model reads is byte for byte what `build_prompt()`
-assembled before the split existed.
-"""
+"""Cross-operation prompt caching (#258): one byte-identical leading block, cached on every call."""
 import hashlib
 import json
 import shutil
@@ -76,9 +62,7 @@ def test_a_narrowed_card_selection_still_yields_one_shared_block_across_operatio
 
 
 def test_a_template_whose_leading_block_is_perturbed_is_refused_not_sent(tmp_path, monkeypatch):
-    """The must-fire control for the two tests above: a template that stops opening with the exact
-    block is a defect in the asset, and the answer is a refusal -- never a call that quietly sends a
-    shorter prefix (a cache miss on every other operation) or an empty shared block."""
+    """The must-fire control for the two tests above."""
     prompts = tmp_path / "prompts"
     shutil.copytree(paths.PROMPTS, prompts)
     victim = prompts / "brief.md"
@@ -142,9 +126,7 @@ def test_a_looping_caller_caches_both_blocks():
 
 
 def test_the_shared_breakpoint_carries_the_default_ttl():
-    """Deliberately the 5-minute default, not `ttl: "1h"` -- the arithmetic is in the pull request
-    that landed #258. A TTL appearing here is a pricing change (2x write instead of 1.25x), so it
-    must fail this test rather than ride in."""
+    """Deliberately the 5-minute default, not `ttl: "1h"` (#258)."""
     for reuse in (False, True):
         for block in _system_blocks(build_system_prompt("brief.md", None), reuse):
             if "cache_control" in block:
@@ -152,19 +134,15 @@ def test_the_shared_breakpoint_carries_the_default_ttl():
 
 
 def test_a_bare_string_system_has_no_shared_block_to_cache():
-    """A caller that hands `_complete` a plain string (the test fakes do) has no leading block, so
-    there is nothing to cache across operations: one block, breakpoint per `reuse_system`, exactly
-    as before #258. Both arms, so the str path is not silently the SystemPrompt path."""
+    """A caller that hands `_complete` a plain string (the test fakes do) has no leading block (#258)."""
     assert _system_blocks("SYSTEM", False) == [{"type": "text", "text": "SYSTEM"}]
     assert _system_blocks("SYSTEM", True) == [
         {"type": "text", "text": "SYSTEM", "cache_control": _EPHEMERAL}]
 
 
 def test_the_shared_block_is_byte_identical_across_two_operations_in_one_sitting():
-    """The acceptance criterion, offline: a discovery followed by a brief sends the same first block,
-    with the breakpoint on it both times, so the second call is a cache *read* of the first's write.
-    Driven through the real generators rather than `_complete`, so a generator that stops threading
-    `build_system_prompt` fails here."""
+    """The acceptance criterion, offline: a discovery followed by a brief sends the same first block, with the
+    breakpoint on it both times, so the second call is a cache *read* of the first's write."""
     from _fakes import _ENGINE_REPLY
 
     from requivo.providers.anthropic import advise, run

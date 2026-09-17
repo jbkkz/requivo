@@ -1,10 +1,5 @@
 """The provider call's baseline behaviour: JSON extraction from a reply, and characterization of
-discovery/generator/error/context-card plumbing against a canned client.
-
-Split out of `test_engine.py` (#72), then split again out of `test_provider.py` (#555) once that
-file grew past the module ceiling. No real network: `FakeClient` returns canned replies in order and
-records the request that came out, so each test asserts on what would have been sent.
-"""
+discovery/generator/error/context-card plumbing against a canned client (#72)."""
 import io
 import json
 from contextlib import redirect_stdout
@@ -39,12 +34,11 @@ def test_extract_json_raises_on_garbage():
 
 
 # ── Characterization: discovery, generators, errors, context ─────────────────
-# These pin CURRENT behavior (shapes, formats, error surfaces). They are not quality tests.
+# These pin CURRENT behavior (shapes, formats, error surfaces).
 
 
 def test_run_returns_engine_output_and_wires_schema_and_context():
-    # The --once discovery pass is a single run() call. Characterize its result
-    # AND that the engine turn is driven by prompts/engine.md with schema + context injected.
+    # The --once discovery pass is a single run() call.
     fake = FakeClient(_ENGINE_REPLY)
     result = run(fake, [{"role": "user", "content": "leave approval"}])
     assert isinstance(result, EngineOutput)
@@ -58,8 +52,7 @@ def test_run_returns_engine_output_and_wires_schema_and_context():
 
 
 def test_run_rejects_a_model_missing_required_slots(tmp_path, monkeypatch):
-    # A discovery reply missing a required slot is refused: the completeness invariant is enforced at
-    # the boundary. The FakeClient returns the same incomplete reply every retry, so run() gives up.
+    # A discovery reply missing a required slot is refused.
     from requivo.core.errors import ProviderOutputError
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
@@ -68,8 +61,7 @@ def test_run_rejects_a_model_missing_required_slots(tmp_path, monkeypatch):
         "questions": [], "summary": {"objective": "o"},
     })
     fake = FakeClient(incomplete, incomplete, incomplete)  # every retry attempt
-    # A RequivoError with a stable code, not a bare RuntimeError: the CLI's handler catches the former
-    # and prints a clean message, and lets the latter through as a traceback.
+    # A RequivoError with a stable code, not a bare RuntimeError.
     with pytest.raises(ProviderOutputError, match="missing required slots") as exc:
         run(fake, [{"role": "user", "content": "leave approval"}])
     assert exc.value.to_dict()["code"] == "provider_output_invalid"
@@ -77,9 +69,7 @@ def test_run_rejects_a_model_missing_required_slots(tmp_path, monkeypatch):
 
 
 def test_run_self_heals_when_a_retry_completes_the_model():
-    # The completeness check rides the existing retry loop: a first incomplete reply nudges the model,
-    # and a complete reply on the next attempt is accepted. This is why the invariant is safe to
-    # enforce on a non-deterministic model — an omission is corrected, not fatal.
+    # The completeness check rides the existing retry loop.
     incomplete = json.dumps({
         "model": {"problem": slot(80, "explicit", "high")},
         "questions": [], "summary": {"objective": "o"},
@@ -122,8 +112,7 @@ def test_derive_stories_returns_structured_stories():
 
 
 def test_run_restricts_context_cards_when_only_given():
-    # The --context selection threads run() → build_prompt() → load_context(): the assembled system
-    # carries only the chosen card, so it can't dilute impact estimation with the others.
+    # The --context selection threads run() → build_prompt() → load_context().
     fake = FakeClient(_ENGINE_REPLY)
     run(fake, [{"role": "user", "content": "leave approval"}], only=["b2b-platform"])
     system = fake.calls[0]["system"][0]["text"]

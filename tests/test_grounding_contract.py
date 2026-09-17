@@ -1,33 +1,4 @@
-"""Every surface a human reads names the product context the session was grounded on (#492).
-
-`information_value = uncertainty x impact` is the whole driver, and the context cards are what the
-impact half is read against. So a session can be grounded on `financial-reporting` while reasoning
-about a CI matrix, produce a model, reach *ready* -- and nothing on screen names that its question
-selection was scored against a product the request has nothing to do with. The preflight tells the
-three states `ok` / `empty` / `unreadable` apart; *present, readable, and about the wrong product*
-is a fourth, and it renders identically to `ok`.
-
-**The decision this file pins is that there is no fourth status, and there is not going to be one.**
-Every other `context.status` value is decidable from the filesystem. Relevance is not: automating it
-needs either a model call inside the free deterministic preflight -- putting a paid, fallible
-judgment in front of the one path whose whole value is that it is decidable -- or a keyword
-heuristic, which is the combination that is right often enough to be trusted and wrong silently.
-`CLAUDE.md`'s own bar for automatic relevance routing is a third *measured* instance of a card
-diluting its neighbour; two are on record (the `financial-reporting` / `doc-reapproval` measurement,
-and #489's external validation report). That is the revisit trigger, written down so it stops being
-re-derived.
-
-What is left is that the human is the detector -- and a detector is only as good as the fact they
-are handed. So this is a property rather than a list of expected strings: **a surface that renders a
-session's state names what that state was reasoned against, and says something different when the
-grounding was never narrowed.** A surface may word it however suits its reader; it may not be silent,
-and it may not render the two cases identically.
-
-The shape is `tests/test_readiness_contract.py`'s, deliberately: one fact, several surfaces, and a
-guard that lives above all of them rather than inside any one -- because what went wrong in #165 was
-two surfaces disagreeing off the same `model.json`, and what goes wrong here is one surface simply
-not saying it.
-"""
+"""Every surface a human reads names the product context the session was grounded on (#492)."""
 from __future__ import annotations
 
 import io
@@ -49,8 +20,7 @@ SLUG = "grounded"
 
 @pytest.fixture(autouse=True)
 def _workspace(workspace):
-    """Every test here needs an isolated `.requivo/` root; `workspace` (conftest.py, #555)
-    provides it -- this just makes it apply to the whole module without each test asking for it."""
+    """Every test here needs an isolated `.requivo/` root; `workspace` (conftest.py, #555) provides it."""
     return workspace
 
 
@@ -82,12 +52,7 @@ def _terminal_session_show(cards: list[str] | None, proposal: Path) -> str:
 
 
 def _web_primary_screen(cards: list[str] | None, proposal: Path) -> str:
-    """The rendered page, cut at *Traceability details*.
-
-    The cut is the assertion, not a convenience. The history line under traceability has named the
-    cards since long before this issue, and it is one click away -- which is exactly the state #492
-    was filed about: the fact existed and the reader was not handed it. A test reading the whole page
-    would have been green on the defect."""
+    """The rendered page, cut at *Traceability details* (#492)."""
     _seed(cards, proposal)
     client = TestClient(create_app(), base_url="http://127.0.0.1:8765",
                         raise_server_exceptions=False)
@@ -99,8 +64,7 @@ def _web_primary_screen(cards: list[str] | None, proposal: Path) -> str:
 
 
 def _terminal_renderer(cards: list[str] | None, _proposal: Path) -> str:
-    """`render_grounding` on its own, with no session behind it -- the unit the two CLI verbs share,
-    so a regression in it is attributed here rather than to whichever verb happened to be read."""
+    """`render_grounding` on its own, with no session behind it."""
     buf = io.StringIO()
     with redirect_stdout(buf):
         render_grounding(cards)
@@ -108,10 +72,7 @@ def _terminal_renderer(cards: list[str] | None, _proposal: Path) -> str:
 
 
 def _wipe(workspace: Path) -> None:
-    """Remove the seeded session so the next `session init` in the same test can claim the slug
-    again. `create_session`'s claim is atomic and by identity (invariant 11), so re-seeding the same
-    slug with *different* cards is a different identity and would raise rather than overwrite --
-    which is the behaviour under test elsewhere, not something to work around silently here."""
+    """Remove the seeded session so the next `session init` in the same test can claim the slug again."""
     import shutil
     root = workspace / ".requivo"
     if root.exists():
@@ -137,9 +98,7 @@ def test_every_surface_names_the_cards_a_session_was_grounded_on(surface, render
 @pytest.mark.parametrize("surface,render", SURFACES, ids=[s for s, _ in SURFACES])
 def test_no_surface_renders_a_narrowed_and_an_unnarrowed_grounding_the_same_way(
         surface, render, _proposal, tmp_path):
-    """The must-fire half. Without it, a surface that printed a fixed caption and no value would
-    pass the row above for the `[CARD]` case only by accident of the caption containing the word,
-    and a surface that dropped the distinction entirely would pass both."""
+    """The must-fire half. Without it."""
     narrowed = render([CARD], _proposal)
     _wipe(tmp_path)
     unnarrowed = render(None, _proposal)
@@ -149,9 +108,7 @@ def test_no_surface_renders_a_narrowed_and_an_unnarrowed_grounding_the_same_way(
 
 
 def test_the_view_model_states_which_of_the_two_it_is_rather_than_leaving_it_to_the_template():
-    """`narrowed` is a fact about the session; the template's job is to word it. A template deciding
-    it from `cards|length` would be re-deriving, which is the one thing `viewmodels/` may not do --
-    and it would be wrong the day an install holds exactly as many cards as a session named."""
+    """`narrowed` is a fact about the session; the template's job is to word it."""
     assert grounding_view({"context_cards": [CARD]}) == {
         "narrowed": True, "readable": True, "cards": [CARD]}
     unnarrowed = grounding_view({"context_cards": None})
@@ -161,11 +118,7 @@ def test_the_view_model_states_which_of_the_two_it_is_rather_than_leaving_it_to_
         "not on none")
 
 
-# The surfaces that *enumerate the install* to answer the unnarrowed case, which is the only way the
-# unreadable state can arise. `session show` is deliberately not among them: it names the session's
-# own selection and prints "all cards" without reading the directory, so it cannot meet this state
-# and a row for it would assert nothing. Naming the exclusion rather than letting the list look like
-# an oversight.
+# The surfaces that *enumerate the install* to answer the unnarrowed case.
 _ENUMERATING_SURFACES = [s for s in SURFACES if s[0] != "terminal session show"]
 
 
@@ -173,11 +126,7 @@ _ENUMERATING_SURFACES = [s for s in SURFACES if s[0] != "terminal session show"]
                          ids=[s for s, _ in _ENUMERATING_SURFACES])
 def test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb(
         surface, render, _proposal, monkeypatch):
-    """The third state, found in review of #518. `available_cards()` enumerates a directory and
-    raises `ContextUnreadableError` when it cannot -- an install-level fact with nothing to do
-    with the session being read. Uncaught, the Web's broad handler would render *Requivo found
-    this session on disk and could not open it*, pointing at `session verify` -- wrong for a
-    permissions problem next door. So the line degrades and the page does not."""
+    """The third state, found in review of #518."""
     from requivo.core import context as context_module
     from requivo.core.errors import ContextUnreadableError
 
@@ -196,10 +145,7 @@ def test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_th
 
 
 def test_no_surface_claims_a_relevance_verdict_it_cannot_reach(_proposal, tmp_path):
-    """The other half of the decision, and the one a future change is most likely to break: naming
-    is not judging. A surface that started calling a grounding `mismatched`, `wrong` or `irrelevant`
-    would be asserting something no deterministic path can decide -- see this module's docstring for
-    why the two available ways of deciding it are both refused."""
+    """The other half of the decision, and the one a future change is most likely to break."""
     for cards in ([CARD], None):
         for _, render in SURFACES:
             _wipe(tmp_path)

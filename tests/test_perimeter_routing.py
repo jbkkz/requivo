@@ -1,8 +1,5 @@
-"""The perimeter router (#601): judge which installed perimeter a first discovery's shape belongs
-to, before any model is reasoned, riding #593's own claim-judge-reclaim seam rather than a second
-one beside it. `test_discovery_provider_seam.py`'s grounding-judgment section is this file's direct
-sibling -- same shape of test, one question over.
-"""
+"""The perimeter router (#601): judge which installed perimeter a first discovery's shape belongs to, before
+any model is reasoned, riding #593's own claim-judge-reclaim seam rather than a second one beside it."""
 from __future__ import annotations
 
 import builtins
@@ -22,16 +19,7 @@ from requivo.services.sessions import SessionService
 
 
 def test_a_perimeter_judgment_whose_payload_contradicts_its_decision_is_refused():
-    """The same discipline `ContextJudgment`'s validator holds, one question over: a decision and a
-    payload that disagree is refused rather than reaching a caller. Guarded here rather than only
-    pinned in `discovery.py`'s docstring, since the validator is the thing that must not regress.
-
-    The duplicate-candidate case is #601 P2 (Codex review): `len(candidates) < 2` passed a reply
-    naming the *same* perimeter twice, so a non-interactive discovery deleted its claim and refused
-    over an ambiguity nobody stated, and an interactive one offered the identical choice twice. The
-    `none`-with-candidates case is that finding's own instruction to check a validator's neighbours
-    -- same code path as `fits`-with-candidates, asserted in its own right so a future refactor
-    cannot silently cover one arm and not the other."""
+    """The same discipline `ContextJudgment`'s validator holds, one question over (#601)."""
     PerimeterJudgment(decision="fits", reason="r", perimeter="software")               # control
     PerimeterJudgment(decision="ambiguous", reason="r", candidates=["software", "go-to-market"])
     PerimeterJudgment(decision="none", reason="r")
@@ -51,11 +39,7 @@ def test_a_perimeter_judgment_whose_payload_contradicts_its_decision_is_refused(
 
 
 def test_a_judgment_naming_a_perimeter_the_install_does_not_have_is_refused(workspace):
-    """The sibling of `test_a_judgment_naming_a_card_the_install_does_not_have_is_refused` (#593),
-    one call over: an invented perimeter id is not inert -- it would reach `get_perimeter` as a
-    claim and refuse the very discovery the judgment was supposed to route. Rides `_complete`'s
-    retry loop as a `ValueError`, so the model is told what it got wrong rather than the run
-    failing (#601)."""
+    """The sibling of `test_a_judgment_naming_a_card_the_install_does_not_have_is_refused` (#593)."""
     from requivo.core.errors import ProviderOutputError
     from requivo.core.perimeters import perimeter_summaries
     from requivo.providers.anthropic.generators import judge_perimeter
@@ -77,9 +61,7 @@ def test_a_judgment_naming_a_perimeter_the_install_does_not_have_is_refused(work
 
 
 class _Router:
-    """A `ReasoningProvider` that also answers routing questions (#601). Records what it was asked;
-    its context grounding always answers `none` so these tests isolate routing from #593's own
-    judgment -- the mirror of `test_discovery_provider_seam.py`'s `_Judge`, one question over."""
+    """A `ReasoningProvider` that also answers routing questions (#601)."""
 
     name = "routing-stub"
 
@@ -114,9 +96,8 @@ def _disco(provider):
 
 
 def test_an_explicit_perimeter_is_not_second_guessed(workspace):
-    """A `--perimeter` is a human decision. Paying to re-examine it would either agree at cost or
-    disagree with nothing the service is allowed to do about it -- the identical rule
-    `judge_grounding` already holds for `--context`."""
+    """A `--perimeter` is a human decision. Paying to re-examine it would either agree at cost or disagree
+    with nothing the service is allowed to do about it."""
     router = _Router()
     routing = _disco(router).route_perimeter("a request", perimeter="software")
 
@@ -126,8 +107,7 @@ def test_an_explicit_perimeter_is_not_second_guessed(workspace):
 
 
 def test_a_single_installed_perimeter_is_not_judged(workspace, monkeypatch):
-    """One installed perimeter is not a routing decision -- the router's own mirror of
-    `judge_grounding`'s "an install with no cards" guard."""
+    """One installed perimeter is not a routing decision."""
     from requivo.services import discovery as disco_mod
 
     monkeypatch.setattr(disco_mod, "known_perimeter_ids", lambda: (SOFTWARE,))
@@ -139,8 +119,7 @@ def test_a_single_installed_perimeter_is_not_judged(workspace, monkeypatch):
 
 
 def test_a_provider_that_cannot_route_reports_not_asked(workspace):
-    """`PerimeterJudge` is a protocol a provider may simply not implement. *Nobody looked* and *no
-    routing needed* must never be the same answer -- #492's rule, ridden one layer up."""
+    """`PerimeterJudge` is a protocol a provider may simply not implement (#492)."""
     from conftest import FakeProvider as _FakeProvider
 
     routing = _disco(_FakeProvider()).route_perimeter("a request", perimeter=None)
@@ -150,8 +129,8 @@ def test_a_provider_that_cannot_route_reports_not_asked(workspace):
 
 
 def test_the_routing_judgment_reaches_the_provider_with_one_line_per_installed_perimeter(workspace):
-    """The summaries are read in `core` and passed down, so the provider cannot answer about a
-    different install than the one this build actually has."""
+    """The summaries are read in `core` and passed down, so the provider cannot answer about a different
+    install than the one this build actually has."""
     from requivo.core.perimeters import known_perimeter_ids
 
     router = _Router()
@@ -162,9 +141,7 @@ def test_the_routing_judgment_reaches_the_provider_with_one_line_per_installed_p
 
 
 def test_a_fitting_perimeter_verdict_reroutes_and_reclaims(workspace):
-    """The mirror of #593's own `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`:
-    perimeter is half of identity too (invariant 11), so acting on `fits` cannot be an edit -- the
-    empty session claimed under the default is deleted and re-claimed under the routed perimeter."""
+    """The mirror of #593's own `test_a_narrowing_verdict_reclaims_under_the_narrowed_identity`."""
     router = _Router(PerimeterJudgment(decision="fits", reason="a launch plan", perimeter=GO_TO_MARKET))
     meta, _grounding, _cards, routing = _disco(router).claim_and_ground(
         "help us launch this", cards=None, slug=None)
@@ -175,9 +152,7 @@ def test_a_fitting_perimeter_verdict_reroutes_and_reclaims(workspace):
 
 
 def test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned(workspace):
-    """The decline state that is a real answer, not a fallback (#601's own framing): more than one
-    perimeter plausibly fits, so the service says so and asks rather than guessing -- and it refuses
-    before `analyze()` is ever reached, leaving no session behind for the caller to clean up."""
+    """The decline state that is a real answer, not a fallback (#601's own framing)."""
     router = _Router(PerimeterJudgment(
         decision="ambiguous", reason="could be either", candidates=[SOFTWARE, GO_TO_MARKET]))
 
@@ -188,12 +163,7 @@ def test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned(workspace):
 
 
 def test_an_ambiguous_verdicts_reason_is_neutralized_in_the_message_not_in_details(workspace):
-    """#601 P2 (Codex review): `reason` is LLM-authored prose over an untrusted request, and the
-    exception's message reaches the terminal verbatim -- no renderer sits between this raise and
-    `sys.stderr` (`app()` writes `str(error)` directly). A forged reason carrying a control sequence
-    must not reach the screen unescaped, the same rule invariant 14 holds for a stored card name
-    forging a line of `doctor`. `details['reason']` keeps the raw text, for a `--json` consumer that
-    renders it through its own escaping."""
+    """#601 P2 (Codex review): `reason` is LLM-authored prose over an untrusted request."""
     forged = "ordinary\x1b[2Jrequest"
     router = _Router(PerimeterJudgment(
         decision="ambiguous", reason=forged, candidates=[SOFTWARE, GO_TO_MARKET]))
@@ -206,8 +176,7 @@ def test_an_ambiguous_verdicts_reason_is_neutralized_in_the_message_not_in_detai
 
 
 def test_an_explicit_perimeter_is_never_overridden_by_the_router(workspace):
-    """A caller that names `--perimeter` explicitly is never re-routed, even when the router (were
-    it asked) would have picked something else -- it is never asked at all."""
+    """A caller that names `--perimeter` explicitly is never re-routed."""
     router = _Router(PerimeterJudgment(decision="fits", reason="x", perimeter=GO_TO_MARKET))
     meta, _grounding, _cards, routing = _disco(router).claim_and_ground(
         "a request", cards=None, slug=None, perimeter=SOFTWARE)
@@ -218,8 +187,8 @@ def test_an_explicit_perimeter_is_never_overridden_by_the_router(workspace):
 
 
 def test_a_none_verdict_continues_under_the_default_perimeter_named(workspace):
-    """"None fits" is a real answer, not a failure: the session continues under the default
-    perimeter, and that name is what a reader finds recorded on it -- never silently assumed."""
+    """"None fits" is a real answer, not a failure: the session continues under the default perimeter, and
+    that name is what a reader finds recorded on it -- never silently assumed."""
     router = _Router(PerimeterJudgment(decision="none", reason="neither shape"))
     meta, _grounding, _cards, routing = _disco(router).claim_and_ground(
         "a request", cards=None, slug=None)
@@ -229,8 +198,7 @@ def test_a_none_verdict_continues_under_the_default_perimeter_named(workspace):
 
 
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_routing_verdict(workspace):
-    """The mirror of #593's own `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`:
-    an idempotent re-entry onto an existing claim must never be the thing a routing verdict deletes."""
+    """The mirror of #593's own `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`."""
     svc = SessionService()
     first = svc.create_session("a request", perimeter=SOFTWARE)
 
@@ -244,12 +212,7 @@ def test_a_session_this_call_did_not_create_is_never_deleted_by_a_routing_verdic
 
 
 def test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it(workspace):
-    """#601 P1 (Codex review): `_reclaim_under` used to return `True` unconditionally once its own
-    delete succeeded, even when the recreate that followed landed *idempotently* on a session that
-    already existed under the routed perimeter -- so a perimeter reclaim's false "I created this"
-    fed straight into the grounding step's own precondition check, authorising it to delete and
-    recreate a session neither call actually made, silently narrowing its cards. The victim here is
-    created before `claim_and_ground` is even called."""
+    """#601 P1 (Codex review)."""
     from requivo.core.contracts import ContextJudgment
 
     svc = SessionService()
@@ -273,24 +236,11 @@ def test_reclaiming_onto_a_pre_existing_session_never_authorises_deleting_it(wor
 
 def test_an_idempotent_perimeter_reclaim_onto_the_correct_identity_is_announced_as_landed(
         workspace):
-    """The routing branch's own mirror of the test below (#601 P2, round three, Codex review): a
-    perimeter reclaim that lands idempotently on a go-to-market session must report *that*
-    identity -- not fall back to announcing the software claim retained, which is what reading
-    `created` (False on an idempotent match) as `landed` used to do. Getting this wrong here is
-    worse than the grounding-side mirror: `claim_perimeter` feeds straight into the `perimeter=`
-    this call's own discovery turn reasons under, so a wrong answer here means analysing under one
-    perimeter's schema against a session recorded under another.
-
-    The victim must appear *during* the routing call, not before it: round four's own fix
-    (`find_existing_session`, invariant 13) now resolves any pre-existing match before routing is
-    even asked, so a victim created up front is caught there instead of exercising this reclaim at
-    all -- correctly, and the still-reachable shape of this race is a concurrent writer landing the
-    identity while the routing judgment is in flight."""
+    """The routing branch's own mirror of the test below (#601 P2, round three, Codex review)."""
 
     class _RoutesWithARace(_Router):
         def judge_perimeter(self, request, *, perimeters):
-            # A concurrent writer claims the go-to-market identity between this call's own
-            # find_existing_session check (which found nothing) and its reclaim.
+            # A concurrent writer claims the go-to-market identity between this call's own find_existing_session check (which found nothing) and its reclaim.
             SessionService().create_session(request, perimeter=GO_TO_MARKET)
             return super().judge_perimeter(request, perimeters=perimeters)
 
@@ -306,18 +256,12 @@ def test_an_idempotent_perimeter_reclaim_onto_the_correct_identity_is_announced_
 
 def test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_not_the_old_one(
         workspace):
-    """#601 P2, round three (Codex review): a reclaim that lands *idempotently* on a session that
-    already has the narrowed identity is still a landed reclaim -- `created=False` there means "this
-    call did not make it", never "the identity did not move". The old code read `created` for both
-    questions and reported the pre-narrowing cards (`None`) for a session whose own `session.json`
-    already said `financial-reporting`, so `start()` went on to reason over every card against a
-    session that claimed to be narrowed."""
+    """#601 P2, round three (Codex review): a reclaim that lands *idempotently* on a session that already has
+    the narrowed identity is still a landed reclaim."""
     from requivo.core.contracts import ContextJudgment
 
     svc = SessionService()
-    # A session already sitting under the exact identity grounding is about to narrow onto -- the
-    # reachable shape is a prior call's own abandoned narrowing attempt, same family as the P2 test
-    # above, one call further down the chain.
+    # A session already sitting under the exact identity grounding is about to narrow onto.
     already_narrowed = svc.create_session(
         "a request", context_cards=["financial-reporting"], perimeter=SOFTWARE)
 
@@ -336,18 +280,7 @@ def test_an_idempotent_reclaim_onto_the_correct_identity_reports_that_identity_n
 
 
 def test_a_route_that_cannot_land_is_not_announced_as_though_it_did(workspace):
-    """#601 P2 (Codex review): when a reclaim's own delete is refused (the fourth precondition gone
-    by the time the router replies), the session stays exactly where it was claimed, and the
-    returned `Routing` must say so rather than keep reporting a route that never took effect --
-    reasoning under one perimeter while the screen names another is the exact failure this router
-    exists to remove.
-
-    Round four's own fix (`find_existing_session`, invariant 13) means a *leftover* claim from an
-    earlier interrupted run is now resolved before routing is ever asked (a cheaper, earlier fix for
-    the identical case this test used to construct), so the shape that still reaches this branch is
-    a concurrent writer discovering *this call's own* freshly-claimed placeholder while the routing
-    judgment is in flight -- the same race pinned for the grounding side, one call earlier, by
-    `test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone`."""
+    """#601 P2 (Codex review)."""
     from conftest import full_model as _full_model
 
     class _RoutesMidJudgment(_Router):
@@ -388,9 +321,8 @@ def _gtm_reply() -> str:
 
 
 def test_a_go_to_market_shaped_request_routes_there_on_a_first_discovery(workspace):
-    """Acceptance criterion: a request of an installed perimeter's shape routes to it on a first
-    discovery, before any model is reasoned -- and the verdict is printed before the turn's own
-    output, verbatim (#593's rule, ridden for the router)."""
+    """Acceptance criterion: a request of an installed perimeter's shape routes to it on a first discovery,
+    before any model is reasoned."""
     fake = FakeClient(_GTM_FITS_REPLY, _JUDGMENT_REPLY, _gtm_reply())
     printed = _run_app(["discover", "help us launch this new product", "--once"], client=fake)
 
@@ -403,8 +335,7 @@ def test_a_go_to_market_shaped_request_routes_there_on_a_first_discovery(workspa
 
 
 def test_an_explicit_perimeter_flag_costs_no_routing_call(workspace):
-    """The router is for when the user did not say (acceptance criterion): with `--perimeter`
-    named, the router is never consulted, so the call count is two, not three."""
+    """The router is for when the user did not say (acceptance criterion)."""
     fake = FakeClient(_JUDGMENT_REPLY, _ENGINE_REPLY)
     _run_app(["discover", "a request", "--perimeter", SOFTWARE, "--once"], client=fake)
 
@@ -413,8 +344,8 @@ def test_an_explicit_perimeter_flag_costs_no_routing_call(workspace):
 
 
 def test_an_ambiguous_router_verdict_refuses_before_any_model_is_reasoned_cli(workspace, capsys):
-    """The CLI walk of the same refusal: one call only, no session left behind, and the candidates
-    named on stderr rather than a traceback."""
+    """The CLI walk of the same refusal: one call only, no session left behind, and the candidates named on
+    stderr rather than a traceback."""
     fake = FakeClient(_AMBIGUOUS_REPLY)
 
     with pytest.raises(SystemExit) as exit_:
@@ -429,8 +360,7 @@ def test_an_ambiguous_router_verdict_refuses_before_any_model_is_reasoned_cli(wo
 
 
 def test_a_none_routing_verdict_is_shown_and_the_session_continues_under_software(workspace):
-    """"None fits" is a real answer that lets the session proceed (acceptance criterion), under a
-    perimeter that is *named*, not merely assumed -- and the router still cost exactly one call."""
+    """"None fits" is a real answer that lets the session proceed (acceptance criterion)."""
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     printed = _run_app(["discover", "a request", "--once"], client=fake)
 
@@ -440,18 +370,13 @@ def test_a_none_routing_verdict_is_shown_and_the_session_continues_under_softwar
 
 
 def _at_a_terminal(monkeypatch) -> None:
-    """Mirrors `test_cli_interactive.py`'s own helper, duplicated rather than imported -- a test
-    reaching into a sibling module for a helper breaks when that module reorganises, the rule
-    `test_cli_flag_names.py` states from the other side."""
+    """Mirrors `test_cli_interactive.py`'s own helper, duplicated rather than imported."""
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
 
 def test_an_ambiguous_verdict_asks_interactively_and_continues_under_the_chosen_answer(
         workspace, monkeypatch):
-    """JB's call over the issue's own wording (#601): interactive discovery asks, one question, not
-    a guess, using the identical `input()` pattern `_prompt_answers` has since #592 -- and the
-    re-run with an explicit perimeter costs no second routing call, so the total stays three: the
-    same count a first-try `fits` verdict would have cost."""
+    """JB's call over the issue's own wording (#601)."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "2")   # 1=software, 2=go-to-market
     fake = FakeClient(_AMBIGUOUS_REPLY, _JUDGMENT_REPLY, _gtm_reply())
@@ -465,9 +390,7 @@ def test_an_ambiguous_verdict_asks_interactively_and_continues_under_the_chosen_
 
 
 def test_an_ambiguous_verdict_with_no_tty_refuses_without_reading_stdin(workspace, capsys):
-    """The other half of the same acceptance criterion: closed stdin (no `_at_a_terminal` patch, and
-    no `--once`) must take the same non-interactive refusal `--once` does, never block on a read
-    that will never return. If this test hangs, that is the failure."""
+    """The other half of the same acceptance criterion."""
     fake = FakeClient(_AMBIGUOUS_REPLY)
 
     with pytest.raises(SystemExit) as exit_:
@@ -481,12 +404,7 @@ def test_an_ambiguous_verdict_with_no_tty_refuses_without_reading_stdin(workspac
 
 def test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing(
         workspace):
-    """The mechanism behind the CLI-level repro below, isolated (#601, Codex review round four):
-    invariant 13 promises a repeat discovery is refused before any paid call -- and a repeat of a
-    request already routed to go-to-market has an identity the *default*-perimeter claim never
-    matches, so the free revision-zero gate used to slip past on the wrong identity and the routing
-    judgment got billed before the real session was ever found. `find_existing_session` must be
-    consulted, for every installed perimeter, before either the claim or the router."""
+    """The mechanism behind the CLI-level repro below, isolated (#601, Codex review round four)."""
     first = _disco(_Router(PerimeterJudgment(decision="fits", reason="a launch plan",
                                              perimeter=GO_TO_MARKET)))
     meta, _grounding, _cards, _routing = first.claim_and_ground("a request", cards=None, slug=None)
@@ -508,11 +426,7 @@ def test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_bef
 
 @pytest.mark.parametrize("argv_tail", [["--once"], []], ids=["once", "interactive"])
 def test_a_repeat_of_a_routed_sessions_discovery_costs_no_provider_call(workspace, monkeypatch, capsys, argv_tail):
-    """The CLI walk of the test above, both entry points (#601, Codex review round four).
-    `test_both_discover_entry_points_refuse_a_refined_session_before_paying` (#133, #593) pins this
-    identical rule for a session under the *default* perimeter; this is the shape that actually
-    slipped, because #601's router claims under a perimeter no earlier call named. `FakeClient()`
-    with no replies at all -- any provider call attempted here fails loudly, not quietly."""
+    """The CLI walk of the test above, both entry points (#601, Codex review round four)."""
     _at_a_terminal(monkeypatch)
     _run_app(["discover", "help us launch this new product", "--once"],
              client=FakeClient(_GTM_FITS_REPLY, _JUDGMENT_REPLY, _gtm_reply()))  # -> go-to-market, revision 1
@@ -529,11 +443,8 @@ def test_a_repeat_of_a_routed_sessions_discovery_costs_no_provider_call(workspac
 
 
 def test_an_interrupt_at_the_perimeter_prompt_exits_130_not_1(workspace, monkeypatch):
-    """#601 P2 (Codex review, round four): an operator cancelling at the perimeter prompt is not a
-    failed judgment. `_prompt_perimeter_choice` used to catch `KeyboardInterrupt` and return `None`,
-    which fed the caller's `raise` -- re-raising `AmbiguousPerimeterError`, a `RequivoError`, so
-    `app()` exited 1 where every other interrupt in this file exits 130
-    (`docs/compatibility.md`'s own published contract)."""
+    """#601 P2 (Codex review, round four): an operator cancelling at the perimeter prompt is not a failed
+    judgment."""
     _at_a_terminal(monkeypatch)
 
     def _interrupt(_prompt=""):
@@ -550,10 +461,7 @@ def test_an_interrupt_at_the_perimeter_prompt_exits_130_not_1(workspace, monkeyp
 
 
 def test_eof_at_the_perimeter_prompt_still_refuses_cleanly(workspace, monkeypatch, capsys):
-    """The must-fire control for the arm that does stay caught: EOF is the non-interactive-style
-    refusal even at an interactive prompt -- `_prompt_perimeter_choice` returns `None`, the caller
-    re-raises the original `AmbiguousPerimeterError`, and `app()` exits 1 with the candidates named,
-    same as `--once`."""
+    """The must-fire control for the arm that does stay caught."""
     _at_a_terminal(monkeypatch)
 
     def _eof(_prompt=""):
@@ -571,17 +479,8 @@ def test_eof_at_the_perimeter_prompt_still_refuses_cleanly(workspace, monkeypatc
 
 
 def test_a_failed_routing_call_does_not_lock_the_retry_into_the_default_perimeter(workspace):
-    """#601 P2 (Codex review, round five): round four's own fix traded "pays before refusing" for
-    "never routes again", which is worse. A routing call that fails or is interrupted left its
-    revision-zero software placeholder behind, and the retry's own `find_existing_session` (round
-    four's own check) found it and read the accidental default as a *decision* -- so the router was
-    never consulted again, and the session silently stayed under software while its own `Routing`
-    reported that `--perimeter` had been supplied, which nobody did. The two states genuinely
-    differ (a session whose routing completed vs. a placeholder a routing call never finished) and
-    must not be confused: the placeholder is cleaned up on any failed or interrupted routing call,
-    the same "disposable until routing lands" rule the ambiguous-verdict branch already lives by --
-    never a persisted "routing completed" field, which would touch the public session format for
-    every session, including the ones that never route at all."""
+    """#601 P2 (Codex review, round five): round four's own fix traded "pays before refusing" for "never
+    routes again", which is worse."""
     from requivo.providers.errors import EngineError
 
     class _FailsOnce(_Router):

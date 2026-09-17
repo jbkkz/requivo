@@ -1,7 +1,6 @@
-"""`SessionService.resolve_default_session` — the resolver behind `run`/`status`/`impact` with no
-explicit slug (#541). One test per branch: none, one, several (`updated_at` tie-break, never
-directory mtime), and a degraded row among several (invariant 15: it must not hide the others).
-"""
+"""`SessionService.resolve_default_session` — the resolver behind `run`/`status`/`impact` with no explicit
+slug (#541). One test per branch: none, one, several (`updated_at` tie-break, never directory mtime), and a
+degraded row among several (invariant 15: it must not hide the others)."""
 from __future__ import annotations
 
 import json
@@ -25,8 +24,7 @@ def _set_updated_at(slug: str, iso: str) -> None:
 
 
 def _break_format(slug: str) -> None:
-    """The same reproduction tests/test_cli_degraded_listing.py uses: a session.json written by
-    a newer Requivo, which read_meta refuses -- a real degraded row, not a patched exception."""
+    """The same reproduction tests/test_cli_degraded_listing.py uses."""
     p = canonical_dir(slug) / "session.json"
     data = json.loads(p.read_text(encoding="utf-8"))
     data["format_version"] = SESSION_FORMAT_VERSION + 1
@@ -49,8 +47,7 @@ def test_exactly_one_session_is_the_default_with_nothing_to_list(workspace):
 
 
 def test_several_sessions_default_to_the_most_recently_written(workspace):
-    """#541: several -> updated_at (never directory mtime) breaks the tie, and every candidate is
-    still returned so the caller can list them before anything paid happens."""
+    """#541: several -> updated_at (never directory mtime) breaks the tie."""
     _seed("older")
     _seed("newer")
     _set_updated_at("older", "2020-01-01T00:00:00Z")
@@ -63,8 +60,8 @@ def test_several_sessions_default_to_the_most_recently_written(workspace):
 
 
 def test_a_degraded_row_among_several_does_not_hide_the_others(workspace):
-    """Invariant 15, at the resolver: a session read_meta refuses is listed as a candidate rather
-    than dropped or raised, and a readable sibling still wins the default."""
+    """Invariant 15, at the resolver: a session read_meta refuses is listed as a candidate rather than dropped
+    or raised, and a readable sibling still wins the default."""
     _seed("healthy")
     _seed("broken")
     _break_format("broken")

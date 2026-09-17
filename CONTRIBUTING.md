@@ -119,7 +119,7 @@ reach it, and a test for it would assert the renderer's own contract rather than
 gets. Say so in the pull request instead of writing the test.
 
 **The table cannot see inside a process pytest spawned.** Code this suite exercises only by running
-the real CLI in a subprocess — `tests/test_encoding.py` drives `python -m requivo` that way — is
+the real CLI in a subprocess — `tests/test_source_form.py` drives `python -m requivo` that way — is
 reported as `Missing` even though a test runs it on every leg, every time. `src/requivo/__main__.py`'s
 `app()` line is the standing example: it is covered by the encoding suite and the table says it is
 not. So check *how* a line is reached before reading its absence as a gap. `pyproject.toml`'s
@@ -157,12 +157,12 @@ read the guard to appease it.
 
 | If your change… | This goes red | The fix |
 |---|---|---|
-| reads or writes a text file anywhere in `src/`, `scripts/` or `tests/` | `test_encoding.py` | name the codec: `encoding="utf-8"`. A deliberate locale-default read is exempted **by name, with a reason**, inside the guard |
-| prints a character a console may not encode | `test_encoding.py` | route the entry point through `streams.py` / `configure_output()`; never add a bare `print` in a new harness script |
-| imports a provider from `core/`, or any new provider name from `cli.py`, `render/`, `deterministic/` or `web/` | `test_boundaries.py` | `core/` may never import one. A surface import needs an allowlist entry keyed by **(file, name)** carrying its reason — and if the concept is not the vendor's, move it out of `providers/` instead |
-| calls `core.persistence` directly from a surface | `test_boundaries.py` | use `SessionRepository`, or add a **(file, function)** allowlist entry saying why no backing-neutral form exists |
-| renames or deletes a test | `test_narrative_references.py` | **grep for the old name first** — see the coupling below |
-| adds a decision record under `docs/decisions/` | `test_narrative_references.py` | give it a `**Slug:**` line, and leave a `` `decision: <slug>` `` pointer, on one line, at whatever the record explains |
+| reads or writes a text file anywhere in `src/`, `scripts/` or `tests/` | `test_source_form.py` | name the codec: `encoding="utf-8"`. A deliberate locale-default read is exempted **by name, with a reason**, inside the guard |
+| prints a character a console may not encode | `test_source_form.py` | route the entry point through `streams.py` / `configure_output()`; never add a bare `print` in a new harness script |
+| imports a provider from `core/`, or any new provider name from `cli.py`, `render/`, `deterministic/` or `web/` | `test_source_form.py` | `core/` may never import one. A surface import needs an allowlist entry keyed by **(file, name)** carrying its reason — and if the concept is not the vendor's, move it out of `providers/` instead |
+| calls `core.persistence` directly from a surface | `test_source_form.py` | use `SessionRepository`, or add a **(file, function)** allowlist entry saying why no backing-neutral form exists |
+| renames or deletes a test | `test_source_form.py` | **grep for the old name first** — see the coupling below |
+| adds a decision record under `docs/decisions/` | `test_source_form.py` | give it a `**Slug:**` line, and leave a `` `decision: <slug>` `` pointer, on one line, at whatever the record explains |
 | adds a file that declares the project version | `test_version_sites.py` | make it agree with the others, and register the path in `.oss.json`'s `version_sites` |
 | edits a heading in `docs/compatibility.md` | `test_cli_flag_names.py`, `test_cli_degraded_listing.py` | the page is parsed as data — see the coupling below |
 | adds a `--json` output, or changes a payload's shape | `test_cli_flag_names.py`, `test_public_payload_shapes.py` | add the row to `docs/compatibility.md`'s promise table and update the payload pin in the same change |
@@ -179,10 +179,10 @@ read the guard to appease it.
 - **A test's *name* is load-bearing API for source prose.** This repository answers "why is this line
   here?" by naming the test that enforces it, in `src/`, in `scripts/`, in `docs/` and in `CLAUDE.md`
   — dozens of such references. Renaming or deleting a test therefore breaks documentation, and
-  `test_narrative_references.py` goes red naming the file that now points at nothing. *The fix:*
-  before you rename, `grep -r <the_old_test_name> src scripts docs tests CLAUDE.md` and update every
-  hit in the same commit. The same guard also fails if an identifier is **split by a line wrap**, so
-  keep a reference on one line — a name you cannot grep for is a name nobody can follow.
+  `test_source_form.py`'s reference guard goes red naming the file that now points at nothing. A
+  citation may name the test function or its `tests/test_<subject>.py` file. *The fix:* before you
+  rename, `grep -r <the_old_test_name> src scripts docs tests CLAUDE.md CONTRIBUTING.md` and update
+  every hit in the same commit, keeping each reference on one line so it can be grepped.
 - **`docs/compatibility.md` is parsed as data, not read as prose.** Two tests locate a section by its
   exact heading string and one matches a row of the exit-code table by regex, so an innocent heading
   edit breaks the build in a file that looks like documentation. *The fix:* if you must rename a

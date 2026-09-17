@@ -1,20 +1,6 @@
 """#402 -- eight of the ten journey verbs advertised a model.json path they could not open, and
-`SessionService.resolve_slug` mined one anyway: `p.parent.name`, unconditionally, whether or not the
-file existed. A nonexistent path was reported on under a slug carved out of its own parent
-directory -- a name the user never typed -- and worse, a session that happened to share that name
-was operated on silently.
-
-`status` and `impact` are unaffected: they resolve a real path through `cli.py`'s `_resolve_ref`,
-which reads the file's own bytes directly and never goes near `resolve_slug`. The other eight --
-`answer`, `brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release` -- never open the file
-they are handed at all: they resolve a *slug* and then read and write the store's own copy
-(`ArtifactService.save` refuses anything that is not `has_meta(slug)`, so a loose file has nowhere to
-file an artifact against). So a path was never a meaningful input for these eight, and the fix is to
-say so before ever mining one: `SessionService.resolve_slug(..., accept_path=False)` refuses a
-path-shaped reference outright, naming exactly what was given.
-
-The shared harness is `tests/_cli_harness.py`.
-"""
+`SessionService.resolve_slug` mined one anyway: `p.parent.name`, unconditionally, whether or not the file
+existed."""
 from __future__ import annotations
 
 import os
@@ -31,8 +17,7 @@ from requivo.services.sessions import SessionService
 
 def _fails(argv, capsys) -> str:
     with pytest.raises(SystemExit) as exc:
-        # client=None is the default-construction path, not a poison pill (#419); the conftest
-        # net is what guarantees an accidental provider reach refuses cleanly on every machine.
+        # client=None is the default-construction path, not a poison pill (#419).
         app(argv, client=None)
     assert exc.value.code == 1
     return capsys.readouterr().err
@@ -42,8 +27,7 @@ def _fails(argv, capsys) -> str:
 
 
 def test_resolve_slug_refuses_a_model_json_path_when_the_caller_opted_out(tmp_path):
-    """The eight write verbs pass `accept_path=False`. A model.json-shaped reference is refused
-    outright, naming exactly what was given -- never mined for a slug."""
+    """The eight write verbs pass `accept_path=False`."""
     ref = str(tmp_path / "loose" / "model.json")
     with pytest.raises(SessionNotFoundError) as exc:
         SessionService().resolve_slug(ref, accept_path=False)
@@ -58,10 +42,7 @@ def test_resolve_slug_still_accepts_a_bare_slug_when_paths_are_refused():
 
 
 def test_the_path_refusal_cannot_forge_a_second_line_of_its_own_message():
-    """Found in review of this same change: the refusal echoes `ref` twice, and the first mention
-    went through `display_token` while the second did not -- so a reference carrying a real newline
-    and a real ANSI escape introducer forged a second, differently-coloured line of output that never
-    came from this refusal (#40, invariant 14). Both mentions must escape it identically."""
+    """Found in review of this same change: the refusal echoes `ref` twice (#40)."""
     hostile = "evil/model.json\n\x1b[31mFAKE ERROR: session corrupted\x1b[0m"
     with pytest.raises(SessionNotFoundError) as exc:
         SessionService().resolve_slug(hostile, accept_path=False)
@@ -73,16 +54,13 @@ def test_the_path_refusal_cannot_forge_a_second_line_of_its_own_message():
 
 
 def test_resolve_slug_no_longer_mines_a_nonexistent_model_json_path(tmp_path):
-    """The root cause, independent of `accept_path`: a caller that *does* still want path support
-    (every `deterministic/` verb) must not get a slug carved out of a file that was never written --
-    that slug can coincidentally name a real session, which is the worse half of #402."""
+    """The root cause, independent of `accept_path` (#402)."""
     ref = str(tmp_path / "loose" / "model.json")
     assert SessionService().resolve_slug(ref) == ref   # named as given, not mined
 
 
 def test_resolve_slug_still_mines_a_real_saved_model_json(tmp_path):
-    """Must-fire control: the existence gate must not break the legitimate case -- a real model.json
-    really does live under its own session's directory name."""
+    """Must-fire control: the existence gate must not break the legitimate case."""
     d = tmp_path / "leave-approval"
     d.mkdir()
     (d / "model.json").write_text("{}", encoding="utf-8")
@@ -91,15 +69,7 @@ def test_resolve_slug_still_mines_a_real_saved_model_json(tmp_path):
 
 @pytest.fixture
 def _unreadable_model_json(tmp_path, request):
-    """A directory `resolve_slug`'s `is_file()` probe cannot see into, on the same terms as
-    `tests/test_persistence_scan.py`'s `blocked` fixture: `chmod 000` denies the `x` bit, so a
-    stat on the `model.json` inside it raises `PermissionError`, not `False`.
-
-    Found in review of #402: the new `Path.is_file()` gate that stops a nonexistent path from being
-    mined re-raises everything that is not ENOENT/ENOTDIR (`core/persistence/identifiers.py`'s
-    `_probe` exists for exactly this shape) -- so an unreadable directory used to escape as a bare
-    traceback instead
-    of the clean refusal every other verb failure produces."""
+    """A directory `resolve_slug`'s `is_file()` probe cannot see into (#402)."""
     d = tmp_path / "noaccess"
     d.mkdir()
     request.addfinalizer(lambda: d.chmod(0o755))
@@ -118,9 +88,7 @@ def _unreadable_model_json(tmp_path, request):
 
 
 def test_an_unreadable_model_json_path_refuses_cleanly_instead_of_crashing(_unreadable_model_json):
-    """The must-fire half: without the `except OSError` guard this raises a bare `PermissionError`
-    that escapes `cli.py`'s `app()` (it only catches `RequivoError`/`KeyboardInterrupt`/
-    `UnicodeEncodeError`) as an unhandled traceback."""
+    """The must-fire half."""
     with pytest.raises(SessionNotFoundError) as exc:
         SessionService().resolve_slug(_unreadable_model_json)
     assert exc.value.details["ref"] == _unreadable_model_json
@@ -142,8 +110,7 @@ _WRITE_VERB_ARGV = [
 
 @pytest.mark.parametrize("tail", _WRITE_VERB_ARGV, ids=lambda a: a[0])
 def test_a_nonexistent_model_json_path_is_refused_naming_the_path(tail, workspace, capsys):
-    """The reproduction in the issue, run through every one of the eight verbs: the path given, not
-    a slug carved out of it, is what the refusal names."""
+    """The reproduction in the issue, run through every one of the eight verbs."""
     verb, *rest = tail
     ref = str(workspace / "loose" / "model.json")
     err = _fails([verb, ref, *rest], capsys)
@@ -153,10 +120,7 @@ def test_a_nonexistent_model_json_path_is_refused_naming_the_path(tail, workspac
 @pytest.mark.parametrize("tail", _WRITE_VERB_ARGV, ids=lambda a: a[0])
 def test_a_nonexistent_model_json_path_does_not_silently_use_an_unrelated_real_session(
         tail, workspace, capsys):
-    """The worse half. A session named `loose` really exists elsewhere in the workspace; the path
-    the user gave points nowhere and its parent happens to share that name. This must never resolve
-    to the real `loose` session -- paired with the must-fire positive below, which proves `loose` is
-    reachable by its own slug, so this is not merely a harness that never runs anything."""
+    """The worse half. A session named `loose` really exists elsewhere in the workspace."""
     store.create_session("loose", "an unrelated real session")
     verb, *rest = tail
     ref = str(workspace / "loose" / "model.json")   # does not exist; "loose" only coincides in name
@@ -168,9 +132,7 @@ def test_a_nonexistent_model_json_path_does_not_silently_use_an_unrelated_real_s
 
 @pytest.mark.parametrize("tail", _WRITE_VERB_ARGV, ids=lambda a: a[0])
 def test_the_real_session_is_still_reachable_by_its_own_slug(tail, workspace, capsys):
-    """Must-fire control for the pair above: resolution by slug still succeeds, so the negative
-    result above is not an artifact of a harness that refuses everything. Resolution succeeding means
-    the failure (if any, past this point) is no longer `session_not_found`."""
+    """Must-fire control for the pair above: resolution by slug still succeeds."""
     store.create_session("loose", "a real session, referenced by its own slug")
     verb, *rest = tail
     with pytest.raises(SystemExit):
@@ -206,11 +168,7 @@ def test_status_and_impact_still_open_a_model_json_path_directly(workspace):
 
 
 def test_resolve_slug_refuses_a_directory_that_is_not_a_session(tmp_path):
-    """#414. `resolve_slug`'s directory branch used to mine ANY directory's own name --
-    `p.exists() and p.is_dir()`, with nothing checking whether a session actually lives behind
-    it. An arbitrary directory reference must be refused naming the path as given, never a slug
-    carved from a segment of it, on the same terms #402 already holds for the model.json/
-    session.json branch."""
+    """#414. `resolve_slug`'s directory branch used to mine ANY directory's own name."""
     d = tmp_path / "elsewhere" / "loose"
     d.mkdir(parents=True)
     (d / "unrelated.txt").write_text("nothing session-shaped in here")
@@ -220,8 +178,8 @@ def test_resolve_slug_refuses_a_directory_that_is_not_a_session(tmp_path):
 
 
 def test_resolve_slug_still_mines_a_real_session_directory(tmp_path):
-    """Must-fire control: a directory that really is a session (it carries its own session.json
-    or model.json) must still resolve by its own name -- the fix must not refuse everything."""
+    """Must-fire control: a directory that really is a session (it carries its own session.json or model.json)
+    must still resolve by its own name -- the fix must not refuse everything."""
     d = tmp_path / "leave-approval"
     d.mkdir()
     (d / "session.json").write_text("{}", encoding="utf-8")
@@ -229,9 +187,7 @@ def test_resolve_slug_still_mines_a_real_session_directory(tmp_path):
 
 
 def test_resolve_slug_still_mines_a_real_legacy_session_directory(tmp_path):
-    """Must-fire control, the legacy-shaped sibling: a directory carrying its own model.json (the
-    legacy marker, not the canonical session.json) is exactly as real a session and must still
-    resolve by its own name."""
+    """Must-fire control, the legacy-shaped sibling."""
     d = tmp_path / "legacy-slug"
     d.mkdir()
     (d / "model.json").write_text("{}", encoding="utf-8")
@@ -239,11 +195,7 @@ def test_resolve_slug_still_mines_a_real_legacy_session_directory(tmp_path):
 
 
 def test_a_directory_reference_does_not_silently_use_an_unrelated_real_session(workspace, capsys):
-    """The worse half, matching #402's own pattern one branch over: a session named `loose`
-    really exists in the canonical store, and the directory the user gave is a genuinely
-    different, unrelated directory that merely shares that final path segment. This must never
-    resolve to the real `loose` session -- paired with the must-fire positive control below,
-    which proves `loose` stays reachable by its own slug rather than a harness that refuses all."""
+    """The worse half, matching #402's own pattern one branch over."""
     store.create_session("loose", "an unrelated real session")
     ref_dir = workspace / "elsewhere" / "loose"
     ref_dir.mkdir(parents=True)
@@ -261,10 +213,8 @@ def test_a_directory_reference_does_not_silently_use_an_unrelated_real_session(w
 
 def test_the_real_session_stays_reachable_by_its_own_slug_past_the_directory_guard(
         workspace, capsys):
-    """Must-fire control for the pair above: resolution by slug still succeeds after the
-    directory-branch fix, so the negative result above is not an artifact of a harness that
-    refuses everything. `session show` on a real, existing slug does not raise -- it prints the
-    receipt and returns -- so the control is that it runs clean rather than that it exits."""
+    """Must-fire control for the pair above: resolution by slug still succeeds after the directory-branch fix,
+    so the negative result above is not an artifact of a harness that refuses everything."""
     store.create_session("loose", "a real session, referenced by its own slug")
     app(["session", "show", "loose"], client=None)
     out = capsys.readouterr().out
@@ -275,10 +225,7 @@ def test_the_real_session_stays_reachable_by_its_own_slug_past_the_directory_gua
 
 @pytest.fixture
 def _unreadable_session_directory(tmp_path, request):
-    """A directory `resolve_slug`'s directory-branch marker probe cannot see into, on the same
-    terms as `_unreadable_model_json` above and `test_persistence_scan.py`'s `blocked`
-    fixture: `chmod 000` denies the `x` bit, so a stat on a marker file inside it raises
-    `PermissionError`, not `False`."""
+    """A directory `resolve_slug`'s directory-branch marker probe cannot see into."""
     d = tmp_path / "noaccess-dir"
     d.mkdir()
     request.addfinalizer(lambda: d.chmod(0o755))
@@ -297,8 +244,8 @@ def _unreadable_session_directory(tmp_path, request):
 
 def test_an_unreadable_session_directory_refuses_cleanly_instead_of_crashing(
         _unreadable_session_directory):
-    """The must-fire half: without an `except OSError` guard around the marker probe this raises
-    a bare `PermissionError` that escapes `cli.py`'s `app()` as an unhandled traceback."""
+    """The must-fire half: without an `except OSError` guard around the marker probe this raises a bare
+    `PermissionError` that escapes `cli.py`'s `app()` as an unhandled traceback."""
     ref = str(_unreadable_session_directory)
     with pytest.raises(SessionNotFoundError) as exc:
         SessionService().resolve_slug(ref)
@@ -306,11 +253,8 @@ def test_an_unreadable_session_directory_refuses_cleanly_instead_of_crashing(
 
 
 def test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too(tmp_path, request):
-    """Found in review of #414 itself: the referenced directory's own contents being unreadable is
-    not the only way this branch's probes can raise. `p.exists()`/`p.is_dir()` on the *entry gate*
-    independently stat `p` itself, which re-raises `PermissionError` when an ANCESTOR of the
-    reference denies traversal -- distinct from `_unreadable_session_directory`'s own-contents
-    case. A directory that is otherwise healthy must still refuse cleanly, not crash, when its ancestor blocks."""
+    """Found in review of #414 itself: the referenced directory's own contents being unreadable is not the
+    only way this branch's probes can raise."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny traversal on Windows. UNTESTED HERE: that the "
                     "directory branch's entry gate (not just its marker probe) converts an "

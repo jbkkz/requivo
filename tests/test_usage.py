@@ -1,7 +1,4 @@
-"""API usage tracking: what a call cost, and what the terminal says about it.
-
-Split out of `test_engine.py` (#72).
-"""
+"""API usage tracking: what a call cost, and what the terminal says about it (#72)."""
 import io
 import logging
 from contextlib import redirect_stdout
@@ -27,23 +24,13 @@ from requivo.usage import CallRecord, UsageLedger, track_usage
 
 
 def priced(model: str, on: _date = _date(2026, 9, 1), **kw) -> CallRecord:
-    """A record carrying the rate it was billed at, the way a provider files one.
-
-    The ledger holds no price table since #167 — it is arithmetic over rates the provider stamped,
-    which is what lets it be provider-neutral without a registry. So a test that wants a *priced*
-    call has to price it, and `on` is where the calendar lives: it is stated rather than defaulted
-    to today, so an assertion states one rate rather than whichever is live when the suite runs.
-    """
+    """A record carrying the rate it was billed at, the way a provider files one (#167)."""
     return price_call(CallRecord(model=model, **kw), on)
 
 
 @pytest.fixture
 def launch_priced_model(monkeypatch):
-    """A model on an intro rate that lapses, held in the tables for the length of one test.
-
-    The expiry mechanism is worth a guard whether or not any shipped model happens to be using it
-    today — and a guard aimed at a shipped rate is one a price change silently retires (#254).
-    """
+    """A model on an intro rate that lapses, held in the tables for the length of one test (#254)."""
     name = "fixture-model-on-launch-pricing"
     monkeypatch.setitem(_PRICE_PER_MTOK, name, (3.00, 15.00))
     monkeypatch.setitem(_LAUNCH_PRICE_PER_MTOK, name, (2.00, 10.00, "2026-08-31"))
@@ -56,8 +43,7 @@ def _isolate_workspace(workspace):
 
 
 # ── Tier 3: API usage tracking (tokens / cost / latency) ──────────────────────
-# Tokens are ground truth from the response; cost is a labelled estimate. The ledger accumulates
-# per-call usage; the renderer turns it into a line; the CLI prints it after an API-backed command.
+# Tokens are ground truth from the response; cost is a labelled estimate.
 
 
 class _FakeUsage:
@@ -97,23 +83,13 @@ def test_usage_ledger_totals_and_cost():
 
 
 def test_launch_pricing_applies_until_it_lapses(launch_priced_model):
-    """A dated table with no expiry gets exactly one of these two days right, written against a
-    *fixture* model rather than a live one on purpose (#254): a test pinned to a live model's own
-    launch window only measures the mechanism while that window is open, and stops testing
-    anything the day the rate becomes standard. A guard whose subject can be retired by a
-    calendar is a guard with an expiry date of its own.
-    """
+    """A dated table with no expiry gets exactly one of these two days right (#254)."""
     assert price_per_mtok(launch_priced_model, _date(2026, 8, 31)) == (2.00, 10.00)
     assert price_per_mtok(launch_priced_model, _date(2026, 9, 1)) == (3.00, 15.00)
 
 
 def test_no_launch_rate_outlives_the_day_it_lapses():
-    """The other half: nothing in the shipped table is past its own end date.
-
-    `price_per_mtok` is right on both sides of an expiry, so a lapsed row is not a wrong *estimate*
-    — it is a row nobody has looked at since it stopped doing anything, which is the state the
-    stale Sonnet entry was found in.
-    """
+    """The other half: nothing in the shipped table is past its own end date."""
     today = _date.today()
     for model, (_in, _out, until) in _LAUNCH_PRICE_PER_MTOK.items():
         assert _date.fromisoformat(until) >= today, (
@@ -123,12 +99,7 @@ def test_no_launch_rate_outlives_the_day_it_lapses():
 
 
 def test_a_call_is_priced_at_the_rate_in_force_when_it_was_made(launch_priced_model):
-    """The behaviour the stamp buys, and the reason the ledger no longer takes an `on` (#167).
-
-    A ledger that looked a rate up at *render* time would re-price a call made under the launch
-    window at whatever is live when the line is printed. Two identical calls, two days, two totals —
-    each right for its own day, and both readable from one ledger.
-    """
+    """The behaviour the stamp buys, and the reason the ledger no longer takes an `on` (#167)."""
     launch = UsageLedger()
     launch.record(priced(launch_priced_model, _date(2026, 8, 31),
                          input_tokens=1_000_000, output_tokens=1_000_000))
@@ -176,12 +147,7 @@ def test_render_usage_shows_tokens_cache_latency_and_estimate():
 
 
 def test_render_usage_omits_the_rate_date_it_was_not_given():
-    """The third state, and the reason it is a state rather than a fallback: a record can carry a
-    rate with no table date -- a caller building one by hand, a second provider that prices
-    without publishing a date. Printing a cost with no "rates as of" clause says exactly that;
-    borrowing a date from somewhere would print an undated estimate indistinguishable from a
-    dated one.
-    """
+    """The third state, and the reason it is a state rather than a fallback."""
     ledger = UsageLedger()
     ledger.record(CallRecord(model="claude-sonnet-5", input_tokens=1_000_000,
                              rate_per_mtok=(3.0, 15.0)))
@@ -228,16 +194,9 @@ def test_complete_records_usage_into_the_active_ledger():
 
 # ── A failed call is still billed, on every exit ──────────────────────────────
 #
-# The constraint #74 named as the one most likely to break quietly in the split: `_complete` records
-# the spend *before* it surfaces a clean failure, because a failed call is still billed for whatever
-# it consumed. It used to be two adjacent lines in one module; it is now a call from
-# `providers/anthropic/completion.py` into `requivo.usage`, which is a contract nothing in the type
-# system holds. So it gets a test rather than a comment.
+# The constraint #74 named as the one most likely to break quietly in the split.
 #
-# The positive control is the success arm above: this file would pass with an empty `_record()` if it
-# only asserted the *failure* arms, since "nothing recorded" is what a broken harness produces too.
-# The assertions below are on the numbers — tokens and attempts — so a record filed with nothing in
-# it fails as loudly as no record at all.
+# The positive control is the success arm above.
 
 
 class _RaisingClient:
@@ -271,8 +230,7 @@ class _TruncatedUsageClient:
 
 
 class _NonconformingClient:
-    """Valid JSON that never satisfies the contract — the retry give-up exit, after `retries + 1`
-    attempts that all spent tokens."""
+    """Valid JSON that never satisfies the contract."""
 
     def __init__(self, usage):
         self._usage = usage
@@ -285,21 +243,15 @@ class _NonconformingClient:
 
 
 def test_a_failed_call_is_still_recorded_on_every_exit():
-    """All three failure exits file the spend, and each is asserted on its numbers. Delete
-    `_record(rec)` from `_stop()` and the first two go red; delete the one on the give-up path
-    and the third does -- the ordering is invisible at both ends of a module boundary, and a
-    ledger that silently forgets a failed call under-reports a run in exactly the direction
-    nobody checks.
-    """
-    # 1. Transport failure. The SDK raises before any usage is reported, so the record is empty of
-    #    tokens — but it exists, and it carries the attempt and a latency.
+    """All three failure exits file the spend, and each is asserted on its numbers."""
+    # 1. Transport failure.
     with track_usage() as ledger:
         with pytest.raises(EngineError):
             run(_RaisingClient(), [{"role": "user", "content": "x"}])
     assert len(ledger.calls) == 1, "a transport failure was not recorded"
     assert ledger.calls[0].attempts == 1
 
-    # 2. Truncation. Tokens were genuinely spent generating the reply that got cut off.
+    # 2. Truncation.
     with track_usage() as ledger:
         with pytest.raises(EngineError):
             run(_TruncatedUsageClient(_FakeUsage(900, 16000)), [{"role": "user", "content": "x"}])
@@ -307,7 +259,7 @@ def test_a_failed_call_is_still_recorded_on_every_exit():
     assert ledger.input_tokens == 900 and ledger.output_tokens == 16000
     assert ledger.cost_usd() is not None, "a recorded failure must still be priced"
 
-    # 3. Retry give-up. Three attempts, three replies, and the ledger must carry all of them.
+    # 3. Retry give-up.
     client = _NonconformingClient(_FakeUsage(100, 50))
     with track_usage() as ledger:
         with pytest.raises(RequivoError):
@@ -329,27 +281,19 @@ def test_pc_status_reports_no_usage_offline():
 
 # ── #435: an `operation` field on CallRecord, additive only ──────────────────────
 #
-# The issue's acceptance criteria states the constraint in as many words: the field must default
-# such that every existing pinned ledger/render shape still holds. These three pin that, plus the
-# one thing that actually changes -- `run()` (the "analyze" operation in `_OP_PROMPTS`'s own
-# vocabulary) now stamps it onto the `CallRecord` it files.
+# The issue's acceptance criteria states the constraint in as many words.
 
 
 def test_call_record_operation_defaults_to_none():
-    """Every existing `CallRecord(...)` construction in this suite (see `priced()` above and every
-    other call site grepped for this change) omits `operation` -- so the default has to be `None`,
-    not merely *a* default, or those constructions would now mean something different."""
+    """Every existing `CallRecord(...)` construction in this suite (see `priced()` above and every other call
+    site grepped for this change) omits `operation`."""
     rec = CallRecord(model="claude-sonnet-5")
     assert rec.operation is None
 
 
 def test_render_usage_is_unaffected_by_the_operation_field():
-    """`render_usage()` prints ledger *totals* -- calls, tokens, latency, cost -- never a per-record
-    field, so whether a `CallRecord` carries an `operation` or not must produce byte-identical
-    output. An equality between two renders, not an absence-of-substring check: a future renderer
-    change that starts reading `operation` would have to touch this assertion deliberately rather
-    than slip past a check for one string it happens not to print today.
-    """
+    """`render_usage()` prints ledger *totals* -- calls, tokens, latency, cost -- never a per-record field, so
+    whether a `CallRecord` carries an `operation` or not must produce byte-identical output."""
     without = UsageLedger()
     without.record(priced("claude-sonnet-5", input_tokens=1000, output_tokens=200, latency_ms=1500))
     with_op = UsageLedger()
@@ -364,11 +308,7 @@ def test_render_usage_is_unaffected_by_the_operation_field():
 
 
 def test_run_stamps_the_analyze_operation_onto_the_call_record():
-    """`run()` is the discovery turn -- `"analyze"` in `_OP_PROMPTS`'s own vocabulary -- and it now
-    reaches `_complete()` with that name, so a ledger read back per-verb can tell a discovery
-    turn's spend from a generator's without reconstruction (#435's whole point). The other seven
-    `_complete()` call sites in `generators.py` each stamp their own name the same way; this is
-    the one every offline fixture here already knows how to drive, so it stands for the rest."""
+    """`run()` is the discovery turn -- `"analyze"` in `_OP_PROMPTS`'s own vocabulary."""
     client = FakeClient(_ENGINE_REPLY)
     with track_usage() as ledger:
         run(client, [{"role": "user", "content": "leave approval"}])
@@ -378,11 +318,7 @@ def test_run_stamps_the_analyze_operation_onto_the_call_record():
 
 # ── the optional `requivo.providers...` logger: completed / gave up (#435) ───────
 #
-# `completion.py`'s own `_complete()` is the one place a call's attempts and latency are actually
-# known -- every other layer only sees the typed result or a raised error -- so this is where "a
-# call completed, or gave up, after N attempts in M ms" is logged. Silent by default like every
-# other logger this issue adds; the silence half is pinned once, cross-cuttingly, in
-# `tests/test_discovery.py` rather than repeated per logger name here.
+# `completion.py`'s own `_complete()` is the one place a call's attempts and latency are actually known.
 
 
 @pytest.fixture

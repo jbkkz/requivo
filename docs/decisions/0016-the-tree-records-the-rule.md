@@ -29,7 +29,7 @@ body carries the same story, its reproduction and the review that closed it.
   goes red (one paragraph each as first written; #627 measured 646 lines and put the file under a
   ceiling in `tests/lean_budget.toml`). A count in prose that no test can falsify comes out.
 - **The issue number is never lost.** It is the only pointer that survives every rename, and it is
-  what makes the tracker the archive. `tests/test_narrative_references.py` keeps checking that test
+  what makes the tracker the archive. `tests/test_source_form.py`'s reference guard keeps checking that test
   names resolve; nothing new checks issue numbers — the second-instance bar (#483) was not met.
 - **A citation may name a test file, not only a test function.** *Corrected 2026-09-17 by #627.*
   As written, this record pinned ~40% of test names by exact-string citation, and #555 measured that

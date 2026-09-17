@@ -1,10 +1,6 @@
 """`SessionService`/`ArtifactService`: proposal validation, the store, the apply pipeline and its
-dependency-graph staleness, re-scoping context cards (#168), the pre-flight discovery guards
-(#152, #421, #133), and the artifact/impact read paths. Split by #555 from `test_sessions.py`;
-`test_discovery_provider_seam.py` and `test_session_format_compat.py` cover the rest of it.
-
-All offline -- no API, no provider. A temp workspace via REQUIVO_WORKSPACE (conftest.py).
-"""
+dependency-graph staleness, re-scoping context cards (#168), the pre-flight discovery guards (#152, #421,
+#133), and the artifact/impact read paths."""
 from __future__ import annotations
 
 import json
@@ -52,11 +48,7 @@ def test_validate_rejects_missing_required_slot():
 
 
 def test_validate_rejects_a_complete_model_with_no_objective():
-    """Completeness is the full slot set *and* an objective. The provider's retry hook required both;
-    the deterministic path required only the slots, so the same model was complete when Anthropic
-    produced it and complete-enough when Claude Code applied it — and a session of fifteen filled
-    slots with nothing naming what they are for renders as a blank heading in every view. Both
-    boundaries now read the one definition (`completeness_gap`)."""
+    """Completeness is the full slot set *and* an objective."""
     from requivo.core.errors import InvalidModelError
 
     with pytest.raises(InvalidModelError) as e:
@@ -114,8 +106,7 @@ def test_store_migrate_session_rejects_a_future_format(workspace):
 
 
 def _with_reasoning(model: dict) -> dict:
-    """A full model that also carries baked-in reasoning: a decision on `permissions`, a challenge
-    contesting `workflow`."""
+    """A full model that also carries baked-in reasoning."""
     model["decisions"] = [{"decision": "Draft-first", "derived_from": ["permissions"]}]
     model["challenges"] = [{
         "headline": "Archive vs delete", "premise": "p", "alternative": "a",
@@ -205,9 +196,7 @@ def test_apply_flags_assessment_stale_when_reasoning_is_unseated(workspace):
 
 
 def test_changing_the_problem_marks_a_saved_assessment_stale(workspace):
-    # The assessment used to sit outside the artifact→slot map entirely, on the grounds that it was the
-    # live analysis layer rather than a deliverable. Once it is saved to disk that stops holding: an
-    # assessment whose problem statement has since been rewritten is not "fresh", it is out of date.
+    # The assessment used to sit outside the artifact→slot map entirely.
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())          # no decisions, no challenges — nothing to unseat
@@ -220,8 +209,7 @@ def test_changing_the_problem_marks_a_saved_assessment_stale(workspace):
 
 
 def test_artifact_cannot_be_recorded_against_an_impossible_revision(workspace):
-    # Provenance that cannot be true is worse than none: every freshness answer downstream is read off
-    # this number, so a revision from the future is refused rather than stored.
+    # Provenance that cannot be true is worse than none.
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())          # session is at revision 1
@@ -237,9 +225,7 @@ def test_artifact_cannot_be_recorded_against_an_impossible_revision(workspace):
 
 
 def test_rescope_before_any_model_only_mutates_metadata(workspace):
-    """Before any turn has reasoned against the old selection, there is no provenance to keep honest —
-    nothing describes a model produced under it. Revision 0 (no model yet) so a re-scope here is a
-    plain metadata write: no revision, no revisions-log entry."""
+    """Before any turn has reasoned against the old selection, there is no provenance to keep honest."""
     svc = SessionService()
     svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
 
@@ -254,10 +240,7 @@ def test_rescope_before_any_model_only_mutates_metadata(workspace):
 
 
 def test_rescope_after_a_model_records_a_new_revision_with_unchanged_content(workspace):
-    """Once a model exists, every revision already on disk was reasoned under the *old* selection.
-    A re-scope is recorded as its own revision — an unchanged model, a provenance entry naming the
-    surface as a context switch rather than a reasoning turn — so the history shows exactly where
-    the selection changed, instead of silently rewriting what revision 1 was reasoned against."""
+    """Once a model exists, every revision already on disk was reasoned under the *old* selection."""
     svc = SessionService()
     svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
     svc.update_model("s", _full_model())          # revision 1, reasoned under b2b-platform
@@ -281,9 +264,8 @@ def test_rescope_after_a_model_records_a_new_revision_with_unchanged_content(wor
 
 
 def test_rescope_resolves_and_normalizes_cards_like_creation(workspace):
-    """Invariant 14's second door: `create_session` resolves the caller's selection rather than
-    trusting it, and a re-scope is a second entrance onto the same persisted value — an unknown name
-    must be refused here too, not recorded and discovered on the next turn."""
+    """Invariant 14's second door: `create_session` resolves the caller's selection rather than trusting it,
+    and a re-scope is a second entrance onto the same persisted value."""
     from requivo.core.errors import UnknownContextCardError
 
     svc = SessionService()
@@ -295,8 +277,7 @@ def test_rescope_resolves_and_normalizes_cards_like_creation(workspace):
 
 
 def test_rescope_to_the_current_selection_is_a_no_op(workspace):
-    """Re-scoping to the selection a session already has changes nothing — order aside, since the
-    selection is a set. No new revision, no rewritten metadata: repeating the command is safe."""
+    """Re-scoping to the selection a session already has changes nothing."""
     svc = SessionService()
     svc.create_session("Something.", slug="s", context_cards=["b2b-platform", "event-ops"])
     svc.update_model("s", _full_model())           # revision 1
@@ -322,9 +303,7 @@ def test_rescope_to_every_card_resets_the_selection_to_none(workspace):
 
 
 def test_rescope_does_not_mark_existing_artifacts_stale(workspace):
-    """Question 2, decided: context is not a fifth kind of dependency edge. An artifact already on
-    disk still faithfully describes the model it was generated from — nothing in `ARTIFACT_SLOTS` or
-    `REASONING_CONSUMERS` names context as an input, and the model itself has not moved."""
+    """Question 2, decided: context is not a fifth kind of dependency edge."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
     svc.update_model("s", _full_model())                       # revision 1
@@ -336,9 +315,7 @@ def test_rescope_does_not_mark_existing_artifacts_stale(workspace):
 
 
 def test_a_model_change_still_marks_the_same_artifact_stale(workspace):
-    """The positive control for the assertion above: proves the harness can observe staleness at
-    all, on the very same artifact, so "rescope leaves it fresh" is not passing on a fixture that
-    can never turn STALE regardless of what runs."""
+    """The positive control for the assertion above."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())                       # revision 1
@@ -350,9 +327,7 @@ def test_a_model_change_still_marks_the_same_artifact_stale(workspace):
 
 
 def test_rescope_does_not_re_run_anything_the_next_snapshot_reads_the_new_cards(workspace):
-    """Question 3, decided: a re-scope re-runs nothing. It only changes what the *next* provider call
-    reasons against — proven here without a provider at all, by reading the same snapshot every
-    discovery call reads from."""
+    """Question 3, decided: a re-scope re-runs nothing."""
     svc = SessionService()
     svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
     svc.update_model("s", _full_model())
@@ -363,8 +338,7 @@ def test_rescope_does_not_re_run_anything_the_next_snapshot_reads_the_new_cards(
 
 
 def test_a_rescoped_session_with_a_model_still_passes_its_own_integrity_check(workspace):
-    """The duplicated revision this produces is a real revision, not a shortcut: `check_session_dir`
-    is the same anti-tampering pass `session verify` runs, and it must find nothing wrong with one."""
+    """The duplicated revision this produces is a real revision, not a shortcut."""
     from requivo.core.integrity import check_session_dir
 
     svc = SessionService()
@@ -382,10 +356,7 @@ def test_rescope_refuses_a_session_that_does_not_exist(workspace):
 
 
 def test_the_same_request_under_different_cards_is_a_different_session(workspace):
-    """Context cards are provenance, not decoration: the same request read against `b2b-platform` and
-    against `event-ops` gets different impact estimates, so different questions. Creation keyed on the
-    request alone, so the second call silently handed back the first session — with a card selection
-    the caller had not asked for and no way to notice."""
+    """Context cards are provenance, not decoration."""
     svc = SessionService()
     first = svc.create_session("Same request.", context_cards=["b2b-platform"])
     again = svc.create_session("Same request.", context_cards=["b2b-platform"])
@@ -400,9 +371,7 @@ def test_the_same_request_under_different_cards_is_a_different_session(workspace
 
 
 def test_a_fresh_discovery_refuses_to_replace_a_model_that_already_exists(workspace):
-    """Session creation is idempotent, so re-running `discover` on the same request lands on the same
-    session — and used to overwrite whatever it held, replacing a model refined over several turns
-    with a naive first-turn one. A conflict is recoverable; a silent replacement is not."""
+    """Session creation is idempotent, so re-running `discover` on the same request lands on the same session."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -416,10 +385,7 @@ def test_a_fresh_discovery_refuses_to_replace_a_model_that_already_exists(worksp
 
 
 def test_run_discovery_refuses_a_session_that_already_has_a_model(workspace):
-    """`run_discovery` reasons from the request alone — it never sees the current model — so on a
-refined session it does not improve the understanding, it discards it. The optimistic lock does
-not catch this: the call reads revision N and writes against revision N, so the precondition is
-satisfied while the content is a regression."""
+    """`run_discovery` reasons from the request alone."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -442,11 +408,7 @@ satisfied while the content is a regression."""
     lambda d: d.reason("s", "stories"),
 ], ids=["generate-brief", "generate-prd", "reason-stories"])
 def test_generation_refuses_a_session_that_has_no_model_yet(workspace, call):
-    """The mirror of the rule above, and it was missing (#152). `SessionSnapshot.model` is `None` before
-the first model — the field says so — and `generate`/`reason` unpacked it and handed it to the
-provider unchecked. Nothing was lost and nothing was spent: every generator builds its user
-message as `out.model_dump_json(...)`, so it died assembling the prompt, before the client was
-touched."""
+    """The mirror of the rule above, and it was missing (#152)."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -462,8 +424,7 @@ touched."""
 
 
 def test_answer_refuses_a_session_that_has_no_model_yet(workspace):
-    """`answer()` is the one write verb `_require_a_model` did not cover (#421) — the mirror of #152,
-one write verb over."""
+    """`answer()` is the one write verb `_require_a_model` did not cover (#421)."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -476,17 +437,13 @@ one write verb over."""
     assert e.value.details["actual"] == 0 and e.value.details["expected"] == 1
     assert provider.calls == 0                                    # refused before reaching the provider
     assert "discover" in str(e.value)                             # the refusal names the remedy
-    # The co-requisite half of #421: before this fix the remedy text itself suggested `requivo answer`
-    # "if a discovery is in progress" — i.e. it routed a reader straight back into the ungated path.
-    # Since #202 an interrupted discovery lands at revision 1, so `answer` is never the right verb at
-    # revision 0; naming it here would be self-contradictory the moment this very gate exists.
+    # The co-requisite half of #421: before this fix the remedy text itself suggested `requivo answer` "if a discovery is in progress" — i.e. it routed a reader straight back into the ungated path.
     assert "requivo answer" not in str(e.value)
 
 
 def test_a_repeat_discovery_is_refused_before_the_provider_is_paid(workspace):
-    """Same rule, the other entry point. `start()` used to reason first and discover the conflict
-    afterwards, so an accidental re-run bought a discovery turn — and, when finalizing, an assessment
-    too — purely to throw both away."""
+    """Same rule, the other entry point. `start()` used to reason first and discover the conflict afterwards,
+    so an accidental re-run bought a discovery turn."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -505,9 +462,7 @@ def test_a_repeat_discovery_is_refused_before_the_provider_is_paid(workspace):
 
 def test_the_artifact_service_defaults_to_the_session_service_s_storage(workspace):
     """Two services, one backing. On files the default and the injected repository resolve to the same
-    workspace, so a split was invisible — but `DiscoveryService(sessions=SessionService(postgres))`
-    sent sessions to Postgres and artifacts to the local filesystem, and every call succeeded. This is
-    the shape an external deployment constructs, so the default has to follow the session service."""
+    workspace, so a split was invisible."""
     from requivo.services.discovery import DiscoveryService
     from requivo.services.repository import FileSessionRepository
 
@@ -518,10 +473,7 @@ def test_the_artifact_service_defaults_to_the_session_service_s_storage(workspac
 
 
 def test_the_service_refuses_a_context_card_that_does_not_exist(workspace):
-    """The CLI and the Web both resolve cards before they get here, which made the service look safe.
-    It is not a boundary until it holds the rule itself: an unknown card recorded on a session is read
-    back by every later turn, and an empty resolved selection means *every* card — so a bad name
-    silently widens the context instead of narrowing it. An external consumer calls exactly this layer."""
+    """The CLI and the Web both resolve cards before they get here, which made the service look safe."""
     from requivo.core.errors import UnknownContextCardError
 
     with pytest.raises(UnknownContextCardError):
@@ -531,9 +483,7 @@ def test_the_service_refuses_a_context_card_that_does_not_exist(workspace):
 
 
 def test_impact_reports_what_a_named_slot_reaches(workspace):
-    """`SessionService.impact` -- the XS addition #425's HTTP API `/impact` route is built on -- is
-    exactly `propagate(load_model(slug), resolve_slots(...))` behind the service seam: a decision
-    derived from the named slot, and a challenge contesting it, both come back."""
+    """`SessionService.impact` -- the XS addition #425's HTTP API `/impact` route is built on."""
     from requivo.core.contracts import Challenge, DesignDecision
 
     svc = SessionService()
@@ -555,9 +505,8 @@ def test_impact_reports_what_a_named_slot_reaches(workspace):
 
 
 def test_impact_refuses_an_unknown_slot_naming_it_in_details(workspace):
-    """Unlike the CLI's own `_cmd_impact`, which prints a warning for an unmatched token and keeps
-    rendering whatever did match, the service raises -- a caller over HTTP gets one structured
-    refusal rather than a partial report with no signal that something was left out."""
+    """Unlike the CLI's own `_cmd_impact`, which prints a warning for an unmatched token and keeps rendering
+    whatever did match, the service raises."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())
@@ -579,9 +528,7 @@ def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal(workspace):
 
 
 def test_show_with_status_reads_content_and_freshness_together(workspace):
-    """`ArtifactService.show_with_status` -- the coherent read the HTTP API's artifact envelope needs
-    (invariant 12, one layer over from the provider-snapshot case it was written for): both facts
-    come from one locked read rather than two separate calls that could disagree."""
+    """`ArtifactService.show_with_status`."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())
@@ -605,11 +552,7 @@ def test_show_with_status_404s_when_nothing_was_ever_saved(workspace):
 
 
 def test_show_with_status_is_not_interleaved_by_a_concurrent_save(workspace):
-    """The must-fire proof behind the claim in `show_with_status`'s own docstring (found in review,
-    #425): a single-threaded test that only checks content and status agree when nothing else is
-    writing would pass identically whether the lock were there or not. This drives a real second
-    thread through `save()` while the read is paused *inside* the held lock, and shows it is
-    genuinely blocked -- not merely usually-fast-enough -- until the read completes."""
+    """The must-fire proof behind the claim in `show_with_status`'s own docstring (found in review, #425)."""
 
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
@@ -646,8 +589,7 @@ def test_show_with_status_is_not_interleaved_by_a_concurrent_save(workspace):
     writer = threading.Thread(target=do_save, daemon=True)
     writer.start()
 
-    # Must genuinely be waiting on the reader's held lock, not racing ahead of it -- the same
-    # "not merely usually fast enough" assertion `test_persistence_lock.py`'s own lock tests make.
+    # Must genuinely be waiting on the reader's held lock, not racing ahead of it.
     assert not writer_finished.wait(timeout=0.2), (
         "a concurrent save() proceeded while show_with_status still held the lock -- reverting to "
         "two separate unlocked calls (show() then list()) would let this assertion fail")
@@ -656,17 +598,13 @@ def test_show_with_status_is_not_interleaved_by_a_concurrent_save(workspace):
     reader.join(timeout=5)
     assert writer_finished.wait(timeout=5), "the writer never finished once the reader released"
 
-    # Because the read was atomic, content and status describe the SAME save -- the first one,
-    # since the reader's locked read ran to completion before the writer's save() could start.
+    # Because the read was atomic, content and status describe the SAME save.
     assert result["content"] == "V1"
     assert result["row"]["revision"] == 1
 
 
 def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(workspace):
-    """`False` is not "I don't know" — it is the claim that the artifact is up to date. It was being
-    returned for a session whose history could not be read at all, which is the one case where the
-    answer is genuinely unavailable. Refusing the save is the honest outcome: the provenance it would
-    record cannot be verified."""
+    """`False` is not "I don't know" — it is the claim that the artifact is up to date."""
     from requivo.core.errors import RequivoError
 
     svc, art = SessionService(), ArtifactService()
@@ -682,10 +620,7 @@ def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(workspa
 
 
 def test_a_first_discovery_that_races_a_concurrent_write_conflicts(workspace):
-    """`run_discovery` reasons from revision N and applies; the call takes minutes, so it captures the
-    revision it read and holds the write to it — the same precondition every other provider-backed
-    operation carries. Without it the concurrent model was replaced by one reasoned from the older
-    state, which is exactly the case optimistic locking exists for."""
+    """`run_discovery` reasons from revision N and applies."""
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -703,11 +638,7 @@ def test_a_first_discovery_that_races_a_concurrent_write_conflicts(workspace):
 
 
 def test_an_artifact_generated_from_a_superseded_revision_is_born_stale(workspace):
-    """Invariant 2: a generation carries the revision it read. Provider calls take seconds to minutes
-and the session can move underneath them, so `current_revision` is captured before the call and
-passed as `expected_revision` on any apply and as `source_revision` on the artifact write. Saving
-against an older revision stays legal — `ArtifactService.save` then computes freshness against
-the current model rather than assuming it, which is what this test pins. See #286."""
+    """Invariant 2: a generation carries the revision it read (#286)."""
     from requivo.services.discovery import DiscoveryService
 
     svc, art = SessionService(), ArtifactService()
@@ -736,9 +667,8 @@ the current model rather than assuming it, which is what this test pins. See #28
 ], ids=["exclusion-600", "threshold-604"])
 def test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model(
         workspace, field, id_field, make_item, value):
-    """#600/#604: `absorb_reasoning` carries `Brief.exclusions`/`Brief.thresholds` into the model
-    the same way it already carries decisions/challenges/opportunities, so each lands in
-    `model.json` — not only in the rendered brief."""
+    """#600/#604: `absorb_reasoning` carries `Brief.exclusions`/`Brief.thresholds` into the model the same way
+    it already carries decisions/challenges/opportunities, so each lands in `model.json`."""
     from requivo.core.contracts import Brief
     from requivo.services.discovery import DiscoveryService
 
@@ -766,10 +696,7 @@ def test_update_missing_session_raises(workspace):
 
 def test_a_legacy_session_is_named_in_the_error_rather_than_migrated_behind_your_back(workspace):
     """`out/` was the store until 0.8.0, and until 0.9.8 every read silently fell back to it and every
-mutation migrated one in place. That kept old sessions working without the user knowing, which is
-also what was wrong with it: the fallback ran on every read of every session for a layout nothing
-has written in two minor versions, and "where does this session live?" had two answers throughout
-the code."""
+    mutation migrated one in place."""
     legacy = store.legacy_dir("old")
     legacy.mkdir(parents=True)
     (legacy / "model.json").write_text(json.dumps(_full_model()))
@@ -783,8 +710,7 @@ the code."""
     assert e.value.details.get("legacy") is True
     assert "session migrate" in str(e.value)
 
-    # And the explicit migration is intact: the model becomes revision 1, artifacts come with it,
-    # and the originals are left where they were.
+    # And the explicit migration is intact: the model becomes revision 1.
     store.migrate_legacy("old")
     assert store.session_exists("old")
     assert (legacy / "model.json").exists()

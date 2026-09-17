@@ -68,7 +68,7 @@ turn, and a flat 21-verb `--help` that put the two verbs a first-time user needs
   directly rather than calling `DiscoveryService`. Rejected on the same grounds #77 already settled
   for `discover`'s own loop (see `CLAUDE.md`'s architecture section): every interface is a thin layer
   over the shared services, and a second implementation of an apply or a generation is exactly the
-  drift `tests/test_boundaries.py` exists to catch.
+  drift `tests/test_source_form.py` exists to catch.
 - **Make the resolver a CLI-only convenience**, guessing a default session in `cli.py` without a
   service-layer seam. Rejected because a second surface — Requivo Web, or a future one — would need
   the identical rule, and a rule that lives in one interface is not enforced (CLAUDE.md, invariant

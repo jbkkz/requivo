@@ -1,23 +1,4 @@
-"""A refusal must not cost the reader what they typed (#30).
-
-Refusing an over-long submission is correct and stays — invariant 3, *refuse, don't truncate*: half a
-26,000-character client email folded into the model reads exactly like the whole of it. Nothing here
-weakens that. What is wrong is the *recovery*: the refusal was a full-page error with a **Back to
-sessions** link, so the email that arrived through the clipboard had to be fetched again from
-wherever it came from.
-
-The issue's own second comment narrows it, and that narrowing is the specification: the limit **is**
-already named in the message, so this is not about stating the length. It is about the text, and only
-the text.
-
-`home_context`'s docstring already promised this — the create route "re-renders this page when a
-submission is refused rather than sending the reader elsewhere to be told." That was true of the
-empty-request refusal and false of every other one on the page.
-
-The vacuity trap here is that "the submitted text appears in the response" passes if the text is
-merely echoed into an error message. So every assertion below reads the text back out of the
-**textarea it has to come back in**, not out of the page.
-"""
+"""A refusal must not cost the reader what they typed (#30)."""
 
 from __future__ import annotations
 
@@ -35,11 +16,7 @@ LONG_ANSWERS = "They replied: " + "y" * MAX_ANSWERS_CHARS
 
 
 def textarea_body(html: str, name: str) -> str:
-    """What is actually inside `<textarea name="...">…</textarea>`.
-
-    Reading the whole page would let an implementation pass by printing the submission into the error
-    banner, which preserves nothing a reader can edit and resubmit.
-    """
+    """What is actually inside `<textarea name="...">…</textarea>`."""
     m = re.search(rf'<textarea[^>]*\bname="{name}"[^>]*>(.*?)</textarea>', html, re.S)
     assert m, f"no <textarea name={name!r}> in the response"
     return m.group(1)
@@ -63,8 +40,8 @@ def test_an_oversized_request_comes_back_in_the_textarea(client):
 
 
 def test_the_refusal_is_the_home_page_not_a_dead_end(client):
-    """The reader lands back on the form with a banner, not on an error page whose only affordance is
-    *Back to sessions* — which is where the pasted text went to die."""
+    """The reader lands back on the form with a banner, not on an error page whose only affordance is *Back to
+    sessions* — which is where the pasted text went to die."""
     r = client.post("/sessions", data={"request_text": LONG_REQUEST, "provider": "create_only"})
     assert 'action="/sessions"' in r.text               # the form is here to resubmit from
     assert "Back to sessions" not in r.text
@@ -91,8 +68,8 @@ def test_an_oversized_session_name_preserves_both_fields(client):
 
 
 def test_an_unusable_session_name_re_renders_rather_than_navigating_away(client):
-    """The same field's other refusal. Making one of a field's two refusals keep the reader's work and
-    the other throw it away is a worse state than either, so both arms round-trip."""
+    """The same field's other refusal. Making one of a field's two refusals keep the reader's work and the
+    other throw it away is a worse state than either, so both arms round-trip."""
     r = client.post("/sessions", data={"request_text": "A leave approval system.",
                                        "slug": "Not A Slug", "provider": "create_only"})
     assert r.status_code == 400
@@ -108,8 +85,7 @@ def test_the_empty_request_refusal_also_keeps_the_session_name(client):
     assert input_value(r.text, "slug") == "leave-approval"
 
 
-# Every refusal on the form, paired with a session-name field the reader left **blank**. The cases
-# above all submit a name, so none of them can see a refusal that invents one.
+# Every refusal on the form, paired with a session-name field the reader left **blank**.
 REFUSALS_WITH_NO_NAME = [
     ("an over-long request", {"request_text": LONG_REQUEST}, 413),
     ("an empty request", {"request_text": "   "}, 400),
@@ -118,11 +94,7 @@ REFUSALS_WITH_NO_NAME = [
 
 @pytest.mark.parametrize("label, data, status", REFUSALS_WITH_NO_NAME)
 def test_a_refusal_never_fills_in_a_session_name_the_reader_did_not_type(client, label, data, status):
-    """A refusal must hand back the form as submitted -- a field left blank was submitted blank.
-    `create_session` reuses one name for two meanings: the reader's typed string, and `None`
-    meaning *derive a slug from the request*. An empty name collapsed to `None`, and Jinja
-    stringified that, so the reader got `value="None"` in a box they never touched -- and failed
-    the field's own pattern: the refusal path #30 built to save work had started adding some."""
+    """A refusal must hand back the form as submitted -- a field left blank was submitted blank (#30)."""
     r = client.post("/sessions", data={**data, "provider": "create_only"})
     assert r.status_code == status, label
     assert input_value(r.text, "slug") == "", label
@@ -132,9 +104,7 @@ def test_a_refusal_never_fills_in_a_session_name_the_reader_did_not_type(client,
 # ── the context-card selection ────────────────────────────────────────────────
 
 def test_a_refusal_keeps_the_context_cards_the_reader_picked(client):
-    """Cards are not decoration: a session's identity is its request **and** its card selection, and
-    the impact estimates are read against them. Restoring the textarea while silently clearing the
-    checkboxes would hand the reader a form that no longer says what they told it."""
+    """Cards are not decoration: a session's identity is its request **and** its card selection."""
     cards = available_cards()
     if len(cards) < 2:
         pytest.skip(f"needs two bundled context cards to tell selected from unselected; got {cards}")
@@ -151,9 +121,7 @@ def test_a_refusal_keeps_the_context_cards_the_reader_picked(client):
 # ── the answers textarea (an HTMX swap, so worse than the others) ─────────────
 
 def test_oversized_answers_come_back_in_the_textarea(client, with_provider):
-    """The answers route posts with `hx-swap="outerHTML"` onto `#session-body`, the region that
-    *contains* the textarea — so an error fragment does not merely fail to preserve the text, it
-    replaces the field the text was in."""
+    """The answers route posts with `hx-swap="outerHTML"` onto `#session-body`."""
     with_provider(engine_reply())
     client.post("/sessions", data={"request_text": "A leave approval system.",
                                    "slug": "leave-approval", "provider": "anthropic"},
@@ -169,7 +137,7 @@ def test_oversized_answers_come_back_in_the_textarea(client, with_provider):
 
 def test_the_answers_refusal_never_reaches_the_provider(client, with_provider):
     """Must fire in the other direction: preserving the text must not have turned the refusal into an
-    acceptance. A refused turn is a turn nobody is billed for."""
+    acceptance."""
     fake = with_provider(engine_reply(), engine_reply())
     client.post("/sessions", data={"request_text": "A leave approval system.",
                                    "slug": "leave-approval", "provider": "anthropic"},

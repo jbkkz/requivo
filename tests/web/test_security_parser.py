@@ -1,17 +1,5 @@
-"""`_hostname` refuses an authority it cannot determine a host from (#51), and each arm of the
-cross-site guard carries its own error code (#52).
-
-Both are findings the review on PR #48 reported for filing rather than folding in, and both are about
-the same module answering *confidently* where it should have refused or distinguished.
-
-**#51 is filed for the class, not the instance.** `Host: evil.com@127.0.0.1` resolves to `127.0.0.1`
-and passes the allowlist — but no browser serializes userinfo into a `Host`, an `Origin` or a
-`Referer`, so nothing reachable from the surface the guard defends is exploited by it. What makes it
-worth a fix is that it is the third time this parser has produced a plausible answer for an input it
-should have refused: #43 was the opaque origin, #45 the undetermined host, and this is the same shape
-again. The first two were closed with caller-side checks; this one is closed in the parser, because a
-caller-side check is what the next caller inherits without re-checking.
-"""
+"""`_hostname` refuses an authority it cannot determine a host from (#51), and each arm of the cross-site
+guard carries its own error code (#52)."""
 
 from __future__ import annotations
 
@@ -42,7 +30,7 @@ UNDETERMINABLE = [
     ("   ", "whitespace only"),
 ]
 
-# The control set. If a fix refuses these too it has closed the hole by closing the door.
+# The control set.
 DETERMINABLE = [
     ("127.0.0.1:8765", "127.0.0.1"),
     ("127.0.0.1", "127.0.0.1"),
@@ -78,10 +66,7 @@ def test_userinfo_no_longer_makes_an_origin_same_trust_domain():
 
 
 def test_the_guard_refuses_a_host_header_carrying_userinfo(app):
-    """End to end, at the header rather than at the helper — a parser fix nothing reads is not a fix.
-
-    The host check is the one that also runs on reads, so a GET is enough to show it.
-    """
+    """End to end, at the header rather than at the helper — a parser fix nothing reads is not a fix."""
     from fastapi.testclient import TestClient
 
     c = TestClient(app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False)
@@ -97,8 +82,7 @@ def test_the_guard_refuses_an_origin_carrying_userinfo(client):
 
 
 def test_an_operator_listed_host_with_userinfo_is_still_refused(monkeypatch, app):
-    """A deliberate non-loopback bind does not widen the parser. The operator listed a hostname, not
-    an authority that merely ends in one."""
+    """A deliberate non-loopback bind does not widen the parser."""
     monkeypatch.setenv(ALLOWED_HOSTS_ENV, "requivo.example.test")
     from fastapi.testclient import TestClient
 
@@ -108,11 +92,8 @@ def test_an_operator_listed_host_with_userinfo_is_still_refused(monkeypatch, app
 
 
 def test_a_host_we_could_not_read_is_a_different_arm_from_one_we_read_and_refused(app):
-    """A guard that could not read its input must not print what a guard that read it and
-    refused prints -- the correction #43 and #45 each made one seam over, and now the codes carry
-    it too. The header itself is deliberately not reflected into the page: it is unvalidated
-    caller-controlled bytes, `details` is not serialized on this surface, and the operator has the
-    request in the terminal. Distinguishing the arm is the diagnostic; echoing the input is not."""
+    """A guard that could not read its input must not print what a guard that read it and refused prints --
+    the correction #43 and #45 each made one seam over, and now the codes carry it too."""
     from fastapi.testclient import TestClient
 
     c = TestClient(app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False)
@@ -127,8 +108,7 @@ def test_a_host_we_could_not_read_is_a_different_arm_from_one_we_read_and_refuse
 
 # ── #52: one code, one fact, one details shape ────────────────────────────────
 
-# The six arms of `_enforce`, each with the code it must raise and the exact `details` keys that code
-# guarantees. This table *is* the contract `docs/compatibility.md` states, written where it can fail.
+# The six arms of `_enforce`, each with the code it must raise and the exact `details` keys that code guarantees.
 ARMS = [
     ("undetermined_host", {"host_header_present", "host_header", "hint"}),
     ("host_not_allowed", {"host", "hint"}),
@@ -146,19 +126,15 @@ def _arm_classes():
 
 
 def test_every_arm_has_its_own_code():
-    """Before #52 all six raised `cross_site_request`; the only way to tell *bad token* from
-    *wrong host* was the message, which `docs/compatibility.md` says never to match on (#35: a
-    code carries one fact and one `details` shape). A consumer matching `cross_site_request` and
-    reading `details["origin"]` got a `KeyError` from the host arm -- nothing serializes `details`
-    on this surface, but #43 and #45 each already had to distinguish their arm by message anyway."""
+    """Before #52 all six raised `cross_site_request`."""
     codes = [code for code, _ in ARMS]
     assert set(_arm_classes()) == set(codes)
     assert len(set(codes)) == len(codes)            # must fire: six distinct codes, not one reused
 
 
 def test_the_family_base_is_not_raised_by_any_arm():
-    """`cross_site_request` survives as the family — the guard catches it and a caller may still want
-    *any* cross-site refusal — but nothing raises it, so no payload carries it any more."""
+    """`cross_site_request` survives as the family — the guard catches it and a caller may still want *any*
+    cross-site refusal — but nothing raises it, so no payload carries it any more."""
     from requivo.web import security
 
     assert security.CrossSiteRequestError.code == "cross_site_request"
@@ -176,9 +152,7 @@ def test_every_arm_code_is_still_a_403():
 @pytest.mark.parametrize("code, keys", ARMS)
 def test_each_arm_carries_exactly_the_details_shape_its_code_promises(code, keys, raw_client,
                                                                      monkeypatch):
-    """The point of the split, driven through the real middleware rather than by constructing the
-    exception: a consumer matching a code and reading a key out of `details` has to work for every
-    payload carrying it."""
+    """The point of the split, driven through the real middleware rather than by constructing the exception."""
     raised = {}
     from requivo.web import security
 

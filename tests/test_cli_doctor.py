@@ -1,14 +1,5 @@
-"""End-to-end tests of `requivo.deterministic.doctor` — the `doctor`, `schema` and `context` verbs'
-own health checks: credentials, model source, the write-lock path, and context-card health.
-
-Split out of `test_cli_deterministic.py` by #141, which mirrored the package #73 created. #555 split
-this file three ways in turn, once it outgrew one module: `test_cli_doctor_non_sessions.py` (what is
-under the session root that is not a session, #67) and `test_cli_doctor_lock_residue.py` (#180) are
-its siblings, along the same section boundaries this file's own comments already drew. The shared
-harness is `tests/_cli_harness.py`; `_check_line` below is duplicated in both siblings rather than
-imported, per this suite's own convention of keeping test-module helpers local to each file
-(`tests/_fakes.py`'s own docstring makes the argument).
-"""
+"""End-to-end tests of `requivo.deterministic.doctor` — the `doctor`, `schema` and `context` verbs' own health
+checks: credentials, model source, the write-lock path, and context-card health (#141)."""
 from __future__ import annotations
 
 import os
@@ -25,12 +16,7 @@ from requivo.core import persistence as store
 def test_doctor_runs_without_api_key(workspace, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    # Since #334 the credential guard asks the SDK, which also discovers an active profile on disk --
-    # so clearing the environment is no longer enough to describe a credential-free install: on a
-    # machine whose developer has one, these tests would read that. The SDK's discovery entry point
-    # is neutralised too. `raising=False` because the older majors in `anthropic>=0.42.0,<2` have no
-    # such chain. The full reasoning, including why `ANTHROPIC_CONFIG_DIR` is not the lever it looks
-    # like, is on `_no_credentials` in `tests/test_provider.py`.
+    # Since #334 the credential guard asks the SDK, which also discovers an active profile on disk.
     monkeypatch.setattr("anthropic._client.default_credentials", lambda **kw: None, raising=False)
     r = _run_json(["doctor", "--json"])
     assert r["schema"]["ok"] and r["schema"]["slots"] > 0
@@ -40,10 +26,8 @@ def test_doctor_runs_without_api_key(workspace, monkeypatch):
 
 
 def test_doctor_reports_the_model_source_as_env_when_requivo_model_is_set(workspace, monkeypatch):
-    """#268 renamed the model override's primary name, and `doctor_report()` used to decide
-    `model.source` by reading bare `MODEL` again rather than asking `current_model_name()` how it
-    actually resolved -- so a reporter who set only `REQUIVO_MODEL` would have `doctor` call their
-    override "default", the exact drift a second copy of the same decision risks."""
+    """#268 renamed the model override's primary name, and `doctor_report()` used to decide `model.source` by
+    reading bare `MODEL` again rather than asking `current_model_name()` how it actually resolved."""
     monkeypatch.delenv("MODEL", raising=False)
     monkeypatch.setenv("REQUIVO_MODEL", "claude-opus-4-8")
     r = _run_json(["doctor", "--json"])
@@ -52,9 +36,7 @@ def test_doctor_reports_the_model_source_as_env_when_requivo_model_is_set(worksp
 
 def test_doctor_reports_a_bearer_token_as_a_credential_present(workspace, monkeypatch):
     """#332: doctor read `ANTHROPIC_API_KEY` alone while the runner (`new_client`) also accepts
-    `ANTHROPIC_AUTH_TOKEN` (#201), so a working bearer-token install reported
-    `api_key_present: false`. Paired with `test_doctor_runs_without_api_key`, whose negative
-    assertion this keeps honest -- a probe that always said "present" would pass that test too."""
+    `ANTHROPIC_AUTH_TOKEN` (#201), so a working bearer-token install reported `api_key_present: false`."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-ant-whatever")
     r = _run_json(["doctor", "--json"])
@@ -76,10 +58,8 @@ _NEEDS_CHAIN = pytest.mark.skipif(
 
 @_NEEDS_CHAIN
 def test_doctor_names_the_remedy_for_an_unloadable_profile_rather_than_no_api_key(workspace, monkeypatch):
-    """#365: `doctor` used to call `credential_present()` bare, flattening "no credential" and "a
-    credential that is configured and unloadable" onto the same False -- so the verb diagnosing the
-    install told the reader to set an environment variable when the fault was a profile file the SDK
-    could not read, which setting the variable would not fix."""
+    """#365: `doctor` used to call `credential_present()` bare, flattening "no credential" and "a credential
+    that is configured and unloadable" onto the same False."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.setenv("ANTHROPIC_PROFILE", "a-profile-that-does-not-exist")
@@ -101,10 +81,7 @@ def test_doctor_names_the_remedy_for_an_unloadable_profile_rather_than_no_api_ke
 
 
 def test_doctor_still_says_no_api_key_when_none_is_configured_at_all(workspace, monkeypatch):
-    """The must-not-fire twin, genuinely reached rather than merely asserted against silence: with no
-    credential from any source, the existing message is unchanged. Without this, a fix that stopped
-    saying "no API key" for every False case would pass the test above and silently break the far
-    more common one."""
+    """The must-not-fire twin, genuinely reached rather than merely asserted against silence."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.setattr("anthropic._client.default_credentials", lambda **kw: None, raising=False)
@@ -119,25 +96,18 @@ def test_doctor_still_says_no_api_key_when_none_is_configured_at_all(workspace, 
 
 # ── doctor's own failures must not render as green ticks (#12) ──────────────────
 #
-# Every test in this block asserts that the *healthy* and the *broken* case produce **different**
-# output. A test that only showed the broken case producing something would pass equally well
-# against a doctor that reports a problem for everything — and the defect here was never that doctor
-# is silent, it is that two of its states are spelled the same way.
+# Every test in this block asserts that the *healthy* and the *broken* case produce **different** output.
 
 
 def _check_line(text: str, name: str) -> str:
-    """The status line for the named doctor check — the one carrying a tick.
-
-    Matched on the two-space indent a check line has, because the indented detail lines beneath it
-    mention the same words (`     sessions        <path>` sits right above `  ✅ sessions …`), and a
-    tick asserted against the wrong line is an assertion about nothing."""
+    """The status line for the named doctor check — the one carrying a tick."""
     return next(ln for ln in text.splitlines()
                 if ln.startswith("  ") and not ln.startswith("   ") and name in ln)
 
 
 def test_doctor_reports_where_the_write_lock_lives(workspace):
-    """#113 moved the write lock out of the session directory, and a convention the diagnostic does
-    not report is one it answers about the wrong shape."""
+    """#113 moved the write lock out of the session directory, and a convention the diagnostic does not report
+    is one it answers about the wrong shape."""
     r = _run_json(["doctor", "--json"])["workspace"]
     assert r["locks"] == str(store.lock_root())
     assert r["sessions"] == str(store.session_root()), "the published key must not have moved"
@@ -147,11 +117,8 @@ def test_doctor_reports_where_the_write_lock_lives(workspace):
 
 
 def test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadable_one(workspace):
-    """Three states, three renderings. `available_cards()` failing used to be written into
-    `schema["error"]` — a *different* check's field — with `schema["ok"]` left True and the message
-    printed nowhere, while the card line printed a tick unconditionally. A wheel that ships `assets/`
-    but loses `assets/context/` therefore showed three green ticks and reasoned with no product
-    context at all."""
+    """Three states, three renderings. `available_cards()` failing used to be written into `schema["error"]` —
+    a *different* check's field."""
     from requivo.deterministic import doctor as det
 
     def _unreadable():
@@ -173,8 +140,7 @@ def test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadabl
     assert empty["context"]["count"] == 0
     assert empty["schema"]["ok"] is True and empty["schema"]["error"] is None
 
-    # (b) the directory cannot be read at all — a different answer again, and it must not be
-    #     laundered through a neighbouring check's field.
+    # (b) the directory cannot be read at all — a different answer again.
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(det, "available_cards", _unreadable)
         broken = _run_json(["doctor", "--json"])
@@ -185,8 +151,7 @@ def test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadabl
     assert broken["schema"]["ok"] is True and broken["schema"]["error"] is None, (
         "a context-card failure must not be reported as a schema failure")
 
-    # The human rendering distinguishes them too — the JSON being right is no use to a reader
-    # counting ticks.
+    # The human rendering distinguishes them too — the JSON being right is no use to a reader counting ticks.
     assert "✅" in _check_line(healthy_text, "context cards")
     assert "✅" not in _check_line(empty_text, "context cards")
     assert "✅" not in _check_line(broken_text, "context cards")
@@ -195,10 +160,7 @@ def test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadabl
 
 
 def test_doctor_tells_an_empty_workspace_from_an_unreadable_one(workspace):
-    """`_session_health` caught every exception and returned `{"total": 0, "inconsistent": {}}` —
-    byte-identical to a genuinely empty workspace. Twelve unreachable sessions then read as "you have
-    no sessions", and the user concludes they were deleted rather than that a directory is
-    unreadable."""
+    """`_session_health` caught every exception and returned `{"total": 0, "inconsistent": {}}`."""
     from requivo.deterministic import doctor as det
 
     def _unreadable():
@@ -211,9 +173,6 @@ def test_doctor_tells_an_empty_workspace_from_an_unreadable_one(workspace):
 
     with pytest.MonkeyPatch.context() as mp:
         # `scan_session_root`, because that is the one listing `_session_health` makes since #67.
-        # Patching `list_session_slugs` — which it no longer calls — left this simulating nothing
-        # while still asserting; the failure is what said so, which is the point of asserting that
-        # the two renderings *differ* rather than that the broken one says something.
         mp.setattr(det.store, "scan_session_root", _unreadable)
         unreadable = _run_json(["doctor", "--json"])["sessions"]
         unreadable_text = _run(["doctor"])
@@ -232,12 +191,7 @@ def test_doctor_tells_an_empty_workspace_from_an_unreadable_one(workspace):
 
 
 def _deny_read(directory: Path) -> None:
-    """Make `directory` genuinely unreadable, or skip loudly naming what went untested.
-
-    `chmod 000` is not a read denial everywhere: Windows ignores POSIX mode bits entirely, and root
-    bypasses them. Branching silently on that would leave a test that *passes* on those runs while
-    asserting nothing — a green leg nobody re-reads, reporting a coverage it does not have. So it
-    skips instead, and says which platform or condition the assertion did not reach."""
+    """Make `directory` genuinely unreadable, or skip loudly naming what went untested."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny reads on Windows — the unreadable-card-directory "
                     "path is untested on this platform")
@@ -252,11 +206,7 @@ def _deny_read(directory: Path) -> None:
 
 
 def test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty(workspace, tmp_path):
-    """The `unreadable` state has to be reachable by what actually makes a directory unreadable, and it
-    was not: `_card_paths()`'s `Path.glob("*.md")` swallows `PermissionError` and yields nothing, so a
-    permission-denied card directory produced an empty list and no exception -- #12's own defect class
-    one layer under #12's fix. Both halves are checked here, on the same directory, mode changing
-    only."""
+    """The `unreadable` state has to be reachable by what actually makes a directory unreadable (#12)."""
     cards = tmp_path / "cards"
     cards.mkdir()
     (cards / "walled-domain.md").write_text("# Walled domain\n")
@@ -284,8 +234,7 @@ def test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty(workspace,
     assert broken["context"]["ok"] is False
     assert "walled-domain" not in broken["context_cards"]
 
-    # The session must not be accused of naming a card that does not exist — it does exist, and we
-    # could not read it. `checked` false is the honest answer, and it must not read as clean.
+    # The session must not be accused of naming a card that does not exist.
     assert broken["sessions"]["cards_checked"] is False
     assert broken["sessions"]["unresolved_cards"] == {}
     assert "✅" not in _check_line(broken_text, "context cards")

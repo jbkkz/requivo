@@ -1,10 +1,4 @@
-"""Does a session on disk tell the truth about itself? Forward/backward field tolerance, slug
-length bounds, artifact freshness recorded against the revision that produced it, the reasoning
-layer as a dependency edge, the slot-schema version boundary, reasoning-item identity, one-snapshot
-reads (invariant 12), `check_session`'s own anti-tampering pass, and the repair-target search
-`newest_readable_revision` (#210). Split by #555 from a single `test_integrity.py`;
-`test_integrity_concurrency.py` covers the concurrency and containment half.
-"""
+"""Does a session on disk tell the truth about itself (#210)?"""
 from __future__ import annotations
 
 import json
@@ -29,9 +23,7 @@ from requivo.services.sessions import SessionService
 
 
 def test_a_field_from_a_future_requivo_survives_a_round_trip(workspace):
-    """`docs/compatibility.md` promises that adding a field is a compatible change. Under
-    `extra="ignore"` an older reader honoured that only until it wrote the file back, at which point
-    the unknown field was silently dropped — so the first mutation by an older Requivo destroyed it."""
+    """`docs/compatibility.md` promises that adding a field is a compatible change."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     p = store.canonical_dir("s") / "session.json"
@@ -47,8 +39,7 @@ def test_a_field_from_a_future_requivo_survives_a_round_trip(workspace):
 
 
 def test_a_retired_key_is_dropped_rather_than_carried_forever(workspace):
-    """The mirror image: `extra="allow"` must not resurrect keys a past Requivo retired. Retirement is
-    explicit in `migrate_session`, so a key from the *past* is dropped and one from the *future* kept."""
+    """The mirror image: `extra="allow"` must not resurrect keys a past Requivo retired."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     p = store.canonical_dir("s") / "session.json"
@@ -65,8 +56,8 @@ def test_a_retired_key_is_dropped_rather_than_carried_forever(workspace):
 
 
 def test_a_long_request_yields_a_slug_the_filesystem_accepts(workspace):
-    """A request is arbitrary user text. One 300-character word made a 300-character directory name
-    and the write failed deep inside with a bare `OSError: File name too long`."""
+    """A request is arbitrary user text. One 300-character word made a 300-character directory name and the
+    write failed deep inside with a bare `OSError: File name too long`."""
     long_word = "a" * 300
     slug = store.derive_slug(f"{long_word} system")
     assert len(slug) <= store.MAX_SLUG_LENGTH
@@ -92,10 +83,7 @@ def test_an_explicit_over_long_slug_is_refused_at_the_boundary(workspace):
 
 
 def test_an_artifact_saved_against_an_older_revision_is_recorded_stale(workspace):
-    """Saving is not the same moment as reasoning. A provider call takes minutes and the session can
-    move under it; Claude Code can save a file it produced several turns ago. The source revision was
-    recorded faithfully and the freshness beside it was simply assumed `False`, so a PRD reasoned from
-    a superseded model sat on disk marked fresh."""
+    """Saving is not the same moment as reasoning."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())                                        # revision 1
@@ -108,8 +96,7 @@ def test_an_artifact_saved_against_an_older_revision_is_recorded_stale(workspace
 
 
 def test_an_older_revision_that_missed_the_artifact_leaves_it_fresh(workspace):
-    """The control. Staleness is the dependency graph, not revision drift: an artifact whose slots
-    were untouched stays fresh however far the session has moved on."""
+    """The control. Staleness is the dependency graph, not revision drift."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model())
@@ -129,9 +116,8 @@ def _with_decision(model: dict, why: str) -> dict:
 
 
 def test_reasoning_that_changes_without_a_slot_moving_still_invalidates(workspace):
-    """Every generator is prompted with the whole model, reasoning included, so a rewritten design
-    decision can change the PRD with no slot touched. `diff_models` sees only slots, so this reported
-    `changed_slots: []` and left the PRD marked fresh."""
+    """Every generator is prompted with the whole model, reasoning included, so a rewritten design decision
+    can change the PRD with no slot touched."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_decision(_full_model(), "drafts are cheap"))
@@ -147,9 +133,7 @@ def test_reasoning_that_changes_without_a_slot_moving_still_invalidates(workspac
 
 
 def test_reasoning_merely_omitted_by_a_turn_is_preserved(workspace):
-    """A refinement turn answers a question; it does not re-derive the brief, so its reply routinely
-arrives with no decisions at all. That silence must leave the established reasoning standing. It
-used to erase it."""
+    """A refinement turn answers a question; it does not re-derive the brief."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_decision(_full_model(), "drafts are cheap"))
@@ -163,8 +147,7 @@ used to erase it."""
 
 
 def test_reasoning_explicitly_replaced_is_a_change_that_invalidates(workspace):
-    """The other side of the tri-state: a proposal that *states* its reasoning replaces what was
-    there, and every generator is prompted with the reasoning, so the saved PRD goes stale."""
+    """The other side of the tri-state: a proposal that *states* its reasoning replaces what was there."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_decision(_full_model(), "drafts are cheap"))
@@ -180,9 +163,7 @@ def test_reasoning_explicitly_replaced_is_a_change_that_invalidates(workspace):
 
 
 def test_reasoning_explicitly_emptied_is_a_deletion_that_invalidates(workspace):
-    """`"decisions": []` is a statement, not a silence: it deletes, and what rested on the deleted
-    reasoning goes stale. Distinguishing this from an omission is the whole point of the tri-state —
-    before it, a real deletion was indistinguishable from a quiet turn and passed unrecorded."""
+    """`"decisions": []` is a statement, not a silence."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_decision(_full_model(), "drafts are cheap"))
@@ -201,8 +182,8 @@ def _with_exclusion(model: dict, reason: str) -> dict:
 
 
 def test_an_exclusion_merely_omitted_by_a_turn_is_preserved(workspace):
-    """#599, invariant 10's fourth collection: a refinement turn that says nothing about
-    `exclusions` must leave the established one standing, exactly like decisions/challenges."""
+    """#599, invariant 10's fourth collection: a refinement turn that says nothing about `exclusions` must
+    leave the established one standing, exactly like decisions/challenges."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_exclusion(_full_model(), "Out of scope for v1"))
@@ -213,8 +194,7 @@ def test_an_exclusion_merely_omitted_by_a_turn_is_preserved(workspace):
 
 
 def test_an_exclusion_explicitly_emptied_invalidates_what_rests_on_it(workspace):
-    """#599: `"exclusions": []` deletes, like `"decisions": []` — and the artifacts consuming the
-    reasoning layer (every generator, via `REASONING_CONSUMERS`) go stale with it."""
+    """#599: `"exclusions": []` deletes, like `"decisions": []`."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_exclusion(_full_model(), "Out of scope for v1"))
@@ -235,9 +215,8 @@ def _with_threshold(model: dict, action: str) -> dict:
 
 
 def test_a_threshold_merely_omitted_by_a_turn_is_preserved(workspace):
-    """#604, invariant 10's fifth collection: a refinement turn that says nothing about
-    `thresholds` must leave the established one standing, exactly like decisions/challenges/
-    exclusions."""
+    """#604, invariant 10's fifth collection: a refinement turn that says nothing about `thresholds` must
+    leave the established one standing, exactly like decisions/challenges/ exclusions."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_threshold(_full_model(), "stop the paid channel"))
@@ -248,8 +227,7 @@ def test_a_threshold_merely_omitted_by_a_turn_is_preserved(workspace):
 
 
 def test_a_threshold_explicitly_emptied_invalidates_what_rests_on_it(workspace):
-    """#604: `"thresholds": []` deletes, like `"exclusions": []` — and the artifacts consuming
-    the reasoning layer (every generator, via `REASONING_CONSUMERS`) go stale with it."""
+    """#604: `"thresholds": []` deletes, like `"exclusions": []`."""
     svc, art = SessionService(), ArtifactService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _with_threshold(_full_model(), "stop the paid channel"))
@@ -266,9 +244,7 @@ def test_a_threshold_explicitly_emptied_invalidates_what_rests_on_it(workspace):
 
 
 def test_a_session_from_a_newer_slot_schema_is_refused_clearly(workspace):
-    """`schema_version` was recorded on every session and read by nothing. A model authored against a
-    newer vocabulary can hold slots this build has no definition for, and the first symptom was an
-    `unknown_slot` error naming a slot the user never typed."""
+    """`schema_version` was recorded on every session and read by nothing."""
     from requivo.core.errors import InvalidSessionError
 
     svc = SessionService()
@@ -291,10 +267,7 @@ def test_a_session_from_a_newer_slot_schema_is_refused_clearly(workspace):
 
 
 def test_a_repeated_reasoning_item_is_refused_rather_than_deduplicated(workspace):
-    """Ids are content-derived, so two identical decisions collide on one id. The id is what a diff
-    keys on and what a user cites a decision by — a collision makes one of the pair invisible to change
-    detection. The engine restating itself is a defect in the reply, which the retry loop can fix;
-    quietly keeping one of the two cannot be undone."""
+    """Ids are content-derived, so two identical decisions collide on one id."""
 
     model = _full_model()
     model["decisions"] = [
@@ -309,11 +282,7 @@ def test_a_repeated_reasoning_item_is_refused_rather_than_deduplicated(workspace
 
 
 def test_a_snapshot_cannot_report_one_revision_and_another_revisions_model(workspace):
-    """Every provider-backed operation reads a revision and a model before it reasons. Read as two
-calls, a write landing between them yields revision N with the model of N+1 — the generation then
-reasons from the newer model and files the artifact against the older revision. Nothing
-downstream can detect that: the recorded number is entirely plausible, it just describes a
-different model than the one the document was written from."""
+    """Every provider-backed operation reads a revision and a model before it reasons."""
     svc = SessionService()
     svc.create_session("Something.", slug="s")
     svc.update_model("s", _full_model(**{"workflow": _slot(50, "inferred", "medium", "first")}))
@@ -331,9 +300,7 @@ different model than the one the document was written from."""
     writer = threading.Thread(target=concurrent_apply)
     writer.start()
 
-    # Widen the window between the two reads to whatever the writer needs. Under the old two-call read
-    # this is exactly where revision 2 landed; under the lock the writer cannot get in, so the wait
-    # times out and the snapshot completes on the state it started from.
+    # Widen the window between the two reads to whatever the writer needs.
     real_read_meta = svc.repo.read_meta
 
     def slow_read_meta(slug):
@@ -354,8 +321,7 @@ different model than the one the document was written from."""
 
 
 def _point_artifact_at(slug: str, filename: str) -> None:
-    """Rewrite the recorded artifact's `filename` in `session.json` — what a crafted or hand-edited
-    session does. `ArtifactStatus.filename` is a bare `str` with no constraint, so this round-trips."""
+    """Rewrite the recorded artifact's `filename` in `session.json`."""
     p = store.canonical_dir(slug) / "session.json"
     raw = json.loads(p.read_text(encoding="utf-8"))
     raw["artifact_status"]["prd"]["filename"] = filename
@@ -369,16 +335,10 @@ def test_a_coherent_session_reports_no_problems(workspace):
 
 def test_check_session_waits_for_a_concurrent_writer_instead_of_reporting_a_tear(workspace,
                                                                                   monkeypatch):
-    """#263. `check_session` used to read session.json, the revision files and model.json with no lock,
-so it could observe `save_revision`'s compound write torn: revisions/NNNN-model.json and
-model.json already replaced, session.json about to follow. An old session.json read alongside a
-fresh model.json then reported `model_is_not_the_last_revision` 'the file was changed after it
-was written'"""
+    """#263. `check_session` used to read session.json, the revision files and model.json with no lock, so it
+    could observe `save_revision`'s compound write torn."""
     svc = _healthy()
-    # Patched on the `Store` class, not the module function (#272): `store.save_revision` is now a
-    # thin ambient-default wrapper over `Store.save_revision`, which calls `self.write_meta(...)` --
-    # a class-method lookup, not the module-level `write_meta` name -- so patching the module
-    # function no longer intercepts it.
+    # Patched on the `Store` class, not the module function (#272).
     real_write_meta = store.Store.write_meta
     at_the_gate, release = threading.Event(), threading.Event()
 
@@ -413,8 +373,7 @@ was written'"""
     checker = threading.Thread(target=_check, daemon=True)
     checker.start()
 
-    # Must fire: a checker racing the writer must not read past the lock while the writer still
-    # holds it -- it must block instead of returning the torn state (or anything at all).
+    # Must fire: a checker racing the writer must not read past the lock while the writer still holds it.
     assert not checker_done.wait(1.0), (
         "check_session read past a writer still mid-save instead of waiting for its lock")
 
@@ -428,10 +387,7 @@ was written'"""
 
 
 def test_a_session_whose_history_is_gone_is_caught(workspace):
-    """The reviewer's repro, and the one shape that used to pass every check: session.json announces
-    revision 2, `revisions/` is empty, and nothing is malformed — model.json parses, the metadata
-    parses, the slug agrees. Only the *relationships* are broken, which is precisely what validating
-    each file on its own cannot see."""
+    """The reviewer's repro, and the one shape that used to pass every check."""
     _healthy()
     for f in (store.canonical_dir("s") / "revisions").glob("*.json"):
         f.unlink()
@@ -440,9 +396,7 @@ def test_a_session_whose_history_is_gone_is_caught(workspace):
 
 
 def test_a_model_swapped_out_from_under_its_hash_is_caught(workspace):
-    """Every revision records the hash of what was written. A model.json replaced by hand still parses
-    as a perfectly good model — it is simply no longer the revision the session says it is at, so the
-    history and the current state describe different things."""
+    """Every revision records the hash of what was written."""
     _healthy()
     d = store.canonical_dir("s")
     (d / "model.json").write_text(json.dumps(_full_model(**{"problem": _slot(90, "explicit", "high", "other")})))
@@ -464,11 +418,7 @@ def test_a_recorded_artifact_with_no_file_is_caught(workspace):
 
 
 def test_a_model_from_a_newer_requivo_is_not_reported_as_a_defect(workspace):
-    """#14. The checker read model.json through the strict boundary contract, so an unknown key — the
-    thing `docs/compatibility.md` explicitly permits without a format bump — came back as
-    `invalid_model`. Now that the loader carries such a key, the diagnostic still refusing it would be
-    the worse half of the two: the session opens fine and `doctor` reports a defect in it, which is a
-    health verdict measured against a rule this version no longer follows."""
+    """#14. The checker read model.json through the strict boundary contract, so an unknown key."""
     _healthy()
     d = store.canonical_dir("s")
     for f in (d / "model.json", d / "revisions" / "0001-model.json"):
@@ -478,9 +428,7 @@ def test_a_model_from_a_newer_requivo_is_not_reported_as_a_defect(workspace):
     assert "invalid_model" not in codes
     assert "invalid_revision_model" not in codes
 
-    # The positive control. The assertions above are absences, and an absence also arrives from a
-    # check that stopped looking — so the same two codes must still fire on a model that is broken
-    # rather than merely newer.
+    # The positive control.
     (d / "model.json").write_text('{"model": {"workflow": ', encoding="utf-8")
     (d / "revisions" / "0001-model.json").write_text('{"model": {"workflow": ', encoding="utf-8")
     broken = {p.code for p in check_session("s")}
@@ -489,9 +437,8 @@ def test_a_model_from_a_newer_requivo_is_not_reported_as_a_defect(workspace):
 
 
 def test_a_structurally_invalid_session_json_is_a_problem_not_a_traceback(workspace):
-    """A session.json that is valid JSON but not valid metadata raised a bare Pydantic
-    `ValidationError` through the CLI. Every failure a user can cause has to arrive as a Requivo
-    problem — the checker's whole job is to describe what is wrong, not to fail at it."""
+    """A session.json that is valid JSON but not valid metadata raised a bare Pydantic `ValidationError`
+    through the CLI."""
     _healthy()
     (store.canonical_dir("s") / "session.json").write_text('{"slug": "s"}')  # no session_id, no dates
     codes = {p.code for p in check_session("s")}
@@ -510,10 +457,7 @@ def test_a_revision_log_that_does_not_match_the_revision_count_is_caught(workspa
 def test_a_crafted_artifact_filename_cannot_be_used_to_probe_for_files_outside_the_session(
         workspace, tmp_path):
     """An existence oracle: `st.filename` was read out of `session.json` and joined straight into the
-artifacts directory, so `.is_file()` was called on whatever it named. `pathlib` makes the
-absolute case the sharp one — `Path(d) / "artifacts" / "/etc/passwd"` is `/etc/passwd`, because
-an absolute component *replaces* everything before it — so the join did not even have to escape
-upwards."""
+    artifacts directory, so `.is_file()` was called on whatever it named."""
     present = tmp_path / "outside-present.md"
     present.write_text("secret\n")
     absent = tmp_path / "outside-absent.md"
@@ -534,10 +478,7 @@ upwards."""
 
 
 def test_an_unknown_artifact_type_does_not_fall_through_to_the_filesystem(workspace, tmp_path):
-    """The fall-through the #23 lane's auditor named: an unknown artifact *type* recorded its problem
-and then carried on to the join with the untrusted filename still in hand. Both branches did —
-the filename-mismatch one too — so neither is a guard. Re-aimed by #260, where the unknown *type*
-stopped being a problem and became a note."""
+    """The fall-through the #23 lane's auditor named."""
     outside = tmp_path / "outside.md"
     outside.write_text("x\n")
 
@@ -555,8 +496,7 @@ stopped being a problem and became a note."""
 
 
 def test_a_safe_but_missing_artifact_file_is_still_reported(workspace):
-    """The must-fire control for the two tests above: refusing an unsafe name must not have turned
-    the ordinary missing-file check off."""
+    """The must-fire control for the two tests above."""
     _healthy()
     (store.canonical_dir("s") / "artifacts" / "prd.md").unlink()
     codes = {p.code for p in check_session("s")}
@@ -565,11 +505,8 @@ def test_a_safe_but_missing_artifact_file_is_still_reported(workspace):
 
 
 def test_an_artifact_that_is_a_symlink_out_of_the_session_is_still_refused(workspace, tmp_path):
-    """The branch the #3 fix leans on. `check_session_dir` now resolves the artifact path only when
-    something is there, because two independent `resolve()` calls disagree whenever the tree moves
-    between them and a spurious disagreement reports `unsafe_artifact_filename` about a bare name.
-    That is only safe if a symlink which *is* there still gets caught — including a dangling one,
-    which `exists()` reports as absent because it follows the link."""
+    """The branch the #3 fix leans on. `check_session_dir` now resolves the artifact path only when something
+    is there."""
     _healthy()
     artifacts = store.canonical_dir("s") / "artifacts"
     outside = tmp_path / "elsewhere.md"
@@ -588,11 +525,7 @@ def test_an_artifact_that_is_a_symlink_out_of_the_session_is_still_refused(works
 def test_an_artifact_symlink_is_reported_unsafe_where_the_platform_cannot_resolve_it(workspace,
                                                                                      tmp_path,
                                                                                      monkeypatch):
-    """`session verify`'s copy of the decision, blinded the same way. Its failure mode is quieter than
-the other two and worth stating on its own: nothing raises, the row simply comes back
-`missing_artifact_file` — *there is no file there* — about a link that is very much there and
-points out of the session. A verdict that is wrong is worse here than a verdict that is missing,
-because this is the verb whose whole job is telling you whether the session is intact."""
+    """`session verify`'s copy of the decision, blinded the same way."""
     _healthy()
     artifacts = store.canonical_dir("s") / "artifacts"
     (artifacts / "prd.md").unlink()
@@ -605,10 +538,7 @@ because this is the verb whose whole job is telling you whether the session is i
 
 def test_a_context_card_that_no_longer_resolves_is_not_an_integrity_problem(workspace, tmp_path,
                                                                             monkeypatch):
-    """The boundary of what this module answers, pinned as behaviour rather than left in a docstring.
-`check_session_dir` asks whether a session directory tells the truth **about itself**. A context
-card lives outside the directory — in the installed package or in `user_context_dir()` — so an
-unresolvable card is a fact about *this machine*, not about the session."""
+    """The boundary of what this module answers, pinned as behaviour rather than left in a docstring."""
     cards = tmp_path / "cards"
     cards.mkdir()
     (cards / "lost-domain.md").write_text("# Lost domain\n")
@@ -633,8 +563,7 @@ def test_newest_readable_revision_returns_the_latest_when_everything_parses(work
     d = store.canonical_dir("s")
     found = newest_readable_revision(d, 2)
     assert found is not None and found.revision == 2
-    # byte-for-byte, not a re-serialized model -- restoring from this payload must reproduce the
-    # revision file's own content_hash (see ReadableRevision's docstring).
+    # byte-for-byte, not a re-serialized model -- restoring from this payload must reproduce the revision file's own content_hash (see ReadableRevision's docstring).
     assert found.payload == (d / "revisions" / "0002-model.json").read_text(encoding="utf-8")
 
 
@@ -655,10 +584,7 @@ def test_newest_readable_revision_treats_a_missing_file_the_same_as_an_unreadabl
 
 
 def test_newest_readable_revision_returns_none_when_nothing_in_range_is_readable(workspace):
-    """The honest third answer -- must be able to say plainly that there is nothing to restore from,
-    never invent one. The must-fire control above already proves the same session's revision 2 is
-    found when it is readable; corrupting every file is what earns the None here rather than a bug
-    in the search."""
+    """The honest third answer -- must be able to say plainly that there is nothing to restore from."""
     _healthy()
     d = store.canonical_dir("s")
     for f in (d / "revisions").glob("*.json"):
@@ -684,9 +610,8 @@ def test_newest_readable_revision_skips_a_revision_whose_hash_no_longer_matches(
 
 
 def test_newest_readable_revision_with_no_expected_hashes_trusts_anything_that_parses(workspace):
-    """The permissive default, stated as behaviour: when the caller has no hash log to check against
-    (or passes none), a revision that merely parses is still returned -- `expected_hashes` narrows
-    trust, it does not become a requirement nothing can satisfy."""
+    """The permissive default, stated as behaviour: when the caller has no hash log to check against (or
+    passes none), a revision that merely parses is still returned."""
     _healthy()
     d = store.canonical_dir("s")
     f = d / "revisions" / "0002-model.json"

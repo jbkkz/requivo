@@ -1,13 +1,5 @@
-"""#419: the suite's hermeticity is a guarantee of `tests/conftest.py`, not a property of the
-machine it runs on.
-
-Before the net existed, "no API calls, no network" was true exactly where no credential was
-resolvable: `cli.py` loaded the repo's `.env` at import time, `client=None` meant "build the
-default client", and `test_the_real_session_is_still_reachable_by_its_own_slug[answer]` made a
-real paid Anthropic call and then went red — on every keyed machine, green in keyless CI, ~$0.07
-per full-suite run. These tests are the must-fire pair the net's docstring names, plus the two
-halves of the `.env` contract the fix moved.
-"""
+"""#419: the suite's hermeticity is a guarantee of `tests/conftest.py`, not a property of the machine it runs
+on."""
 import os
 import subprocess
 import sys
@@ -21,9 +13,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_no_ambient_credential_reaches_a_test():
-    """The probe: inside a test body, no credential variable survives and the wire points at the
-    sinkhole. On a keyless machine this passes vacuously — `test_the_net_fires_when_a_credential_is_ambient`
-    is the half that makes it fire everywhere."""
+    """The probe: inside a test body, no credential variable survives and the wire points at the sinkhole."""
     for var in _CREDENTIAL_ENV:
         assert var not in os.environ, (
             f"{var} survived into a test body — the autouse net in tests/conftest.py is not running"
@@ -34,14 +24,10 @@ def test_no_ambient_credential_reaches_a_test():
 
 
 def test_the_net_fires_when_a_credential_is_ambient():
-    """The must-fire half: run the probe in a child pytest whose environment carries a planted key,
-    the exact shape of the developer machine #419 billed. Red if the autouse net is removed —
-    which is what makes the probe above more than a keyless-CI tautology."""
+    """The must-fire half: run the probe in a child pytest whose environment carries a planted key (#419)."""
     env = dict(os.environ)
     env["ANTHROPIC_API_KEY"] = "sk-test-ambient-should-never-survive"
-    # Same pin as `_run_in`, for the same reason: in a worktree the venv's editable install still
-    # resolves `requivo` to the main checkout, and the child's conftest must import THIS tree's
-    # `requivo.cli` or the probe fails for a reason no diff explains (found in review of #420).
+    # Same pin as `_run_in`, for the same reason (#420).
     env["PYTHONPATH"] = str(_REPO_ROOT / "src")
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -55,8 +41,8 @@ def test_the_net_fires_when_a_credential_is_ambient():
 
 
 def test_importing_the_cli_leaves_the_environment_alone(tmp_path):
-    """#419's first mechanism, closed: importing `requivo.cli` from a directory holding a `.env`
-    must not load it. A canary lands in `os.environ` only when `app()` runs (the test below)."""
+    """#419's first mechanism, closed: importing `requivo.cli` from a directory holding a `.env` must not load
+    it."""
     (tmp_path / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
     script = (
         "import os, sys\n"
@@ -70,10 +56,7 @@ def test_importing_the_cli_leaves_the_environment_alone(tmp_path):
 
 
 def test_a_verb_still_reads_the_dotenv_file(tmp_path):
-    """The contract's other half, unchanged for every CLI user: `app()` itself still honours a
-    `.env` in the directory the command runs from. In-process suite runs never see this — the net
-    no-ops `load_dotenv` there precisely so the developer's real key cannot come back mid-test —
-    so a subprocess, owning its own environment, is where the promise is checked."""
+    """The contract's other half, unchanged for every CLI user."""
     (tmp_path / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
     script = (
         "import io, os, sys\n"
@@ -92,10 +75,7 @@ def test_a_verb_still_reads_the_dotenv_file(tmp_path):
 
 
 def _run_in(cwd, script):
-    """A child interpreter running this checkout's `requivo`, wherever the venv's install points.
-
-    `PYTHONPATH` pins the import to this tree's `src/` — in a worktree the venv's editable install
-    resolves to the main checkout, which is exactly the wrong tree to assert about."""
+    """A child interpreter running this checkout's `requivo`, wherever the venv's install points."""
     env = {k: v for k, v in os.environ.items() if k != "REQUIVO_HERMETICITY_CANARY"}
     env["PYTHONPATH"] = str(_REPO_ROOT / "src")
     return subprocess.run(
@@ -105,10 +85,7 @@ def _run_in(cwd, script):
 
 
 def test_the_incomplete_model_test_leaves_the_callers_workspace_untouched(tmp_path):
-    """#432: a fake reply missing required slots exhausted retries without isolating its workspace.
-    Run the actual test from a disposable cwd, not the developer's checkout: the un-fixed test
-    passes its own assertions while leaving a fake debug dump. This assertion must fail on that
-    version even if the session guard is also absent."""
+    """#432: a fake reply missing required slots exhausted retries without isolating its workspace."""
     target = _REPO_ROOT / "tests" / "test_provider_characterization.py"
     proc = _workspace_pytest(tmp_path, f"{target}::test_run_rejects_a_model_missing_required_slots")
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -129,8 +106,7 @@ def test_the_workspace_guard_accepts_an_untouched_workspace(tmp_path, existing):
 
 @pytest.mark.parametrize("retained", [0, 1, 20])
 def test_the_workspace_guard_catches_a_real_unisolated_dump(tmp_path, retained):
-    """The must-fire half: exercise the shipped writer, including a directory at its retention
-    cap. At the cap the count stays at 20, but the new name must still be reported (#432)."""
+    """The must-fire half: exercise the shipped writer, including a directory at its retention cap (#432)."""
     debug = tmp_path / ".requivo" / "debug"
     before = set()
     if retained:
@@ -200,7 +176,7 @@ def test_the_workspace_guard_does_not_hide_a_listing_error(tmp_path):
 
 
 def _workspace_probe(cwd, body):
-    # Copy the real net, not a stand-in. No repository fixture redirects this child's cwd.
+    # Copy the real net, not a stand-in.
     (cwd / "conftest.py").write_text(
         (_REPO_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8"), encoding="utf-8",
     )

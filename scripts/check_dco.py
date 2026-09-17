@@ -40,7 +40,7 @@ Two things hold it now, and the second is the one that does not depend on gettin
 Exit codes: 0 every commit signed, 1 at least one is not, 2 this check could not look (no range, git
 refused, git could not be run at all, or a line came back that is not a commit id). The third is not
 folded into either: an empty commit list would otherwise be an all-clear nobody earned, which is the
-rule `tests/test_boundaries.py` applies to its own scan set.
+rule `tests/test_source_form.py` applies to its own scan set.
 
 **A merge commit is not checked, and is reported rather than passed over in silence.** `--no-merges`
 is right about the metadata -- a merge commit's author is whoever pressed the button, not the person

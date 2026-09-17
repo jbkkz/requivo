@@ -1,9 +1,4 @@
-"""#292: stamp per-call token usage into revision provenance, so a session's cost is answerable.
-
-Driven directly against `DiscoveryService`/`SessionService` with a stub `ReasoningProvider` that
-records its own spend into the active `requivo.usage` ledger, the same way a real provider's
-`_complete()` does -- no CLI, no web, no real network.
-"""
+"""#292: stamp per-call token usage into revision provenance, so a session's cost is answerable."""
 
 from __future__ import annotations
 
@@ -21,8 +16,7 @@ def _isolate_workspace(tmp_path, monkeypatch):
 
 
 class _SpendingProvider:
-    """A stub `ReasoningProvider` whose `analyze()` records one `CallRecord` against whatever ledger
-    is active -- exactly what `providers/anthropic/completion.py::_record` does for a real call."""
+    """A stub `ReasoningProvider` whose `analyze()` records one `CallRecord` against whatever ledger is."""
 
     name = "stub"
 
@@ -45,11 +39,7 @@ class _SpendingProvider:
 
 
 def test_a_provider_backed_apply_stamps_token_and_rate_provenance_onto_its_revision():
-    """The span `_usage_since` measures is "however many calls this operation made", not "one call"
-    -- more than one can land in one span, and such a span sums the tokens (#467 split one operation
-    into two spans and was the last caller that spanned more than one). The rate is stamped only
-    when every call in the span agrees on it; a genuine disagreement is refused rather than
-    averaged, the same argument `UsageLedger`'s own docstring makes for cost."""
+    """The span `_usage_since` measures is "however many calls this operation made", not "one call" (#467)."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     provider = _SpendingProvider(CallRecord(
@@ -71,8 +61,7 @@ def test_a_provider_backed_apply_stamps_token_and_rate_provenance_onto_its_revis
 
 
 def test_a_deterministic_apply_carries_no_usage_provenance():
-    """Must-fire control: a `model apply` that never touches a provider -- the shape a Claude Code
-    turn or a hand-authored proposal takes -- must not read as having spent $0.00 (invariant 6)."""
+    """Must-fire control: a `model apply` that never touches a provider."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     sessions.update_model(slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json())
@@ -87,9 +76,8 @@ def test_a_deterministic_apply_carries_no_usage_provenance():
 
 
 def test_a_provider_call_made_with_no_active_ledger_still_leaves_usage_absent():
-    """The offline test suite's ordinary shape: a provider call made with no `track_usage()` scope
-    open at all. `current_ledger()` is `None`, and that has to read the same as "nothing to report",
-    not as a call that spent zero tokens."""
+    """The offline test suite's ordinary shape: a provider call made with no `track_usage()` scope open at
+    all."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     provider = _SpendingProvider(CallRecord(model="stub-model", input_tokens=1000, output_tokens=200))
@@ -103,8 +91,7 @@ def test_a_provider_call_made_with_no_active_ledger_still_leaves_usage_absent():
 
 
 def test_a_revision_record_with_no_usage_keys_round_trips_unchanged():
-    """An old session.json, written before #292, carries no usage_* keys at all. `RevisionRecord`
-    must load it without complaint and default every usage field to absent, not zero."""
+    """An old session.json, written before #292, carries no usage_* keys at all."""
     from requivo.core.persistence import RevisionRecord
 
     old_json = (
@@ -120,8 +107,8 @@ def test_a_revision_record_with_no_usage_keys_round_trips_unchanged():
 
 
 def test_render_session_cost_is_silent_when_no_revision_carries_usage(capsys):
-    """Must-fire control for the renderer itself: a session applied entirely through a deterministic
-    path (or by Claude Code) must print nothing -- never $0.00 (invariant 6)."""
+    """Must-fire control for the renderer itself: a session applied entirely through a deterministic path (or
+    by Claude Code) must print nothing -- never $0.00 (invariant 6)."""
     from requivo.render.terminal import render_session_cost
 
     sessions = SessionService()
@@ -153,11 +140,7 @@ def test_render_session_cost_sums_priced_revisions():
 
 
 def test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else(capsys):
-    """#389: `render_session_cost` used to re-implement `UsageLedger.cost_usd()` locally, and a
-    mutation control proved the copy unguarded -- changing one multiplier there left the full suite
-    green. This guard exercises every rate tier at once (input, cache read, cache write, output) and
-    asserts the exact printed dollar figure, computed independently, with round token counts so
-    `.3f` rounding cannot paper over a divergence."""
+    """#389: `render_session_cost` used to re-implement `UsageLedger.cost_usd()` locally."""
     from requivo.core.persistence import RevisionRecord
     from requivo.render.terminal import render_session_cost
 
@@ -170,20 +153,12 @@ def test_render_session_cost_reads_its_arithmetic_from_usage_py_and_nowhere_else
 
     render_session_cost(revisions)
 
-    # (1_000_000 * 2.0)              input, full price
-    # + (1_000_000 * 2.0 * 0.1)      cache read,  ~0.1x the input rate
-    # + (1_000_000 * 2.0 * 1.25)     cache write, ~1.25x the input rate
-    # + (1_000_000 * 10.0)           output, full price
-    # = 14,700,000 / 1_000_000 == 14.700
+    # (1_000_000 * 2.0) input, full price + (1_000_000 * 2.0 * 0.1) cache read, ~0.1x the input rate + (1_000_000 * 2.0 * 1.25) cache write, ~1.25x the input rate + (1_000_000 * 10.0) output, full price = 14,700,000 / 1_000_000 == 14.700
     assert "~$14.700" in capsys.readouterr().out
 
 
 def test_render_session_cost_does_not_stamp_a_dangling_separator_for_an_empty_priced_as_of(capsys):
-    """Found in review (#388/#389): the old code filtered `as_of` on truthiness, silently dropping
-    an empty-string date. Routing the field through `UsageLedger.priced_as_of` (#389) filters on
-    `is not None` instead, so a revision whose `usage_priced_as_of` is `""` (unreachable from any
-    real provider path, but not excluded by the schema, and reachable through `session import`) now
-    leaves a dangling `" · "` unless normalized to `None` first."""
+    """Found in review (#388/#389): the old code filtered `as_of` on truthiness."""
     from requivo.core.persistence import RevisionRecord
     from requivo.render.terminal import render_session_cost
 

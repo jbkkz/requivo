@@ -7,7 +7,7 @@ from __future__ import annotations
 from requivo.core.errors import RequivoError
 from requivo.providers.errors import EngineError
 
-# Allowlisted isinstance-only reach into providers/errors.py — see tests/test_boundaries.py.
+# Allowlisted isinstance-only reach into providers/errors.py — see tests/test_source_form.py.
 
 # Every code needs an explicit row, or it defaults below and misreports a server fault as the caller's (#34).
 STATUS_BY_CODE = {

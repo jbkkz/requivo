@@ -1,6 +1,5 @@
-"""Session read routes (#425, slice 1): list, one session, its model, its revisions, its status,
-and its impact query -- each backed by exactly one `SessionService` call, offline, over a tmp
-workspace."""
+"""Session read routes (#425, slice 1): list, one session, its model, its revisions, its status, and its
+impact query -- each backed by exactly one `SessionService` call, offline, over a tmp workspace."""
 
 from __future__ import annotations
 
@@ -33,8 +32,7 @@ def test_list_sessions_reports_a_readable_row(client):
 
 
 def test_list_sessions_degrades_an_unreadable_entry_rather_than_failing_the_set(client):
-    """Invariant 15: one broken session must not take the whole listing down, and the degraded row
-    states no fact it could not read."""
+    """Invariant 15: one broken session must not take the whole listing down."""
     seed_session("good-session")
     store.create_session("broken-session", "a request")
     (store.canonical_dir("broken-session") / "session.json").write_text("not json", encoding="utf-8")
@@ -52,15 +50,8 @@ def test_list_sessions_degrades_an_unreadable_entry_rather_than_failing_the_set(
 
 
 def test_the_api_list_row_is_the_same_row_session_list_json_publishes(client):
-    """`api/routes/sessions.py` restates `deterministic/sessions/lifecycle.py`'s private
-    `_session_list_row` rather than importing across two optional-extra surfaces. That is a
-    defensible call and it leaves a public payload shape (invariant 8) written down twice with
-    nothing comparing them -- so this compares them, on both arms, against one workspace.
-
-    Not a key-set check: the *values* have to agree too. A degraded row that said `revision: 0`
-    where the other says `null` would pass a shape assertion and be the quiet-wrong-answer form of
-    exactly the bug the CLI row's own docstring is about. Found in review of #425.
-    """
+    """`api/routes/sessions.py` restates `deterministic/sessions/lifecycle.py`'s private `_session_list_row`
+    rather than importing across two optional-extra surfaces (#425)."""
     from requivo.api.routes.sessions import _session_list_row as api_row
     from requivo.deterministic.sessions.lifecycle import _session_list_row as cli_row
 
@@ -75,8 +66,7 @@ def test_the_api_list_row_is_the_same_row_session_list_json_publishes(client):
         assert api_row(entry) == cli_row(entry), (
             f"the API and `session list --json` disagree about the row for {entry.slug!r}")
 
-    # And the route really is built from that function, rather than the two agreeing in a test while
-    # the response is assembled some third way.
+    # And the route really is built from that function, rather than the two agreeing in a test while the response is assembled some third way.
     served = {r["slug"]: r for r in client.get("/api/v1/sessions").json()["sessions"]}
     assert served == {e.slug: cli_row(e) for e in entries}
 
@@ -164,11 +154,7 @@ def test_impact_reports_what_rests_on_a_named_slot(client):
 
 
 def test_impact_reports_no_decisions_or_challenges_for_a_slot_nothing_rests_on(client):
-    """The must-not-fire control for the test above: a slot no decision or challenge targets
-    returns neither, rather than a copy of the last query's report. `current_process` is a real
-    schema slot outside every decision/challenge this session carries -- `artifacts` still names
-    `brief`, which maps to every slot deliberately (a judgment over the whole model), so this
-    checks the two collections that are supposed to be selective."""
+    """The must-not-fire control for the test above."""
     seed_session("leave-approval")
     resp = client.get("/api/v1/sessions/leave-approval/impact", params={"slots": "current_process"})
     assert resp.status_code == 200
@@ -191,31 +177,21 @@ def test_impact_requires_the_slots_query_parameter(client):
 
 
 def test_impact_with_a_blank_slots_value_is_the_empty_report_not_a_refusal(client):
-    """Found in review (#425): a first draft split `slots.split(",")` unconditionally, so a present
-    but blank `?slots=` produced `['']` -- one empty token -- and was refused as
-    `empty_selector_token` rather than reaching `SessionService.impact`'s documented "no slots named"
-    behaviour. This is the one route onto that behaviour, and it must actually answer 200."""
+    """Found in review (#425): a first draft split `slots.split(",")` unconditionally."""
     seed_session("leave-approval")
     resp = client.get("/api/v1/sessions/leave-approval/impact", params={"slots": ""})
     assert resp.status_code == 200
     body = resp.json()
     assert body == {"changed": [], "decisions": [], "challenges": [], "exclusions": [],
                     "thresholds": [], "artifacts": [],
-                    # The review ran (#493) -- `evidence` is a report, not `None` -- over the zero
-                    # decisions `seed_session` writes; the firing arm is pinned in
-                    # `tests/test_thinner_evidence.py`, and the count is pinned here so a review
-                    # that examined nothing cannot pass as one that examined the model.
+                    # The review ran (#493) -- `evidence` is a report, not `None` -- over the zero decisions `seed_session` writes; the firing arm is pinned in `tests/test_thinner_evidence.py`, and the count is pinned here so a review that examined nothing cannot pass as one that examined the model.
                     #
-                    # `exclusions` joined this dict as a fourth, additive `ImpactReport.to_dict()`
-                    # key (#599); `thresholds` joined it as a fifth the same way (#604) -- keep this
-                    # exact-equality assertion in sync with that shape.
+                    # `exclusions` joined this dict as a fourth, additive `ImpactReport.to_dict()` key (#599).
                     "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
 
 
 def test_impact_still_refuses_a_genuinely_malformed_list(client):
-    """The must-not-fire control for the fix above: a blank *overall* value is forgiven, but a blank
-    token *inside* an otherwise real list (a stray comma) is still refused -- the fix narrows the
-    refusal, it does not remove it."""
+    """The must-not-fire control for the fix above: a blank *overall* value is forgiven."""
     seed_session("leave-approval")
     resp = client.get("/api/v1/sessions/leave-approval/impact",
                       params={"slots": "permissions,,workflow"})

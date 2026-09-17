@@ -1,18 +1,4 @@
-"""No-JS fallback for the three htmx-only forms (#428).
-
-`app.css:16-17` and `docs/web.md:352` both say the page works fully without JavaScript. Three forms
-did not: the answers form (`discovery/_questions.html`) and both generate-document forms
-(`artifacts/list.html`) carried `hx-post`/`hx-target`/`hx-swap` and no `method=`/`action=` fallback.
-With JavaScript off, a form with neither submits as a plain GET to the page it is on — the typed
-answers silently discarded, and the process-lifetime CSRF token plus the full answer text landing in
-the URL and browser history.
-
-`raw_client` (`tests/web/conftest.py`) sends no `HX-Request` header, matching a browser with
-JavaScript off — exactly what makes `hx-post` never fire in the first place. `client` sends
-`HX-Request: true`, modelling htmx actually loaded. Every "no-JS still works" case here is paired
-with the ordinary "JS still works" case in the same fixture, so a fix that broke the htmx path would
-show up here too, not only in `test_web_discovery.py`.
-"""
+"""No-JS fallback for the three htmx-only forms (#428)."""
 
 from __future__ import annotations
 
@@ -22,8 +8,7 @@ from requivo.web.config import MAX_ANSWERS_CHARS
 from requivo.web.security import CSRF_FIELD, csrf_token
 from tests.web.conftest import BRIEF_REPLY, HIGH_EXPLICIT, HIGH_INFERRED, Spend, engine_reply
 
-# Enough tokens that the rendered figure is unmistakable in a page of other numbers -- same
-# constant-naming convention as tests/web/test_web_usage.py's PAID/PAID_TOKENS.
+# Enough tokens that the rendered figure is unmistakable in a page of other numbers.
 _PAID = Spend(input_tokens=9000, output_tokens=3000, cache_read_input_tokens=400)
 _PAID_TOKENS = "12,400"
 
@@ -36,19 +21,13 @@ def _seed(client, slug="leave-approval"):
 # -- the CSS claim, made checkable ------------------------------------------------
 
 def test_the_three_forms_all_carry_a_plain_post_fallback(client, with_provider, monkeypatch):
-    """Static proof the GET-with-token-in-URL shape is unreachable: every htmx-only form also carries
-    a method="post" action="..." fallback matching its own hx-post, exactly like every other form in
-    the tree (home.html, sessions/detail.html's discover form)."""
+    """Static proof the GET-with-token-in-URL shape is unreachable."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED))
     _seed(client)
     page = client.get("/sessions/leave-approval").text
 
-    # `method="post"` has to be required in the SAME tag as `action=` -- a form with `action=` but
-    # no `method=` still defaults to GET (the HTML spec, and the exact bug #428 fixes), so an
-    # assertion that only checks `action=` exists would stay green if a partial revert dropped just
-    # the `method="post"` half of the fallback. Caught in review (#428): the first version of this
-    # assertion did exactly that.
+    # `method="post"` has to be required in the SAME tag as `action=` (#428).
     answers_action = re.search(r'<form[^>]*method="post"[^>]*action="(/sessions/leave-approval/answers)"',
                                page)
     assert answers_action, "the answers form has no method=post action= fallback"
@@ -72,8 +51,7 @@ def test_a_no_js_answers_submit_applies_the_answer_and_lands_on_the_session_page
                         follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == "/sessions/leave-approval"
-    # the second scripted reply only pops if discovery.answer() actually reached the provider --
-    # proof the typed answer was folded into the model rather than silently dropped
+    # the second scripted reply only pops if discovery.answer() actually reached the provider.
     page = raw_client.get("/sessions/leave-approval").text
     assert "No question left" in page
 
@@ -135,10 +113,7 @@ def test_a_js_generate_submit_is_unchanged_a_fragment_not_a_redirect(client, wit
 # -- the spend footprint survives the redirect too (review finding, #428) ---------------
 
 def test_a_no_js_answers_submit_still_shows_what_it_spent(raw_client, with_provider):
-    """A no-JS submit that reaches the provider is real money, exactly like the htmx path -- and the
-    reader who just spent it is looking at the page the 303 lands on, not a fragment. Without
-    `carry_to`, `spend.py`'s stash is never written and the figure is gone the moment the redirect's
-    response body (which has none) would have carried it."""
+    """A no-JS submit that reaches the provider is real money, exactly like the htmx path."""
     with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
                   engine_reply(converged=True, problem=HIGH_EXPLICIT, business_rules=HIGH_EXPLICIT),
                   spend=_PAID)
@@ -165,9 +140,7 @@ def test_a_no_js_generate_submit_still_shows_what_it_spent(raw_client, with_prov
 
 def test_a_no_js_redirect_does_not_leave_a_stash_the_next_unrelated_view_would_repeat(raw_client,
                                                                                       with_provider):
-    """The htmx path must not gain a `carry_to` it never had: a fragment already shows its own
-    figure inline, and stashing it too would surface it a second time on some later, unrelated GET
-    of the same session -- the read-once contract `spend.py` documents, broken from the other side."""
+    """The htmx path must not gain a `carry_to` it never had."""
     with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
                   engine_reply(converged=True, problem=HIGH_EXPLICIT, business_rules=HIGH_EXPLICIT),
                   spend=_PAID)

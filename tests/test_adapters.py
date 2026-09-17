@@ -1,10 +1,4 @@
-"""Tracker adapters: pure transforms over the neutral epic export.
-
-Split out of `test_engine.py` (#72). The adapters deliberately read the *export* rather than the
-internal `Epic`, which is what keeps the core tool-agnostic — so these tests build an `Epic`, take
-`epic_export()` of it once, and assert on what each tracker makes of the same neutral payload. Adding
-Jira is another pure `to_<tracker>()` and another case here; nothing else moves.
-"""
+"""Tracker adapters: pure transforms over the neutral epic export (#72)."""
 import json
 
 from requivo.core.adapters import EPIC_EXPORT_VERSION, epic_export, epic_export_json, to_github, to_gitlab
@@ -24,10 +18,7 @@ def test_epic_export_is_neutral_and_maps_issues():
         ],
     )
     payload = epic_export(epic, "leave-approval", 3)
-    # This line reads as the version guard and is not one: it compares the payload with the constant
-    # the payload was built from, so it stays true whatever the envelope keys are. What forces a bump
-    # when a key changes is `test_the_epic_export_skeleton_is_pinned_to_its_version`, which records
-    # the key skeleton per version number (#267).
+    # This line reads as the version guard and is not one (#267).
     assert payload["format"] == "requivo-epic" and payload["version"] == EPIC_EXPORT_VERSION
     assert payload["epic"]["labels"] == ["epic"] and payload["epic"]["milestone"] == "Pilot"
     # goal + business value + scope fold into one importable description body.
@@ -41,16 +32,12 @@ def test_epic_export_is_neutral_and_maps_issues():
 
 
 def test_epic_export_carries_the_session_slug_and_the_revision_it_was_rendered_from():
-    """#274: epic.json is the machine-consumed input an n8n flow acts on, and it used to carry no
-    provenance at all -- an automation reading it had no way to tell a plan generated at revision 2
-    apart from one generated at revision 9. `source_revision` identifies the basis; it never judges
-    freshness on its own -- that verdict is `status --json`'s `artifacts.epic.stale` (invariant 1)."""
+    """#274: epic.json is the machine-consumed input an n8n flow acts on."""
     epic = Epic(title="Leave approval", milestone="Pilot", issues=[{"id": "#1", "title": "T"}])
     payload = epic_export(epic, "leave-approval", 7)
     assert payload["slug"] == "leave-approval"
     assert payload["source_revision"] == 7
-    # A different revision must produce a different stamp -- a constant that never varies would pass
-    # this test while stamping nothing real.
+    # A different revision must produce a different stamp.
     other = epic_export(epic, "leave-approval", 8)
     assert other["source_revision"] == 8
 

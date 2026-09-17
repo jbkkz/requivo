@@ -1,18 +1,5 @@
-"""Named stdlib loggers at the service seams (#435): `requivo.services.sessions`,
-`.artifacts` and `.discovery` each emit a handful of INFO/DEBUG/WARNING records at real seams --
-session created, model applied -> revision N, a write conflict refused, artifact saved with its
-stale verdict, a provider call started/finished/failed -- and nothing reaches any stream unless an
-embedding operator attaches a handler. That silence is invariant 7's own words ("no handlers, no
-formatters, no phone-home, ever") carried past `logging`'s *own* default: with nothing configured
-anywhere in the process, a WARNING+ record reaches `logging.lastResort`, which prints straight to
-stderr -- so "no handler attached" is not automatically "nothing printed" unless something stops
-that fallback. `requivo/__init__.py`'s `NullHandler` is that something; the pair of tests at the
-bottom of this file is a must-fire/must-not-fire pair on exactly that mechanism, per this repo's own
-review rule that a negative assertion needs a positive control.
-
-Driven directly against the services with a stub `ReasoningProvider` -- no CLI, no web, no network
--- the same shape `test_finalize_discovery_keeps_a_paid_analyze_call.py` uses.
-"""
+"""Named stdlib loggers at the service seams (#435): `requivo.services.sessions`, `.artifacts` and
+`.discovery` each emit a handful of INFO/DEBUG/WARNING records at real seams."""
 
 from __future__ import annotations
 
@@ -38,8 +25,7 @@ def _isolate_workspace(workspace):
 
 
 class _StubProvider:
-    """A minimal `ReasoningProvider`. `analyze()`/`generate()` return canned, valid replies unless
-    constructed with an error to raise instead -- the failure-path seams need that arm."""
+    """A minimal `ReasoningProvider`."""
 
     name = "stub"
 
@@ -82,11 +68,8 @@ class _CollectingHandler(logging.Handler):
 
 @pytest.fixture
 def _attached(request):
-    """Attach a collecting handler to a named logger for one test, restoring whatever
-    handlers/level it had whether the test passes or not -- these are process-global loggers, and a
-    handler left behind leaks into every test that runs after it (the same argument
-    `pristine_web_logger` makes in `tests/web/test_web_logging.py`, applied to a fixture factory
-    instead of one fixed name)."""
+    """Attach a collecting handler to a named logger for one test, restoring whatever handlers/level it had
+    whether the test passes or not."""
     restores = []
 
     def _attach(name: str, level: int = logging.DEBUG) -> _CollectingHandler:
@@ -143,10 +126,7 @@ def test_a_write_conflict_is_logged_as_refused(_attached):
 
 def test_a_rescope_that_mints_a_revision_is_logged_too(_attached):
     """`rescope()` is `sessions.py`'s *second* `save_revision(...)` call site (#168's own revision-
-    per-selection-switch, distinct from `_plan`'s) -- it mints a real revision on disk when a model
-    already exists, and the "model applied" seam this module documents must not silently exclude
-    it. A handler watching this logger for "a revision landed" would otherwise see every
-    `update_model` and miss every re-scope entirely."""
+    per-selection-switch, distinct from `_plan`'s)."""
     handler = _attached("requivo.services.sessions")
     sessions = SessionService()
     meta = sessions.create_session("a leave approval system")
@@ -197,18 +177,11 @@ def test_a_failed_provider_call_logs_a_warning_and_still_raises(_attached):
 
 # ── silence by default, with a positive control on the mechanism itself ─────────
 #
-# pytest attaches its own capture handler to the ROOT logger for the length of every test, which
-# would swallow a leaked record regardless of whether `requivo`'s own `NullHandler` is doing its
-# job -- verified directly: a bare `logging.getLogger("...").warning(...)` under an unmodified
-# pytest run never reaches a redirected stderr, guard or no guard. So both tests below clear the
-# root logger's own handlers first, to reproduce the state `logging.lastResort` actually depends on
-# ("nothing configured anywhere in this process") rather than the state pytest happens to leave the
-# process in.
+# pytest attaches its own capture handler to the ROOT logger for the length of every test.
 
 
 def _trigger_conflict_refused(sessions: SessionService, meta) -> None:
-    """The one seam most likely to leak: `_plan`'s WARNING-level "model apply refused" line, logged
-    immediately before the `RevisionConflictError` this call always raises."""
+    """The one seam most likely to leak: `_plan`'s WARNING-level "model apply refused" line."""
     with pytest.raises(RevisionConflictError):
         sessions.update_model(
             meta.slug, out({"problem": slot(1, "empty", "low")}).model_dump_json(),
@@ -232,12 +205,8 @@ def test_default_run_leaves_the_conflict_refused_warning_off_every_stream():
 
 
 def test_removing_the_null_handler_reproduces_the_leak_the_test_above_guards_against():
-    """Must-fire control. Strips `requivo/__init__.py`'s own `NullHandler` (and the root logger's
-    handlers) and proves the *identical* seam, with nothing configured anywhere in the process,
-    DOES reach `logging.lastResort` and print to stderr. Without this, the test above would pass
-    exactly as written against a `requivo/__init__.py` that never added the `NullHandler` at all --
-    "nothing printed" and "a broken harness printed nothing" look identical from inside one assertion.
-    """
+    """Must-fire control. Strips `requivo/__init__.py`'s own `NullHandler` (and the root logger's handlers)
+    and proves the *identical* seam, with nothing configured anywhere in the process."""
     root = logging.getLogger()
     requivo_logger = logging.getLogger("requivo")
     root_before = (list(root.handlers), root.level)
@@ -262,9 +231,8 @@ def test_removing_the_null_handler_reproduces_the_leak_the_test_above_guards_aga
 
 
 def test_a_judgment_naming_a_card_the_install_does_not_have_is_refused():
-    """An invented card name is not inert: it would reach `resolve_cards` as a selection and refuse
-    the very discovery the judgment was supposed to ground. The check rides `_complete`'s retry loop
-    as a `ValueError`, so the model is told what it got wrong rather than the run failing (#593)."""
+    """An invented card name is not inert: it would reach `resolve_cards` as a selection and refuse the very
+    discovery the judgment was supposed to ground (#593)."""
     from requivo.core.context import CardSummary
     from requivo.core.errors import ProviderOutputError
     from requivo.providers.anthropic.generators import judge_context
@@ -273,8 +241,7 @@ def test_a_judgment_naming_a_card_the_install_does_not_have_is_refused():
     invented = json.dumps({"decision": "installed", "reason": "r", "cards": ["dentistry-es"]})
     client = FakeClient(invented, invented, invented)
 
-    # `ProviderOutputError`, a `RequivoError` *sibling* of `EngineError` rather than a subclass --
-    # the distinction CLAUDE.md names and `converse()`'s own catch was once wrong about.
+    # `ProviderOutputError`, a `RequivoError` *sibling* of `EngineError` rather than a subclass.
     with pytest.raises(ProviderOutputError):
         judge_context(client, "a request", cards)
     assert len(client.calls) == 3, "the correction did not ride the retry loop"
@@ -286,8 +253,7 @@ def test_a_judgment_naming_a_card_the_install_does_not_have_is_refused():
 
 
 def test_the_judgment_prompt_carries_neither_the_schema_nor_the_cards():
-    """Its whole economy is asking about ~9k of context for the price of a few hundred tokens, and
-    nothing else in the provider sends a system prompt that is not the shared block (#593)."""
+    """Its whole economy is asking about ~9k of context for the price of a few hundred tokens (#593)."""
     from requivo.core.context import SHARED_PROMPT_HEAD, CardSummary
     from requivo.providers.anthropic.generators import judge_context
 

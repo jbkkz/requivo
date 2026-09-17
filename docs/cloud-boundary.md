@@ -16,7 +16,7 @@ Two rules govern everything below, and each is the other's mirror:
   observability vendor — none of these appears in `core/`, `services/`, `providers/` or `render/`,
   ever. The self-hosted story in open-source-strategy.md is only true while a `pip install requivo`
   carries no opinion about anyone's infrastructure, and the rule is the same shape
-  `tests/test_boundaries.py` already enforces for provider imports: a cloud noun in the engine
+  `tests/test_source_form.py` already enforces for provider imports: a cloud noun in the engine
   would earn a row there, with its reason.
 - **The hosted product never reimplements an apply, a generation, or a staleness rule.** CLAUDE.md
   already says it for the three local surfaces — *"there is never a second implementation of an

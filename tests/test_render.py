@@ -1,10 +1,4 @@
-"""The renderers: data → string, no side effects.
-
-Split out of `test_engine.py` (#72). `render/` is the layer that turns a contract into Markdown or
-terminal output, so every test here builds the contract by hand and reads the text back. No provider,
-no session, no filesystem — the tracker adapters that share the `Epic` contract live next door in
-`test_adapters.py`, because they transform the neutral export rather than render it.
-"""
+"""The renderers: data → string, no side effects (#72)."""
 import io
 from contextlib import redirect_stdout
 
@@ -45,8 +39,7 @@ def test_prd_markdown_escapes_pipes_in_table_cells():
 
 
 def test_prd_markdown_shows_each_envelope_element_s_own_provenance():
-    """#603: a slot-sourced element names the slot's human label; an assumed one says so plainly --
-    never a raw slot id or a confidence label in the rendered text (Voice rule)."""
+    """#603: a slot-sourced element names the slot's human label; an assumed one says so plainly."""
     prd = PRD(title="X", problem="P", envelope=[
         {"kind": "Budget", "value": "50k", "origin": "slot", "source_slot": "constraints"},
         {"kind": "Team size", "value": "3 developers", "origin": "assumption"},
@@ -168,8 +161,7 @@ def test_render_brief_titles_decision_brief_and_shows_challenges():
     with redirect_stdout(buf):
         render_brief(out(model), brief)
     text = buf.getvalue()
-    # One vocabulary for one artifact (#166): the caption is "decision brief" wherever a person reads
-    # it, while the type, the verb and the filename on disk stay `brief`/`solution-assessment.md`.
+    # One vocabulary for one artifact (#166): the caption is "decision brief" wherever a person reads it.
     assert "DECISION BRIEF" in text and "SOLUTION ASSESSMENT" not in text
     assert "CHALLENGES" in text
     # the top challenge surfaces in the executive summary, detail in the full analysis
@@ -184,10 +176,7 @@ def test_render_brief_titles_decision_brief_and_shows_challenges():
 
 
 def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief():
-    """Self-review finding on #599: brief_markdown's decisions/challenges/opportunities loops
-    were already unguarded against this (same shape as #519's stories/estimate fix), and the
-    new exclusions loop repeated it. All five are now line-flattened; the control is the last
-    assertion in each pair, mirroring test_a_newline_inside_a_provider_field_cannot_open_a_new_heading."""
+    """Self-review finding on #599."""
     from requivo.core.contracts import Exclusion, Threshold
 
     model = out({"problem": slot(80, "explicit", "high")})
@@ -206,9 +195,7 @@ def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief
 
 
 def test_the_decision_brief_projects_excluded_options_rather_than_writing_them():
-    """#599 acceptance criterion: the brief's "Out of scope" content is a projection of
-    `out.exclusions`, not prose the provider wrote into `Brief` — the same split `_stated()`
-    already draws for confirmed facts and assumptions."""
+    """#599 acceptance criterion: the brief's "Out of scope" content is a projection of `out.exclusions`."""
     from requivo.core.contracts import Exclusion
 
     model = out({"problem": slot(80, "explicit", "high")})
@@ -222,8 +209,8 @@ def test_the_decision_brief_projects_excluded_options_rather_than_writing_them()
 
 
 def test_the_decision_brief_projects_decision_thresholds_rather_than_writing_them():
-    """#604 acceptance criterion, mirroring #599: the brief's "Decision thresholds" content is a
-    projection of `out.thresholds`, not prose the provider wrote into `Brief`."""
+    """#604 acceptance criterion, mirroring #599: the brief's "Decision thresholds" content is a projection of
+    `out.thresholds`, not prose the provider wrote into `Brief`."""
     from requivo.core.contracts import Threshold
 
     model = out({"problem": slot(80, "explicit", "high")})
@@ -263,23 +250,11 @@ def test_render_brief_opportunity_names_reached_modules():
 
 
 # ── The decision brief is bilingual by construction (#277) ────────────────────
-# `docs/requirements-model.md` puts the six saved artifacts on the English side of the output-language
-# policy. For five of them that is the whole story: `prd_markdown`, `criteria_markdown`,
-# `epic_markdown` and `release_markdown` each receive only the contract the provider filled, so the
-# language instruction in their prompt is the only thing that decides what they say.
+# `docs/requirements-model.md` puts the six saved artifacts on the English side of the output-language policy.
 #
-# `brief_markdown` is the exception, and the exception was documented as an anchor for a whole release
-# candidate: it takes an `EngineOutput` as well as its `Brief`, and four of its sections are a
-# *projection* of that model — the objective, the current understanding, each slot's stated value under
-# "What is confirmed", and the first half of "Important assumptions". Model text mirrors the request.
-# So an English `Brief` over a French model saves a French-and-English document, and the page claiming
-# otherwise was the same defect #277 was opened about, one artifact along.
+# `brief_markdown` is the exception, and the exception was documented as an anchor for a whole release candidate: it takes an `EngineOutput` as well as its `Brief`, and four of its sections are a *projection* of that model — the objective, the current understanding, each slot's stated value under "What is confirmed", and the first half of "Important assumptions" (#277).
 #
-# The two tests below hold the shape the page now describes rather than the shape it wished for. They
-# are not a licence to translate the projection: that is the invariant CLAUDE.md states as *ask the
-# provider for judgment; read the facts off the model*, and a restatement can drift where a projection
-# cannot. If the brief is ever moved to the mirroring side instead, these are the assertions that say
-# what changed and what it cost.
+# The two tests below hold the shape the page now describes rather than the shape it wished for.
 
 def _bilingual_brief() -> str:
     model = out({"problem": {"completeness": 90, "confidence": "explicit", "impact": "high",
@@ -293,8 +268,7 @@ def _bilingual_brief() -> str:
 
 def test_the_decision_brief_projects_the_models_own_words_rather_than_restating_them():
     md = _bilingual_brief()
-    # Copied through verbatim, from all four projected sections. Nothing here was written by the
-    # provider, so nothing here obeys the prompt's English sentence.
+    # Copied through verbatim, from all four projected sections.
     assert "**Objective:** Gérer les congés des employés." in md
     assert "Un portail où chaque salarié dépose sa demande." in md
     assert "Les congés sont validés par courriel." in md

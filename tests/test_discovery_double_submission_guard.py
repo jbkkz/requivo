@@ -1,13 +1,4 @@
-"""#209: guard paid first-discovery calls against cross-tab / refresh double-submission, server-side.
-
-Driven directly against `DiscoveryService`, not the Web -- the guard lives in the service layer
-(invariant 14), so a caller reaching past every surface still gets it. The contending holder opens its
-own file descriptor on the guard's own lock file rather than racing a second thread -- `flock` is
-scoped to the *open file description*, not the thread or the process, so a second `os.open` in this
-same test process contends for real without needing real concurrency to prove it (the same technique
-`test_persistence_lock.py::test_a_contended_lock_raises_within_the_deadline_instead_of_hanging` uses
-for `session_lock` itself).
-"""
+"""#209: guard paid first-discovery calls against cross-tab / refresh double-submission, server-side."""
 
 from __future__ import annotations
 
@@ -56,11 +47,7 @@ class _CountingProvider:
                     "here, and the msvcrt branch takes the same non-blocking path. "
                     "REASONED, NOT OBSERVED on Windows -- see #209.")
 def test_a_concurrent_first_discovery_is_refused_before_any_provider_call():
-    """Two concurrent first-discovery requests must not both pay. Unlike `session_lock` (released
-    before a provider call, and re-entrant), this guard is a non-blocking, non-reentrant `flock`
-    scoped to the *open file description*, so a crashed holder releases it on process death. The
-    loser gets `SessionLockedError` (`session_locked`, 503) before spending anything --
-    `assert provider.calls == 0` below is the fact, not a hope. See #209."""
+    """Two concurrent first-discovery requests must not both pay (#209)."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
 
@@ -86,8 +73,8 @@ def test_a_concurrent_first_discovery_is_refused_before_any_provider_call():
 
 
 def test_run_discovery_still_succeeds_once_the_guard_is_free():
-    """Must-fire control: without it, a guard that refused *everything* would also pass the test
-    above, telling us nothing about whether an uncontended caller can still proceed."""
+    """Must-fire control: without it, a guard that refused *everything* would also pass the test above,
+    telling us nothing about whether an uncontended caller can still proceed."""
     sessions = SessionService()
     slug = sessions.create_session("a leave approval system").slug
     provider = _CountingProvider()
@@ -101,11 +88,8 @@ def test_run_discovery_still_succeeds_once_the_guard_is_free():
 
 
 def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
-    """Found in review: the guard alone is not the whole guarantee if the revision is checked only
-    *before* it, against a snapshot that can go stale before the guard is actually won -- it must be
-    re-read *inside* the guard, right before the provider is called. Reproduced by monkeypatching
-    `snapshot()` so the late caller's outer (pre-guard) read is frozen at revision 0 while its inner
-    (post-guard) read is the real, current one."""
+    """Found in review: the guard alone is not the whole guarantee if the revision is checked only *before*
+    it, against a snapshot that can go stale before the guard is actually won."""
     from requivo.services.sessions import SessionSnapshot
 
     sessions = SessionService()
@@ -138,10 +122,7 @@ def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
 
 def test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
     """The same race `test_a_late_caller_with_a_stale_outer_check_still_pays_nothing` pins for
-    `run_discovery`, one entry point over. `start()`'s outer check reads the revision off the meta
-    `claim_session` returns rather than a fresh snapshot, so a late caller has to be caught by the
-    *inner* re-read inside the guard (`self.sessions.repo.read_meta(...)`), not by the outer check,
-    which by construction cannot see the winner's write."""
+    `run_discovery`, one entry point over."""
     from requivo.core.persistence import SessionMeta
 
     sessions = SessionService()
@@ -174,15 +155,13 @@ def test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing(monk
                     "here, and the msvcrt branch takes the same non-blocking path. "
                     "REASONED, NOT OBSERVED on Windows -- see #209.")
 def test_start_is_guarded_the_same_way_as_run_discovery():
-    """`start()` (the direct-request entry point `POST /sessions` uses when it discovers straight
-    away) is the other first-discovery door #209 names -- guarded on the *derived* slug, since a
-    caller of `start()` may not have named one."""
+    """`start()` (the direct-request entry point `POST /sessions` uses when it discovers straight away) is the
+    other first-discovery door #209 names."""
     sessions = SessionService()
     provider = _CountingProvider()
     disco = DiscoveryService(provider=provider, sessions=sessions)
     slug = sessions.slug_hint("a leave approval system")
-    # `claim_session` derives the same slug `start()` will use for this request -- reproduced here
-    # only to find the guard file `start()` itself will contend on.
+    # `claim_session` derives the same slug `start()` will use for this request.
     meta = disco.claim_session("a leave approval system", cards=None, slug=None)
     assert meta.slug == slug or meta.slug.startswith(slug)
 
@@ -207,11 +186,7 @@ def test_start_is_guarded_the_same_way_as_run_discovery():
                     "platform that never enforced the restriction can reach. REASONED, NOT "
                     "OBSERVED: the same platform limit the sibling #372 fixtures carry.")
 def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery_guard():
-    """#390: a two-commit join no single diff showed. `e03aa47` added `_discovery_guard_path`
-    calling `validate_slug` unconditionally; `3fa1423` swept the other call sites onto #372's
-    conditional pair and missed this one. Cost: a session on disk under a Windows reserved name
-    (pre-#221) is readable and lockable, and only `run_discovery`'s guard still refused it with
-    `InvalidSlugError`. Driven through `run_discovery`, asserting the provider was actually reached."""
+    """#390: a two-commit join no single diff showed."""
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -222,9 +197,7 @@ def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery
         "context_cards": None, "current_revision": 0, "format_version": 1,
         "revisions": [], "artifact_status": {}}), encoding="utf-8")
 
-    # The siblings #372 swept already reach it -- quoted here so the join is visible in one fixture
-    # rather than inferred from another file: these three passing while the fourth refused is
-    # precisely the state this test was written against.
+    # The siblings #372 swept already reach it -- quoted here so the join is visible in one fixture rather than inferred from another file: these three passing while the fourth refused is precisely the state this test was written against.
     assert store.session_exists("con") is True
     assert store.canonical_dir("con") == d
     assert store.lock_path("con").name == "con.lock"
@@ -238,7 +211,6 @@ def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery
     assert provider.calls == 1
     assert sessions.repo.read_meta("con").current_revision == 1
 
-    # Must-not-fire control, in the same fixture: a reserved name nothing occupies is still refused,
-    # so this cannot pass by dropping #221's creation refusal instead of narrowing it.
+    # Must-not-fire control, in the same fixture (#221).
     with pytest.raises(InvalidSlugError):
         _discovery_guard_path("nul", store.Store(store.workspace_root()))

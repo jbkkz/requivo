@@ -1,29 +1,4 @@
-"""Plugin/CLI version-skew detection for the shared preflight (#251).
-
-The CLI updates via `pip`/`uv`; the plugin updates via a marketplace pin the project's own notes
-record as bumped roughly monthly (see the memory note this repo keeps on it). Nothing before this
-compared the two at runtime -- `tests/test_plugin.py` compares the plugin to `src/requivo/` in the
-SAME checkout, which is always in step by construction and proves nothing about a real install
-where the two artifacts were built from different commits.
-
-`plugins/claude-code/scripts/version_skew.py` is the tested reference for that comparison. It is
-also a standalone diagnostic a human or CI can run directly (`python3
-plugins/claude-code/scripts/version_skew.py`), but its primary job here is to be the ground truth
-against which `plugins/claude-code/REASONING.md`'s prose preflight is written -- REASONING.md asks
-*Claude* to do the comparison at runtime (reading the doctor JSON it already has, plus this
-plugin's own manifest via the `Read` tool every skill already carries), because widening every
-skill's `allowed-tools` from `Bash(requivo:*), Read` to permit shelling out to a second script is a
-bigger, unverified permission change than this issue asks for -- see the module docstring for the
-argument in full.
-
-Three states, and the third is the point, same shape as `tests/test_version_sites.py` next door:
-`in step` (CLI >= the version this plugin was tested against, say nothing), `behind` (CLI older,
-warn and continue -- never refuse, see the issue: the plugin is keyless and most verbs still work
-across a minor), and `could not tell` (the doctor JSON did not parse, carried no `requivo_version`,
-or the manifest could not be read) -- which must never render as `in step`. A preflight that reports
-"in step" because its own inputs were unreadable is exactly the silent-absence class this project
-exists to close (CLAUDE.md invariant 15's argument, one layer up from a listing).
-"""
+"""Plugin/CLI version-skew detection for the shared preflight (#251)."""
 from __future__ import annotations
 
 import json
@@ -64,8 +39,8 @@ def test_an_equal_cli_is_in_step():
 
 
 def test_an_older_cli_is_behind_and_warns():
-    """The positive control for the case above -- without this, `IN_STEP` could be returned no
-    matter what the code does, and the two tests above would still pass."""
+    """The positive control for the case above -- without this, `IN_STEP` could be returned no matter what the
+    code does, and the two tests above would still pass."""
     result = compare("1.2.0", "1.3.0")
     assert result.state == BEHIND
     assert "1.2.0" in result.message and "1.3.0" in result.message
@@ -113,8 +88,8 @@ def test_could_not_look_never_reads_as_in_step():
 
 
 def test_a_readable_doctor_report_is_not_could_not_look():
-    """The positive control on the arm above: a guard that reported could-not-look for everything
-    would pass every assertion above it and say nothing true about a healthy install."""
+    """The positive control on the arm above: a guard that reported could-not-look for everything would pass
+    every assertion above it and say nothing true about a healthy install."""
     result = check(_doctor_json("1.3.0"), None)
     assert result.state != COULD_NOT_LOOK
 
@@ -136,8 +111,7 @@ def test_tested_against_version_is_could_not_look_shaped_when_the_manifest_is_ba
 
 
 def test_check_reads_the_manifest_end_to_end(monkeypatch):
-    """The whole flow: doctor output in, manifest read live, a verdict out -- no CLI code changes,
-    no stamped literal (see the module docstring)."""
+    """The whole flow: doctor output in, manifest read live, a verdict out."""
     result = check(_doctor_json("0.1.0"), None, manifest_path=MANIFEST)
     assert result.state == BEHIND
 
@@ -146,11 +120,7 @@ def test_check_reads_the_manifest_end_to_end(monkeypatch):
 
 
 def test_a_non_version_shaped_manifest_value_is_could_not_look_not_in_step(tmp_path):
-    """Found in self-review. `_parse_version` tolerates a non-numeric TRAILING component (`.dev0`,
-    `-rc1`), and that tolerance used to reach a manifest `version` that is not a version at all:
-    "unreleased" parsed to `(0,)`, which compared as <= every real CLI version and rendered
-    IN_STEP -- the exact collapse the module's own docstring calls the trap this file exists to
-    avoid."""
+    """Found in self-review. `_parse_version` tolerates a non-numeric TRAILING component (`.dev0`, `-rc1`)."""
     bad = tmp_path / "plugin.json"
     bad.write_text(json.dumps({"version": "unreleased"}), encoding="utf-8")
     result = check(_doctor_json("1.3.0"), None, manifest_path=bad)
@@ -167,10 +137,7 @@ def test_a_non_version_shaped_cli_version_is_could_not_look():
 
 
 def test_differing_precision_is_not_reported_as_behind():
-    """Found in self-review. Tuple comparison of different lengths makes a true PREFIX read as
-    smaller: `_parse_version("1.3") == (1, 3)` and `_parse_version("1.3.0") == (1, 3, 0)`, and
-    `(1, 3) < (1, 3, 0)` in Python even though "1.3" and "1.3.0" name the same release. Padding to
-    equal length before comparing is what a semver-aware comparison would do anyway."""
+    """Found in self-review. Tuple comparison of different lengths makes a true PREFIX read as smaller."""
     result = compare("1.3", "1.3.0")
     assert result.state == IN_STEP, (
         f"'1.3' and '1.3.0' should compare equal (differing precision, same release), got "
@@ -182,11 +149,7 @@ def test_differing_precision_is_not_reported_as_behind():
 
 
 def test_reasoning_md_names_the_skew_check_without_hardcoding_a_version():
-    """REASONING.md is what Claude actually reads at runtime. It must describe the comparison and
-    must NOT paste a version number into prose -- a copy there is a second site that can drift from
-    the manifest the day someone bumps it and forgets the second one, which is the exact defect
-    `tests/test_version_sites.py` exists to catch for the other version sites. This guards the
-    *shape* of the fix (derive, don't duplicate), not merely that some words are present."""
+    """REASONING.md is what Claude actually reads at runtime."""
     text = REASONING.read_text(encoding="utf-8")
     assert "version_skew.py" in text or "requivo_version" in text, (
         "REASONING.md's preflight does not mention the version-skew comparison at all"
@@ -196,9 +159,7 @@ def test_reasoning_md_names_the_skew_check_without_hardcoding_a_version():
         "not restate a number"
     )
     import re
-    # A bare X.Y.Z anywhere in this file's prose is exactly the duplicated literal this test exists
-    # to catch -- a real semantic version, not a doc-format string like the schema's `format_version:
-    # 1` or a slot's `completeness: 0-100`, both of which have no third dotted component.
+    # A bare X.Y.Z anywhere in this file's prose is exactly the duplicated literal this test exists to catch.
     stray_versions = re.findall(r"(?<![\w.])\d+\.\d+\.\d+(?![\w.])", text)
     assert not stray_versions, (
         f"REASONING.md hardcodes what looks like a version number: {stray_versions} -- read it "
@@ -208,19 +169,11 @@ def test_reasoning_md_names_the_skew_check_without_hardcoding_a_version():
 
 # -- main()'s subprocess arm: the third failure mode, and its must-fire twins (#363) ----------
 #
-# `subprocess.TimeoutExpired` inherits `SubprocessError -> Exception`, NOT `OSError` -- so it used
-# to fall through the `except FileNotFoundError` / `except OSError` pair in `main()` entirely and
-# escape as a raw traceback instead of becoming `COULD_NOT_LOOK`. That is this module's own third
-# state, in its own failure path: the docstring calls it "#251's own trap" and the trap caught the
-# module that names it.
+# `subprocess.TimeoutExpired` inherits `SubprocessError -> Exception`, NOT `OSError` (#251).
 #
-# Reachable, not theoretical: #263 makes `doctor` take the per-slug session write lock with
-# `_LOCK_TIMEOUT_SECONDS = 30.0`, the same 30s this module passes to `subprocess.run(timeout=...)`.
-# A workspace with two stuck sessions can legitimately make `requivo doctor --json` outlive this
-# timeout.
+# Reachable, not theoretical: #263 makes `doctor` take the per-slug session write lock with `_LOCK_TIMEOUT_SECONDS = 30.0`, the same 30s this module passes to `subprocess.run(timeout=...)`.
 #
-# These monkeypatch `subprocess.run` rather than spawning a real process -- the exception-handling
-# logic in `main()` is what is under test, not whether `requivo` exists on this machine's PATH.
+# These monkeypatch `subprocess.run` rather than spawning a real process.
 
 
 class _FakeCompletedProcess:
@@ -231,9 +184,7 @@ class _FakeCompletedProcess:
 
 
 def test_main_reports_could_not_look_on_subprocess_timeout(monkeypatch, capsys):
-    """The bug itself: a timeout must produce COULD_NOT_LOOK and exit 3, not an uncaught
-    TimeoutExpired. Before the fix this raises out of main() -- pytest reports it as an error,
-    which is the red this test is written to see."""
+    """The bug itself: a timeout must produce COULD_NOT_LOOK and exit 3, not an uncaught TimeoutExpired."""
 
     def _raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd=["requivo", "doctor", "--json"], timeout=30)
@@ -247,10 +198,7 @@ def test_main_reports_could_not_look_on_subprocess_timeout(monkeypatch, capsys):
 
 
 def test_main_distinguishes_a_timeout_from_a_missing_binary(monkeypatch, capsys):
-    """The judgment call from the brief: a timeout and a missing binary both land in
-    COULD_NOT_LOOK, but they must not read as the same sentence. Told 'not found on PATH', a
-    reader checks their install; told the CLI took too long, a reader checks what is stuck (a held
-    session lock, #263) -- pointing them at the wrong one sends them looking in the wrong place."""
+    """The judgment call from the brief: a timeout and a missing binary both land in COULD_NOT_LOOK (#263)."""
 
     def _raise_timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired(cmd=["requivo", "doctor", "--json"], timeout=30)
@@ -274,9 +222,7 @@ def test_main_distinguishes_a_timeout_from_a_missing_binary(monkeypatch, capsys)
 
 
 def test_main_still_reports_could_not_look_on_a_plain_os_error(monkeypatch, capsys):
-    """Acceptance criteria: the other two arms behave as before. A generic OSError (not a missing
-    binary, not a timeout) still lands in COULD_NOT_LOOK, with its own wording distinct from
-    both siblings above."""
+    """Acceptance criteria: the other two arms behave as before."""
 
     def _raise_os_error(*args, **kwargs):
         raise OSError("permission denied")
@@ -290,9 +236,7 @@ def test_main_still_reports_could_not_look_on_a_plain_os_error(monkeypatch, caps
 
 
 def test_main_must_fire_control_a_genuine_skew_still_reports_skew(monkeypatch, capsys):
-    """The must-fire twin the brief asks for, paired with the three could-not-look arms above: a
-    guard that returned COULD_NOT_LOOK unconditionally would pass every assertion in this section
-    and never once do this module's actual job. A real BEHIND result must still surface."""
+    """The must-fire twin the brief asks for, paired with the three could-not-look arms above."""
     real_plugin_version = json.loads(MANIFEST.read_text(encoding="utf-8"))["version"]
     old_version = "0.0.1"
     assert old_version != real_plugin_version  # guard the fixture's own assumption
