@@ -2147,7 +2147,7 @@ def _lean_budget_breaches(budget: dict) -> list[str]:
         longest_lines = prose_measure.line_count(longest)
         if longest_lines > budget["docs"]["decision_record_max_lines"]:
             breaches.append(
-                f"{longest.relative_to(REPO_ROOT)} is {longest_lines} lines, over the "
+                f"{longest.relative_to(REPO_ROOT).as_posix()} is {longest_lines} lines, over the "
                 f"{budget['docs']['decision_record_max_lines']} ceiling"
             )
     claude_lines = prose_measure.line_count(REPO_ROOT / "CLAUDE.md")
