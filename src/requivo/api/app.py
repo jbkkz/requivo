@@ -59,7 +59,7 @@ _SESSION_LOCKED_RETRY_AFTER_SECONDS = 1
 
 # Every route under this prefix requires the bearer token when one is configured; the liveness probe,
 # the docs and the vendored assets are exempt (a browser navigation cannot carry a bearer header).
-# Pinned in both directions by `tests/api/test_api_auth.py`.
+# Pinned in both directions by `tests/api/test_api_guards.py`.
 _TOKEN_GATED_PREFIX = "/api/v1/"
 _TOKEN_EXEMPT_PATHS = frozenset({"/api/v1/health"})
 

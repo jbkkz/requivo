@@ -116,10 +116,10 @@ before the first call, so the number to budget against is the live one rather th
 on the day the set happened to have six single-pass requests in it (#290).
 
 The harness's own logic is unit-tested in `tests/test_golden_lib.py`, its capture loop in
-`tests/test_golden_capture.py`, and what it prints — the per-lens states and the union verdict — in
-`tests/test_golden_readout.py` (no API calls in any of them).
+`tests/test_golden_harness.py`, and what it prints — the per-lens states and the union verdict — in
+`tests/test_golden_harness.py` (no API calls in any of them).
 
-`tests/test_golden_baselines.py` checks every committed baseline against `requests.md` and refuses
+`tests/test_golden_harness.py` checks every committed baseline against `requests.md` and refuses
 one that has drifted out of step, unless the slug is a declared exception in that file's
 `_DECLARED_DRIFT` naming the issue that owns the (paid) re-capture. That dict is empty as of the
 seven-baseline re-capture in #405 — every committed baseline currently agrees with `requests.md` —
@@ -127,7 +127,7 @@ and stays in the file as the mechanism for the next asset edit that outruns its 
 
 ## Baseline freshness — is the committed capture even current?
 
-`tests/test_golden_baselines.py` (above) catches a baseline whose stored *request*/*answers* disagree
+`tests/test_golden_harness.py` (above) catches a baseline whose stored *request*/*answers* disagree
 with `requests.md`. It says nothing about a baseline that still agrees with `requests.md` but was
 captured before a prompt, context card, or the generator code that assembles the on-wire messages,
 changed underneath it — which is a different way for a baseline to be measuring something other than
@@ -149,7 +149,7 @@ commit in HEAD. Three states, and the third never collapses into the first:
 Funded by two reproduced instances: #405 itself (three asset commits landed between one baseline
 capture and the next, unnoticed for a month) and #410 (`ba526f6` dropped `indent=2` from the JSON
 `generators.py` sends as the user message for every `--brief` capture — invisible to
-`prompt_version()`, which hashes only the *system* prompt, and to `tests/test_golden_baselines.py`,
+`prompt_version()`, which hashes only the *system* prompt, and to `tests/test_golden_harness.py`,
 which compares only `request`/`answers`). `WATCHED_PATHS` is scoped to exactly those two mechanisms
 and says so in its own printed line; it is not a claim that nothing else can move what a capture
 measures.

@@ -271,7 +271,7 @@ time**, which this paragraph originally did not say (#509):
   the writes, and slice 4 moved the two checks out of `web/security.py` into
   `requivo.host_policy.check_request_origin` — the same move #508 made for the host axis, for the
   same reason — so both surfaces call one definition and refuse with the same three codes
-  (`cross_site_fetch`, `opaque_origin`, `origin_mismatch`). `tests/api/test_api_cross_site_guard.py`
+  (`cross_site_fetch`, `opaque_origin`, `origin_mismatch`). `tests/api/test_api_guards.py`
   pins the API side; the web's own tests are unchanged.
 - **`Content-Type: application/json` required on unsafe methods — shipped with slice 2 (#425),
   brought forward from slice 4** where this record first placed it: a write surface with none of

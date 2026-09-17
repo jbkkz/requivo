@@ -2,37 +2,26 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
-from contextlib import redirect_stdout
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from _fakes import full_model, run_cli_exit
 
-from conftest import slot as _slot
-from requivo.cli import _build_parser, app
+from requivo.cli import _build_parser
 from requivo.core.adapters import EPIC_EXPORT_FORMAT, EPIC_EXPORT_VERSION, epic_export
-from requivo.core.contracts import Epic, _schema_order, schema_slot_ids
+from requivo.core.contracts import Epic
+
+# `bool` before `int` on purpose.
+_JSON_TYPES = ((bool, "bool"), (int, "int"), (float, "float"), (str, "str"), (list, "list"), (dict, "dict"))
 
 
 def _json_type(value: Any) -> str:
-    """The JSON type name of a decoded value. `bool` is tested before `int` on purpose."""
+    """The JSON type name of a decoded value."""
     if value is None:
         return "null"
-    if isinstance(value, bool):
-        return "bool"
-    if isinstance(value, int):
-        return "int"
-    if isinstance(value, float):
-        return "float"
-    if isinstance(value, str):
-        return "str"
-    if isinstance(value, list):
-        return "list"
-    if isinstance(value, dict):
-        return "dict"
-    return type(value).__name__
+    return next((name for cls, name in _JSON_TYPES if isinstance(value, cls)), type(value).__name__)
 
 
 def _json_verbs(parser: argparse.ArgumentParser, prefix: str = "") -> list[str]:
@@ -59,9 +48,7 @@ class _Case:
     exits: int = 0
 
 
-# The recorded shapes.
-#
-# `context_cards` is `list|null` in three places for one reason worth stating once.
+# The recorded shapes; `context_cards` is `list|null` wherever a session may select every card.
 _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
     "doctor": (
         _Case("doctor --json", ("doctor", "--json"), {
@@ -169,9 +156,7 @@ _PAYLOAD_SHAPES: dict[str, tuple[_Case, ...]] = {
 }
 
 
-# The neutral epic export is versioned in the payload itself (`EPIC_EXPORT_VERSION`).
-#
-# The second is a one-line diff a reviewer can see and no test can refuse.
+# The neutral epic export is versioned in the payload itself (`EPIC_EXPORT_VERSION`); older entries stay.
 _EPIC_EXPORT_SKELETONS: dict[int, dict[str, dict[str, str]]] = {
     1: {
         "envelope": {"format": "str", "version": "int", "epic": "dict", "issues": "list",
@@ -213,20 +198,12 @@ def _compare(label: str, payload: dict, recorded: dict[str, str]) -> tuple[list[
 
 
 @pytest.fixture
-def workspace(tmp_path, monkeypatch) -> dict[str, str]:
-    """A workspace and the documents the recorded invocations need."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
-    _, required = schema_slot_ids()
-    proposal = {
-        "model": {sid: _slot() for sid in _schema_order() if sid in required},
-        "questions": [],
-        "summary": {"objective": "A leave approval system"},
-    }
-    body = json.dumps(proposal)
+def paths(workspace) -> dict[str, str]:
+    """The documents the recorded invocations need, in an isolated workspace."""
+    tmp_path = workspace
+    body = json.dumps(full_model())
     (tmp_path / "proposal.json").write_text(body, encoding="utf-8")
-    # Deliberately *outside* any session directory.
-    bare = tmp_path / "bare-model" / "model.json"
+    bare = tmp_path / "bare-model" / "model.json"   # deliberately outside any session directory
     bare.parent.mkdir()
     bare.write_text(body, encoding="utf-8")
     (tmp_path / "prd.md").write_text("# PRD", encoding="utf-8")
@@ -240,15 +217,7 @@ def workspace(tmp_path, monkeypatch) -> dict[str, str]:
 
 def _observe(case: _Case, paths: dict[str, str]) -> dict:
     """Run one recorded invocation and return its payload."""
-    argv = [part.format(**paths) for part in case.argv]
-    buf = io.StringIO()
-    code = 0
-    try:
-        with redirect_stdout(buf):
-            app(argv, client=None)  # client=None -> any accidental API use would blow up
-    except SystemExit as exc:
-        code = exc.code if isinstance(exc.code, int) else 1
-    raw = buf.getvalue()
+    raw, code = run_cli_exit([part.format(**paths) for part in case.argv])
     # Parse first, then judge the exit code -- the same ordering the provider runner uses for a truncated reply, and for the same reason.
     try:
         payload = json.loads(raw)
@@ -263,9 +232,7 @@ def _observe(case: _Case, paths: dict[str, str]) -> dict:
             f"payload has a top level -- #87 and #107 are the two that did not, and both were "
             f"breaking changes made to give them one.")
     if "code" in payload and "message" in payload and "code" not in case.keys:
-        # `!r`, like the two branches above: `message` is assembled from values read back off disk
-        # -- a slug, a card name, a filename -- and this repository has already had a persisted
-        # value forge a line of a verb own output (#40).
+        # `!r`: `message` is assembled from values read back off disk, which have forged a line before (#40).
         raise AssertionError(
             f"`{case.label}` answered the structured error envelope, not its payload: "
             f"{payload['code']!r} -- {payload['message']!r}. The fixture is wrong, or the verb is.")
@@ -296,7 +263,7 @@ def test_every_json_verb_has_a_recorded_payload_shape():
         "fire, which reads as coverage this file does not have.")
 
 
-def test_every_public_json_payload_keeps_its_recorded_top_level_shape(workspace):
+def test_every_public_json_payload_keeps_its_recorded_top_level_shape(paths):
     """The guard invariant 8 never had. Runs every recorded invocation against one workspace and compares it
     with what is recorded above."""
     cases = [case for verb in _PAYLOAD_SHAPES for case in _PAYLOAD_SHAPES[verb]]
@@ -306,7 +273,7 @@ def test_every_public_json_payload_keeps_its_recorded_top_level_shape(workspace)
     breaking: list[str] = []
     additive: list[str] = []
     for case in cases:
-        payload = _observe(case, workspace)
+        payload = _observe(case, paths)
         gone, extra = _compare(case.label, payload, case.keys)
         breaking += gone
         additive += extra

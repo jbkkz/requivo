@@ -72,7 +72,7 @@ dependencies = [
 # install: `uv pip install --resolution lowest-direct` at the old `>=0.40.0` floor landed exactly
 # there, so any install pinned near the floor has been under-reporting cache-read/write spend with
 # nothing anywhere going red, on every release since this extra existed. #294's own pin
-# (test_usage_field_pin.py) is what surfaced it -- it fails red against a genuine `--resolution
+# (test_usage.py) is what surfaced it -- it fails red against a genuine `--resolution
 # lowest-direct` install at the old floor and passes at 0.42.0, so raising the floor is the fix
 # rather than narrowing the pin down to the two fields that happened to always be there.
 anthropic = ["anthropic>=0.42.0,<2"]

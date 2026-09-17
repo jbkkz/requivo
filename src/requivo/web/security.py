@@ -30,8 +30,8 @@ from requivo.host_policy import (
     check_request_origin,
 )
 
-# Re-exported under the names this module has always published (#508, #425); `tests/web/test_security_parser.py`
-# and `tests/web/test_web_request_guard.py` import `_hostname`/`_same_trust_domain` by these names.
+# Re-exported under the names this module has always published (#508, #425); `tests/web/test_web_security.py`
+# imports `_hostname`/`_same_trust_domain` by these names.
 from requivo.host_policy import LOOPBACK_HOSTS as _LOOPBACK_HOSTS  # noqa: F401
 from requivo.host_policy import hostname as _hostname  # noqa: F401
 from requivo.host_policy import same_trust_domain as _same_trust_domain  # noqa: F401

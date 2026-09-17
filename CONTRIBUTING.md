@@ -172,7 +172,7 @@ read the guard to appease it.
 | edits anything under `.github/workflows/` | `test_workflow_permissions.py`, `test_workflow_untrusted_output.py` | state the `permissions:` block, and never interpolate third-party output into a line that starts at column 0 |
 | adds or moves a runtime dependency bound | `test_dependency_floor.py` | the floor set must stay complete — a dependency that drops out makes the floor leg report a test it never ran |
 | adds a slot to a perimeter's `model_schema.json` (`assets/perimeters/<id>/`, #608) | `test_dependencies.py`, `test_perimeters.py` | add it to `_ARTIFACT_SLOTS_RAW` for that perimeter's own artifact types, or name it in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a reason |
-| renames the user-facing caption for `brief` in an asset | `test_vocabulary_boundary.py` | an asset keeping the older wording is a declared exception, never an accident |
+| renames the user-facing caption for `brief` in an asset | `test_context.py` | an asset keeping the older wording is a declared exception, never an accident |
 
 **Two of these run in the direction nobody predicts. They are the ones worth reading twice.**
 
