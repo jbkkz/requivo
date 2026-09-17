@@ -1,10 +1,4 @@
-"""Requivo Web: deleting a session (#238).
-
-A two-step confirm rather than a single click -- a GET renders a confirmation page naming the
-session and suggesting `session export` as the undo story, and only a POST from that page, carrying
-the same cross-site token every other write on this app carries, actually removes anything. Offline,
-isolated workspace per test; the fixtures live in `tests/web/conftest.py`.
-"""
+"""Requivo Web: deleting a session (#238)."""
 
 from __future__ import annotations
 
@@ -37,15 +31,12 @@ def test_deleting_a_session_removes_it_and_redirects_home(client):
     sessions = SessionService()
     assert sessions.exists("leave-approval") is False
     assert client.get("/").status_code == 200
-    # Not a bare substring check: "leave-approval" also appears as the create-form's placeholder
-    # text, which is present on every empty home page and would make this assertion pass whether or
-    # not the row was really gone. The row itself is a link to the session.
+    # Not a bare substring check: "leave-approval" also appears as the create-form's placeholder text.
     assert 'href="/sessions/leave-approval"' not in client.get("/").text
 
 
 def test_deleting_without_the_request_token_is_refused(raw_client):
-    """The delete POST is a write like any other on this app -- #238's own scope names the CSRF
-    machinery explicitly. Without the token it must be refused, and the session must survive."""
+    """The delete POST is a write like any other on this app (#238)."""
     _make_session("leave-approval", problem=HIGH_EXPLICIT)
     r = raw_client.post("/sessions/leave-approval/delete")
     assert r.status_code == 403
@@ -53,8 +44,7 @@ def test_deleting_without_the_request_token_is_refused(raw_client):
 
 
 def test_the_token_works_as_a_form_field_for_delete(raw_client):
-    """The browser path: a hidden input, not a header -- the same shape
-    `test_the_token_works_as_a_form_field` already pins for session creation."""
+    """The browser path: a hidden input, not a header."""
     _make_session("leave-approval", problem=HIGH_EXPLICIT)
     r = raw_client.post("/sessions/leave-approval/delete",
                         data={CSRF_FIELD: csrf_token()}, follow_redirects=False)

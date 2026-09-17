@@ -1,10 +1,6 @@
-"""The `ReasoningProvider` seam is not Anthropic-shaped (a fake provider drives a whole discovery,
-and a revision's provenance is enough to reproduce the call that produced it), a generation carries
-the revision it read even when a concurrent write lands mid-flight (invariant 2), and
-`SessionService`'s orchestration runs unchanged on a non-file `SessionRepository` -- the storage
-seam's own conformance suite, plus the one integration test that is specific to this repo's services
-rather than to the seam's contract (#424). Split by #555 from `test_sessions.py`.
-"""
+"""The `ReasoningProvider` seam is not Anthropic-shaped (a fake provider drives a whole discovery, and a
+revision's provenance is enough to reproduce the call that produced it), a generation carries the revision
+it read even when a concurrent write lands mid-flight (invariant 2, #424)."""
 from __future__ import annotations
 
 import contextlib
@@ -52,9 +48,7 @@ def test_generation_that_races_a_concurrent_apply_does_not_lose_it(workspace):
 
 
 def test_an_answers_turn_holds_the_revision_it_read(workspace):
-    # A turn has the same seam as a generation, so a caller that passes no expectation still gets one:
-    # the revision the turn actually read. Without it, the CLI's `answer` would quietly overwrite a
-    # change made in a browser tab between the read and the apply.
+    # A turn has the same seam as a generation, so a caller that passes no expectation still gets one.
     from requivo.core.errors import RevisionConflictError
     from requivo.services.discovery import DiscoveryService
 
@@ -74,11 +68,7 @@ def test_an_answers_turn_holds_the_revision_it_read(workspace):
 
 
 def test_an_answers_turn_that_says_nothing_about_reasoning_keeps_it(workspace):
-    """The full user journey the tri-state exists for: discovery → assessment → an ordinary answer.
-`engine.md` asks a turn for model/questions/summary only, so a refinement reply carries no
-decisions — and this whole path (provider parse → apply → diff → freshness) used to read that as
-a deletion, wiping the reasoning the assessment had just established while reporting no change
-and leaving the PRD marked fresh."""
+    """The full user journey the tri-state exists for: discovery → assessment → an ordinary answer."""
     from requivo.services.discovery import DiscoveryService
 
     svc, art = SessionService(), ArtifactService()
@@ -101,11 +91,7 @@ and leaving the PRD marked fresh."""
 
 
 class _NamelessProvider:
-    """Implements every member `ReasoningProvider` *declares* — and nothing more.
-
-    The stand-in for the second implementation the seam exists for. `name` is read by the very first
-    thing a discovery does, so an object without one is not a provider; whether anything can *tell*
-    is what this pins."""
+    """Implements every member `ReasoningProvider` *declares* — and nothing more."""
 
     def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
         raise AssertionError("a provider missing `name` must fail before it is asked to reason")
@@ -131,35 +117,27 @@ def test_discovery_runs_on_a_provider_that_is_not_anthropic(workspace):
 
 
 def test_the_provider_protocol_declares_every_member_the_orchestration_reads(workspace):
-    """`provider.name` is read on the first discovery, so it is part of the contract or the contract
-    is not the contract. `@runtime_checkable` does check a bare data annotation — only `issubclass`
-    is refused for a protocol with non-method members — so declaring it is enforcement, not comment."""
+    """`provider.name` is read on the first discovery, so it is part of the contract or the contract is not
+    the contract."""
     from requivo.providers.anthropic import AnthropicProvider
     from requivo.providers.base import ReasoningProvider
     from requivo.services.discovery import DiscoveryService
 
-    # Must-fire half: real conformers satisfy the protocol. Without it, a protocol that rejected
-    # everything — or one that stopped being runtime-checkable — would pass the assertion below.
+    # Must-fire half: real conformers satisfy the protocol.
     assert isinstance(_FakeProvider(), ReasoningProvider)
     assert isinstance(AnthropicProvider.__new__(AnthropicProvider), ReasoningProvider)  # no API key needed
 
     # Must-not-fire half: everything declared, `name` absent.
     assert not isinstance(_NamelessProvider(), ReasoningProvider)
 
-    # …and the positive control that keeps the line above from being about a decorative member:
-    # `name` is what the orchestration actually reaches for, before it reasons.
+    # …and the positive control that keeps the line above from being about a decorative member.
     with pytest.raises(AttributeError, match="name"):
         DiscoveryService(_NamelessProvider()).start("A leave approval system.", slug="nameless")
 
 
 def test_a_revision_records_the_prompt_it_was_reasoned_against(workspace):
-    """Invariant 6: provenance is real or absent. Each revision records provider, model, surface and a
-hash of the exact prompt it was reasoned against; a provenance field nothing populates is worse
-than none, because a reader trusts a column that is always filled. The deterministic side of the
-same rule — an apply that made no call carries no usage — is
-`test_a_deterministic_apply_carries_no_usage_provenance` (moved here from CLAUDE.md by #286)."""
-    # A revision log that is only "anthropic, at 14:02" cannot reproduce anything: behaviour here is
-    # tuned by editing prompts and context cards, so the prompt identity is half the provenance.
+    """Invariant 6: provenance is real or absent (#286)."""
+    # A revision log that is only "anthropic, at 14:02" cannot reproduce anything.
     from requivo.providers.anthropic import prompt_version
     from requivo.services.discovery import DiscoveryService
 
@@ -170,9 +148,7 @@ same rule — an apply that made no call carries no usage — is
     rec = SessionService().meta(slug).revisions[-1]
     assert rec.provider == "anthropic" and rec.model_name
     assert rec.prompt_version and rec.prompt_version.startswith("sha256:")
-    # It follows the context-card selection, because a different card set is different reasoning.
-    # A *real* card rather than `only=[]`: an empty selection is now refused (#13), because a
-    # selection that selects nothing renders exactly like a clean load of everything.
+    # It follows the context-card selection, because a different card set is different reasoning (#13).
     assert prompt_version("analyze") != prompt_version("analyze", only=["b2b-platform"])
 
 
@@ -180,9 +156,7 @@ same rule — an apply that made no call carries no usage — is
 
 
 class InMemorySessionRepository:
-    """A dict-backed SessionRepository — no filesystem, no `.requivo/` directory. A faithful stand-in
-    for a Postgres backing (everything is mutation-backed, so has_meta == exists, ensure_writable is a
-    no-op check)."""
+    """A dict-backed SessionRepository — no filesystem, no `.requivo/` directory."""
 
     def __init__(self):
         self._meta: dict = {}
@@ -194,14 +168,7 @@ class InMemorySessionRepository:
         self._locks_guard = threading.Lock()    # protects _locks itself, not any session's data
 
     def _lock_for(self, slug):
-        # threading.RLock is re-entrant *per thread* by construction -- the same primitive this
-        # backing needs for invariant 9's two halves at once (mutual exclusion across threads,
-        # re-entrancy within one). A bare `yield` here used to be the whole implementation, on the
-        # reasoning that a single dict mutation needs no lock -- true, and beside the point: the
-        # *caller* (SessionService) takes this lock around several such mutations and depends on
-        # nothing else interleaving with the whole sequence, which a no-op cannot provide. Found by
-        # `requivo.testing.repository_conformance.SessionRepositoryConformance` (#424), which this
-        # fake did not pass before this fix.
+        # threading.RLock is re-entrant *per thread* by construction (#424).
         with self._locks_guard:
             if slug not in self._locks:
                 self._locks[slug] = threading.RLock()
@@ -225,11 +192,7 @@ class InMemorySessionRepository:
 
     def create(self, slug, request, *, provider=None, model_name=None, context_cards=None,
               perimeter=None):
-        # Invariant 11, at this backing's own layer: the claim is a dict-key collision check rather
-        # than a rename, but it owes the same answer -- a second create() on a slug already in the
-        # store must not silently overwrite it. Added for the conformance suite (#424); before it
-        # this method had no such check and lost the first session's identity on a collision, the
-        # exact bug invariant 11 documents for the file backing's pre-fix `has_meta`-then-create.
+        # Invariant 11, at this backing's own layer (#424).
         if slug in self._meta:
             raise _SessionExists(f"session '{slug}' already exists", details={"slug": slug})
         meta = SessionMeta(session_id="mem-" + slug, slug=slug, created_at="t", updated_at="t",
@@ -246,10 +209,7 @@ class InMemorySessionRepository:
         return self._meta[slug]
 
     def delete(self, slug):
-        # The dict-backed analogue of the file backing's lock-then-remove: a Postgres row delete has
-        # no lock file to unlink, but it owes the identical release-the-slug guarantee the conformance
-        # suite checks (#238) -- a stale key left in any of these dicts would make a later create()
-        # for the same slug collide with residue this session left behind.
+        # The dict-backed analogue of the file backing's lock-then-remove (#238).
         if slug not in self._meta:
             raise _NotFound(f"no session '{slug}'", details={"slug": slug})
         with self.lock(slug):
@@ -264,10 +224,7 @@ class InMemorySessionRepository:
     def list_slugs(self): return sorted(self._meta)
 
     def list_unexaminable(self):
-        # `[]`, and it is a real answer rather than a stub: a dict key either is a session or is not
-        # there, so the question this method exists for cannot arise on this backing (#80). What
-        # would be wrong is dropping a row that *was* enumerated and could not be decoded — see the
-        # protocol's docstring; there are none here to drop.
+        # `[]`, and it is a real answer rather than a stub (#80).
         return []
 
     def load_model(self, slug):
@@ -309,17 +266,14 @@ class InMemorySessionRepository:
 
 
 class TestInMemoryRepositoryConformance(SessionRepositoryConformance):
-    """The non-file backing above, proven against the shared suite -- the factory wiring #424's
-    acceptance criteria ask this module to shrink to."""
+    """The non-file backing above, proven against the shared suite."""
 
     def make_repository(self):
         return InMemorySessionRepository()
 
 
 class TestFileRepositoryConformance(SessionRepositoryConformance):
-    """The shipped file backing, against the same shared suite -- both implementations this repo
-    carries run identically against `SessionRepositoryConformance`, which is the point: a third
-    implementation (Postgres, out of this repo) has the same bar to clear."""
+    """The shipped file backing, against the same shared suite."""
 
     @pytest.fixture(autouse=True)
     def _workspace(self, tmp_path):
@@ -360,13 +314,11 @@ def test_session_service_runs_unchanged_on_a_non_file_repository():
 
 
 # ── the grounding judgment, through the service (#593) ────────────────────────────────────────────
-# `decision: the-engine-writes-the-missing-card`. These drive `DiscoveryService` over stubs, because
-# what they pin is which of four states the service reports and whether it is allowed to delete a
-# session -- neither is visible from the provider function alone.
+# `decision: the-engine-writes-the-missing-card`.
 
 
 class _Judge:
-    """A `ReasoningProvider` that also answers grounding questions. Records what it was asked."""
+    """A `ReasoningProvider` that also answers grounding questions."""
 
     name = "judging-stub"
 
@@ -403,8 +355,8 @@ def _disco(provider):
 
 
 def test_an_explicit_card_selection_is_not_second_guessed(workspace):
-    """A `--context` is a human decision. Paying to re-examine it would either agree at cost or
-    disagree with nothing the service is allowed to do about it."""
+    """A `--context` is a human decision. Paying to re-examine it would either agree at cost or disagree with
+    nothing the service is allowed to do about it."""
     judge = _Judge()
     grounding = _disco(judge).judge_grounding("a request", cards=["b2b-platform"])
 
@@ -414,8 +366,7 @@ def test_an_explicit_card_selection_is_not_second_guessed(workspace):
 
 
 def test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_needed(workspace):
-    """`ContextJudge` is a protocol a provider may simply not implement. *Nobody looked* and *no card
-    is needed* must never be the same answer -- that is the silent verdict #492 refused a status for."""
+    """`ContextJudge` is a protocol a provider may simply not implement (#492)."""
     grounding = _disco(_FakeProvider()).judge_grounding("a request", cards=None)
 
     assert grounding.judgment is None, "a provider that cannot judge produced a verdict anyway"
@@ -423,8 +374,8 @@ def test_a_provider_that_cannot_judge_reports_not_asked_rather_than_no_card_need
 
 
 def test_the_judgment_reaches_the_provider_with_one_line_per_installed_card(workspace):
-    """The summaries are read in `core` and passed down, so the provider cannot answer about a
-    different set of cards than the session would actually load."""
+    """The summaries are read in `core` and passed down, so the provider cannot answer about a different set
+    of cards than the session would actually load."""
     from requivo.core.context import available_cards
 
     judge = _Judge()
@@ -435,8 +386,7 @@ def test_the_judgment_reaches_the_provider_with_one_line_per_installed_card(work
 
 
 def test_an_install_with_no_cards_is_not_judged_as_needing_none(workspace, monkeypatch):
-    """`load_context` refuses this install outright a moment later, with a remedy this method has no
-    better version of. Answering "no card is needed" here would be the one wrong answer."""
+    """`load_context` refuses this install outright a moment later."""
     from requivo.services import discovery as disco_mod
 
     monkeypatch.setattr(disco_mod, "card_summaries", list)
@@ -448,9 +398,7 @@ def test_an_install_with_no_cards_is_not_judged_as_needing_none(workspace, monke
 
 
 def test_a_narrowing_verdict_reclaims_under_the_narrowed_identity(workspace):
-    """The selection is half a session's identity (invariant 11), so acting on `installed` cannot be
-    an edit -- the empty session this call just made is deleted and re-claimed under the narrower
-    identity, leaving exactly one session that records the cards it will actually reason against."""
+    """The selection is half a session's identity (invariant 11), so acting on `installed` cannot be an edit."""
     from requivo.core.contracts import ContextJudgment
 
     judge = _Judge(ContextJudgment(decision="installed", reason="finance",
@@ -466,9 +414,7 @@ def test_a_narrowing_verdict_reclaims_under_the_narrowed_identity(workspace):
 
 
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict(workspace):
-    """`create_session_report`'s boolean is the whole authorisation for the delete. Re-entering an
-    existing session idempotently and then deleting it on a verdict would destroy somebody's claim
-    on the strength of a judgment about a request they never re-ran."""
+    """`create_session_report`'s boolean is the whole authorisation for the delete."""
     from requivo.core.contracts import ContextJudgment
 
     svc = SessionService()
@@ -484,17 +430,14 @@ def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict(worksp
 
 
 def test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alone(workspace):
-    """`created` was true a call ago, and a call ago is long enough for a model to have landed. The
-    authorisation is re-read under the lock (invariant 9), because a stale one is how a delete stops
-    being safe."""
+    """`created` was true a call ago, and a call ago is long enough for a model to have landed."""
     from requivo.core.contracts import ContextJudgment
 
     svc = SessionService()
 
     class _WritesMidJudgment(_Judge):
         def judge_context(self, request, *, cards):
-            # A concurrent writer, at the only moment that matters: after the claim, before the
-            # verdict is acted on.
+            # A concurrent writer, at the only moment that matters.
             svc.update_model(svc.list_sessions()[0].slug, _full_model())
             return super().judge_context(request, cards=cards)
 

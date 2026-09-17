@@ -1,5 +1,5 @@
-"""Session write routes (#425, slice 2): create, the apply, its dry run, and the context-card
-rescope -- each backed by exactly one `SessionService` call, offline, over a tmp workspace."""
+"""Session write routes (#425, slice 2): create, the apply, its dry run, and the context-card rescope -- each
+backed by exactly one `SessionService` call, offline, over a tmp workspace."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ def test_create_session_with_an_explicit_slug_uses_it(client):
 
 
 def test_repeating_the_same_identity_is_200_not_201(client):
-    """Idempotent by identity (invariant 11): a repeat call carrying the same request and the same
-    (absent) card selection returns the *same* session, 200 rather than the first call's 201."""
+    """Idempotent by identity (invariant 11): a repeat call carrying the same request and the same (absent)
+    card selection returns the *same* session, 200 rather than the first call's 201."""
     first = client.post("/api/v1/sessions",
                         json={"request": "A leave approval system.", "slug": "leave-approval"})
     assert first.status_code == 201
@@ -91,8 +91,7 @@ def test_rescope_updates_the_context_card_selection(client):
 
 
 def test_rescope_to_the_current_selection_is_a_no_op(client):
-    """The must-not-fire control for the test above: re-scoping to what a session already has changes
-    nothing (#168's own documented no-op), rather than every PUT reporting `changed: True`."""
+    """The must-not-fire control for the test above (#168)."""
     slug = seed_session("leave-approval")
     resp = client.put(f"/api/v1/sessions/{slug}/context-cards", json={"context_cards": None})
     assert resp.status_code == 200

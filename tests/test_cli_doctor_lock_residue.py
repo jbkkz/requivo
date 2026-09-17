@@ -1,22 +1,4 @@
-"""`doctor`'s lock-root residue report — #180.
-
-Split out of `test_cli_doctor.py` by #555, once that file outgrew one module; the siblings are
-`test_cli_doctor.py` (the verb's own health checks) and `test_cli_doctor_non_sessions.py` (#67). The
-shared harness is `tests/_cli_harness.py`; `_check_line` is duplicated from `test_cli_doctor.py`
-rather than imported, per this suite's own convention of keeping test-module helpers local
-(`tests/_fakes.py` makes the argument).
-
-#113/#179 moved the write lock outside the session directory to `.requivo/locks/<slug>.lock`.
-`session delete` (#238) unlinks it as the last step of a normal delete, but a session removed by hand
-(`rm -rf`, bypassing that verb) or by an older Requivo with no delete verb at all leaves the lock file
-behind, empty, claiming a slug nobody has any more. `doctor` reports that residue the same way #67
-reports a non-session entry under the session root: what is there, in three states, and never a
-conclusion the directory alone cannot support. `session_lock` only ever creates `<slug>.lock` for a
-slug that had a session *at that instant*, so a lock whose slug currently names no session is
-candidate residue — never printed as "orphan", because the lock scan and the session scan run a
-moment apart and a session created or removed in that gap would read the same way for a tick without
-being residue at all.
-"""
+"""`doctor`'s lock-root residue report — #180."""
 from __future__ import annotations
 
 import json
@@ -30,18 +12,13 @@ from requivo.core import persistence as store
 
 
 def _check_line(text: str, name: str) -> str:
-    """The status line for the named doctor check — the one carrying a tick.
-
-    Matched on the two-space indent a check line has, because the indented detail lines beneath it
-    mention the same words (`     sessions        <path>` sits right above `  ✅ sessions …`), and a
-    tick asserted against the wrong line is an assertion about nothing."""
+    """The status line for the named doctor check — the one carrying a tick."""
     return next(ln for ln in text.splitlines()
                 if ln.startswith("  ") and not ln.startswith("   ") and name in ln)
 
 
 def _take_lock(slug: str) -> None:
-    """Materialise `<slug>.lock` on disk the way `session_lock` actually does: enter and leave the
-    context manager once. Nothing inside it ever deletes the file it created."""
+    """Materialise `<slug>.lock` on disk the way `session_lock` actually does."""
     with store.session_lock(slug):
         pass
 
@@ -58,8 +35,7 @@ def test_a_clean_workspace_reports_no_lock_residue(workspace):
 
 
 def test_a_lock_whose_session_still_exists_is_not_flagged(workspace):
-    """The must-fire harness's positive control on the *matched* side: a lock for a live session is
-    ordinary, not residue, even though it is the identical file shape as an abandoned one."""
+    """The must-fire harness's positive control on the *matched* side."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _take_lock("s")
     r = _run_json(["doctor", "--json"])["locks"]
@@ -68,11 +44,7 @@ def test_a_lock_whose_session_still_exists_is_not_flagged(workspace):
 
 
 def test_a_session_removed_through_session_delete_leaves_no_lock_residue(workspace):
-    """The must-not-fire control against a fresh false positive: unlike the hand-deleted case below,
-    `session delete` (#238) unlinks its own `<slug>.lock` as the last step, so it must not show up
-    here at all. Windows needed `_LockHandle.unlink_on_release` to get here (#469), deferring to
-    `session_lock`'s own teardown -- narrower than the race `delete_session`'s docstring names, and
-    not the ordering #22 rejected."""
+    """The must-not-fire control against a fresh false positive (#238)."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _take_lock("s")
     _run(["session", "delete", "s", "--json"])
@@ -84,9 +56,8 @@ def test_a_session_removed_through_session_delete_leaves_no_lock_residue(workspa
 
 
 def test_a_lock_whose_session_was_deleted_by_hand_is_named_but_not_concluded(workspace):
-    """The ordinary way this residue still arises, even with `session delete` (#238) unlinking its
-    own lock file cleanly: a directory removed by hand (or by an older Requivo) goes, and the lock
-    file — outside it since #113 — does not."""
+    """The ordinary way this residue still arises, even with `session delete` (#238) unlinking its own lock
+    file cleanly: a directory removed by hand (or by an older Requivo) goes, and the lock file."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _take_lock("s")
     shutil.rmtree(store.canonical_dir("s"))
@@ -98,15 +69,13 @@ def test_a_lock_whose_session_was_deleted_by_hand_is_named_but_not_concluded(wor
     text = _run(["doctor"])
     assert "🟡" in _check_line(text, "locks")
     assert "s" in text and "no matching session" in text
-    # The load-bearing refusal (#180): this report never draws the conclusion the directory alone
-    # cannot support.
+    # The load-bearing refusal (#180): this report never draws the conclusion the directory alone cannot support.
     assert "orphan" not in text.lower()
     assert "leftover" not in text.lower()
 
 
 def test_an_entry_under_lock_root_that_is_not_a_lock_file_is_named_as_unexpected(workspace):
-    """Nothing but `session_lock` writes here, so anything else — a stray file, a subdirectory, a
-    misnamed lock — is reported and never silently absorbed into the count of real locks."""
+    """Nothing but `session_lock` writes here, so anything else."""
     store.lock_root().mkdir(parents=True)
     (store.lock_root() / "not-a-lock.txt").write_text("stray\n", encoding="utf-8")
     (store.lock_root() / "sub").mkdir()
@@ -121,11 +90,8 @@ def test_an_entry_under_lock_root_that_is_not_a_lock_file_is_named_as_unexpected
 
 
 def test_an_ordinary_discover_leaves_no_lock_residue_doctor_flags(workspace):
-    """#391: `_discovery_guard` (`services/discovery.py`, #209) writes `<slug>.discovering` into
-    `lock_root()` and never unlinks it, correctly -- the same POSIX reasoning that leaves
-    `session_lock`'s own `.lock` file behind for a deleted session. Before this fix, `scan_lock_root`
-    had never been taught the second shape, so that file read as `unexpected` about a file this
-    release's own code had just written."""
+    """#391: `_discovery_guard` (`services/discovery.py`, #209) writes `<slug>.discovering` into `lock_root()`
+    and never unlinks it, correctly."""
     from requivo.services.discovery import _discovery_guard_path
 
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
@@ -144,10 +110,7 @@ def test_an_ordinary_discover_leaves_no_lock_residue_doctor_flags(workspace):
 
 
 def test_a_directory_shaped_like_a_discovery_guard_is_still_unexpected(workspace):
-    """The must-fire control paired with the test above: recognising `.discovering` files must not
-    become recognising anything ending in that suffix. `_discovery_guard` always opens a regular
-    file (`os.open(..., os.O_RDWR | os.O_CREAT, ...)`), never a directory, so a directory at that
-    name is not a shape it produces and stays reported."""
+    """The must-fire control paired with the test above."""
     store.lock_root().mkdir(parents=True)
     (store.lock_root() / "s.discovering").mkdir()
 
@@ -160,9 +123,8 @@ def test_a_directory_shaped_like_a_discovery_guard_is_still_unexpected(workspace
 
 
 def test_a_malformed_discovering_stem_is_still_unexpected(workspace):
-    """A `.discovering`-suffixed name whose stem is not a valid slug is not a shape
-    `_discovery_guard_path` could ever produce -- it validates the slug before joining the suffix --
-    so it stays reported rather than silently swallowed by the new suffix check."""
+    """A `.discovering`-suffixed name whose stem is not a valid slug is not a shape `_discovery_guard_path`
+    could ever produce -- it validates the slug before joining the suffix."""
     store.lock_root().mkdir(parents=True)
     (store.lock_root() / "Not Valid.discovering").write_text("", encoding="utf-8")
 
@@ -173,10 +135,7 @@ def test_a_malformed_discovering_stem_is_still_unexpected(workspace):
 @pytest.mark.parametrize("suffix", [".lock", ".discovering"],
                          ids=["#391-lock-symlink", "#391-discovering-symlink"])
 def test_a_symlink_at_a_lock_name_is_reported_and_not_followed(workspace, suffix):
-    """The same symlink care `_scan_session_root`'s non-session partition carries (invariant 17): a
-    symlink is named as one and its target is never read into this report. `is_ordinary_file` is
-    computed once and shared by both suffix branches (#391), so a symlink at a `.discovering` name
-    must fail the same way one at a `.lock` name already does -- reported, never followed."""
+    """The same symlink care `_scan_session_root`'s non-session partition carries (invariant 17, #391)."""
     if os.name == "nt":
         pytest.skip("os.symlink needs elevated privileges on Windows by default")
     store.lock_root().mkdir(parents=True)
@@ -190,16 +149,8 @@ def test_a_symlink_at_a_lock_name_is_reported_and_not_followed(workspace, suffix
 
 
 def test_a_reserved_name_sessions_own_lock_and_guard_files_are_not_reported_as_residue(workspace):
-    """#401, the third instance of #372's sweep gap and #391's defect one predicate over. Two
-    must-not-fire controls share this fixture -- a stray file and a malformed stem must still show
-    as `unexpected`. `nul.lock` is the must-fire half: #409 corrected the earlier assumption that
-    a reserved stem with no session was still-unexpected, so it now asserts as an ordinary
-    orphaned lock instead."""
-    # No skipif here, deliberately: this exact fixture (mkdir("con"), "con.lock"/"con.discovering"/
-    # "nul.lock") was OBSERVED to materialise for real on GitHub's windows-latest runners (#582's CI
-    # log), contradicting the "Windows refuses this at the OS level" reasoning the removed skip
-    # carried -- see that PR's body for the evidence. The sibling tests below keep their skips: each
-    # rests on its own, separately-reasoned fixture shape and none of them has been observed either way.
+    """#401, the third instance of #372's sweep gap and #391's defect one predicate over."""
+    # No skipif here, deliberately: this exact fixture (mkdir("con"), "con.lock"/"con.discovering"/ "nul.lock") was OBSERVED to materialise for real on GitHub's windows-latest runners (#582's CI log), contradicting the "Windows refuses this at the OS level" reasoning the removed skip carried -- see that PR's body for the evidence.
     d = store.session_root() / "con"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -247,8 +198,7 @@ def test_a_reserved_name_sessions_own_lock_and_guard_files_are_not_reported_as_r
                      "that platform.")
 def test_a_lock_file_for_a_reserved_name_with_no_session_on_disk_is_recognised_not_residue(
         workspace):
-    """#409, correcting #401's own conditional control -- renamed from
-    `..._is_still_unexpected`, which asserted the opposite of what this asserts now."""
+    """#409, correcting #401's own conditional control."""
     store.lock_root().mkdir(parents=True)
     (store.lock_root() / "nul.lock").write_text("", encoding="utf-8")
     (store.lock_root() / "nul.discovering").write_text("", encoding="utf-8")
@@ -266,10 +216,7 @@ def test_a_lock_file_for_a_reserved_name_with_no_session_on_disk_is_recognised_n
                      "the core mechanism #409 fixes, and unreachable there since a reserved-name "
                      "session can never exist to be deleted in the first place.")
 def test_a_reserved_lock_stems_classification_survives_the_session_being_deleted(workspace):
-    """#409's own mechanism, reproduced end to end: a lock file's provenance is a fact about the
-    past, fixed when `session_lock` writes it, and its classification must not move when the
-    directory it names is deleted afterwards. The must-fire control is the `before` snapshot,
-    taken while the session still exists."""
+    """#409's own mechanism, reproduced end to end."""
     d = store.session_root() / "nul"
     (d / "revisions").mkdir(parents=True)
     (d / "artifacts").mkdir()
@@ -304,10 +251,8 @@ def test_a_reserved_lock_stems_classification_survives_the_session_being_deleted
                     "that a stray symlink beside a guard file does not change how the guard file "
                     "itself is classified.")
 def test_a_symlink_at_the_lock_name_does_not_sink_the_guard_file_beside_it(workspace):
-    """A verdict about one entry must not be decided by a sibling entry's state (#401, found in
-    review before the fix shipped). `b.discovering` is the must-fire pair: an identical guard file
-    with no sibling at all, which must be recognised in the same scan, so this cannot pass by
-    classifying nothing."""
+    """A verdict about one entry must not be decided by a sibling entry's state (#401, found in review before
+    the fix shipped)."""
     store.lock_root().mkdir(parents=True)
     outside = workspace / "elsewhere.txt"
     outside.write_text("not a lock", encoding="utf-8")
@@ -331,11 +276,7 @@ def test_a_symlink_at_the_lock_name_does_not_sink_the_guard_file_beside_it(works
                     "reaches `_probe` for a reserved stem any more -- and unreachable there, since "
                     "only a reserved stem was ever routed through it.")
 def test_a_reserved_lock_stem_no_longer_probes_the_session_root(workspace, monkeypatch):
-    """#409 removed `_is_lock_stem`'s call into `session_root()` entirely -- shape is all it asks now.
-    This used to be the second source of `locks.unexaminable` (#401, superseded here): an unstat-able
-    session root degraded one lock entry rather than the whole scan. That source is gone by design,
-    and this pins it -- even a `_probe` that would raise for every call must not stop `con.lock`
-    classifying."""
+    """#409 removed `_is_lock_stem`'s call into `session_root()` entirely -- shape is all it asks now."""
     store.lock_root().mkdir(parents=True)
     (store.lock_root() / "con.lock").write_text("", encoding="utf-8")
 
@@ -351,8 +292,7 @@ def test_a_reserved_lock_stem_no_longer_probes_the_session_root(workspace, monke
 
 
 def test_the_lock_root_being_unlistable_is_not_reported_as_no_residue(workspace):
-    """The same third state every other check in this report has: could-not-look must not render
-    like looked-and-found-nothing."""
+    """The same third state every other check in this report has."""
     from requivo.deterministic import doctor as det
 
     clean = _run_json(["doctor", "--json"])["locks"]
@@ -376,11 +316,7 @@ def test_the_lock_root_being_unlistable_is_not_reported_as_no_residue(workspace)
 
 
 def test_a_lock_for_a_session_that_exists_but_is_unexaminable_is_not_claimed_as_unmatched(workspace):
-    """`list_slugs()` answers *confirmed sessions* alone (#80's own distinction): a directory whose
-    `session.json` probe raised EACCES lands in `list_unexaminable()`, not there. `_lock_health`
-    used to check only `list_slugs()`, so a session sitting right there but merely unreadable told
-    the identical false story the `sessions` check next to it exists to refuse: "no session
-    currently named that" about a slug the workspace cannot confirm is empty. Found by review."""
+    """`list_slugs()` answers *confirmed sessions* alone (#80's own distinction)."""
     if os.name == "nt":
         pytest.skip("POSIX mode bits do not deny reads on Windows")
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
@@ -388,10 +324,7 @@ def test_a_lock_for_a_session_that_exists_but_is_unexaminable_is_not_claimed_as_
     d = store.canonical_dir("s")
     d.chmod(0o000)
     try:
-        # The same root guard the sibling fixtures in tests/test_persistence_scan.py carry, and
-        # the reason it is needed here too (#298): a runner whose process can read a 0o000 directory
-        # makes the must-fire control below assert something the platform did not do. It fired on
-        # the py3.14 leg the moment that leg existed, on a test nothing about 3.14 touches.
+        # The same root guard the sibling fixtures in tests/test_persistence_scan.py carry (#298).
         try:
             (d / "session.json").exists()
         except PermissionError:
@@ -417,9 +350,7 @@ def test_a_lock_for_a_session_that_exists_but_is_unexaminable_is_not_claimed_as_
 
 
 def test_lock_matching_is_not_claimed_when_the_session_list_itself_could_not_be_read(workspace):
-    """`unmatched` answers a question that needs the current session list, and a failure to read
-    *that* is a third state of its own: not `readable: False` (the lock root scan itself worked) and
-    not an empty `unmatched` (which would claim every lock was checked and matched)."""
+    """`unmatched` answers a question that needs the current session list."""
     from requivo.deterministic import doctor as det
 
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
@@ -429,11 +360,7 @@ def test_lock_matching_is_not_claimed_when_the_session_list_itself_could_not_be_
         raise PermissionError("Permission denied")
 
     with pytest.MonkeyPatch.context() as mp:
-        # On the `Store` class, not the module function (#272): `_lock_health` reaches this through
-        # `SessionService().repo.list_slugs()` -> `FileSessionRepository.list_slugs()`, which calls
-        # `self._resolve_store().list_session_slugs()` -- a `Store` method lookup, not the
-        # module-level `list_session_slugs` name -- so patching the module function no longer
-        # intercepts it.
+        # On the `Store` class, not the module function (#272).
         mp.setattr(det.store.Store, "list_session_slugs", _unreadable)
         r = _run_json(["doctor", "--json"])["locks"]
         text = _run(["doctor"])

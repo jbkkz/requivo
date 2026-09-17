@@ -275,7 +275,7 @@ include = ["src/requivo"]
 # absent: whoever reads the paragraph above as a guarantee that the floor is checked will be wrong
 # wherever the stub is silent, and has no way to tell from here where that is.
 # The two instances this repo has actually met are covered by a test rather than by this setting --
-# `test_no_text_call_passes_a_keyword_the_declared_floor_rejects` in `tests/test_encoding.py`, whose
+# `test_no_text_call_passes_a_keyword_the_declared_floor_rejects` in `tests/test_source_form.py`, whose
 # table is deliberately two rows long, per CLAUDE.md's bar on funding coverage from named instances.
 pythonVersion = "3.9"
 
@@ -441,7 +441,7 @@ split-on-trailing-comma = false
 # repository is organised against.** Coverage instruments the pytest process and nothing that
 # process spawns. This suite drives the real CLI through
 # `subprocess.run([sys.executable, "-m", "requivo", ...])` in several places --
-# `tests/test_encoding.py`'s `_cli()` is the main one -- and every line reached only that way lands
+# `tests/test_source_form.py`'s `_cli()` is the main one -- and every line reached only that way lands
 # in the `Missing` column, indistinguishable from a line no test has ever run. The standing tell is
 # `src/requivo/__main__.py`: 2 of its 3 statements, and the missing one is `app()`, which `python -m
 # requivo` reaches and nothing else does. Invariant 16's console guards are the code most affected,
@@ -449,7 +449,7 @@ split-on-trailing-comma = false
 #
 # **Turning it on was measured and rejected, and both halves of the measurement matter.** With
 # `parallel = true` and `COVERAGE_PROCESS_START` set, `__main__.py` does go to 3 of 3 -- confirmed
-# against `tests/test_encoding.py`. The cost on the whole suite is 83.0s, against 53.6s with
+# against `tests/test_source_form.py`. The cost on the whole suite is 83.0s, against 53.6s with
 # coverage and 46.8s without, past the ~60s ceiling #295 sets (one machine, CPython 3.13.14).
 # Worse, the environment it needs must carry *absolute* paths: `_cli()` runs each child in a
 # `tmp_path`, so a relative `COVERAGE_FILE` sends the child's data to a directory pytest then

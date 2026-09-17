@@ -1,17 +1,4 @@
-"""The `requivo` subcommand surface, end to end and offline.
-
-Split out of `test_engine.py` (#72). The modern surface is a thin layer over the same services;
-`app()` takes an injected client so API-backed verbs run against a `FakeClient` and never reach the
-network. What each test here pins is the *seam* — that the verb reaches the service, writes the
-artifact where every other surface writes it, and records what it read.
-
-The parser-shape tests (which verbs bind, which flags exist) live in `test_cli_flag_names.py`; the
-no-LLM verbs live in the `test_cli_*.py` set that mirrors `requivo/deterministic/` — `_doctor`,
-`_sessions`, `_session_archives`, `_model`, `_artifacts`, `_shared`, plus `_untrusted_output` for the
-render-safety class that runs across all of them (#141). `_cmd_web`'s own bind-warning tests moved
-out to `test_cli_bind_address.py`, beside `_cmd_api_serve`'s (#555) — the two verbs share one bind
-helper, so their tests do too now.
-"""
+"""The `requivo` subcommand surface, end to end and offline (#72)."""
 import io
 import json
 import shutil
@@ -32,8 +19,7 @@ from requivo.services.artifacts import ArtifactService
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(workspace):
-    """Every test in this module writes sessions/artifacts into an isolated temp workspace, never the
-    real repo — `workspace` (conftest.py) does the pointing; autouse means no test here has to ask."""
+    """Every test in this module writes sessions/artifacts into an isolated temp workspace."""
 
 
 def test_pc_status_runs_offline():
@@ -42,8 +28,7 @@ def test_pc_status_runs_offline():
 
 
 def test_status_json_payload_is_rich_enough_for_a_client():
-    # status(slug) must carry the full picture — understanding, questions, gaps, summary, context —
-    # so Claude Code and a future Web client render it without rebuilding the presentation logic.
+    # status(slug) must carry the full picture — understanding, questions, gaps, summary, context — so Claude Code and a future Web client render it without rebuilding the presentation logic.
     from requivo.services.sessions import SessionService
     slug = "clitest-status-json"
     store.create_session(slug, "req")
@@ -81,9 +66,7 @@ def test_status_with_no_argument_matches_the_explicit_slug_when_there_is_one_ses
 
 
 def test_status_with_no_argument_and_several_sessions_lists_them_with_the_default_marked():
-    """#541: several -> every candidate listed (human mode), the default marked, and the `--json`
-    payload's own `slug` names the same pick without a line beside it (#246: nothing may print
-    beside a `--json` payload)."""
+    """#541."""
     store.create_session("older", "a request")
     store.save_revision("older", _built_model({"problem": slot(80, "explicit", "high")}))
     store.create_session("newer", "a second request")
@@ -120,16 +103,14 @@ def test_impact_with_no_argument_matches_the_explicit_slug():
 
 
 def test_session_show_with_no_slug_still_refuses():
-    """#541: plumbing verbs keep their slug required -- a script must never act on 'whichever
-    session is newest'."""
+    """#541: plumbing verbs keep their slug required."""
     with pytest.raises(SystemExit) as exit_:
         app(["session", "show"], client=None)
     assert exit_.value.code == 2
 
 
 def test_pc_demo_runs_offline_from_saved_example():
-    # The activation path: a visitor runs `requivo demo` with no key, no args, no network, and sees a
-    # real run end to end. No client is passed and none is built.
+    # The activation path: a visitor runs `requivo demo` with no key.
     text = _run_app(["demo"])  # client=None
     assert "REQUIVO — DEMO" in text
     assert "freelancers to check guests in" in text     # the real request is shown
@@ -139,8 +120,7 @@ def test_pc_demo_runs_offline_from_saved_example():
 
 
 def test_the_demo_shows_the_computed_blast_radius_of_a_changed_answer():
-    """The demo used to end at the decision brief — one beat short of the only step in it that a
-    strong prompt cannot also produce (#223)."""
+    """The demo used to end at the decision brief (#223)."""
     text = _run_app(["demo"])  # client=None — the whole step is offline
     assert "④ CHANGE ONE ANSWER" in text
     assert "Computed, not generated" in text
@@ -153,9 +133,7 @@ def test_the_demo_shows_the_computed_blast_radius_of_a_changed_answer():
 
 
 def test_the_demo_prose_describes_the_slot_it_actually_changes():
-    """Step ④'s prose names the deadline in words; `DEMO_CHANGED_SLOT` names it as a slot id. Nothing
-    connects the two but this test, and a payload whose `constraints` stops being about six weeks
-    would leave the demo describing a change it does not make (#223)."""
+    """Step ④'s prose names the deadline in words; `DEMO_CHANGED_SLOT` names it as a slot id (#223)."""
     from requivo.cli import DEMO_CHANGED_SLOT
     from requivo.core.persistence import load_model
     from requivo.paths import DEMO
@@ -166,9 +144,8 @@ def test_the_demo_prose_describes_the_slot_it_actually_changes():
 
 
 def test_the_demo_ends_on_something_a_reader_without_a_key_can_do():
-    """The demo's premise is that no key is needed, and its closing step used to name only
-    `requivo discover`, which requires one (#223). A walkthrough that leaves its own audience with
-    nothing to do next has spent its whole effect on the last line."""
+    """The demo's premise is that no key is needed, and its closing step used to name only `requivo discover`,
+    which requires one (#223)."""
     text = _run_app(["demo"])
     tail = text[text.index("⑤ EVERYTHING ELSE"):]
     keyless = tail[tail.index("still no API key"):tail.index("With a key")]
@@ -183,17 +160,14 @@ def test_the_demo_points_a_wheel_install_at_something_it_can_reach():
     text = _run_app(["demo"])
     assert "https://github.com/jbkkz/requivo/tree/main/examples/event-checkin-reconciliation" in text
     tail = text[text.index("⑤ EVERYTHING ELSE"):]
-    # A bare repo-relative path is allowed only where the line says it needs the repo — which is the
-    # `impact` command, and nothing else in this block.
+    # A bare repo-relative path is allowed only where the line says it needs the repo.
     for line in tail.splitlines():
         if "examples/" in line and "https://" not in line:
             assert "requivo impact" in line, f"unlabelled repo-relative path in the demo tail: {line!r}"
 
 
 def test_the_demo_names_the_key_requirement_beside_the_command_that_needs_one():
-    """The banner promises no key is needed; exactly one command in the closing block needs one, and
-    it has to say so in the same breath (#225). A keyless reader following that line lands on a
-    failure the demo could have predicted for them."""
+    """The banner promises no key is needed; exactly one command in the closing block needs one (#225)."""
     text = _run_app(["demo"])
     tail = text[text.index("With a key:"):]
     assert "requivo discover" in tail
@@ -208,9 +182,7 @@ def test_pc_brief_uses_injected_client():
 
 
 def test_demo_payload_matches_the_browsable_example():
-    # `requivo demo` reads a frozen payload bundled in the package (so it works from a wheel); examples/
-    # holds the browsable copy at the repo root. Guard against silent drift between the two: every
-    # bundled demo file must byte-match its counterpart under examples/event-checkin-reconciliation/.
+    # `requivo demo` reads a frozen payload bundled in the package (so it works from a wheel).
     from requivo.paths import DEMO
 
     repo_root = DEMO.parents[3]  # assets/demo → assets → requivo → src → repo
@@ -222,13 +194,7 @@ def test_demo_payload_matches_the_browsable_example():
 
 
 def test_the_browsable_examples_deterministic_half_matches_the_renderer():
-    # #172: the test above compares the browsable example to its bundled twin -- two copies of each
-    # other, so both can drift from what the renderer actually produces, together, and stay green.
-    # This is the missing relationship: the readiness block and the draft banner are rendered by
-    # code from the example's own model.json, not authored by the LLM, so they can be re-derived and
-    # compared with no API call. The prose sections (challenges, risks, opportunities, next steps)
-    # come from a `Brief` the provider writes and are NOT re-derived here -- regenerating those is a
-    # spend decision, tracked separately (#172's "what is wanted" part 2).
+    # #172: the test above compares the browsable example to its bundled twin.
     import io
     from contextlib import redirect_stdout
 
@@ -239,9 +205,7 @@ def test_the_browsable_examples_deterministic_half_matches_the_renderer():
     from requivo.render.terminal import DRAFT_NOTE, render_readiness
 
     repo_root = DEMO.parents[3]
-    # event-checkin only: its assessment is a *terminal* capture inside a ```text fence, which is
-    # what `requivo demo` replays. leave-approval ships the markdown artifact `requivo brief` writes,
-    # so its deterministic half is checked against `brief_markdown` instead, in the test below.
+    # event-checkin only: its assessment is a *terminal* capture inside a ```text fence, which is what `requivo demo` replays. leave-approval ships the markdown artifact `requivo brief` writes, so its deterministic half is checked against `brief_markdown` instead, in the test below.
     example_dir = repo_root / "examples" / "event-checkin-reconciliation"
     out = load_model(example_dir / "model.json")
     assessment = _fenced_text((example_dir / "solution-assessment.md").read_text(encoding="utf-8"))
@@ -254,10 +218,7 @@ def test_the_browsable_examples_deterministic_half_matches_the_renderer():
         f"the captured example's banner ({actual_banner!r}) disagrees with what render_brief would "
         f"print for this model.json today ({expected_banner!r}) -- the example is stale"
     )
-    # The sub-line under the banner is static and unconditioned on any LLM content -- it is
-    # `DRAFT_NOTE` verbatim whenever draft, and absent otherwise -- so it is checked too, imported
-    # from the renderer rather than duplicated as a literal here (found in review: the first version
-    # of this test checked the banner text but not its sub-line, which could drift unnoticed).
+    # The sub-line under the banner is static and unconditioned on any LLM content.
     actual_note = lines[2].strip() if draft else None
     expected_note = DRAFT_NOTE if draft else None
     assert actual_note == expected_note, (
@@ -278,11 +239,7 @@ def test_the_browsable_examples_deterministic_half_matches_the_renderer():
 
 
 def test_the_leave_approval_brief_still_projects_its_own_model():
-    """The canonical example's decision brief is half a projection: `What is confirmed`/`Important
-    assumptions` are not provider prose but `_stated()` reading each topic's value/provenance off the
-    model, so a committed pair is checkable with no API call and a swapped-in `model.json` goes red
-    here. Not assertable before #223 regenerated the example's whole chain from one model in one
-    sitting."""
+    """The canonical example's decision brief is half a projection (#223)."""
     from requivo.core.analysis import readiness_blockers
     from requivo.core.contracts import Confidence
     from requivo.core.persistence import load_model
@@ -298,8 +255,7 @@ def test_the_leave_approval_brief_still_projects_its_own_model():
         return [ln for ln in body.splitlines() if ln.startswith("- **")]
 
     assert section("What is confirmed") == _stated(out, Confidence.explicit)
-    # The assumptions section carries `summary.assumptions` after the projected topics; only the
-    # `- **Label** —` lines are the projection, which is what `section` selects.
+    # The assumptions section carries `summary.assumptions` after the projected topics.
     assert section("Important assumptions") == _stated(out, Confidence.inferred)
     # The draft banner is the same rule `brief_markdown` applies, from the same model.
     draft = " — Draft: unresolved topics remain" if readiness_blockers(out) else ""
@@ -322,8 +278,7 @@ def test_the_canonical_example_can_reproduce_the_change_impact_moment():
 
 
 def test_pc_brief_persists_reasoning_into_model():
-    # Keystone: advise()'s reasoning is absorbed into the model and saved (backfill),
-    # so downstream generators inherit it instead of it being regenerated and discarded.
+    # Keystone: advise()'s reasoning is absorbed into the model and saved (backfill).
     with _model_in_out("clitest-brief-persist") as p:
         brief_json = json.dumps({
             "complexity": "high",
@@ -361,10 +316,7 @@ def test_pc_estimate_renders():
 
 
 def test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot(monkeypatch):
-    """`estimate` makes two provider calls and the second is read against the first's output, so
-    both reason from one `SessionSnapshot` (invariant 12, #135) -- otherwise a write landing
-    between them estimates one model's stories against a different model. The call count is the
-    must-fire half: "one snapshot" is also true of a verb that never ran."""
+    """`estimate` makes two provider calls and the second is read against the first's output (#135)."""
     from requivo.services.sessions import SessionService
 
     taken = []
@@ -387,9 +339,7 @@ def test_the_estimate_verb_reads_stories_and_estimate_from_one_snapshot(monkeypa
 
 
 def test_pc_brief_writes_the_artifact_like_every_other_surface():
-    # The terminal used to render the assessment and keep it: the Web and Claude Code saved a tracked
-    # artifact, the CLI saved nothing. A generation now produces the same document wherever it was
-    # asked for — same file, same provenance, same staleness tracking.
+    # The terminal used to render the assessment and keep it.
     with _model_in_out("clitest-brief-artifact") as p:
         _run_app(["brief", p.parent.name], client=FakeClient(json.dumps({"complexity": "low", "solution": "S"})))
         assert (p.parent / "artifacts" / "solution-assessment.md").exists()
@@ -398,8 +348,7 @@ def test_pc_brief_writes_the_artifact_like_every_other_surface():
 
 
 def test_pc_generators_record_which_prompt_reasoned(tmp_path):
-    # A revision log that cannot say what produced it cannot reproduce it. Behaviour is tuned by
-    # editing prompts and context cards, so the prompt hash is half the provenance.
+    # A revision log that cannot say what produced it cannot reproduce it.
     with _model_in_out("clitest-provenance") as p:
         _run_app(["brief", p.parent.name], client=FakeClient(json.dumps({"complexity": "low"})))
         rec = store.read_meta(p.parent.name).revisions[-1]
@@ -407,9 +356,7 @@ def test_pc_generators_record_which_prompt_reasoned(tmp_path):
         assert rec.prompt_version and rec.prompt_version.startswith("sha256:")
 
 
-# Minimal-but-legal artifact replies. The contracts require what makes each artifact *be* that
-# artifact — a PRD states a problem, a scenario has a `when` and at least one `then`, an epic
-# decomposes into at least one issue — so a stub reply has to carry those and nothing more.
+# Minimal-but-legal artifact replies.
 _CRITERIA = {"title": "X", "features": [
     {"name": "Requesting leave", "scenarios": [
         {"id": "SC-1", "title": "Manager approves", "when": "the manager approves",
@@ -438,15 +385,10 @@ def test_pc_epic_writes_all_views():
 
 
 def test_pc_epic_export_stamps_the_same_revision_the_paired_epic_md_was_saved_against():
-    """#274: `epic.json` is the machine-consumed input an n8n flow acts on and needs provenance, so
-    `_cmd_epic` threads the one `Generated.status.revision` snapshot the `epic.md` save used rather
-    than re-reading the revision (invariant 12) -- asserted against the session's own recorded
-    `artifact_status["epic"].revision`, not a hardcoded number that would let a stale stamp slip
-    through."""
+    """#274: `epic.json` is the machine-consumed input an n8n flow acts on and needs provenance."""
     slug = "clitest-epic-revision"
     with _model_in_out(slug) as p:
-        # Bump past revision 1 first, so a test that only ever sees "1" cannot pass by accident --
-        # the fixture above already lands the session at revision 1.
+        # Bump past revision 1 first, so a test that only ever sees "1" cannot pass by accident.
         store.save_revision(slug, _built_model({"problem": slot(80, "explicit", "high")}))
         assert store.read_meta(slug).current_revision == 2
         _run_app(["epic", p.parent.name, "--export-json", "--github", "--gitlab"],
@@ -477,11 +419,7 @@ def test_pc_discover_once_saves_model():
 
 
 def test_pc_discover_prints_the_default_cards_before_the_paid_call():
-    """#257: the default (no `--context`) reasons over every installed card -- CLAUDE.md's own "Known
-    limit" note calls this the most expensive, most diluted path, and nothing told a user which cards
-    that was. The disclosure is additive only: `context_cards` on the saved session must still be
-    `None` (every card), the same as before, so a fix that quietly narrowed the selection cannot pass
-    here."""
+    """#257: the default (no `--context`) reasons over every installed card."""
     from requivo.services.sessions import SessionService
 
     output = _run_app(["discover", "clitest discover default cards", "--once"],
@@ -495,11 +433,7 @@ def test_pc_discover_prints_the_default_cards_before_the_paid_call():
 
 
 def test_pc_discover_names_the_fallback_weight_when_the_average_cannot_be_measured(monkeypatch):
-    """Found in review: `average_card_byte_size() -> None` (reachable only on an empty install) has a
-    dedicated fallback string in `_cmd_discover` ("measurable weight" instead of a byte figure), and
-    nothing exercised it. Monkeypatches the CLI's own imported name so this pins the branch
-    `_cmd_discover` takes, not `average_card_byte_size` itself (`tests/test_context.py` owns that
-    half)."""
+    """Found in review."""
     import requivo.cli as cli_module
 
     monkeypatch.setattr(cli_module, "average_card_byte_size", lambda: None)
@@ -510,9 +444,7 @@ def test_pc_discover_names_the_fallback_weight_when_the_average_cannot_be_measur
 
 
 def test_pc_discover_with_explicit_context_does_not_also_print_the_all_cards_line():
-    # The "no --context given" disclosure and the existing "Context cards: <selection>" line answer
-    # the same question and must never both fire for one invocation -- that would say two different
-    # things about what was loaded.
+    # The "no --context given" disclosure and the existing "Context cards.
     output = _run_app(["discover", "clitest discover explicit cards", "--once",
                        "--context", "b2b-platform"],
                       client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))
@@ -521,25 +453,19 @@ def test_pc_discover_with_explicit_context_does_not_also_print_the_all_cards_lin
 
 
 def test_discover_file_check_survives_a_real_length_request():
-    # A real client request is a paragraph — longer than the OS filename limit. The file-vs-text
-    # heuristic must treat that as text, not crash (Path.exists() raises OSError above the limit).
-    # `is_file_argument` (moved to `deterministic/_shared.py` and shared with it by #301) is
-    # `discover`'s own file-vs-text check -- exercised here through the name `cli.py` imports it as,
-    # not re-implemented.
+    # A real client request is a paragraph — longer than the OS filename limit (#301).
     long_request = "When a contract is signed we want everything to reconcile. " * 20
     assert is_file_argument(long_request) is False
 
 
 def test_discover_file_check_rejects_blank_arg():
-    # Path("") resolves to the current directory, which exists — so a naive .exists() check would
-    # treat a blank request as a readable file and then blow up on read_text. Blank must read as text.
+    # Path("") resolves to the current directory, which exists.
     assert is_file_argument("") is False
     assert is_file_argument("   \n\t ") is False
 
 
 def test_discover_file_check_rejects_a_directory(tmp_path):
-    # A directory `exists()` too. Accepting one means calling read_text() on it a line later, which
-    # raises IsADirectoryError as a traceback instead of treating the argument as a request.
+    # A directory `exists()` too.
     assert is_file_argument(str(tmp_path)) is False
     f = tmp_path / "request.md"
     f.write_text("Build a leave approval system.")
@@ -547,9 +473,7 @@ def test_discover_file_check_rejects_a_directory(tmp_path):
 
 
 def test_discover_from_a_file_slugifies_its_name(tmp_path, monkeypatch):
-    # A filename is a suggestion for the slug, not a slug. Slugs name a directory in the session store
-    # and are validated strictly, so passing the raw stem through turned an ordinary input file
-    # ("Leave Approval v2.md") into an invalid_slug error.
+    # A filename is a suggestion for the slug, not a slug.
     from requivo.services.sessions import SessionService
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
@@ -560,8 +484,7 @@ def test_discover_from_a_file_slugifies_its_name(tmp_path, monkeypatch):
 
 
 def test_pc_discover_rejects_empty_request():
-    # An empty/whitespace request should fail fast with a clear message, not crash or fire an
-    # empty-content API call. The FakeClient would raise if reached — SystemExit means we never did.
+    # An empty/whitespace request should fail fast with a clear message.
     for blank in ("", "   "):
         with pytest.raises(SystemExit):
             _run_app(["discover", blank], client=FakeClient(_ENGINE_REPLY))
@@ -569,13 +492,7 @@ def test_pc_discover_rejects_empty_request():
 
 # ── `discover -` reads stdin, like every other document-taking verb (#360) ───────────────────
 #
-# `session init -`, `model apply <slug> -` and `artifact save --file -` all route through
-# `deterministic/_shared.py`, which special-cases a bare `-` as "read the document from stdin".
-# `discover` called `is_file_argument` directly instead, and `is_file_argument("-")` is False -- so
-# the argument fell through to the treat-as-literal-text branch and the engine was asked, at full
-# price, to discover a product from the two-character request `-`. Quiet, plausible-looking, and
-# billed. Every case below is paired with its opposite in the same fixture, because "stdin was read"
-# and "stdin was ignored" are only distinguishable when both are asserted.
+# `session init -`, `model apply <slug> -` and `artifact save --file -` all route through `deterministic/_shared.py`, which special-cases a bare `-` as "read the document from stdin".
 
 
 class _Tty(io.StringIO):
@@ -607,18 +524,15 @@ def test_discover_reads_the_request_from_stdin_when_the_argument_is_a_dash(monke
 
 
 def test_a_one_character_request_that_is_not_a_dash_is_still_literal_text(monkeypatch):
-    """The must-not-fire half. A fix that read stdin whenever stdin happened to be a pipe would
-    hijack an ordinary short request -- and CI itself runs with a non-tty stdin, so that mistake
-    would be invisible in exactly the environment that grades it."""
+    """The must-not-fire half. A fix that read stdin whenever stdin happened to be a pipe would hijack an
+    ordinary short request."""
     monkeypatch.setattr(sys, "stdin", io.StringIO("PIPED TEXT THAT MUST NOT BE READ"))
     _run_app(["discover", "x"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))
     assert _saved_request(_only_slug()).strip() == "x"
 
 
 def test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on(monkeypatch):
-    """`_read_stdin` refuses a terminal rather than hanging on input nobody meant to type. The
-    assertion that matters is the second one: the refusal has to arrive *before* the provider call,
-    or the fix has only changed which wrong request got paid for."""
+    """`_read_stdin` refuses a terminal rather than hanging on input nobody meant to type."""
     monkeypatch.setattr(sys, "stdin", _Tty(""))
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     with pytest.raises(SystemExit) as e:
@@ -628,8 +542,8 @@ def test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on(mo
 
 
 def test_an_empty_stdin_is_refused_rather_than_discovered_on(monkeypatch):
-    """`printf "" | requivo discover -` is the same nothing-to-discover-from case the blank literal
-    request above already refuses; it must reach the same refusal rather than the provider."""
+    """`printf "" | requivo discover -` is the same nothing-to-discover-from case the blank literal request
+    above already refuses; it must reach the same refusal rather than the provider."""
     monkeypatch.setattr(sys, "stdin", io.StringIO("   \n "))
     fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     with pytest.raises(SystemExit) as e:
@@ -639,11 +553,7 @@ def test_an_empty_stdin_is_refused_rather_than_discovered_on(monkeypatch):
 
 
 def test_a_dash_is_stdin_even_when_a_file_of_that_name_exists(monkeypatch, tmp_path):
-    """The one input where the two halves of `_cmd_discover`'s branch could disagree, found in
-    review of this diff. `read_source` reads stdin for `-` unconditionally, but `is_file_argument`
-    answers the ordinary path question -- and a file literally named `-` in the working directory
-    makes it True. Computed independently, the slug would then be suggested by a file whose content
-    was never read. The control below is the same directory, one argument different."""
+    """The one input where the two halves of `_cmd_discover`'s branch could disagree."""
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     (cwd / "-").write_text("FILE CONTENT THAT MUST NOT BE READ", encoding="utf-8")
@@ -653,11 +563,7 @@ def test_a_dash_is_stdin_even_when_a_file_of_that_name_exists(monkeypatch, tmp_p
     slug = _only_slug()
     assert "leave approval system" in _saved_request(slug)
     assert "MUST NOT BE READ" not in _saved_request(slug)
-    # The observable half, and the reason `slug != "-"` would not have been an assertion at all:
-    # `slug_hint("-")` does not fail, it returns the generic fallback `discovery`. So the divergence
-    # does not crash -- it quietly replaces a slug derived from the client's own words with a
-    # placeholder, which is the shape that survives review. Measured: with the two halves computed
-    # independently this session lands under `discovery`.
+    # The observable half, and the reason `slug != "-"` would not have been an assertion at all.
     assert slug != "discovery", (
         "the slug came from `slug_hint(Path('-').stem)`, i.e. from a file whose content was never "
         "read, instead of from the request that was actually discovered on")
@@ -665,9 +571,7 @@ def test_a_dash_is_stdin_even_when_a_file_of_that_name_exists(monkeypatch, tmp_p
 
 
 def test_a_path_that_merely_ends_in_a_dash_is_still_a_file(monkeypatch, tmp_path):
-    """The must-fire half of the case above: `-` is stdin, and `./-` is a file. A fix that refused
-    every argument containing a dash, or that stopped consulting `is_file_argument` at all, would
-    satisfy the test above and break this one."""
+    """The must-fire half of the case above: `-` is stdin, and `./-` is a file."""
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     (cwd / "-").write_text("We would like a leave approval system.", encoding="utf-8")
@@ -678,8 +582,7 @@ def test_a_path_that_merely_ends_in_a_dash_is_still_a_file(monkeypatch, tmp_path
 
 
 def test_a_file_path_argument_still_behaves_exactly_as_before(monkeypatch, tmp_path):
-    """The third arm of the same branch, kept honest: routing `-` through the shared reader must not
-    disturb the file case, whose filename is also what suggests the slug."""
+    """The third arm of the same branch, kept honest."""
     monkeypatch.setattr(sys, "stdin", io.StringIO("PIPED TEXT THAT MUST NOT BE READ"))
     req = tmp_path / "Leave Approval v3.md"
     req.write_text("We would like a leave approval system.", encoding="utf-8")
@@ -694,8 +597,7 @@ def test_pc_answer_refines_the_model():
         turn2 = json.dumps({
             "model": full_slots(problem=slot(95, "explicit", "high")),
             "questions": [],
-            # A discovery reply owes an objective — a session of slots with nothing naming what they
-            # are for renders as a blank heading everywhere. The boundary check rejects it otherwise.
+            # A discovery reply owes an objective — a session of slots with nothing naming what they are for renders as a blank heading everywhere.
             "summary": {"objective": "A leave approval system"},
         })
         fake = FakeClient(turn2)

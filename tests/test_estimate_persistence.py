@@ -1,18 +1,4 @@
-"""#519: the estimate graduates to a saved artifact type, and `stories` is finished with it.
-
-`decision: the-estimate-graduates` records why. Two types were half-registered across the seven
-registries a saveable type touches, and the estimate -- the one artifact where being stale costs
-money -- could not be persisted by any path, so the staleness graph that already had an opinion
-about it had nothing on disk to flag.
-
-The wrinkle the decision settles is provenance (invariant 6): the estimate is reasoned *against a
-stories draft* the same invocation produced (#135, one snapshot, two calls). Saving it alone would
-record a `source_revision` naming half its basis. So `generate(slug, "estimate")` saves both, from
-one snapshot, against one revision -- which is what the service-level tests below pin.
-
-Driven against the services with a stub `ReasoningProvider` and against the CLI with a `FakeClient`
--- no network, no key.
-"""
+"""#519: the estimate graduates to a saved artifact type, and `stories` is finished with it."""
 
 from __future__ import annotations
 
@@ -91,10 +77,7 @@ def test_estimate_markdown_renders_ranges_totals_and_spread_in_human_words():
 
 
 def test_a_newline_inside_a_provider_field_cannot_open_a_new_heading():
-    """Found in review of #519: a heading is a line construct, and the Web re-parses every physical
-    line of a saved document, so a provider-filled title carrying a newline and a `#` would render
-    as a heading of its own. Both writers flatten free text onto the line it was placed on. The
-    control is the last assertion: the text itself survives, only the line break does not."""
+    """Found in review of #519."""
     stories = Stories(stories=[Story(id="S1", title="Request leave\n# INJECTED", i_want="a\nb")])
     draft = EstimateDraft(items=[EstimateItem(story_id="S1", title="T\n# INJECTED", complexity="S",
                                               days_low=1, days_high=1, note="n\n# INJECTED")],
@@ -105,8 +88,8 @@ def test_a_newline_inside_a_provider_field_cannot_open_a_new_heading():
 
 
 def test_estimate_markdown_says_when_nothing_widens_the_range():
-    """The must-fire pair for the spread section: a solid model renders the section as a sentence
-    rather than as an absent heading a reader cannot tell from a rendering bug."""
+    """The must-fire pair for the spread section: a solid model renders the section as a sentence rather than
+    as an absent heading a reader cannot tell from a rendering bug."""
     md = estimate_markdown(_draft(), [], "high")
     assert "No unresolved topic widens these ranges" in md
     assert "Spread driven by" not in md
@@ -116,11 +99,7 @@ def test_estimate_markdown_says_when_nothing_widens_the_range():
 
 
 def test_both_analyses_are_registered_everywhere_a_saveable_type_is():
-    """The seven-registry table from the decision, collapsed to what this change owes: both types
-    generatable and both with a filename in the one table ARTIFACT_FILENAMES now is (#556 removed
-    the second, identical ARTIFACT_FILES table this test used to also pin).
-    `test_the_real_artifact_registries_agree_on_their_key_sets` is the cross-table guard (#270);
-    this pins the two rows it was written around."""
+    """The seven-registry table from the decision, collapsed to what this change owes (#556)."""
     assert "stories" in GENERATABLE and "estimate" in GENERATABLE
     assert ARTIFACT_FILENAMES["stories"] == "stories.md"
     assert ARTIFACT_FILENAMES["estimate"] == "estimate.md"
@@ -130,8 +109,7 @@ def test_both_analyses_are_registered_everywhere_a_saveable_type_is():
 
 
 class _AnalysisProvider:
-    """A `ReasoningProvider` that answers the two calls `estimate` makes, recording what each was
-    handed so the test can assert the estimate was read against the stories that were saved."""
+    """A `ReasoningProvider` that answers the two calls `estimate` makes."""
 
     name = "stub"
 
@@ -201,9 +179,8 @@ def test_generating_the_stories_alone_saves_them_like_every_other_artifact():
 
 
 def test_the_estimate_generation_refuses_a_caller_supplied_stories_draft():
-    """The provenance argument in one assertion: the stories an estimate is saved against are the
-    ones this generation reasoned and saved. A caller handing in its own draft would file an
-    estimate whose recorded basis is not the file beside it -- refused, before anything is paid."""
+    """The provenance argument in one assertion: the stories an estimate is saved against are the ones this
+    generation reasoned and saved."""
     slug, _, disco, provider = _session_with_a_model()
     with pytest.raises(TypeError):
         disco.generate(slug, "estimate", stories=_stories())
@@ -217,14 +194,13 @@ def test_a_saved_estimate_goes_stale_when_a_topic_it_rests_on_moves():
     slug, sessions, disco, _ = _session_with_a_model()
     disco.generate(slug, "estimate")
 
-    # A topic the estimate does not consume: the control. `problem` feeds the PRD, the brief and the
-    # release notes, and neither analysis -- so moving it flags neither file.
+    # A topic the estimate does not consume: the control.
     sessions.update_model(slug, out({"problem": slot(90, "explicit", "high"),
                                      "workflow": slot(60, "inferred", "high")}).model_dump_json())
     listed = ArtifactService().list(slug)
     assert listed["estimate"]["stale"] is False and listed["stories"]["stale"] is False
 
-    # A topic both consume: the finding. The file is still the one written against revision 1.
+    # A topic both consume: the finding.
     sessions.update_model(slug, out({"problem": slot(90, "explicit", "high"),
                                      "workflow": slot(95, "explicit", "high")}).model_dump_json())
     listed = ArtifactService().list(slug)

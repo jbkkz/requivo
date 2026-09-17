@@ -1,18 +1,4 @@
-"""The dependency DAG, and the staleness it drives.
-
-Split out of `test_engine.py` (#72). One file rather than two because invariant 1 makes them one
-subject: *staleness is the dependency graph, never the revision number.* So the pure-logic half
-(`propagate`, `diff_models`, `resolve_slots`, `ARTIFACT_SLOTS`) and the on-disk half (what an apply
-actually marks stale, and what the `impact` and `answer` verbs report) are the same rule observed at
-two depths.
-
-Two tests here are lodgers rather than residents — `test_expected_revision_precondition_blocks_a_stale_write`
-(optimistic locking) and `test_each_revision_records_its_provenance` (the revision log). They belong
-with `test_integrity.py` and `test_artifact_provenance.py` by subject. They stayed because those files
-take an opt-in `workspace` fixture and these tests take no arguments: moving them means adding a
-parameter, and #72 moves test bodies unchanged or not at all. Worth doing separately, with the
-signature change visible as its own diff.
-"""
+"""The dependency DAG, and the staleness it drives (#72)."""
 import json
 import shutil
 
@@ -37,15 +23,13 @@ from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(tmp_path, monkeypatch):
-    """Every test in this module writes sessions/artifacts into an isolated temp workspace, never the
-    real repo. Points both the canonical root (.requivo/sessions) and the legacy root (out/) at tmp."""
+    """Every test in this module writes sessions/artifacts into an isolated temp workspace."""
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
     monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
 
 
 # ── Tier 2: the dependency DAG (impact propagation) ───────────────────────────
-# Pure logic — no API. A change to a slot propagates to the decisions that rest on
-# it and the artifacts that consume it.
+# Pure logic — no API.
 
 
 def _out_with_decisions(*decisions):
@@ -79,8 +63,7 @@ def test_propagate_flags_dependent_decisions_and_artifacts():
 
 
 def test_propagate_flags_dependent_exclusions():
-    """#599: an excluded option rests_on a slot exactly like a decision's derived_from — the same
-    DAG edge, so a changed slot re-opens the exclusion for reconsideration through propagate()."""
+    """#599: an excluded option rests_on a slot exactly like a decision's derived_from."""
     out_ = EngineOutput.model_validate({
         "model": {"permissions": slot(60, "inferred", "high"),
                   "workflow": slot(70, "inferred", "high")},
@@ -96,9 +79,7 @@ def test_propagate_flags_dependent_exclusions():
 
 
 def test_propagate_flags_dependent_thresholds():
-    """#604 acceptance criterion: a threshold rests_on a slot exactly like a decision's
-    derived_from — the same DAG edge, so a changed slot re-opens the threshold for
-    reconsideration through propagate()."""
+    """#604 acceptance criterion: a threshold rests_on a slot exactly like a decision's derived_from."""
     out_ = EngineOutput.model_validate({
         "model": {"permissions": slot(60, "inferred", "high"),
                   "workflow": slot(70, "inferred", "high")},
@@ -115,9 +96,7 @@ def test_propagate_flags_dependent_thresholds():
 
 
 def test_propagate_reaches_only_the_assessment_for_an_otherwise_isolated_slot():
-    # current_process feeds no buildable deliverable and no decision rests on it. The solution
-    # assessment is the exception by design: it is a judgment over the whole model, so it rests on
-    # every slot — describing the as-is process differently does change the assessment on disk.
+    # current_process feeds no buildable deliverable and no decision rests on it.
     rep = propagate(_out_with_decisions(), ["current_process"])
     assert rep.artifacts == ["brief"]
     assert not rep.decisions and not rep.challenges and not rep.empty
@@ -149,9 +128,7 @@ def test_diff_models_flags_material_change_but_ignores_completeness_noise():
 
 
 def test_a_settled_testable_slot_propagates_like_any_other_change():
-    """#610: the point of "testable" is that a test result is a model change with a blast radius --
-    settling one (confidence testable -> explicit) must flow through diff_models/propagate exactly
-    like any other slot change, not exit through a side door of its own."""
+    """#610: the point of "testable" is that a test result is a model change with a blast radius."""
     old = EngineOutput.model_validate({
         "model": {"business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
                                      "value": "", "evidence": "", "test_plan": "Run a pricing survey."}},
@@ -173,9 +150,7 @@ def test_a_settled_testable_slot_propagates_like_any_other_change():
 
 
 def test_a_re_planned_test_is_a_material_change():
-    """#610: `test_plan` rides into every generator prompt with the rest of the model, so swapping a
-    survey for a paid pilot changes what they read. Before this, only value/confidence/impact were
-    compared, so the swap marked nothing stale -- invariant 1's failure shape. Codex found it."""
+    """#610: `test_plan` rides into every generator prompt with the rest of the model."""
     def _m(plan):
         return EngineOutput.model_validate({
             "model": {"business_rules": {"completeness": 0, "confidence": "testable", "impact": "high",
@@ -187,14 +162,8 @@ def test_a_re_planned_test_is_a_material_change():
 
 
 def test_diff_models_flags_a_removed_slot():
-    """Invariant 1's symmetry. Reasoning a turn merely *omits* is not a removal — but that is
-    resolved *before* the diff, by `ModelProposal.resolve` (invariant 10), never inside it. By the
-    time two models reach `diff_models`/`diff_reasoning` both are complete, so the diff is
-    symmetric: an empty collection facing a populated one is a real deletion, and a slot present
-    before and gone after is a real change (moved here from CLAUDE.md by #286)."""
-    # A slot present before and gone after must register as a change — otherwise a decision or artifact
-    # resting on it could go stale silently. (In practice the completeness invariant prevents a real
-    # discovery from dropping a slot, but the diff must not depend on that upstream guarantee.)
+    """Invariant 1's symmetry. Reasoning a turn merely *omits* is not a removal (#286)."""
+    # A slot present before and gone after must register as a change.
     both = {"workflow": {"completeness": 60, "confidence": "inferred", "impact": "high",
                          "value": "draft → issued", "evidence": ""},
             "permissions": {"completeness": 70, "confidence": "explicit", "impact": "high",
@@ -214,17 +183,9 @@ def test_artifact_slots_reference_only_real_slot_ids():
 
 # ── the coverage direction: does every slot reach some artifact? (#269) ───────
 #
-# The test above only checks the subset direction -- every id an artifact set names is real. Nothing
-# checked the other one: that a slot the *schema* defines is named by at least one of them. A slot
-# that reaches none of prd/stories/estimate/criteria/epic/release -- only `brief`'s '*' catch-all --
-# marks nothing stale for any specific deliverable when it changes. That is invariant 1's exact
-# failure shape, and it was reachable by the most routine change the schema will ever see: adding a
-# slot and forgetting to add it to `_ARTIFACT_SLOTS_RAW`.
+# The test above only checks the subset direction -- every id an artifact set names is real.
 #
-# Slots that genuinely feed no specific artifact -- only the assessment's judgment over the whole
-# model, via `brief` -- are named here with a reason, the same allowlist idiom `tests/test_boundaries.py`
-# already uses for its own two guards. A slot lands in this dict because someone checked *why* no
-# artifact needs it, not because the guard below was in the way.
+# Slots that genuinely feed no specific artifact.
 _SLOTS_WITH_NO_SPECIFIC_ARTIFACT = {
     "current_process": (
         "the as-is process shapes the assessment's judgment (brief, via '*') but no buildable "
@@ -241,11 +202,8 @@ _SLOTS_WITH_NO_SPECIFIC_ARTIFACT = {
 
 
 def test_every_required_slot_is_consumed_by_a_specific_artifact_or_is_exempted():
-    """#269. `schema_slot_ids()` is the single source of the required set (already excluding
-    `optional: true` slots, which requiring here would assert a fact the schema itself does not
-    claim). A required slot must appear in some `artifact_slots()` value that is not `brief`'s `*`
-    entry, or be named in `_SLOTS_WITH_NO_SPECIFIC_ARTIFACT` with a reason -- a slot in neither is
-    the silent gap #269 found."""
+    """#269. `schema_slot_ids()` is the single source of the required set (already excluding `optional: true`
+    slots, which requiring here would assert a fact the schema itself does not claim)."""
     _, required = schema_slot_ids()
     amap = artifact_slots()
     specific = set().union(*(slots for name, slots in amap.items() if name != "brief"))
@@ -257,10 +215,7 @@ def test_every_required_slot_is_consumed_by_a_specific_artifact_or_is_exempted()
         f"{sorted(uncovered)} -- add each to an artifact's set in _ARTIFACT_SLOTS_RAW, or to "
         f"_SLOTS_WITH_NO_SPECIFIC_ARTIFACT with a reason.")
 
-    # The mirror direction: a stale exemption -- naming a slot that no longer exists, or one an
-    # artifact-map edit has since started consuming -- must fail too, or the list silently stops
-    # meaning anything (the same reasoning docs/compatibility.md's own #14 gives for a stale allowlist
-    # entry: a promise about something that is no longer the case).
+    # The mirror direction: a stale exemption (#14).
     stale = (exempt - required) | (exempt & specific)
     assert not stale, (
         f"_SLOTS_WITH_NO_SPECIFIC_ARTIFACT names slot(s) that are gone or now consumed by a specific "
@@ -314,8 +269,8 @@ def test_pc_impact_no_slots_prints_the_full_map():
 
 
 def test_pc_impact_full_map_lists_exclusions_per_slot():
-    """#599: the no-args dependency map (render_dependency_map) names exclusions per slot the
-    same way it names decisions and challenges — the sibling of the targeted-slot test above."""
+    """#599: the no-args dependency map (render_dependency_map) names exclusions per slot the same way it
+    names decisions and challenges — the sibling of the targeted-slot test above."""
     with _model_in_out("clitest-impact-map-exclusions") as p:
         out_ = EngineOutput.model_validate({
             "model": {"permissions": slot(60, "inferred", "high")},
@@ -329,9 +284,8 @@ def test_pc_impact_full_map_lists_exclusions_per_slot():
 
 
 def test_pc_impact_full_map_lists_thresholds_per_slot():
-    """#604: the no-args dependency map (render_dependency_map) names thresholds per slot the
-    same way it names decisions, challenges and exclusions — the sibling of the targeted-slot
-    test above."""
+    """#604: the no-args dependency map (render_dependency_map) names thresholds per slot the same way it
+    names decisions, challenges and exclusions — the sibling of the targeted-slot test above."""
     with _model_in_out("clitest-impact-map-thresholds") as p:
         out_ = EngineOutput.model_validate({
             "model": {"permissions": slot(60, "inferred", "high")},
@@ -355,10 +309,7 @@ def test_pc_impact_full_map_lists_thresholds_per_slot():
      slot(50, "explicit", "high"), slot(95, "explicit", "high")),
 ], ids=["unrelated-slot", "completeness-only-on-consumed-slot"])
 def test_a_non_material_change_keeps_the_artifact_fresh(slug, slot_name, before, after):
-    # criteria consumes {workflow, business_rules, permissions, edge_cases, acceptance}. A change to
-    # success_metrics is outside that set, so it is non-material for criteria; a completeness-only
-    # move on a slot criteria DOES consume is non-material too (diff_models ignores completeness) --
-    # both leave criteria fresh despite a real revision bump.
+    # criteria consumes {workflow, business_rules, permissions, edge_cases, acceptance}.
     from requivo.services.sessions import SessionService
     svc = SessionService()
     store.create_session(slug, "req")
@@ -373,11 +324,7 @@ def test_a_non_material_change_keeps_the_artifact_fresh(slug, slot_name, before,
 
 
 def test_related_slot_change_marks_artifact_stale():
-    """Invariant 1: an artifact is stale when something it rests on changed, never because the
-    session moved past its source revision (which is *provenance*) — verdict from two edge sets:
-    the slots an artifact consumes (`ARTIFACT_SLOTS`) and the reasoning layer (`REASONING_CONSUMERS`,
-    see `test_reasoning_that_changes_without_a_slot_moving_still_invalidates`). The revision-comparison
-    control is `test_an_older_revision_that_missed_the_artifact_leaves_it_fresh` (moved here by #286)."""
+    """Invariant 1: an artifact is stale when something it rests on changed (#286)."""
     # The other side: a material change to a slot the artifact DOES consume flags it stale.
     from requivo.services.sessions import SessionService
     svc = SessionService()
@@ -395,9 +342,7 @@ def test_related_slot_change_marks_artifact_stale():
 
 
 def test_first_apply_does_not_invalidate_its_own_reasoning():
-    # A first apply of a model that already carries decisions/challenges must NOT report them as
-    # invalidated: they were proposed FOR this state, there is no prior reasoning to unseat. The old
-    # code propagated over `new` when there was no `current`, flagging a model's own reasoning stale.
+    # A first apply of a model that already carries decisions/challenges must NOT report them as invalidated.
     from requivo.services.sessions import SessionService
     svc = SessionService()
     slug = "clitest-first-apply"
@@ -421,8 +366,7 @@ def test_first_apply_does_not_invalidate_its_own_reasoning():
 
 
 def test_second_apply_invalidates_prior_reasoning_a_change_unseats():
-    # The other side: once reasoning is established, a later change that reaches a slot it rests on
-    # DOES invalidate it — the behaviour the first-apply guard must not suppress.
+    # The other side: once reasoning is established, a later change that reaches a slot it rests on DOES invalidate it — the behaviour the first-apply guard must not suppress.
     from requivo.services.sessions import SessionService
     svc = SessionService()
     slug = "clitest-second-apply"
@@ -444,8 +388,7 @@ def test_second_apply_invalidates_prior_reasoning_a_change_unseats():
 
 
 def test_expected_revision_precondition_blocks_a_stale_write():
-    # Optimistic locking: a writer that expects an out-of-date revision is rejected rather than landing
-    # silently on top of another update — the guarantee a concurrent Web service needs.
+    # Optimistic locking: a writer that expects an out-of-date revision is rejected rather than landing silently on top of another update — the guarantee a concurrent Web service needs.
     from requivo.core.errors import RevisionConflictError
     from requivo.services.sessions import SessionService
     svc = SessionService()
@@ -464,8 +407,7 @@ def test_expected_revision_precondition_blocks_a_stale_write():
 
 
 def test_each_revision_records_its_provenance():
-    # Provenance is per-revision: a session's model is moved by more than one surface over its life, so
-    # each revision records who produced it, what it succeeded, and a content hash.
+    # Provenance is per-revision: a session's model is moved by more than one surface over its life.
     from requivo.services.sessions import SessionService
     svc = SessionService()
     slug = "clitest-provenance"
@@ -491,8 +433,7 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
         # a real slot an artifact consumes, and an already-generated PRD tracked in the session
         wf = {**slot(60, "inferred", "high"), "value": "draft → issued"}
         store.save_revision(slug, out({"workflow": wf}))
-        # `_model_in_out` applied revision 1 and the line above applied revision 2, so 2 is what this
-        # PRD was generated from — stated by the caller rather than assumed by the service (#6).
+        # `_model_in_out` applied revision 1 and the line above applied revision 2 (#6).
         ArtifactService().save(slug, "prd", "# stale PRD", source_revision=2)
         turn2 = json.dumps({
             "model": full_slots(workflow={"completeness": 95, "confidence": "explicit",
@@ -506,41 +447,17 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
 
 
 # ── Tier 3: the artifact-type vocabulary agrees with itself (#270) ────────────
-# One concept -- "the artifact types" -- is keyed into _GENERATORS, _OP_PROMPTS
-# (providers/anthropic/generators.py), _WRITERS, GENERATABLE (services/discovery.py),
-# _ARTIFACT_SLOTS_RAW, ARTIFACT_FILENAMES, REASONING_CONSUMERS (core/dependencies.py), and
-# ARTIFACT_LABELS (web/viewmodels/labels.py). Nothing asserted they agree, and the dangerous drift
-# is silent: a type present in ARTIFACT_FILENAMES/_GENERATORS/_WRITERS but missing from
-# _ARTIFACT_SLOTS_RAW is never flagged stale, because services/artifacts.py's _stale_since reads
-# REASONING_CONSUMERS and propagate() off that one map alone -- exactly invariant 1's "a stale
-# document reports itself as up to date" failure, and the most routine change this vocabulary will
-# ever see (a new generator) is exactly what triggers it.
+# One concept -- "the artifact types" -- is keyed into _GENERATORS.
 #
-# Until #556 there were two near-identical filename tables here, ARTIFACT_FILENAMES and
-# ARTIFACT_FILES, and a second guard pinned them merely *agreeing* -- which proved nothing once
-# #519 made every type saveable through both paths and the two tables became structurally
-# identical. #556 removed the second table; `services/sessions.py`'s `_resolve_stale` (which used
-# to iterate the second table by key membership) now reads this one directly, so the drift that
-# guard caught -- a type reaching ARTIFACT_FILENAMES while the *other* table stayed behind -- is no
-# longer representable. What is still representable, and still dangerous, is a type missing from
-# ARTIFACT_FILENAMES entirely; that is what the checks below catch.
+# Until #556 there were two near-identical filename tables here.
 #
-# **The shape of the guard, decided rather than defaulted.** Not a registry-of-registries (a ninth
-# table that can itself drift) and not N^2 pairwise assertions (the relationship count grows with
-# every new table, most of them restating the same fact twice). `_ARTIFACT_SLOTS_RAW` is the one
-# *named* canonical source, and every other table is asserted against it rather than against each
-# other: `REASONING_CONSUMERS` is already mechanically derived from it, and it is the map
-# `_stale_since` actually reads -- it is the table whose omission is the dangerous one to begin
-# with. Adding a table costs one more relationship in `_artifact_vocabulary_mismatches` rather than
-# a new pairwise matrix.
+# **The shape of the guard, decided rather than defaulted.** Not a registry-of-registries (a ninth table that can itself drift) and not N^2 pairwise assertions (the relationship count grows with every new table, most of them restating the same fact twice).
 
 
 def _artifact_vocabulary_mismatches(*, slots_raw, generators, op_prompts, writers, generatable,
                                     artifact_filenames, artifact_labels) -> list[str]:
-    """Every relationship the real tables must satisfy, checked through the same argument names
-    whether the tables are the real module-level ones or a deliberately broken fixture copy -- the
-    *same* function has to fail on the fixture below, or the passing test above is untested (the
-    module's own "would this test still pass if the code did nothing" bar)."""
+    """Every relationship the real tables must satisfy, checked through the same argument names whether the
+    tables are the real module-level ones or a deliberately broken fixture copy."""
     canonical = set(slots_raw)
     problems = []
 
@@ -576,10 +493,7 @@ def _artifact_vocabulary_mismatches(*, slots_raw, generators, op_prompts, writer
 
 
 def test_the_real_artifact_registries_agree_on_their_key_sets():
-    """#270. The must-not-fire half: on the tables actually shipped, every relationship holds.
-    `test_a_type_missing_its__ARTIFACT_SLOTS_RAW_entry_is_caught` below is the must-fire control
-    over the identical helper, so this passing is evidence about the tables and not about the
-    check."""
+    """#270. The must-not-fire half: on the tables actually shipped, every relationship holds."""
     problems = _artifact_vocabulary_mismatches(
         slots_raw=_ARTIFACT_SLOTS_RAW, generators=_GENERATORS, op_prompts=_OP_PROMPTS,
         writers=_WRITERS, generatable=GENERATABLE, artifact_filenames=ARTIFACT_FILENAMES,
@@ -607,11 +521,8 @@ def _run_mismatches(tables: dict) -> list[str]:
 
 @pytest.mark.parametrize("table_name", ["generators", "writers", "artifact_filenames"])
 def test_a_type_missing_its__ARTIFACT_SLOTS_RAW_entry_is_caught(table_name):
-    """The positive control #270 asks for by name: a registry with a deliberately added type that
-    has no _ARTIFACT_SLOTS_RAW entry must fail the same check that passes on the real tables above
-    -- the exact drift the issue found (a type reaching ARTIFACT_FILENAMES/_GENERATORS/_WRITERS and
-    not _ARTIFACT_SLOTS_RAW, silently never flagged stale). A guard that only ever passes on the
-    current tables is untested."""
+    """The positive control #270 asks for by name: a registry with a deliberately added type that has no
+    _ARTIFACT_SLOTS_RAW entry must fail the same check that passes on the real tables above."""
     tables = _real_tables()
     if table_name == "generators":
         tables["generators"]["dummy"] = lambda *a, **k: None

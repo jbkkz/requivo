@@ -1,14 +1,4 @@
-"""The parts of `requivo.deterministic` that are not a verb: `__init__.register` and `_shared.input`.
-
-Split out of `test_cli_deterministic.py` by #141. `register(sub)` is the single seam `cli.py` binds
-the package through, so the test that every deterministic verb reaches its own handler is a test of
-the seam rather than of any one domain — it would be equally at home, and equally misfiled, in four
-different modules. `_shared.input` is what `-` means on `model apply`, `artifact save` and
-`session init`: one helper read by three verbs, which is why its tests never belonged to one of them
-either.
-
-The shared harness is `tests/_cli_harness.py`.
-"""
+"""The parts of `requivo.deterministic` that are not a verb: `__init__.register` and `_shared.input` (#141)."""
 from __future__ import annotations
 
 import io
@@ -35,8 +25,7 @@ def test_new_verbs_are_bound_in_the_parser():
 
 
 # ── documents on stdin ──────────────────────────────────────────────────────────
-# `-` exists so a caller holding content does not have to invent a file for it. The Claude Code skills
-# used to write `/tmp/requivo:prd.md` — a shared path, illegal on Windows, needing `rm` to clean up.
+# `-` exists so a caller holding content does not have to invent a file for it.
 
 
 
@@ -69,8 +58,7 @@ def test_a_request_can_be_created_from_stdin(workspace, monkeypatch):
 
 
 def test_a_missing_document_path_is_an_error_not_content(workspace):
-    # `model apply <session> <path>` takes a path. Treating an unreadable one as the proposal itself
-    # would turn a typo into a confusing schema error about a body that happens to be a filename.
+    # `model apply <session> <path>` takes a path.
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     with pytest.raises(SystemExit) as exc:
         _run(["model", "apply", "s", "no-such-file.json", "--json"])

@@ -1,12 +1,5 @@
-"""Interrupt handling across `discover`'s entry points (#206) and `run` — one verb over discover's
-loop and answer's apply path (#540/#541).
-
-Split out of `test_cli_interactive.py` by #555, once that file outgrew one module; the sibling keeps
-the loop itself and the #202 rescue-after-a-paid-turn guarantee, which is where
-`_at_a_terminal`/`_fail_draft_turn_on` are documented in full -- duplicated here rather than imported,
-per this suite's own convention of keeping test-module helpers local (`tests/_fakes.py` makes the
-argument).
-"""
+"""Interrupt handling across `discover`'s entry points (#206) and `run` — one verb over discover's loop and
+answer's apply path (#540/#541)."""
 from __future__ import annotations
 
 import builtins
@@ -26,8 +19,7 @@ from requivo.services.sessions import SessionService
 
 @pytest.fixture(autouse=True)
 def _isolate_workspace(workspace):
-    """Every test in this module writes sessions into an isolated temp workspace, never the real
-    repo -- `workspace` (conftest.py) does the pointing; autouse means no test here has to ask."""
+    """Every test in this module writes sessions into an isolated temp workspace, never the real repo."""
 
 
 _REQUEST = "a leave approval system, discovered twice"
@@ -39,17 +31,13 @@ _ASKING_REPLY = json.dumps({
 
 
 def _at_a_terminal(monkeypatch) -> None:
-    """`_cmd_discover` picks its branch on `--once` *or* the absence of a TTY, and under pytest stdin
-    is never one. Patched for both legs of the tests below, so the flag is the only difference between
-    them -- which is what "the two entry points refuse identically" has to mean."""
+    """`_cmd_discover` picks its branch on `--once` *or* the absence of a TTY."""
     import sys
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
 
 
 def _fail_draft_turn_on(monkeypatch, nth: int, exc: BaseException) -> None:
-    """Let the real `draft_turn` run, then raise `exc` on the `nth` call. Patched at the service
-    rather than in the transport because what these pin is `_cmd_discover`'s handling of a failed
-    turn, not how the SDK's error becomes an `EngineError` -- `tests/test_provider.py` owns that."""
+    """Let the real `draft_turn` run, then raise `exc` on the `nth` call."""
     real = DiscoveryService.draft_turn
     calls = {"n": 0}
 
@@ -63,10 +51,7 @@ def _fail_draft_turn_on(monkeypatch, nth: int, exc: BaseException) -> None:
 
 
 def test_an_interrupt_in_the_once_path_names_the_claimed_session_and_the_retry(monkeypatch, capsys):
-    """`--once`/non-tty `discover` claims a session and makes exactly one paid call, through
-    `disco.start()` -- and until now nothing in `_cmd_discover` wrapped that call. A Ctrl-C landing
-    inside it reached `app()` as a bare `KeyboardInterrupt` with the claimed session unnamed, the same
-    trap `_rescue_drafted` already closed for the interactive loop (#202) and never closed here."""
+    """`--once`/non-tty `discover` claims a session and makes exactly one paid call (#202)."""
     monkeypatch.setattr(DiscoveryService, "start",
                         lambda self, *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
@@ -84,10 +69,7 @@ def test_an_interrupt_in_the_once_path_names_the_claimed_session_and_the_retry(m
 
 
 def test_an_interrupt_before_a_session_is_claimed_names_no_slug(monkeypatch, capsys):
-    """The trap on the other side of the fix above (#206): an abort point that has genuinely claimed
-    nothing must not invent a session to name -- a message naming a slug that does not exist is worse
-    than the traceback it replaces. `is_file_argument` runs before any session is claimed on every
-    `discover` call, so patching it to interrupt reproduces the earliest realistic abort point."""
+    """The trap on the other side of the fix above (#206)."""
     monkeypatch.setattr("requivo.cli.is_file_argument",
                         lambda *a, **kw: (_ for _ in ()).throw(KeyboardInterrupt()))
 
@@ -105,9 +87,7 @@ def test_an_interrupt_before_a_session_is_claimed_names_no_slug(monkeypatch, cap
 
 
 def test_a_top_level_interrupt_on_an_existing_session_exits_130_with_no_traceback(monkeypatch, capsys):
-    """Every command other than `discover` reaches the provider with no claim of its own to make --
-    the session it operates on already existed before this run started -- so `app()`'s own top-level
-    handler is the whole fix for it, with nothing discover-specific to say (#206)."""
+    """Every command other than `discover` reaches the provider with no claim of its own to make (#206)."""
     _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY))
     slug = SessionService().list_sessions()[0].slug
     monkeypatch.setattr(DiscoveryService, "generate",
@@ -124,11 +104,8 @@ def test_a_top_level_interrupt_on_an_existing_session_exits_130_with_no_tracebac
 
 @pytest.mark.parametrize("path", ["once", "interactive"], ids=["#206-once-path", "#206-mid-turn"])
 def test_a_provider_output_failure_mid_turn_also_names_the_claimed_session(monkeypatch, capsys, path):
-    """`ProviderOutputError` (raised when the provider's JSON retry loop gives up) is a
-    `RequivoError` sibling of `EngineError`, not a subclass of it -- so two different
-    `except (EngineError, KeyboardInterrupt)` catches let it through with the claimed session
-    unnamed: the quick (`--once`) path's own catch, and `converse()`'s turn-draft catch one layer in.
-    Swept into one parametrized test once the first instance turned up in review of #206 (#555)."""
+    """`ProviderOutputError` (raised when the provider's JSON retry loop gives up) is a `RequivoError` sibling
+    of `EngineError`, not a subclass of it."""
     if path == "once":
         monkeypatch.setattr(DiscoveryService, "start",
                             lambda self, *a, **kw: (_ for _ in ()).throw(ProviderOutputError("bad json")))
@@ -160,10 +137,8 @@ def test_a_provider_output_failure_mid_turn_also_names_the_claimed_session(monke
 
 
 def test_run_with_a_request_makes_the_same_call_count_as_discover():
-    """#540's acceptance criterion, as call counts: `run "…"` reaches `_cmd_discover` for a
-    request/path shape rather than reimplementing it, so the two pay identically. Three calls each
-    since #601 -- the perimeter router, the grounding judgment, then the turn -- and *identically
-    three* is the assertion."""
+    """#540's acceptance criterion, as call counts: `run "…"` reaches `_cmd_discover` for a request/path shape
+    rather than reimplementing it, so the two pay identically."""
     fake_discover = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
     _run_app(["discover", _REQUEST, "--once"], client=fake_discover)
     assert len(fake_discover.calls) == 3
@@ -174,10 +149,7 @@ def test_run_with_a_request_makes_the_same_call_count_as_discover():
 
 
 def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monkeypatch):
-    """#540: an existing session's slug resumes it through `answer`, never a second discovery. If
-    `run` mis-routed this slug back into `discover`, invariant 13's gate would refuse it for **zero**
-    paid calls (the session is already past revision 0) -- so the call count below is also the proof
-    the right path was taken, not only that it succeeded."""
+    """#540: an existing session's slug resumes it through `answer`, never a second discovery."""
     _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     slug = SessionService().list_sessions()[0].slug
     assert SessionService().list_sessions()[0].current_revision == 1
@@ -191,9 +163,8 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
 
 
 def test_run_on_a_session_with_no_model_refuses_before_any_paid_call():
-    """#540: resuming a session that was claimed but never discovered (revision 0, no model yet)
-    refuses cleanly with zero paid calls -- the shape
-    `test_both_discover_entry_points_refuse_a_refined_session_before_paying` pins one gate over."""
+    """#540: resuming a session that was claimed but never discovered (revision 0, no model yet) refuses
+    cleanly with zero paid calls."""
     SessionService().create_session(_REQUEST, slug="claimed-only")
     fake = FakeClient()
 
@@ -217,9 +188,8 @@ def test_run_with_no_argument_and_one_session_resumes_it(monkeypatch):
 
 
 def test_run_with_no_argument_and_no_session_prompts_for_a_request():
-    """#540: no argument, no session at all -> ask for a request the same way `discover` reads one.
-    stdin is never a tty under pytest, so the quick path takes over; #601's router adds a third call
-    ahead of the two #593 already cost here."""
+    """#540: no argument, no session at all -> ask for a request the same way `discover` reads one. stdin is
+    never a tty under pytest, so the quick path takes over."""
     import builtins as _builtins
 
     real_input = _builtins.input
@@ -237,15 +207,14 @@ def test_run_with_no_argument_and_no_session_prompts_for_a_request():
 
 
 def test_run_with_no_argument_and_several_sessions_lists_them_and_resumes_the_default(monkeypatch):
-    """#541: several -> every candidate is listed, the default marked, before the loop's own
-    (potentially paid) prompt ever runs -- and the default is the most recently *written* one."""
+    """#541: several -> every candidate is listed, the default marked, before the loop's own (potentially
+    paid) prompt ever runs -- and the default is the most recently *written* one."""
     _run_app(["discover", _REQUEST, "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     older = SessionService().list_sessions()[0].slug
     _run_app(["discover", _REQUEST + ", again", "--once"], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY))
     newer = next(m.slug for m in SessionService().list_sessions() if m.slug != older)
 
-    # A deterministic tie-break: force `newer`'s `updated_at` strictly ahead of `older`'s, rather
-    # than trusting two real-time writes in the same test to land in different seconds.
+    # A deterministic tie-break: force `newer`'s `updated_at` strictly ahead of `older`'s.
     p = store.canonical_dir(newer) / "session.json"
     data = json.loads(p.read_text(encoding="utf-8"))
     data["updated_at"] = "2999-01-01T00:00:00Z"
@@ -261,18 +230,14 @@ def test_run_with_no_argument_and_several_sessions_lists_them_and_resumes_the_de
 
 
 def _converged_model() -> EngineOutput:
-    """A session with no open questions -- `run`'s resume loop stops after `render_turn` alone, so a
-    test using this needs no `input()` patch and no provider call."""
+    """A session with no open questions -- `run`'s resume loop stops after `render_turn` alone."""
     return EngineOutput.model_validate(
         {"model": full_slots(problem=slot(80, "explicit", "high")), "questions": [],
          "summary": {"objective": "o"}})
 
 
 def test_run_with_no_argument_is_not_hijacked_by_a_same_named_file(monkeypatch, tmp_path):
-    """Found in review: the resolver's own slug used to be re-run through `is_file_argument`, so a
-    file in the cwd sharing a resumed session's name silently started a paid discovery on the
-    file's *contents* instead of resuming it. Zero provider calls is the proof the discovery path
-    was never taken."""
+    """Found in review: the resolver's own slug used to be re-run through `is_file_argument`."""
     monkeypatch.chdir(tmp_path)
     SessionService().create_session("a request about sample", slug="sample")
     store.save_revision("sample", _converged_model())
@@ -286,9 +251,8 @@ def test_run_with_no_argument_is_not_hijacked_by_a_same_named_file(monkeypatch, 
 
 
 def test_run_refuses_once_and_context_when_resuming(capsys):
-    """#540, found in review: `--once`/`--context` describe a *new* discovery and used to be
-    silently ignored on a resume. Refused instead, before any provider call -- one test covers
-    both flags, since they share the identical refusal."""
+    """#540, found in review: `--once`/`--context` describe a *new* discovery and used to be silently ignored
+    on a resume."""
     SessionService().create_session("a request about resumed", slug="resumed")
     store.save_revision("resumed", EngineOutput.model_validate(
         {"model": full_slots(problem=slot(80, "explicit", "high")),
@@ -310,11 +274,8 @@ def test_run_refuses_once_and_context_when_resuming(capsys):
 
 
 def test_a_second_interrupt_during_the_rescues_own_save_exits_130(monkeypatch, capsys):
-    """`_rescue_drafted`'s own save is guarded against `RequivoError`/`OSError` (#320) but not
-    against a second `KeyboardInterrupt` landing on the save itself -- which used to propagate bare
-    and silent (no message at all) before reaching `app()`'s generic handler. Found in review of
-    this diff: the function this diff rewrote to promise "every abort path ... must name the
-    session" did not hold for this one abort path inside it."""
+    """`_rescue_drafted`'s own save is guarded against `RequivoError`/`OSError` (#320) but not against a
+    second `KeyboardInterrupt` landing on the save itself."""
     _at_a_terminal(monkeypatch)
     monkeypatch.setattr(builtins, "input", lambda _prompt="": "the line manager approves")
     _fail_draft_turn_on(monkeypatch, 2, EngineError("API unavailable"))

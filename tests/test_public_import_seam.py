@@ -1,18 +1,5 @@
-"""The declared Python import seam (#423) exists, and compatibility.md's declaration of it
-actually names things the package has.
-
-Filed from the 2026-09 readiness audit: the Python import surface used to be blanket-disclaimed in
-compatibility.md while requivo-cloud already imported nine names across four modules, including six
-provider-internal generator functions decision record 0003 flagged unstable. This file is the
-mechanical half of closing that gap -- it does not judge whether the *chosen* seam is the right one
-(that is compatibility.md's own prose, and a human's review of it), only that every name declared
-there resolves, that `py.typed` actually ships, and that the five surfaces the page's own
-"neither column" rule used to leave silent (render/paths/streams/cli/web) now carry a verdict.
-
-Would this pass if #423 did nothing? No: before the fix `src/requivo/py.typed` does not exist, and
-none of the names below are mentioned in compatibility.md at all -- the section they belong to does
-not exist yet.
-"""
+"""The declared Python import seam (#423) exists, and compatibility.md's declaration of it actually names
+things the package has."""
 from __future__ import annotations
 
 import importlib
@@ -23,10 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = REPO_ROOT / "src" / "requivo"
 COMPAT_MD = REPO_ROOT / "docs" / "compatibility.md"
 
-# (module -> names) -- the seam this change declares. Mirrors compatibility.md's own "Python import
-# surface" section; kept here rather than parsed out of the page because the page is prose with a
-# reason attached to each name, not a machine-readable table, and a name declared there that this
-# suite cannot even import is the drift most worth catching mechanically.
+# (module -> names) -- the seam this change declares.
 SEAM: dict[str, tuple[str, ...]] = {
     "requivo.services.sessions": (
         "SessionService", "UpdateResult", "SessionEntry", "SessionSnapshot", "Readiness", "RescopeResult",
@@ -48,8 +32,7 @@ SEAM: dict[str, tuple[str, ...]] = {
     "requivo.usage": ("UsageLedger", "CallRecord", "track_usage", "record_call", "current_ledger"),
 }
 
-# Modules the page's own "neither column" rule (#89) left silent before this change. #423's third
-# acceptance criterion is that each gets a verdict, so each must appear in the new section too.
+# Modules the page's own "neither column" rule (#89) left silent before this change.
 NEWLY_CLASSIFIED_MODULES = ("requivo.render", "requivo.paths", "requivo.streams", "requivo.cli", "requivo.web")
 
 

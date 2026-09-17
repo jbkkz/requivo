@@ -1,16 +1,4 @@
-"""`session import`/`session export` under concurrency and mid-operation races — #113, #111, #114.
-
-Split out of `test_cli_session_archives.py` by #555, once that file outgrew one module; the sibling
-covers the archive-shape validation itself (size/count/entry caps, unsafe paths, the `invalid_archive`
-taxonomy). `_zip`/`_good_entries`/`_import_error` are duplicated from there rather than imported, per
-this suite's own convention of keeping test-module helpers local (`tests/_fakes.py` makes the
-argument).
-
-Three stories, in order: #113 (a forced replacement is serialised against the writers of the session
-it replaces), #111 (a session created while the archive was being read is not destroyed), and #114 (a
-stray directory at the target slug answers the same on every platform). The shared harness is
-`tests/_cli_harness.py`.
-"""
+"""`session import`/`session export` under concurrency and mid-operation races — #113, #111, #114."""
 from __future__ import annotations
 
 import io
@@ -55,31 +43,13 @@ def _import_error(archive) -> dict:
 
 # ── #113: a forced replacement is serialised against the writers of the session it replaces ─────
 #
-# `save_revision` resolves the session directory once and then writes by *pathname*; `session_lock`
-# holds an fd on an *inode*. Those two descriptions agree only while nothing renames the directory,
-# and `_swap_in` renames it. So a writer sitting inside `save_revision` while a forced import runs
-# goes on writing into the *newly imported* directory, and a third process opening the lock finds a
-# different inode and acquires immediately — two writers holding one slug's lock, which is invariant
-# 9's own failure mode.
+# `save_revision` resolves the session directory once and then writes by *pathname*.
 #
-# The guard is that the lock no longer lives inside the directory being renamed (`.requivo/locks/`),
-# so `_swap_in` holds it like every other compound write. A test asserting only that the import
-# succeeded passes on the defect; these two assertions do not.
+# The guard is that the lock no longer lives inside the directory being renamed (`.requivo/locks/`).
 
 
 def _paused_between_the_writes(monkeypatch, slug: str, at_the_gate, release):
-    """Freeze `save_revision` on `slug` between its file writes and its metadata write.
-
-    That gap is where the damage lands: revisions/NNNN-model.json and model.json are already on
-    disk, `session.json` is about to be written through a freshly resolved `canonical_dir(slug)`,
-    and the lock is held across the whole of it. Patching `write_meta` rather than sleeping keeps
-    the window deterministic on every leg instead of timing-dependent on the slow ones.
-
-    **Patched on the `Store` class, not the module function** (#272). `store.save_revision` is now
-    a thin ambient-default wrapper over `Store.save_revision`, which calls `self.write_meta(...)` —
-    a method lookup on the class, not the module-level `write_meta` name -- so patching the module
-    function no longer intercepts it. The class attribute is what every instance's `self.write_meta`
-    actually resolves to, ambient or explicit alike, which is what makes this the correct target now."""
+    """Freeze `save_revision` on `slug` between its file writes and its metadata write (#272)."""
     real_write_meta = store.Store.write_meta
 
     def paused(self, s, meta):
@@ -126,8 +96,7 @@ def test_a_forced_import_serialises_against_a_concurrent_writer(workspace, tmp_p
     importer = threading.Thread(target=_capture(_import_then_signal), daemon=True)
     importer.start()
 
-    # Long enough for an unguarded import to have finished the whole swap; under the guard it is
-    # still blocked on the writer's lock. Measured at ~0.1s unguarded, so 1.5s is not a close call.
+    # Long enough for an unguarded import to have finished the whole swap.
     assert not imported.wait(1.5), (
         "the forced import replaced the session while a writer held its lock")
 
@@ -167,11 +136,7 @@ def _engine_output_for_dup():
 
 
 def test_export_excludes_the_lock_file_and_waits_for_the_writer(workspace, tmp_path, monkeypatch):
-    """An export reads several files that must agree: outside the lock it can combine an old
-    `session.json` with a new `model.json`. `.lock` has no meaning outside this machine's own
-    coordination, so the fixture plants the residue rather than waiting for a writer to. **#293:**
-    `held.is_set()` read after `t.join()` is vacuously True either way; `acquired` is the real
-    control."""
+    """An export reads several files that must agree (#293)."""
     import time
 
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
@@ -194,9 +159,7 @@ def test_export_excludes_the_lock_file_and_waits_for_the_writer(workspace, tmp_p
     assert acquired.wait(10), "the writer never took the lock — contention was never reached"
     dest = tmp_path / "s.zip"
     _run(["session", "export", "s", "-o", str(dest), "--json"])
-    # Read before join(): join() waits for the writer to finish regardless of whether export waited
-    # for it, so held would read True either way by the time join() returns. Read here, it can only
-    # be set if export's own read blocked until the writer released the lock.
+    # Read before join(): join() waits for the writer to finish regardless of whether export waited for it.
     assert held.is_set(), "the export read the session while a writer held it"
     t.join(timeout=10)
 
@@ -207,11 +170,8 @@ def test_export_excludes_the_lock_file_and_waits_for_the_writer(workspace, tmp_p
 
 
 def test_session_export_survives_a_transient_permission_error(workspace, tmp_path, monkeypatch):
-    """The same cause invariant 18's `_atomic_write` and `session restore`'s `_replace_with_retry`
-    already retry: on Windows the final `rename` of the freshly written archive can fail with a
-    transient `PermissionError` when a scanner or the Search Indexer briefly opens it microseconds
-    after it lands (#524). `_cmd_session_export`'s `tmp.replace(dest)` now goes through the same
-    helper, the identical shape to `test_session_restore_survives_a_transient_permission_error`."""
+    """The same cause invariant 18's `_atomic_write` and `session restore`'s `_replace_with_retry` already
+    retry."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
 
@@ -236,10 +196,8 @@ def test_session_export_survives_a_transient_permission_error(workspace, tmp_pat
 
 def test_session_export_still_gives_up_on_a_permanent_permission_error(workspace, tmp_path,
                                                                           monkeypatch):
-    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail
-    loudly and quickly, and leave no completed archive behind under a scratch name — the failure
-    mode #524 was filed for is a finished export that reports a traceback while `finally:
-    tmp.unlink(missing_ok=True)` quietly deletes it."""
+    """Bounded, and the bound is the point: a genuinely unwritable destination must still fail loudly and
+    quickly, and leave no completed archive behind under a scratch name."""
     _run(["session", "init", "Something.", "--slug", "s", "--json"])
     _run_stdin(["model", "apply", "s", "-", "--json"], json.dumps(_full_model()), monkeypatch)
 
@@ -253,8 +211,7 @@ def test_session_export_still_gives_up_on_a_permanent_permission_error(workspace
     dest = tmp_path / "s.zip"
     with pytest.raises(PermissionError):
         app(["session", "export", "s", "-o", str(dest)], client=None)
-    # The attempt count is what makes this a test of the *retry* rather than of `replace`: without
-    # it every assertion here holds identically with the loop deleted (found in review of #483).
+    # The attempt count is what makes this a test of the *retry* rather than of `replace` (#483).
     assert attempts["n"] == _REPLACE_ATTEMPTS, (
         f"expected exactly {_REPLACE_ATTEMPTS} attempts before giving up, got {attempts['n']}")
     assert not dest.exists()
@@ -263,23 +220,14 @@ def test_session_export_still_gives_up_on_a_permanent_permission_error(workspace
 
 # ── #111: a session created while the archive was being read is not destroyed ───
 #
-# `session import` used to decide the collision question twice: `session_exists(slug) and not
-# --force` before the extraction, and `replaced = target.exists()` after it. Between those two
-# decisions sits the whole unzip, and a session created in that window was moved aside and then
-# `rmtree`d — destroyed by an import whose user was never asked for `--force`, because at the moment
-# they would have been asked there was nothing to force past.
+# `session import` used to decide the collision question twice.
 #
-# Invariant 9 in the one verb that writes a whole session: a precondition is held across the writes
-# it authorises. The two arms below are what holds it — the free-slug arm claims by rename, which is
-# invariant 11's rule and the only thing that makes the window safe rather than merely narrow.
+# Invariant 9 in the one verb that writes a whole session.
 
 
 def test_a_session_created_during_the_extraction_window_is_refused_not_destroyed(
         workspace, tmp_path, monkeypatch):
-    """The defect, driven through the real CLI.
-
-    `_validate_extracted` runs after the archive is on disk and before anything is moved into place,
-    so patching it is the honest way to stand inside the window without reaching into the store."""
+    """The defect, driven through the real CLI."""
     from requivo.deterministic.sessions import archives as det
 
     _zip(tmp_path / "race.zip", _good_entries("race"))
@@ -302,11 +250,7 @@ def test_a_session_created_during_the_extraction_window_is_refused_not_destroyed
 
 def test_that_window_refusal_names_the_conflict_rather_than_a_move_failure(
         workspace, tmp_path, monkeypatch):
-    """`session_exists` / 409, the same code the guard would have raised — not `import_move_failed`.
-
-    The caller is entitled to the answer they would have got had the timing been different, and the
-    remedy is the same one: pass `--force`. `import_move_failed` would send them looking at their
-    filesystem for a fault that is not there."""
+    """`session_exists` / 409, the same code the guard would have raised — not `import_move_failed`."""
     from requivo.deterministic.sessions import archives as det
 
     _zip(tmp_path / "race.zip", _good_entries("race"))
@@ -326,8 +270,7 @@ def test_that_window_refusal_names_the_conflict_rather_than_a_move_failure(
 
 def test_the_ordinary_import_arms_still_work_so_the_guard_is_not_a_blanket_refusal(
         workspace, tmp_path, monkeypatch):
-    """The positive control for both arms. A fix that refused every import, or that never replaced,
-    would pass the two tests above and fail here."""
+    """The positive control for both arms. A fix that refused every import."""
     _zip(tmp_path / "fresh.zip", _good_entries("fresh"))
     r = _run_json(["session", "import", str(tmp_path / "fresh.zip"), "--json"])
     assert r["replaced"] is False
@@ -340,26 +283,18 @@ def test_the_ordinary_import_arms_still_work_so_the_guard_is_not_a_blanket_refus
 
 # ── a stray directory at the slug answers the same on every platform (#114) ─────
 #
-# The free-slug arm claims the slug with `os.replace`, and that call is where the platforms part
-# company. On POSIX an **empty** destination directory is replaced silently; on Windows `os.replace`
-# is `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`, which Microsoft documents as unusable when
-# either name is a directory, so *any* existing destination fails there — empty or not. One stray
-# `mkdir` therefore imported on macOS and failed on Windows, and the Windows failure arrived as
-# `import_move_failed`: *could not move the imported session into place*. Both halves are defects,
-# and the second is the worse one, because it names a cause that is not the cause.
+# The free-slug arm claims the slug with `os.replace`, and that call is where the platforms part company.
 
 
 @pytest.mark.parametrize("label, populate", [
-    # ASCII ids on purpose: a parametrize label becomes a node id, which is written to a console
-    # whose codepage is not the source file's.
+    # ASCII ids on purpose: a parametrize label becomes a node id.
     ("empty - the case the two platforms disagree about", lambda d: None),
     ("holding a file", lambda d: (d / "junk.txt").write_text("x", encoding="utf-8")),
     ("holding only a stray .lock", lambda d: (d / ".lock").write_text("", encoding="utf-8")),
 ])
 def test_a_stray_directory_at_the_slug_is_refused_by_name_on_every_platform(workspace, tmp_path,
                                                                            label, populate):
-    """#114. All three rows are one answer now — `import_destination_occupied`, before the rename is
-    attempted, so the verdict is the guard's rather than the platform's."""
+    """#114. All three rows are one answer now — `import_destination_occupied`."""
     _zip(tmp_path / "stray.zip", _good_entries("stray"))
     target = store.canonical_dir("stray")
     target.mkdir(parents=True)
@@ -372,18 +307,14 @@ def test_a_stray_directory_at_the_slug_is_refused_by_name_on_every_platform(work
     assert str(target) in err["details"]["path"]
     # the old message sent the reader at their filesystem looking for a fault that is not there
     assert "could not move" not in err["message"], label
-    # …and it must not offer the one remedy that cannot work: `--force` replaces a *session*, and
-    # the whole point of this arm is that there is no session here
+    # …and it must not offer the one remedy that cannot work.
     assert "does not apply here" in err["message"], label
 
-    # nothing was imported, and the directory the caller put there is untouched — an import does not
-    # delete a directory it cannot interpret
+    # nothing was imported, and the directory the caller put there is untouched.
     assert store.list_session_slugs() == []
     assert sorted(p.name for p in target.iterdir()) == before
 
-    # must fire: with the stray gone the same archive lands. Without this the assertion above would
-    # pass just as well against an import broken some other way, or against a harness that never
-    # built an archive at all.
+    # must fire: with the stray gone the same archive lands.
     shutil.rmtree(target)
     assert _run_json(["session", "import", str(tmp_path / "stray.zip"), "--json"])["slug"] == "stray"
 
@@ -409,10 +340,7 @@ def test_a_stray_appearing_in_the_rename_window_is_named_rather_than_called_a_mo
     assert "could not move" not in err["message"], err
     assert store.list_session_slugs() == []
 
-    # must fire: disarm the patch, clear the stray, and the same archive lands. The patch is turned
-    # off with a flag rather than `monkeypatch.undo()`: `workspace` takes the same function-scoped
-    # `monkeypatch` object, so undoing here would also revert `REQUIVO_WORKSPACE` and import the
-    # session into whatever directory the suite happens to be running from.
+    # must fire: disarm the patch, clear the stray, and the same archive lands.
     armed[0] = False
     shutil.rmtree(target)
     assert _run_json(["session", "import", str(tmp_path / "late.zip"), "--json"])["slug"] == "late"
@@ -434,11 +362,7 @@ def test_the_occupied_destination_is_a_conflict_with_the_store_and_not_a_malform
 
 
 def test_import_into_a_fresh_workspace_writes_the_privacy_gitignore(workspace, tmp_path):
-    """#211's second door: `create_session` is not the only call that brings `.requivo/` into
-    existence -- `session import` can reach a workspace with none, and a guarantee written at
-    creation alone would be absent for exactly the user who received a colleague's session (which
-    holds *their* client's request text verbatim) before running one of their own. Invariant 14's
-    sentence, one directory up: creation is not the only door."""
+    """#211's second door: `create_session` is not the only call that brings `.requivo/` into existence."""
     marker = workspace / ".requivo" / ".gitignore"
     assert not marker.exists()
 

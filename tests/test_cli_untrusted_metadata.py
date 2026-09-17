@@ -1,18 +1,4 @@
-"""A `session.json` field read off disk cannot write a line of a verb's output — #40, #62, #70, #107.
-
-Split out of `test_cli_untrusted_output.py` by #555, once that file outgrew one module: this half
-covers every surface that renders a persisted **metadata** field straight off disk (`doctor`,
-`session verify`, `session show`, `artifact list`, `impact`, and `run`'s candidate listing);
-`test_cli_untrusted_documents.py` covers a **document body** or provider/git-authored prose forging
-its own render (`artifact show`, the four generation verbs, the golden harness).
-
-The fixtures say the same thing the split follows: `forged_workspace` is read by tests of three verbs
-here and `_SHOW_FORGERIES` by tests of two, both entirely within this half — so the split costs no
-fixture a copy or an orphaned comment block, only the sweep-narrative paragraph above, restated once
-per file rather than once for the whole class.
-
-The shared harness is `tests/_cli_harness.py`.
-"""
+"""A `session.json` field read off disk cannot write a line of a verb's output — #40, #62, #70, #107."""
 from __future__ import annotations
 
 import io
@@ -27,12 +13,7 @@ from requivo.core import persistence as store
 
 # ── a receipt forged by the thing it reports on ─────────────────────────────────
 
-# A card name is an unconstrained `str` in `session.json`, and `session import` passes it through
-# intact. This one is shaped to forge the very row that would otherwise report it: a first line that
-# reads as an ordinary card name, then a claim at column 0, then a byte-identical copy of doctor's
-# own `sessions` row saying the opposite of the truth. `.strip()` — the only thing that touched a
-# card name before #40 — removes surrounding whitespace and not interior newlines, so all three
-# lines survived into the receipt.
+# A card name is an unconstrained `str` in `session.json` (#40).
 _FORGED_CARD = (
     "ok-card\n"
     "All clear, nothing to see.\n"
@@ -42,13 +23,7 @@ _FORGED_CARD = (
 
 @pytest.fixture
 def forged_workspace(workspace, tmp_path, monkeypatch):
-    """Two sessions in one workspace, differing only in what their card selection says.
-
-    `honest` is the **must-fire** half and it is not optional: every assertion below about the
-    forgery *not* appearing would also pass against a doctor that printed nothing at all, a card
-    directory that could not be read, or a workspace the fixture failed to populate. So the same
-    fixture carries a genuine unresolvable card whose line, glyph and column are asserted present.
-    """
+    """Two sessions in one workspace, differing only in what their card selection says."""
     cards = tmp_path / "cards"
     cards.mkdir()
     (cards / "gone-card.md").write_text("# Gone card\n\nSome product context.\n", encoding="utf-8")
@@ -78,35 +53,26 @@ def test_doctor_cannot_be_made_to_print_a_row_a_session_wrote(forged_workspace):
 
     # ── must not fire: nothing the session wrote became a line of the receipt ──
     assert "All clear, nothing to see." not in lines, "a card name wrote a line at column 0"
-    # Everything the session wrote is confined to the one detail line the renderer owns. Asserted as
-    # containment rather than absence: the text is still *shown* — escaped — so "it does not appear"
-    # would be the wrong property and would pass on a doctor that had silently dropped the finding.
+    # Everything the session wrote is confined to the one detail line the renderer owns.
     assert all(ln.startswith("     └─ forged: ") for ln in lines if "0 in this workspace" in ln), \
         "a card name forged doctor's own sessions row"
 
-    # The session is still *reported* — neutralising must not become dropping. The whole name is
-    # there, on one line, in the escaped form `integrity.py` already uses for its sibling field.
+    # The session is still *reported* — neutralising must not become dropping.
     forged = [ln for ln in lines if ln.startswith("     └─ forged: ")]
     assert len(forged) == 1, forged
     assert "ok-card" in forged[0] and "All clear" in forged[0], forged[0]
 
-    # Each finding gets the remedy that can fix it. Both sessions are in `unresolved_cards`, and
-    # "put the card back" cannot repair a malformed selection — a receipt that names a real problem
-    # and then prints advice that cannot work is the quiet half of this same defect.
+    # Each finding gets the remedy that can fix it.
     assert any("REQUIVO_CONTEXT_DIR" in ln for ln in lines), lines
     assert any("session.json" in ln and "malformed" in ln for ln in lines), lines
 
-    # `--json` is a machine format and must keep the bytes verbatim: the escaping is a property of
-    # the terminal rendering, not of the finding.
+    # `--json` is a machine format and must keep the bytes verbatim.
     report = _run_json(["doctor", "--json"])["sessions"]
     assert set(report["unresolved_cards"]) == {"honest", "forged"}
 
 
 def test_session_verify_cannot_be_made_to_print_a_line_a_session_wrote(forged_workspace):
-    """The same forgery on the anti-tampering verb, which is the sharper half: `session verify` is
-    the command whose entire job is to say whether a session directory is telling the truth, and the
-    session under inspection could write into its verdict — while `verify` still exited 1, so the
-    exit code and the text disagreed."""
+    """The same forgery on the anti-tampering verb, which is the sharper half."""
     def _verify(slug: str) -> str:
         buf = io.StringIO()
         with redirect_stdout(buf), pytest.raises(SystemExit) as e:
@@ -138,9 +104,7 @@ def test_impact_cannot_be_made_to_print_a_line_by_an_unmatched_slot_token(worksp
 
     # must fire: a real token still resolves, and an ordinary unknown one is still named as typed
     assert "Unknown slot" not in _run(["impact", "imp", "workflow"])
-    # An unmatched slot exits 1 since #250 -- a wrong probe used to be indistinguishable from an
-    # empty result -- so the text is read off stdout directly rather than through `_run`, which does
-    # not expect `app()` to raise.
+    # An unmatched slot exits 1 since #250 -- a wrong probe used to be indistinguishable from an empty result -- so the text is read off stdout directly rather than through `_run`, which does not expect `app()` to raise.
     buf = io.StringIO()
     with redirect_stdout(buf):
         with pytest.raises(SystemExit) as exc:
@@ -161,10 +125,7 @@ def test_impact_cannot_be_made_to_print_a_line_by_an_unmatched_slot_token(worksp
 
 
 def test_session_show_renders_a_card_name_as_one_line(forged_workspace):
-    """The third render site, which #40 does not name and which no selector guard can reach:
-    `session show` reads `context_cards` straight out of the metadata and joins it, without asking
-    the selector anything. A boundary that refuses a hostile selection still leaves this open,
-    because nothing here is selecting."""
+    """The third render site, which #40 does not name and which no selector guard can reach."""
     honest = _run(["session", "show", "honest"]).splitlines()
     assert "  context  gone-card" in honest, honest    # must fire, and unquoted
 
@@ -174,14 +135,10 @@ def test_session_show_renders_a_card_name_as_one_line(forged_workspace):
     assert len(context) == 1 and "ok-card" in context[0], forged
 
 
-# One forgery per untrusted `str` on `session show`'s text path (#70). Each value is a plausible one
-# followed by a newline and a line shaped exactly like a line `session show` itself prints, so the
-# assertion below — that the render is still eight lines — is a statement about forged *rows*, not
-# about stray text turning up somewhere.
+# One forgery per untrusted `str` on `session show`'s text path (#70).
 _SHOW_FORGERIES = {
     "slug": "s\nSession 'trusted'  (id 000000000000…)",
-    # Sliced to 12 before it is shown, so the newline has to fall inside the first 12 characters or
-    # the forgery is neutralised by the slice rather than by the escaping and proves nothing.
+    # Sliced to 12 before it is shown, so the newline has to fall inside the first 12 characters or the forgery is neutralised by the slice rather than by the escaping and proves nothing.
     "session_id": "ab\nFORGED SESSION ID",
     "created_at": "2026-01-01T00:00:00Z\n  revision 999",
     "updated_at": "2026-01-01T00:00:00Z\n  provider trusted   model trusted",
@@ -209,24 +166,19 @@ def test_session_show_cannot_be_made_to_print_a_line_a_session_wrote(workspace):
 
     # ── must not fire: nothing the session wrote became a line of the render ──
     #
-    # Six labelled lines, an `artifacts:` header and exactly one artifact row. Counting is the
-    # decisive form: any escape produces a ninth line, wherever it lands and whatever it says.
+    # Six labelled lines, an `artifacts:` header and exactly one artifact row.
     assert len(lines) == 8, out
     assert len([ln for ln in lines if ln.startswith("Session '")]) == 1, out
     for label in ("  created  ", "  updated  ", "  revision ", "  provider ", "  context  "):
         assert len([ln for ln in lines if ln.startswith(label)]) == 1, (label, out)
     assert lines[6] == "  artifacts:", out
     assert len([ln for ln in lines if ln.startswith("    ")]) == 1, out
-    # The facts stay the session's own. `revision 999` was forged three separate ways above.
+    # The facts stay the session's own.
     assert lines[3] == "  revision 0", out
 
     # ── must fire: every forged value is still shown, escaped, on the line that owns it ──
     #
-    # Neutralising must not become dropping: a reader has to be able to see exactly what is stored,
-    # which is the same treatment `core/integrity.py` gives the recorded artifact filename. Asserted
-    # per field, against the line each belongs to, so a fix that dropped one — or moved it onto a
-    # neighbour's line — is a failure and not a smaller pass. `session_id` is the exception and is
-    # taken separately below, because it is the one value the render truncates.
+    # Neutralising must not become dropping: a reader has to be able to see exactly what is stored.
     st = _SHOW_FORGERIES["artifact_status"]
     ((artifact_type, artifact), ) = st.items()
     for i, value in ((0, _SHOW_FORGERIES["slug"]),
@@ -238,17 +190,12 @@ def test_session_show_cannot_be_made_to_print_a_line_a_session_wrote(workspace):
                      (7, artifact["filename"])):
         assert repr(value) in lines[i], (i, value, lines[i])
 
-    # **Slice first, then escape.** `session_id` is shown truncated; escaping first and slicing after
-    # would cut the repr mid-sequence and emit an unterminated quote. The whole repr of the *sliced*
-    # value is what must appear — 21 characters, where a truncated escape would be 12.
+    # **Slice first, then escape.** `session_id` is shown truncated.
     assert repr(_SHOW_FORGERIES["session_id"][:12]) in lines[0], lines[0]
 
 
 def test_session_show_leaves_an_ordinary_session_byte_for_byte(workspace, tmp_path):
-    """The other half of #70, and the half that says the fix cost nothing: a value that is already
-    one safe line comes back unquoted and unchanged, so no real session's output moves. Without
-    this, `display_token` could have been a plain `repr()` on every field, the forgery test above
-    would still be green, and every user's terminal would have gained quotes around six values."""
+    """The other half of #70, and the half that says the fix cost nothing."""
     _run(["session", "init", "Reconcile event check-ins.", "--slug", "plain"])
     proposal = tmp_path / "p.json"
     proposal.write_text(json.dumps(_full_model()), encoding="utf-8")
@@ -272,21 +219,17 @@ def test_session_show_leaves_an_ordinary_session_byte_for_byte(workspace, tmp_pa
 
 
 def test_session_show_json_escapes_a_control_character_before_it_reaches_a_line(workspace):
-    """`--json` needs no `display_token`. This is the confirmation, and it **corrects the reason**
-    #62 and #70 both give for it."""
+    """`--json` needs no `display_token`. This is the confirmation (#62)."""
     _run(["session", "init", "Something.", "--slug", "j"])
     _forge_meta("j", dict(_SHOW_FORGERIES, model_name="claude\x85FORGED BY A NEL"))
 
     raw = _run(["session", "show", "j", "--json"])
 
-    # The newline half — safe by the grammar, and asserted so the guarantee is pinned even though
-    # this half would survive `ensure_ascii=False`.
+    # The newline half — safe by the grammar, and asserted so the guarantee is pinned even though this half would survive `ensure_ascii=False`.
     assert "\nSession 'trusted'" not in raw, raw
     assert "\\nSession 'trusted'" in raw, raw
 
-    # The half `ensure_ascii` actually decides. `\x85` is a line terminator: under
-    # `ensure_ascii=False` it reaches the payload raw, `splitlines()` breaks on it, and a reader
-    # piping `--json` through anything line-oriented sees a fabricated line.
+    # The half `ensure_ascii` actually decides.
     assert "\x85" not in raw, raw
     assert "\\u0085FORGED BY A NEL" in raw, raw
     assert len(raw.splitlines()) == raw.count("\n"), "a value split a line of the payload"
@@ -301,9 +244,7 @@ def test_the_two_output_paths_guard_different_ranges_and_json_is_the_stricter(wo
     """Where the terminal guard stops, stated as a test so the claim cannot drift (#70)."""
     from requivo.core.selectors import display_token
 
-    # Written as an escape, never as the character. A raw U+2028 in a source file is invisible in
-    # every diff and every editor that will ever show this line — which is the property that makes it
-    # worth a test, and the property that makes pasting one a bad idea.
+    # Written as an escape, never as the character.
     sep = "\u2028"
     assert len(f"a{sep}b".splitlines()) == 2      # must fire: it really does split
     assert display_token(f"a{sep}b") == f"a{sep}b", \
@@ -346,28 +287,16 @@ def test_artifact_list_cannot_be_made_to_print_a_row_a_session_wrote(workspace):
     ]
 
 
-# The saved artifact *body* itself, one call further than `artifact list`'s two metadata fields
-# (#430). `_cmd_artifact_show` was `print(content)` with no neutralization at all: a hostile client
-# request that steers the model into an artifact carrying an embedded newline and a raw ESC sequence
-# forges a line in Requivo's own voice at the operator's terminal, the same threat #213 closed on the
-# primary render path. Not the class's last unguarded member, as this comment used to say -- see
-# #449's own section below, which closes the same gap on `prd`/`criteria`/`epic`/`release`.
+# The saved artifact *body* itself, one call further than `artifact list`'s two metadata fields (#430).
 #
-# Reusing `display_text` (#213's own neutralizer) here would be wrong rather than merely redundant:
-# it escapes *every* control character, including a real newline, and an artifact body is a real
-# multi-paragraph document whose newlines are its layout. So this needs `display_text`'s
-# document-shaped sibling -- everything `display_text` neutralizes except a real newline and a real
-# tab -- which is exactly what the issue asked for and exactly what the "ordinary document survives"
-# test below checks for.
+# Reusing `display_text` (#213's own neutralizer) here would be wrong rather than merely redundant.
 
 # ── #541's several-sessions listing (`run`/`status`/`impact`, `_print_session_candidates`) ─────────
 
 
 def test_run_candidate_listing_cannot_be_made_to_print_a_line_a_session_wrote(workspace, tmp_path):
     """Found in review: `updated_at` and a degraded row's error reach this listing straight off
-    `session.json`, unescaped -- the same untrusted-text shape #40/#70 already guard on
-    `session list`. `display_token` is the fix; the assertion is that the forged text still shows,
-    escaped onto one line, rather than writing the line it impersonates."""
+    `session.json`, unescaped -- the same untrusted-text shape #40/#70 already guard on `session list`."""
     from _fakes import FakeClient
 
     _run(["session", "init", "Something.", "--slug", "honest"])

@@ -1,24 +1,4 @@
-"""The plugin's public copy must not offer a provider-backed CLI verb as if it were keyless.
-
-The plugin's pitch is that reasoning runs in the reader's own Claude Code session, so "there is no API
-key to configure" -- and the install section says in bold that the `requivo[anthropic]` extra is not
-needed. Both true. But the catalog description then said the reader could "hand the same model to the
-requivo CLI for acceptance criteria and tracker epics", and the README's *Beyond the six skills*
-section (since #542, *The generators*) listed those generators with no mention of what they need. They
-are provider verbs when the CLI runs them itself: they call the Anthropic API directly, so they need
-the extra *and* a key. A marketplace reader following that pointer met the missing-SDK error first and
-the missing-key error second, having been told twice that neither applied (#242). Since #542 the same
-five also run keylessly as plugin skills -- this guard is about the CLI's *own* optional API mode,
-which still needs both, not about whether a keyless path exists elsewhere on the page.
-
-Both halves of the storefront are checked, because they are two hand-edited files saying one thing:
-the catalog line a reader scans, and the page they land on.
-
-The verb list is a literal here, on purpose. Deriving it would mean importing the CLI's provider
-registry, and this test is about *prose*: what goes wrong is a sentence, and the sentence names these
-words whether or not the registry still calls them that. A verb leaving the registry is
-`test_plugin_cli_drift.py`'s job and it already fails on the plugin naming a verb that does not exist.
-"""
+"""The plugin's public copy must not offer a provider-backed CLI verb as if it were keyless (#542)."""
 from __future__ import annotations
 
 import json
@@ -29,8 +9,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "claude-code"
 
-# The generators the CLI's own optional API mode can produce -- provider-backed in THAT mode,
-# regardless of whether a plugin skill also wraps the same artifact type keylessly (#542).
+# The generators the CLI's own optional API mode can produce (#542).
 CLI_API_MODE_GENERATORS = ("criteria", "epic", "release", "stories", "estimate")
 
 
@@ -56,9 +35,7 @@ def test_a_description_offering_the_cli_generators_says_they_need_a_key(site):
 
 
 def test_the_readme_section_that_lists_the_cli_generators_names_what_they_need():
-    """The landing page, where the reader decides to run the command. Checked on that one section
-    rather than on the whole file: the file mentions `ANTHROPIC_API_KEY` elsewhere, in the install
-    section that says the reader does *not* need it, so a whole-file scan would pass on the defect."""
+    """The landing page, where the reader decides to run the command."""
     text = (PLUGIN / "README.md").read_text(encoding="utf-8")
     heading = "## The generators"
     assert heading in text, "the section naming what the CLI's own API mode needs is gone or renamed"

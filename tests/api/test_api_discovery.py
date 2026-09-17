@@ -1,10 +1,4 @@
-"""Discovery write routes (#425, slice 2): the first turn and the answers-as-turns fold-in.
-
-Every reasoning path here runs offline against `with_provider`'s `FakeClient` -- no network, no real
-provider. The refused-before-payment tests are the load-bearing half (invariant 13's own lesson):
-they assert the provider's *call count*, not only the response status, because a test that only
-checks the status would still pass if the guard fired one line too late, after the call was already
-made."""
+"""Discovery write routes (#425, slice 2): the first turn and the answers-as-turns fold-in."""
 
 from __future__ import annotations
 
@@ -43,8 +37,7 @@ def test_discover_runs_the_first_turn(client, with_provider):
 
 
 def test_discover_above_revision_zero_is_refused_before_any_provider_call(client, with_provider):
-    """Invariant 13: a session that has already been discovered may not be discovered again --
-    the gate fires before the (here, empty) provider queue is ever touched."""
+    """Invariant 13: a session that has already been discovered may not be discovered again."""
     slug = seed_session("leave-approval")  # already at revision 1
     fake = with_provider()  # no replies queued -- a call here would raise IndexError, not merely cost money
 
@@ -90,8 +83,7 @@ def test_answer_with_a_stale_expected_revision_is_refused_before_any_provider_ca
 
 
 def test_answer_with_the_current_revision_still_succeeds(client, with_provider):
-    """The must-fire control for the two refusal tests above: a *correct* `expected_revision` is not
-    itself refused -- the guard only catches a stale one."""
+    """The must-fire control for the two refusal tests above."""
     slug = seed_session("leave-approval")
     fake = with_provider(_engine_reply())
 
@@ -102,8 +94,8 @@ def test_answer_with_the_current_revision_still_succeeds(client, with_provider):
 
 
 def test_discover_reports_session_locked_with_a_retry_after_header(client, app):
-    """503 `session_locked`, `Retry-After` set -- the write never started, so resubmitting the
-    identical request shortly is the documented recovery (§2 of the decision record)."""
+    """503 `session_locked`, `Retry-After` set -- the write never started, so resubmitting the identical
+    request shortly is the documented recovery (§2 of the decision record)."""
     from requivo.api.dependencies import get_discovery
     from requivo.core.errors import SessionLockedError
 

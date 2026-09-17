@@ -3,8 +3,7 @@
 Two of the four went stale in content and nothing noticed: `web-home.webp` predated the recent-first
 listing and human-formatted timestamps (#237), and `web-brief.webp` predated the rendered brief that
 replaced the `<pre>` block (#235). They were not broken -- a broken image is loud -- they were a
-claim about the product that had quietly stopped being true. `tests/test_doc_images.py` could see
-that the files exist and could not see that they lie.
+claim about the product that had quietly stopped being true, and no guard could see that they lie.
 
 This script is the half that stops it recurring. The shots were taken by hand once, which means the
 next surface change had to be followed by somebody remembering how the last set was framed; now they
@@ -155,8 +154,7 @@ def surface_digest(root: Path = REPO) -> str:
     else, for the same reason the UTF-8 fallback above exists -- a guard is not the place to discover
     a syntax error.
 
-    `root` is a parameter only so the guard's must-fire control can build a tree of its own --
-    `test_the_screenshot_freshness_digest_moves_when_the_surface_does`. Nothing in this script
+    `root` is a parameter so a control can build a tree of its own; nothing in this script
     passes anything but the default.
     """
     h = hashlib.sha256()
@@ -338,7 +336,7 @@ def _edge(page, shot: Shot, selector: str | None, url: str, default: int) -> int
 def _to_lossless_webp(png: bytes, destination: Path) -> tuple[int, int]:
     """Playwright hands back PNG; `docs/images/` is lossless WebP, as the shipped set already was.
 
-    `Image.open` is bound to a name before it is called, deliberately. `tests/test_encoding.py`
+    `Image.open` is bound to a name before it is called, deliberately. `tests/test_source_form.py`
     scans this tree for `.open()` calls whose mode it cannot read and asks them to declare an
     encoding (invariant 16) -- correctly, since it cannot tell a text file from an image decoder
     from the syntax. Binding says *this is not a file read* at the site, which is truer than an
@@ -431,8 +429,8 @@ def shoot(names: list[str]) -> int:
                     "_comment": (
                         "Written by scripts/shoot_doc_images.py. Each image carries the "
                         "`surface_digest` of the tree it was shot against; "
-                        "tests/test_doc_images.py compares each one against the tree, so a shot "
-                        "left out of a partial re-run stays flagged - re-run the script."
+                        "`--check` compares each one against the tree, so a shot left out of a "
+                        "partial re-run stays flagged - re-run the script."
                     ),
                     "shot_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "viewport": VIEWPORT,

@@ -1,9 +1,5 @@
-"""The repository conformance suite is a public, wheel-shipped, out-of-repo-runnable artifact (#424)
--- not merely a class under `src/`. It ships in the built wheel; the base class is importable and
-not collected as a test on its own; and both implementations this repo carries
-(`FileSessionRepository`, `test_discovery_provider_seam.py`'s in-memory fake) are wired to it as
-subclasses -- the "shrinks to the factory wiring" acceptance criterion.
-"""
+"""The repository conformance suite is a public, wheel-shipped, out-of-repo-runnable artifact (#424) -- not
+merely a class under `src/`."""
 from __future__ import annotations
 
 import zipfile
@@ -26,11 +22,7 @@ def test_the_suite_is_importable_and_not_collected_as_a_test_on_its_own():
 
 
 def test_full_model_is_re_exported_and_documented():
-    """A reviewer finding (#424): `full_model` was importable from the submodule and used by the suite's
-own test methods, but the package's `__init__.py` re-exported only the base class and neither
-`docs/compatibility.md` nor this file's own SEAM-shaped guards mentioned it -- an out-of-repo
-subclass following the submodule's own docstring advice ("so an out-of-repo subclass of this
-suite can call it too") was relying on a name nothing pinned."""
+    """A reviewer finding (#424)."""
     from requivo.testing import SessionRepositoryConformance, full_model
     from requivo.testing.repository_conformance import full_model as direct
 
@@ -44,9 +36,7 @@ suite can call it too") was relying on a name nothing pinned."""
 
 
 def test_both_shipped_implementations_are_wired_to_the_suite():
-    # Bare module name, not `tests.test_sessions` -- there is no `tests/__init__.py`, so pytest's own
-    # rootdir import mode puts `tests/` directly on `sys.path` (the same reason `_fakes` is imported
-    # by bare name throughout this suite rather than as `tests._fakes`).
+    # Bare module name, not `tests.test_sessions` -- there is no `tests/__init__.py`, so pytest's own rootdir import mode puts `tests/` directly on `sys.path` (the same reason `_fakes` is imported by bare name throughout this suite rather than as `tests._fakes`).
     from test_discovery_provider_seam import TestFileRepositoryConformance, TestInMemoryRepositoryConformance
 
     from requivo.testing.repository_conformance import SessionRepositoryConformance
@@ -56,21 +46,12 @@ def test_both_shipped_implementations_are_wired_to_the_suite():
 
 
 def test_the_suite_ships_in_the_built_wheel():
-    # `build_wheel`'s own floor is one release higher than `build_sdist`'s (#453): below setuptools
-    # 70.1.0, `bdist_wheel` is not a setuptools command at all without a separately-installed `wheel`
-    # package, which this project declares nowhere -- see pyproject.toml's `dev`-extra comment and
-    # test_sdist_contents.py's own `_setuptools_build_backend_reason`, reused here rather than
-    # duplicated since it is a plain version comparison with no sdist-specific behaviour.
+    # `build_wheel`'s own floor is one release higher than `build_sdist`'s (#453).
     #
-    # No `pytest.importorskip("setuptools", ...)` here, deliberately (#453, reviewer finding): that
-    # call itself imports `setuptools`, which is exactly what crashes on setuptools 64.0.0-66.0.0
-    # under Python 3.12 -- before any check could run. `_setuptools_build_backend_reason` reads the
-    # version through `importlib.metadata` instead, which cannot trigger that crash, and covers
-    # "not installed" as one of its own named cases.
+    # No `pytest.importorskip("setuptools", ...)` here, deliberately (#453, reviewer finding).
     from test_sdist_contents import _setuptools_build_backend_reason
 
-    # 77.0.1, not 70.1.0, since #337: the licence is a PEP 639 SPDX string now, and a setuptools
-    # below 77 fails to *parse* pyproject.toml before `bdist_wheel`'s own availability is reachable.
+    # 77.0.1, not 70.1.0, since #337: the licence is a PEP 639 SPDX string now, and a setuptools below 77 fails to *parse* pyproject.toml before `bdist_wheel`'s own availability is reachable.
     too_old = _setuptools_build_backend_reason("77.0.1")
     if too_old:
         pytest.skip(too_old)

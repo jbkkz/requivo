@@ -1,13 +1,5 @@
 """Shared fixtures for the Requivo API tests (#425) -- no network, no real provider, no port bound:
-`TestClient` drives the ASGI app in-process, exactly like `tests/web/conftest.py`'s `client`.
-
-`with_provider` (slice 2) mirrors `tests/web/conftest.py`'s fixture of the same name: it swaps in a
-`DiscoveryService` backed by a `FakeClient` that returns canned JSON replies in call order, so the
-write routes that reason (discover, answer, artifact generation) run offline. Every request in this
-package carries `Content-Type: application/json` by default (`client`, below) -- slice 2's own
-floor under the write routes -- so a test *of* that floor has to opt out explicitly rather than the
-whole suite opting in.
-"""
+`TestClient` drives the ASGI app in-process, exactly like `tests/web/conftest.py`'s `client`."""
 
 from __future__ import annotations
 
@@ -37,17 +29,13 @@ def app():
 
 @pytest.fixture
 def raw_client(app):
-    """A client that sends nothing beyond what `httpx` sends unasked -- no `Content-Type` header
-    added on its behalf. Everything the content-type-guard middleware requires has to be added
-    explicitly, which is what makes `test_api_content_type_guard.py` meaningful."""
+    """A client that sends nothing beyond what `httpx` sends unasked."""
     return TestClient(app, base_url="http://127.0.0.1:8767", raise_server_exceptions=False)
 
 
 @pytest.fixture
 def client(raw_client):
-    """The everyday client: same as `raw_client`, plus `Content-Type: application/json` on every
-    write -- what a real JSON client sends without being asked, and what slice 2's content-type
-    guard requires of every unsafe method (`api/app.py`'s `require_json_content_type`)."""
+    """The everyday client: same as `raw_client`, plus `Content-Type: application/json` on every write."""
     original_request = raw_client.request
 
     def _request(method, url, *args, **kwargs):
@@ -76,10 +64,7 @@ class _FakeResponse:
 
 
 class Spend:
-    """The token counts the SDK reports on a response, under the SDK's own attribute names --
-    `_complete` reads them by name, so a rename there breaks these tests rather than zeroing them.
-    The default fake reports `usage = None`; a test *about* the spend passes one of these, without
-    which no test could ever observe a populated `usage` object (found in review of #425 slice 2)."""
+    """The token counts the SDK reports on a response, under the SDK's own attribute names."""
 
     def __init__(self, input_tokens=0, output_tokens=0, cache_read_input_tokens=0,
                  cache_creation_input_tokens=0):
@@ -90,9 +75,7 @@ class Spend:
 
 
 class FakeClient:
-    """Returns canned JSON replies in order; records each `create()` call's kwargs -- the same shape
-    as `tests/web/conftest.py`'s fixture of the same name, restated rather than imported since
-    `tests/web/` and `tests/api/` sit behind two different optional extras."""
+    """Returns canned JSON replies in order; records each `create()` call's kwargs."""
 
     def __init__(self, *replies, spend=None):
         self._replies = list(replies)
@@ -107,9 +90,8 @@ class FakeClient:
 
 @pytest.fixture
 def with_provider(app):
-    """Swap in a `DiscoveryService` backed by a `FakeClient` (shared across requests, so replies pop
-    in order over a multi-step flow). Returns a function taking the reply sequence and an optional
-    `spend=` every reply reports."""
+    """Swap in a `DiscoveryService` backed by a `FakeClient` (shared across requests, so replies pop in order
+    over a multi-step flow)."""
     def _install(*replies, spend=None):
         fake = FakeClient(*replies, spend=spend)
         disco = DiscoveryService(client=fake)
@@ -120,8 +102,7 @@ def with_provider(app):
 
 
 def seed_session(slug: str = "leave-approval", **model_overrides) -> str:
-    """Create a session and apply a complete model to it directly through the service, no provider
-    involved -- for read-route tests that need a real revision 1 to read back."""
+    """Create a session and apply a complete model to it directly through the service."""
     svc = SessionService()
     svc.create_session("A leave approval request", slug=slug)
     model = {"model": full_slots(**model_overrides), "questions": [],

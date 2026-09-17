@@ -23,7 +23,7 @@ library" below for the package's stable import surface.
 The code is the `requivo` package under `src/`. The layers form a strict DAG:
 
 - **`core/`** — the deterministic engine. No LLM, no provider, and no argv, standard streams,
-  environment or process exit — all of it enforced by `tests/test_boundaries.py`, which walks the
+  environment or process exit — all of it enforced by `tests/test_source_form.py`, which walks the
   package recursively and fails rather than passing when it finds nothing to scan. Reading and
   writing files *is* core's job. It validates, versions and reasons over the model; it never *produces*
   one. Holds the Pydantic contracts, validation, readiness, the dependency graph, persistence and the
@@ -63,7 +63,7 @@ That second half was stated here for two releases before it was true. The CLI's 
 `discover` loop called the provider's `run()` and `advise()` itself and used the service only for the
 final write, so the primary surface held an orchestration of its own — one that would not have
 inherited the revision-zero gate or the snapshot discipline when those arrived (#77). It is guarded
-now rather than asserted: `tests/test_boundaries.py` allows a surface only the provider names its
+now rather than asserted: `tests/test_source_form.py` allows a surface only the provider names its
 `_SURFACE_PROVIDER_ALLOWLIST` entries name, each carrying the reason it is a surface concern rather
 than a reasoning one, and fails just as loudly on an allowlist entry nothing imports as on an import
 nothing allowed. The table is named rather than counted on purpose: a count in prose is invalidated

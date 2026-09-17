@@ -1,22 +1,4 @@
-"""#427: an injectable service-layer spend ceiling, before automation can drive paid calls.
-
-Filed from the 2026-09 readiness audit's security pass: `requivo.usage` recorded spend and never
-gated it, and the only ceilings anywhere were the per-call input/output size bounds. `DiscoveryService`
-now consults an optional, injected `SpendPolicy` immediately before every provider call -- the same
-chokepoint `_usage_since` already brackets (`decision: the-http-api-facade`).
-
-Driven directly against `DiscoveryService` with a stub `ReasoningProvider` -- no CLI, no web, no real
-network -- the same shape `test_revision_usage_provenance.py` and `test_paid_call_safety.py`
-use. `_CountingProvider` records a caller-chosen, fixed-cost `CallRecord` per call so the ceiling
-arithmetic can be pinned exactly, and counts its own invocations so a refusal that happened *before*
-the call reads as `calls == 0`, not merely as a raised exception.
-
-Every provider call site inside `DiscoveryService` is exercised once: `start` (both its calls --
-analyze, then generate("brief") when finalizing), `draft_turn`, `run_discovery`, `answer`,
-`reason`/`reason_from`, `generate` (both its branches -- the brief branch and the ordinary writer
-branch), and `route_perimeter` (#601: added after review found it was the one paid call in
-`DiscoveryService` that reached the provider with no `_check_spend()` ahead of it).
-"""
+"""#427: an injectable service-layer spend ceiling, before automation can drive paid calls."""
 
 from __future__ import annotations
 
@@ -36,9 +18,7 @@ def _isolate_workspace(tmp_path, monkeypatch):
 
 
 class _CountingProvider:
-    """A stub `ReasoningProvider` that bills a fixed, caller-chosen cost per call into whatever
-    ledger is active -- the same recording shape a real provider's `_complete()` uses -- and counts
-    its own invocations, so a refusal that happened *before* the call reads as `calls == 0`."""
+    """A stub `ReasoningProvider` that bills a fixed."""
 
     name = "stub"
 
@@ -81,17 +61,16 @@ class _CountingProvider:
 
 
 def _seeded_session(sessions: SessionService) -> str:
-    """A session already carrying a model (revision 1), for the refinement/generation chokepoints
-    that refuse a session with none."""
+    """A session already carrying a model (revision 1), for the refinement/generation chokepoints that refuse
+    a session with none."""
     meta = sessions.create_session("a leave approval system")
     sessions.update_model(meta.slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json())
     return meta.slug
 
 
 def _ledger_at_or_above(ceiling: float) -> None:
-    """Pre-seed the active `track_usage()` ledger with one already-billed call whose estimated cost
-    sits exactly at `ceiling` -- standing in for "N calls already happened this operation", so the
-    N+1th call is the one under test."""
+    """Pre-seed the active `track_usage()` ledger with one already-billed call whose estimated cost sits
+    exactly at `ceiling`."""
     record_call(CallRecord(model="stub-model", input_tokens=int(ceiling * 1_000_000),
                            rate_per_mtok=(1.0, 1.0), priced_as_of="2026-09-01"))
 
@@ -114,8 +93,8 @@ def test_check_raises_at_or_above_the_ceiling():
 
 
 def test_check_below_the_ceiling_does_not_raise():
-    """Must-fire control for the test above: without it, a `check` that always raised would also
-    pass it, telling us nothing about where the ceiling actually sits."""
+    """Must-fire control for the test above: without it, a `check` that always raised would also pass it,
+    telling us nothing about where the ceiling actually sits."""
     ledger = UsageLedger()
     ledger.record(CallRecord(model="m", input_tokens=1_000_000,
                              rate_per_mtok=(1.0, 1.0), priced_as_of="d"))  # cost is exactly $1.00
@@ -123,9 +102,8 @@ def test_check_below_the_ceiling_does_not_raise():
 
 
 def test_check_refuses_an_unpriced_call_rather_than_treating_it_as_free():
-    """invariant 6, applied to money: a call with no rate on file cannot be compared against the
-    ceiling honestly. Guessing it costs $0 would let exactly the call this ceiling exists to catch
-    spend past it unseen."""
+    """invariant 6, applied to money: a call with no rate on file cannot be compared against the ceiling
+    honestly."""
     ledger = UsageLedger()
     ledger.record(CallRecord(model="m", input_tokens=1_000_000))  # no rate_per_mtok
     with pytest.raises(SpendCeilingReachedError) as exc_info:
@@ -137,11 +115,7 @@ def test_check_refuses_an_unpriced_call_rather_than_treating_it_as_free():
 # ── every DiscoveryService chokepoint, driven from the outside ────────────────
 
 def test_default_no_policy_is_byte_identical_to_before_this_existed():
-    """Pinned by the issue's own acceptance criteria: no policy injected, no behaviour change, even
-    a ludicrously expensive call must go through uncontested. Revision 2, not 1: since #467,
-    `start(finalize=True)` lands `analyze()` as revision 1 before attempting the brief, then folds
-    the brief in through the ordinary `generate(slug, "brief")` path, so a full success now produces
-    two revisions, not one."""
+    """Pinned by the issue's own acceptance criteria (#467)."""
     sessions = SessionService()
     provider = _CountingProvider(cost_per_call=1_000_000.0)
     disco = DiscoveryService(provider=provider, sessions=sessions)  # no spend_policy
@@ -152,8 +126,7 @@ def test_default_no_policy_is_byte_identical_to_before_this_existed():
 
 
 def test_a_ceiling_not_yet_reached_still_reaches_the_provider():
-    """Must-fire control for every refusal test below: without it, a policy that refused
-    everything unconditionally would also pass all of them."""
+    """Must-fire control for every refusal test below."""
     sessions = SessionService()
     provider = _CountingProvider(cost_per_call=0.01)
     disco = DiscoveryService(provider=provider, sessions=sessions,
@@ -173,19 +146,13 @@ def test_start_refuses_before_its_first_call_once_the_ceiling_is_already_reached
         with pytest.raises(SpendCeilingReachedError):
             disco.start("a leave approval system")
     assert provider.calls == 0
-    # `claim_session()` (revision 0, no model) runs before the spend check -- same as every other
-    # first-discovery entry point (invariant 13) -- so the session exists with nothing paid for
-    # or applied to it, not "no session at all".
+    # `claim_session()` (revision 0, no model) runs before the spend check.
     slug = sessions.list_sessions()[0].slug
     assert sessions.repo.read_meta(slug).current_revision == 0
 
 
 def test_start_refuses_its_second_call_once_the_first_alone_reaches_the_ceiling():
-    """The check runs before EACH provider call inside one operation: `start(finalize=True)` makes
-    two calls (analyze, then generate("brief")), and a ceiling the first alone reaches must stop the
-    second. Since #467, `finalize_discovery` writes `analyze()`'s result as revision 1 before the
-    brief is attempted, so that write stands -- only the (also refused, so free) second call is
-    stopped. See `test_finalize_discovery_keeps_a_paid_analyze_call.py` for the direct guard."""
+    """The check runs before EACH provider call inside one operation (#467)."""
     sessions = SessionService()
     provider = _CountingProvider(cost_per_call=0.05)
     disco = DiscoveryService(provider=provider, sessions=sessions,
@@ -194,9 +161,7 @@ def test_start_refuses_its_second_call_once_the_first_alone_reaches_the_ceiling(
         with pytest.raises(SpendCeilingReachedError):
             disco.start("a leave approval system", finalize=True)
     assert provider.calls == 1  # only analyze() ran; generate("brief") was refused
-    # claim_session() creates the session before any provider call, and finalize_discovery()'s own
-    # update_model() ran right after analyze() succeeded -- before the refused second call was even
-    # attempted -- so the session sits at revision 1 with the discovered model applied.
+    # claim_session() creates the session before any provider call.
     slug = sessions.list_sessions()[0].slug
     assert sessions.repo.read_meta(slug).current_revision == 1
 
@@ -212,11 +177,8 @@ def test_draft_turn_refuses_before_reasoning_once_the_ceiling_is_already_reached
 
 
 def test_route_perimeter_refuses_before_the_provider_call():
-    """#601 P2 (Codex review, third pass): `route_perimeter()` reached the provider with no
-    `_check_spend()` ahead of it -- a new paid call on a first run's own critical path, reachable
-    with `--perimeter` unset and more than one perimeter installed (the repo's own default state).
-    An automated caller could spend past an already-reached ceiling on exactly the call this whole
-    lot exists to price out."""
+    """#601 P2 (Codex review, third pass): `route_perimeter()` reached the provider with no `_check_spend()`
+    ahead of it."""
     provider = _CountingProvider()
     disco = DiscoveryService(provider=provider, spend_policy=SpendPolicy(ceiling_usd=0.10))
     with track_usage():
@@ -294,10 +256,8 @@ def test_generate_prd_refuses_before_the_provider_call():
 
 
 def test_no_active_ledger_lets_a_policy_through_uncounted():
-    """Design decision (see the PR body): `current_ledger()` returning `None` means no
-    `track_usage()` scope is open at all -- there is no accounting to check the ceiling against, so
-    the call proceeds. This mirrors `usage.py`'s own rule for that state everywhere else: absent
-    reads as "nothing to report", never as "spent nothing" and never as "spent everything"."""
+    """Design decision (see the PR body): `current_ledger()` returning `None` means no `track_usage()` scope
+    is open at all -- there is no accounting to check the ceiling against, so the call proceeds."""
     provider = _CountingProvider()
     disco = DiscoveryService(provider=provider, spend_policy=SpendPolicy(ceiling_usd=0.0))
     disco.draft_turn("a leave approval system")  # no track_usage() scope open anywhere

@@ -1,10 +1,4 @@
-"""#208: a paid decision brief must not be discarded when its model apply hits a revision conflict.
-
-Driven directly against `DiscoveryService` with a stub `ReasoningProvider` -- no CLI, no web, no real
-network -- so the provider call's own side effect can simulate the exact race: a write landing on the
-session while the (minutes-long) assessment call is "in flight". `_fakes.out`/`slot` build a valid,
-complete `EngineOutput` offline.
-"""
+"""#208: a paid decision brief must not be discarded when its model apply hits a revision conflict."""
 
 from __future__ import annotations
 
@@ -24,9 +18,7 @@ def _isolate_workspace(tmp_path, monkeypatch):
 
 
 class _ConflictingBriefProvider:
-    """A stub provider whose generate("brief", ...) applies a competing write to the session as a
-    side effect before returning -- standing in for a second tab, the CLI, or a Claude Code turn
-    landing a change while the paid assessment call was reasoning."""
+    """A stub provider whose generate("brief", ...) applies a competing write to the session as a side."""
 
     name = "stub"
 
@@ -41,9 +33,7 @@ class _ConflictingBriefProvider:
     def generate(self, artifact_type, model, *, only=None, **kwargs):
         assert artifact_type == "brief"
         self.generate_calls += 1
-        # The race: someone else's write lands while this call is "in flight". Confidence moves
-        # (explicit -> inferred), not just completeness -- diff_models treats completeness alone
-        # as noise, and this write has to be *material* to actually invalidate the saved brief.
+        # The race: someone else's write lands while this call is "in flight".
         self.sessions.update_model(
             self.slug,
             out({"problem": slot(95, "inferred", "high")}).model_dump_json())
@@ -74,8 +64,7 @@ def test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded(
     # The paid call happened exactly once -- this test is not about retrying it.
     assert provider.generate_calls == 1
 
-    # The model was NOT modified by the losing apply: the concurrent write (revision 2) stands,
-    # and the brief's reasoning was never absorbed into it.
+    # The model was NOT modified by the losing apply.
     meta = sessions.repo.read_meta(slug)
     assert meta.current_revision == 2
     current = sessions.load_model(slug)
@@ -90,23 +79,21 @@ def test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded(
     content = artifacts.show(slug, "brief")
     assert "S" in content  # the brief's solution text made it to disk
 
-    # The surfaced message states both facts and the remedy -- no special-casing needed on the CLI
-    # (except RequivoError: print(e)) or the Web ({{ message }} in errors/_error.html).
+    # The surfaced message states both facts and the remedy.
     message = str(exc_info.value)
     assert "brief" in message.lower() and "saved" in message.lower()
     assert "not" in message.lower() and "absorbed" in message.lower()
     assert f"requivo brief {slug}" in message
     assert exc_info.value.details["artifact_saved"] is True
     assert exc_info.value.details["artifact_stale"] is True
-    # The two sentences must not run together with no separator -- a real defect a first review
-    # caught: "...re-apply The decision brief..." with nothing between "re-apply" and "The".
+    # The two sentences must not run together with no separator.
     assert "re-apply The decision brief" not in message
     assert ". The decision brief" in message
 
 
 def test_a_brief_with_no_conflict_is_byte_identical_to_today():
-    """Must-fire control: without it, a service that always saved-and-refused would pass the test
-    above for the wrong reason -- because it never actually applies anything."""
+    """Must-fire control: without it, a service that always saved-and-refused would pass the test above for
+    the wrong reason -- because it never actually applies anything."""
     sessions = SessionService()
     slug = _seeded_session(sessions)
 
@@ -128,11 +115,7 @@ def test_a_brief_with_no_conflict_is_byte_identical_to_today():
 
 
 def test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one():
-    """Found in audit: if the fallback save inside the revision-conflict handler ALSO fails at the
-    filesystem, the `ArtifactWriteFailedError` it raises must not silently drop the revision-conflict
-    context it happened alongside -- a caller reading only `.message` needs to be told the content is
-    genuinely lost (a write failure) AND that a race was the reason the model was never absorbed, not
-    just one of the two."""
+    """Found in audit."""
     sessions = SessionService()
     slug = _seeded_session(sessions)
     provider = _ConflictingBriefProvider(sessions, slug)
@@ -154,10 +137,8 @@ def test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one():
 
 
 def test_an_oserror_writing_a_generated_artifact_is_a_structured_refusal_not_a_traceback():
-    """The parallel, rarer case (#208): the content was paid for and produced, and only the write to
-    the filesystem failed. Driven at _save_generated directly -- the one seam every generated
-    artifact's write goes through -- with the repository's own save() stubbed to fail the way a full
-    disk or a permissions error would."""
+    """The parallel, rarer case (#208): the content was paid for and produced, and only the write to the
+    filesystem failed."""
     sessions = SessionService()
     slug = _seeded_session(sessions)
     disco = DiscoveryService(provider=_ConflictingBriefProvider(sessions, slug), sessions=sessions)

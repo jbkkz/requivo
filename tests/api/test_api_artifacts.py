@@ -1,5 +1,5 @@
-"""Artifact read routes (#425, slice 1): the freshness listing and one artifact's content, in both
-the JSON envelope and the raw `Accept: text/markdown` form. Generation (`POST`) is a later slice."""
+"""Artifact read routes (#425, slice 1): the freshness listing and one artifact's content, in both the JSON
+envelope and the raw `Accept: text/markdown` form. Generation (`POST`) is a later slice."""
 
 from __future__ import annotations
 

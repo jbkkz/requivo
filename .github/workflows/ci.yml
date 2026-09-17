@@ -127,7 +127,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install -e ".[dev]"
-      # Deliberately NOT run under a forced UTF-8 mode. `tests/test_encoding.py` spawns subprocesses
+      # Deliberately NOT run under a forced UTF-8 mode. `tests/test_source_form.py` spawns subprocesses
       # that set PYTHONIOENCODING and PYTHONWARNDEFAULTENCODING themselves, and a PYTHONUTF8=1 in the
       # job environment would be inherited by those children and override every lever they use —
       # turning the whole encoding suite green for the wrong reason, on the one platform it exists to

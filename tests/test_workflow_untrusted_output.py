@@ -1,6 +1,7 @@
-"""Untrusted CLI output can forge GitHub Actions workflow commands: `TryParseV2` trims leading whitespace before matching `::name::` (indenting doesn't defeat it), and the legacy `TryParse` matches `##[` unanchored anywhere in a line (collapsing to one line doesn't defeat it either). `::stop-commands::<token>`
-fences both while leaving the log readable -- added to the advisory step by #147. #96 hardened a sibling form in scripts/plugin_cli_drift.py but not this one; #176 closed the gap where squashing covered `TryParseV2` but not the unanchored `TryParse` (`_log_safe` now breaks both keys at the value). #177 found
-three more unfenced `claude`-running steps -- an install step and two required gates whose verdict IS the exit code -- and added the fence-plus-captured-exit-code pattern the gate tests below check."""
+"""Untrusted CLI output cannot forge a GitHub Actions workflow command (#147, #176, #177): `TryParseV2` trims
+leading whitespace before matching `::name::`, the legacy `TryParse` matches `##[` anywhere in a line, and a
+`::stop-commands::<token>` fence contains both. Every step that runs `claude` is fenced, and a gate step still
+carries its exit code out past the fence."""
 from __future__ import annotations
 
 import os
@@ -16,29 +17,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "plugin-validate.yml"
 STEP_NAME = "Spec drift against the current CLI (advisory, never fails)"
 
-# Every command the runner registers (`ActionCommandManager`) -- the full vocabulary, not just what this workflow
-# emits, same argument as `_assert_no_forged_workflow_command` in test_plugin_cli_drift.py.
+# Every command the runner registers, not just what this workflow emits.
 _REGISTERED = frozenset({
     "set-env", "set-output", "add-mask", "add-path", "debug", "warning", "error", "notice",
     "group", "endgroup", "save-state", "echo", "add-matcher", "remove-matcher", "stop-commands",
 })
-
-# The three command lines this step authors. Anything else the runner would act on is forged.
-_AUTHORED = (
-    "::stop-commands::",
-    "::warning title=Drift check could not look::",
-    "::warning title=Plugin spec drift::",
-)
-
-# A marker no line of this workflow contains, carried by every line the fake `claude` prints -- what tells "the guard
-# held" from "the harness never reached the hostile output".
-_MARK = "FORGED"
-
-# Must-fire controls strip these keys to re-forge the output, so each must match only the *effective* line, never a
-# comment describing it. `$latest` (bare) matches only the squash re-read -- the six interpolation sites spell it
-# `${latest}`.
+# The command lines this workflow authors; anything else the runner would act on is forged.
+_AUTHORED = ("::stop-commands::", "::warning title=Drift check could not look::", "::warning title=Plugin spec drift::")
+_MARK = "FORGED"  # carried by every line the fake `claude` prints: tells "the guard held" from "never reached"
+# Must-fire controls strip these keys; each matches only the effective line, never a comment about it.
 _SQUASH_KEY = "$latest"
 _FENCE_KEYS = ("::stop-commands::", "::${fence}::")
+_FENCE_OPEN, _FENCE_CLOSE = _FENCE_KEYS
 
 _STUB_TEMPLATE = """#!/bin/sh
 if [ "$1" = "--version" ]; then
@@ -59,33 +49,30 @@ exit @EXIT@
 
 
 def _claude_stub(exit_code: int = 0) -> str:
-    """A `claude` that forges in both parser forms and exits `exit_code`. Parametrized (#177): a stub that only ever exits 0 can't tell a fence that preserved the exit code from one that swallowed it."""
+    """A `claude` that forges in both parser forms and exits `exit_code` (#177)."""
     return _STUB_TEMPLATE.replace("@EXIT@", str(exit_code))
 
+
 _CLAUDE_STUB = _claude_stub()
-
 _NPM_STUB = "#!/bin/sh\nexit 0\n"
-
-# Every YAML block-scalar header a `run:` can carry (`|`/`>`, chomping + indent indicators). Matching only exact
-# `run: |` missed `run: |-` and hid an unfenced step from every check here (#177); over-matching is the safe direction.
+# Every block-scalar header a `run:` can carry; matching only `run: |` hid an unfenced step (#177).
 _BLOCK_SCALAR = re.compile(r"^[|>][0-9+-]*$")
+# A `claude` at command position: the install step's package name is a string, not a process.
+_CLAUDE_INVOCATION = re.compile(r"(?:^|[;&|(\s])claude\s", re.M)
+_GATE_STEPS = ("Install the pinned Claude Code CLI", "Validate the plugin manifest (gate)", "Validate the marketplace catalog (gate)")
 
 
 def _run_steps(text):
-    """Every step in `text` that carries a `run:`, as `(name, script)` pairs, in file order. No YAML parser: handles every `run:` form, since matching only exact `run: |` hid an unfenced step from every check here (#177). Takes text, not the workflow, so the control below can feed it synthetic YAML."""
+    """Every `run:` step in `text` as `(name, script)` pairs, in file order, without a YAML parser (#177)."""
     lines = text.splitlines()
     steps, name, name_indent, i = [], None, -1, 0
     while i < len(lines):
         raw = lines[i]
         stripped = raw.strip()
         indent = len(raw) - len(raw.lstrip())
-        if stripped.startswith("- "):
-            # A new step begins here, unless nested *inside* one -- compare indent rather than clear the name on
-            # every `- ` line.
-            if name is None or indent <= name_indent:
-                name = (stripped[len("- name:"):].strip()
-                        if stripped.startswith("- name:") else None)
-                name_indent = indent
+        if stripped.startswith("- ") and (name is None or indent <= name_indent):
+            name = stripped[len("- name:"):].strip() if stripped.startswith("- name:") else None
+            name_indent = indent
         key = stripped[2:].strip() if stripped.startswith("- ") else stripped
         label = name or f"<unnamed step at line {i + 1}>"
         if not key.startswith("run:"):
@@ -106,39 +93,34 @@ def _run_steps(text):
                 body.append(lines[k])
             k += 1
         steps.append((label, textwrap.dedent("\n".join(body)).rstrip() + "\n"))
-        i = k                         # past the block, so a `run:` inside a heredoc is not a step
+        i = k
     return steps
 
 
 def _all_run_steps():
     steps = _run_steps(WORKFLOW.read_text(encoding="utf-8"))
     if not steps:
-        pytest.fail(f"no `run:` step found in {WORKFLOW} at all -- the extractor is broken, and an empty scan set is "
-                    f"an all-clear nobody earned")
+        pytest.fail(f"no `run:` step found in {WORKFLOW} at all -- an empty scan set is an all-clear nobody earned")
     return steps
 
 
 def _step_script(step_name: str = STEP_NAME) -> str:
-    """One named step's shell, dedented. Every way this can fail to find the block is a hard failure rather than an empty string: an extractor that quietly returns nothing turns every test below green."""
+    """One named step's shell; every way this can fail to find the block is a hard failure."""
     found = [script for name, script in _all_run_steps() if name == step_name]
     if len(found) != 1:
         pytest.fail(f"expected exactly one step named {step_name!r} in {WORKFLOW}, found {len(found)}")
-    script = found[0]
-    # Weaker than testing for `claude plugin validate` since #177 added a `claude --version`-only step; still catches
-    # an extractor that grabbed the wrong block entirely.
-    assert "claude" in script, "extracted the wrong block:\n" + script
-    return script
+    assert "claude" in found[0], "extracted the wrong block:\n" + found[0]
+    return found[0]
 
 
 def _pinned_version() -> str:
-    match = re.search(r'^\s*CLAUDE_CLI_VERSION:\s*"([^"]+)"',
-                      WORKFLOW.read_text(encoding="utf-8"), re.MULTILINE)
+    match = re.search(r'^\s*CLAUDE_CLI_VERSION:\s*"([^"]+)"', WORKFLOW.read_text(encoding="utf-8"), re.MULTILINE)
     assert match, "the workflow no longer sets CLAUDE_CLI_VERSION; this harness supplies it"
     return match.group(1)
 
 
 def _parse(line, resume_token):
-    """What `ActionCommand.TryParseV2` and then `TryParse` would make of one log line: models both asymmetries that make the obvious fixes insufficient -- V2 trims leading whitespace first, and V1 is unanchored."""
+    """What `TryParseV2` then `TryParse` make of one log line: V2 trims leading whitespace, V1 is unanchored."""
     known = _REGISTERED | ({resume_token} if resume_token else set())
     stripped = line.lstrip()
     if stripped.startswith("::"):
@@ -158,7 +140,7 @@ def _parse(line, resume_token):
 
 
 def _processed(log):
-    """The lines the runner would act on, and the fence token still open at the end (None when closed). A token left open is its own finding: annotations after it are suppressed."""
+    """The lines the runner would act on, and the fence token still open at the end (None when closed)."""
     acted_on, token = [], None
     for line in log.splitlines():
         parsed = _parse(line, token)
@@ -176,17 +158,13 @@ def _processed(log):
 
 
 def _forged(acted_on):
-    return [line for line in acted_on
-            if not any(line.lstrip().startswith(prefix) for prefix in _AUTHORED)]
+    return [line for line in acted_on if not any(line.lstrip().startswith(prefix) for prefix in _AUTHORED)]
 
 
 def _exec(script, tmp_path, claude_stub=None, shell=("bash", "-e")):
-    """Run an extracted step with a `claude` that forges and an `npm` that does nothing; return the whole `CompletedProcess` (exit code included -- that's what a gate is judged on). `bash -e` on stdin is what GitHub runs a shell-less `run:` block with, sidestepping path translation under Git Bash; `shell` also
-    lets the exit-code tests run under plain `bash`, since the #177 fences carry their verdict via an explicit `exit` rather than assumed errexit."""
+    """Run an extracted step with a `claude` that forges and an `npm` that does nothing; `bash -e` is what GitHub runs."""
     if shutil.which("bash") is None:
-        pytest.skip("no bash on this platform. UNTESTED HERE: that the workflow's own shell contains the validator's "
-                    "output end to end. The workflow itself runs on ubuntu-latest only, and the structural tests "
-                    "assert their half on every leg.")
+        pytest.skip("no bash on this platform. UNTESTED HERE: the end-to-end shell half; the structural tests assert theirs on every leg.")
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir(exist_ok=True)
     for name, body in (("claude", _CLAUDE_STUB), ("npm", _NPM_STUB)):
@@ -196,23 +174,15 @@ def _exec(script, tmp_path, claude_stub=None, shell=("bash", "-e")):
     env = dict(os.environ)
     env["PATH"] = str(stub_dir) + os.pathsep + env.get("PATH", "")
     env["CLAUDE_CLI_VERSION"] = _pinned_version()
-
-    # Probe before asserting anything -- staging an extensionless shell script reachable by name off PATH is the
-    # platform-dependent part (Git Bash on Windows); probed with the exit-0 stub so a failing-stub caller can't get
-    # a manufactured skip instead of a real check.
-    probe = subprocess.run(["bash", "-e"], input="claude --version\n", env=env,
-                           cwd=str(tmp_path), capture_output=True, text=True)
+    # Probed with the exit-0 stub, so a failing-stub caller cannot get a manufactured skip.
+    probe = subprocess.run(["bash", "-e"], input="claude --version\n", env=env, cwd=str(tmp_path), capture_output=True, text=True)
     if probe.returncode != 0 or _MARK not in probe.stdout:
-        pytest.skip(
-            f"this platform's bash cannot reach a staged stub by name (exit {probe.returncode}, stderr " f"{probe.stderr[:200]!r}). UNTESTED HERE: that the workflow's own shell contains the validator's output " "end to end. The workflow runs on ubuntu-latest only, and the structural tests assert their half "
-            "everywhere.")
-
+        pytest.skip(f"this platform's bash cannot reach a staged stub by name (exit {probe.returncode}, stderr {probe.stderr[:200]!r}). "
+                    "UNTESTED HERE: the end-to-end shell half.")
     if claude_stub is not None:
         (stub_dir / "claude").write_text(claude_stub, encoding="utf-8")
         os.chmod(stub_dir / "claude", 0o755)
-
-    return subprocess.run(list(shell), input=script, env=env, cwd=str(tmp_path),
-                          capture_output=True, text=True)
+    return subprocess.run(list(shell), input=script, env=env, cwd=str(tmp_path), capture_output=True, text=True)
 
 
 def _run(script, tmp_path):
@@ -224,137 +194,95 @@ def _run(script, tmp_path):
     return log
 
 
+def _without_comments(script):
+    """Whole-line `#` comments blanked to spaces, so offsets hold and prose about `claude` is not an invocation."""
+    return "\n".join(" " * len(line) if line.lstrip().startswith("#") else line for line in script.splitlines())
+
+
+def _steps_running_claude():
+    return [(name, script) for name, script in _all_run_steps() if _CLAUDE_INVOCATION.search(_without_comments(script))]
+
+
+def _assert_three_shapes_forged(forged):
+    assert any("FORGED-AT-COLUMN-0" in line for line in forged), forged
+    assert any("FORGED-BEHIND-AN-INDENT" in line for line in forged), "an indented `::` must count: the runner trims before it matches"
+    assert any("FORGED-IN-THE-LEGACY-FORM" in line for line in forged), "`##[error]` mid-line must count: the legacy parser is unanchored"
+
+
 def test_the_step_still_carries_both_containments():
-    """The half that runs on every leg, including one with no bash. Structural rather than behavioural on purpose: says the two containments are still in the file and still bracket the output, and the three tests below say what they do."""
+    """The structural half, on every leg: the fence brackets the output and the version string is squashed."""
     script = _step_script()
-    assert "::stop-commands::" in script, script
     fence_open = script.index("::stop-commands::")
     loop = script.index("claude plugin validate")
     assert fence_open < loop, "the fence opens after the output it contains:\n" + script
-    resume = script.index("::${fence}::", fence_open)
-    assert resume > loop, "the fence closes before the output it contains:\n" + script
-    assert script.count(_SQUASH_KEY) == 1, (
-        "the version string is no longer squashed at capture, or is squashed somewhere the "
-        "controls below cannot find:\n" + script)
+    assert script.index("::${fence}::", fence_open) > loop, "the fence closes before the output it contains:\n" + script
+    assert script.count(_SQUASH_KEY) == 1, "the version string is no longer squashed at capture:\n" + script
 
 
 def test_the_validator_output_cannot_forge_a_workflow_command(tmp_path):
-    """The must-not-fire half, end to end through the real shell in the real workflow file."""
+    """End to end through the real shell: nothing forged, the fence closed, the log still readable."""
     log = _run(_step_script(), tmp_path)
     acted_on, open_token = _processed(log)
     assert _forged(acted_on) == [], "a third-party binary forged a workflow command:\n" + log
     assert open_token is None, "the fence was never closed, so later annotations are lost:\n" + log
-    assert any(line.lstrip().startswith("::stop-commands::") for line in acted_on), \
-        "the fence never opened, so the assertion above passed for the wrong reason:\n" + log
-    # And the log still reads as it did: every line the validator printed survives, verbatim.
-    for expected in ("Checking manifest", "FORGED-AT-COLUMN-0", "FORGED-BEHIND-AN-INDENT",
-                     "FORGED-IN-THE-LEGACY-FORM"):
+    assert any(line.lstrip().startswith("::stop-commands::") for line in acted_on), "the fence never opened:\n" + log
+    for expected in ("Checking manifest", "FORGED-AT-COLUMN-0", "FORGED-BEHIND-AN-INDENT", "FORGED-IN-THE-LEGACY-FORM"):
         assert expected in log, "the hardening ate the output it was meant to contain:\n" + log
 
 
-def test_removing_the_fence_lets_the_validator_forge_one(tmp_path):
-    """Must-fire control for the fence: without it, the assertion above would pass against a runner model that parses nothing, a stub that printed nothing, or an extractor that returned nothing."""
-    script = _step_script()
-    stripped = "\n".join(line for line in script.splitlines()
-                         if not any(key in line for key in _FENCE_KEYS)) + "\n"
-    removed = len(script.splitlines()) - len(stripped.splitlines())
-    assert removed == 2, f"expected to strip exactly the two fence lines, stripped {removed}"
-
-    acted_on, _ = _processed(_run(stripped, tmp_path))
-    forged = _forged(acted_on)
-    # Three shapes, and the loop runs the validator over both manifests, so six lines.
-    assert len(forged) == 6, f"expected all six forged lines unfenced, got: {forged}"
-    assert any("FORGED-AT-COLUMN-0" in line for line in forged), forged
-    assert any("FORGED-BEHIND-AN-INDENT" in line for line in forged), \
-        "an indented `::` must count: the runner trims before it matches"
-    assert any("FORGED-IN-THE-LEGACY-FORM" in line for line in forged), \
-        "`##[error]` mid-line must count: the legacy parser is unanchored"
+@pytest.mark.parametrize("step_name, count", [(STEP_NAME, 6), ("Validate the marketplace catalog (gate)", 3)], ids=["advisory", "gate"])
+def test_removing_the_fence_lets_the_validator_forge_one(tmp_path, step_name, count):
+    """MUST-FIRE for the fence: without it every forged line is acted on (the advisory step loops over two manifests)."""
+    script = _step_script(step_name)
+    stripped = "\n".join(line for line in script.splitlines() if not any(key in line for key in _FENCE_KEYS)) + "\n"
+    assert len(script.splitlines()) - len(stripped.splitlines()) == 2, "expected to strip exactly the two fence lines"
+    proc = _exec(stripped, tmp_path)
+    log = proc.stdout + proc.stderr
+    assert _MARK in log, "the harness never reached the hostile output at all:\n" + log
+    forged = _forged(_processed(log)[0])
+    assert len(forged) == count, f"expected all {count} forged lines unfenced, got: {forged}"
+    _assert_three_shapes_forged(forged)
 
 
 def test_removing_the_version_squash_lets_the_version_string_forge_one(tmp_path):
-    """Must-fire control for the other containment: `claude --version` is interpolated into six lines that begin at column 0, all outside the fence, so the fence cannot cover it."""
+    """MUST-FIRE for the other containment: the version string is interpolated outside the fence, at column 0."""
     script = _step_script()
     stripped = "\n".join(line for line in script.splitlines() if _SQUASH_KEY not in line) + "\n"
-    removed = len(script.splitlines()) - len(stripped.splitlines())
-    assert removed == 1, f"expected to strip exactly the squash line, stripped {removed}"
-
-    acted_on, _ = _processed(_run(stripped, tmp_path))
-    forged = _forged(acted_on)
-    # Both forms: the `pinned=` echo is the one unwrapped column-0 line this value reaches, and a newline gives `::`
-    # a line start while `##[` needs none at all.
-    assert any("FORGED-VIA-VERSION::" in line for line in forged), \
-        f"the version string could not forge a `::` line even unsquashed: {forged}"
-    assert any("FORGED-VIA-VERSION-LEGACY" in line for line in forged), \
-        f"the version string could not forge a `##[` line even unsquashed: {forged}"
-
-# -- The three steps that are NOT advisory (#177) ---------------------------------------------
-# The install step and the two gate steps run `claude` straight into the log, unfenced -- required checks whose
-# verdict IS the exit code. A fork PR's plugin-manifest field name forges via the unanchored legacy form (read-only
-# token, no secrets at risk). Fenced rather than sanitised like the version string, since a gate's output is what a
-# human reads when it's red.
-
-_GATE_STEPS = (
-    "Install the pinned Claude Code CLI",
-    "Validate the plugin manifest (gate)",
-    "Validate the marketplace catalog (gate)",
-)
-
-_FENCE_OPEN, _FENCE_CLOSE = _FENCE_KEYS
-
-# A `claude` invocation at command position, not `"claude" in line`: the install step's package name
-# `@anthropic-ai/claude-code@...` is a string this workflow wrote, not a process it starts.
-_CLAUDE_INVOCATION = re.compile(r"(?:^|[;&|(\s])claude\s", re.M)
-
-
-def _without_comments(script):
-    """The script with whole-line `#` comments blanked to spaces, so every offset is unchanged. A prose line inside a `run:` block that says `claude ...` is not an invocation -- without this the guard below would report the paragraph explaining the fence as the thing the fence misses."""
-    return "\n".join(" " * len(line) if line.lstrip().startswith("#") else line
-                     for line in script.splitlines())
-
-
-def _steps_running_claude():
-    return [(name, script) for name, script in _all_run_steps()
-            if _CLAUDE_INVOCATION.search(_without_comments(script))]
+    assert len(script.splitlines()) - len(stripped.splitlines()) == 1, "expected to strip exactly the squash line"
+    forged = _forged(_processed(_run(stripped, tmp_path))[0])
+    assert any("FORGED-VIA-VERSION::" in line for line in forged), f"the version string could not forge a `::` line: {forged}"
+    assert any("FORGED-VIA-VERSION-LEGACY" in line for line in forged), f"the version string could not forge a `##[` line: {forged}"
 
 
 def test_the_step_extractor_reads_every_run_form():
-    """The extractor everything else here rests on, so its blind spots become theirs. #177 found `_run_steps` matched the block scalar only as exact `run: |`, losing an unfenced `claude` step's body -- invisible to every check. Asserted against synthetic text, since a guard exercised only on a form the file
-    doesn't use proves nothing."""
+    """MUST-FIRE for the extractor everything rests on: every block-scalar header, the one-liner, a nested sequence."""
     text = (
-        "jobs:\n" "  j:\n" "    steps:\n" "      - name: Literal\n" "        run: |\n"
-        "          claude plugin validate --strict .\n" "      - name: Stripped\n" "        run: |-\n"
-        "          claude plugin validate --strict .\n" "      - name: Kept\n" "        run: |+\n"
-        "          claude plugin validate --strict .\n" "      - name: Folded\n" "        run: >-\n"
-        "          claude plugin validate --strict .\n" "      - name: Explicit indent\n" "        run: |2\n"
-        "          claude plugin validate --strict .\n" "      - name: Commented header\n"
-        "        run: | # why this is a block\n" "          claude plugin validate --strict .\n"
-        "      - name: One line\n" "        run: claude plugin validate --strict .\n"
-        "      - name: Nested sequence first\n" "        with:\n" "          args:\n" "            - --strict\n"
-        "        run: |\n" "          claude plugin validate --strict .\n"
+        "jobs:\n  j:\n    steps:\n"
+        "      - name: Literal\n        run: |\n          claude plugin validate --strict .\n"
+        "      - name: Stripped\n        run: |-\n          claude plugin validate --strict .\n"
+        "      - name: Kept\n        run: |+\n          claude plugin validate --strict .\n"
+        "      - name: Folded\n        run: >-\n          claude plugin validate --strict .\n"
+        "      - name: Explicit indent\n        run: |2\n          claude plugin validate --strict .\n"
+        "      - name: Commented header\n        run: | # why this is a block\n          claude plugin validate --strict .\n"
+        "      - name: One line\n        run: claude plugin validate --strict .\n"
+        "      - name: Nested sequence first\n        with:\n          args:\n            - --strict\n"
+        "        run: |\n          claude plugin validate --strict .\n"
         "      - uses: actions/checkout@v7\n"
     )
     steps = _run_steps(text)
-    assert [name for name, _ in steps] == [
-        "Literal", "Stripped", "Kept", "Folded", "Explicit indent", "Commented header",
-        "One line", "Nested sequence first"], steps
+    assert [name for name, _ in steps] == ["Literal", "Stripped", "Kept", "Folded", "Explicit indent", "Commented header",
+                                           "One line", "Nested sequence first"], steps
     for name, script in steps:
         assert script.strip() == "claude plugin validate --strict .", (name, script)
-        assert _CLAUDE_INVOCATION.search(_without_comments(script)), (
-            f"{name}: the body was dropped, so every check in this module would look straight past an unfenced step "
-            "written this way")
-
-    # And the must-not-fire half: a step that runs no CLI must not be conjured into the set.
+        assert _CLAUDE_INVOCATION.search(_without_comments(script)), f"{name}: the body was dropped"
     assert _run_steps("      - name: Nothing\n        uses: actions/checkout@v7\n") == []
 
 
 def test_every_step_that_runs_the_cli_contains_what_it_prints():
-    """The class guard, not three per-step assertions -- #147 and #176 were both one hardened half and one missed, so this checks every step that starts `claude`, whatever it's named: fence or capture its output, or go red under its own name. #177 is why: naming the three steps it found would leave a fourth to
-    be discovered the same way."""
+    """The class guard (#177): every step that starts `claude` fences its output or captures it, whatever it is named."""
     steps = _steps_running_claude()
-    assert len(steps) == 4, (
-        "the set of steps that run the Claude CLI changed. Every one of them needs a decision: " "fence its output, or capture and sanitise it, and if it is a gate, carry its exit code out "
-        f"past the fence. Add it to _GATE_STEPS if it is one. Found: {[n for n, _ in steps]}")
-
+    assert len(steps) == 4, ("the set of steps that run the Claude CLI changed; each needs a fence or a capture, and a gate "
+                             f"carries its exit code past the fence. Add it to _GATE_STEPS if it is one. Found: {[n for n, _ in steps]}")
     offenders = []
     for name, script in steps:
         code = _without_comments(script)
@@ -372,30 +300,24 @@ def test_every_step_that_runs_the_cli_contains_what_it_prints():
             line_start = code.rfind("\n", 0, match.start()) + 1
             line_end = code.find("\n", match.start())
             line = code[line_start:line_end if line_end != -1 else len(code)]
-            # Outside the fence, capture-into-a-variable is the only other accepted containment -- the version
-            # string is the one instance; see test_removing_the_version_squash_lets_the_version_string_forge_one.
-            if "$(claude" in line:
+            if "$(claude" in line:  # capture into a variable is the other accepted containment
                 continue
             offenders.append((name, line.strip()))
-    assert offenders == [], (
-        "a step runs the Claude CLI straight into the log, outside any fence (#177). Wrap it: open " "::stop-commands:: with an unguessable token, run the command, echo the token back.\n"
-        + "\n".join(f"  {name}: {detail}" for name, detail in offenders))
+    assert offenders == [], ("a step runs the Claude CLI straight into the log, outside any fence (#177):\n"
+                             + "\n".join(f"  {name}: {detail}" for name, detail in offenders))
 
 
 @pytest.mark.parametrize("step_name", _GATE_STEPS)
 def test_a_gate_step_still_carries_its_exit_code_past_the_fence(step_name):
-    """The structural half of the exit-code question, so it runs on every leg. `echo` clobbers `$?`, so closing the fence destroys the verdict unless it was captured first; a fence written without the two lines below turns a required check into one that always passes -- worse than the defect it was fixing."""
+    """`echo` clobbers `$?`, so closing the fence destroys the verdict unless it was captured first."""
     script = _step_script(step_name)
-    assert "|| code=$?" in script, (
-        f"{step_name!r} does not capture the CLI's exit code, so closing the fence loses it:\n" + script)
-    assert script.rstrip().endswith('exit "$code"'), (
-        f"{step_name!r} does not re-raise the captured exit code as its own, so the step reports the exit status "
-        f"of the echo that closed the fence:\n" + script)
+    assert "|| code=$?" in script, f"{step_name!r} does not capture the CLI's exit code:\n" + script
+    assert script.rstrip().endswith('exit "$code"'), f"{step_name!r} does not re-raise the captured exit code as its own:\n" + script
 
 
 @pytest.mark.parametrize("step_name", [name for name, _ in _steps_running_claude()])
 def test_no_step_lets_the_cli_forge_a_workflow_command(step_name, tmp_path):
-    """The behavioural half of the class guard: every step that runs the CLI, through the real shell, against a `claude` that forges in both parser forms."""
+    """The behavioural half of the class guard, through the real shell."""
     proc = _exec(_step_script(step_name), tmp_path)
     log = proc.stdout + proc.stderr
     assert _MARK in log, "the harness never reached the hostile output at all:\n" + log
@@ -407,57 +329,26 @@ def test_no_step_lets_the_cli_forge_a_workflow_command(step_name, tmp_path):
 @pytest.mark.parametrize("step_name", _GATE_STEPS)
 @pytest.mark.parametrize("shell", [("bash", "-e"), ("bash",)], ids=["errexit", "no-errexit"])
 def test_a_gate_step_reports_the_cli_failure_through_its_fence(step_name, shell, tmp_path):
-    """The must-fire half deciding whether this fix was worth making: a `claude` that forges AND exits 7. The step must come back exactly 7, not merely non-zero (a lost code failing for some other reason would satisfy `!= 0` and prove nothing), with nothing forged. Run under both `bash -e` and plain `bash` --
-    neither fence assumes GitHub's shell."""
+    """A `claude` that forges AND exits 7 comes back exactly 7, with nothing forged, under either shell mode."""
     proc = _exec(_step_script(step_name), tmp_path, claude_stub=_claude_stub(7), shell=shell)
     log = proc.stdout + proc.stderr
     assert _MARK in log, "the harness never reached the hostile output at all:\n" + log
-    assert proc.returncode == 7, (
-        f"the gate's verdict did not survive its fence: expected exit 7, got {proc.returncode}. A required check "
-        f"that cannot fail is worse than one that can be forged.\n" + log)
+    assert proc.returncode == 7, f"the gate's verdict did not survive its fence: expected exit 7, got {proc.returncode}\n" + log
     acted_on, open_token = _processed(log)
-    assert _forged(acted_on) == [], "a third-party binary forged a workflow command:\n" + log
-    assert open_token is None, "the fence was never closed:\n" + log
+    assert _forged(acted_on) == [] and open_token is None, "a third-party binary forged a workflow command, or the fence stayed open:\n" + log
 
 
 @pytest.mark.parametrize("step_name", _GATE_STEPS)
 def test_a_gate_step_still_passes_when_the_cli_passes(step_name, tmp_path):
-    """The other half of the same question: a fence that always fails is not a gate either, and the test above cannot tell one from a fence that works."""
+    """A fence that always fails is not a gate either."""
     proc = _exec(_step_script(step_name), tmp_path)
-    log = proc.stdout + proc.stderr
-    assert proc.returncode == 0, (
-        f"the step failed against a CLI that exited 0: {proc.returncode}\n" + log)
+    assert proc.returncode == 0, f"the step failed against a CLI that exited 0: {proc.returncode}\n" + proc.stdout + proc.stderr
 
 
 def test_removing_the_exit_line_lets_a_failing_gate_report_success(tmp_path):
-    """Must-fire control for the exit-code half: with the re-raise removed, an identical run against a CLI that exits 7 has to come back 0 -- otherwise the assertions above were passing for some other reason."""
+    """MUST-FIRE for the exit-code half: with the re-raise removed, a CLI that exits 7 comes back 0."""
     script = _step_script("Validate the plugin manifest (gate)")
-    stripped = "\n".join(line for line in script.splitlines()
-                         if 'exit "$code"' not in line) + "\n"
-    removed = len(script.splitlines()) - len(stripped.splitlines())
-    assert removed == 1, f"expected to strip exactly the re-raise line, stripped {removed}"
-
+    stripped = "\n".join(line for line in script.splitlines() if 'exit "$code"' not in line) + "\n"
+    assert len(script.splitlines()) - len(stripped.splitlines()) == 1, "expected to strip exactly the re-raise line"
     proc = _exec(stripped, tmp_path, claude_stub=_claude_stub(7))
-    assert proc.returncode == 0, (
-        "the control removed nothing: the step failed anyway, so the exit-code assertions above prove nothing " f"about the line they name (exit {proc.returncode})\n"
-        + proc.stdout + proc.stderr)
-
-
-def test_removing_the_fence_lets_a_gate_step_forge_one(tmp_path):
-    """Must-fire control for the fence on a gate step: same control as the advisory step's above, on the step whose output nobody had contained."""
-    script = _step_script("Validate the marketplace catalog (gate)")
-    stripped = "\n".join(line for line in script.splitlines()
-                         if not any(key in line for key in _FENCE_KEYS)) + "\n"
-    removed = len(script.splitlines()) - len(stripped.splitlines())
-    assert removed == 2, f"expected to strip exactly the two fence lines, stripped {removed}"
-
-    proc = _exec(stripped, tmp_path)
-    acted_on, _ = _processed(proc.stdout + proc.stderr)
-    forged = _forged(acted_on)
-    # One manifest, three forged shapes -- unlike the advisory step, which loops over two.
-    assert len(forged) == 3, f"expected all three forged lines unfenced, got: {forged}"
-    assert any("FORGED-AT-COLUMN-0" in line for line in forged), forged
-    assert any("FORGED-BEHIND-AN-INDENT" in line for line in forged), \
-        "an indented `::` must count: the runner trims before it matches"
-    assert any("FORGED-IN-THE-LEGACY-FORM" in line for line in forged), \
-        "`##[error]` mid-line must count: the legacy parser is unanchored"
+    assert proc.returncode == 0, f"the control removed nothing: the step failed anyway (exit {proc.returncode})\n" + proc.stdout + proc.stderr

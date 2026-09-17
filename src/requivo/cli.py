@@ -1178,7 +1178,7 @@ def _accept_workspace_after_the_command(parser: argparse.ArgumentParser) -> None
 
     `default=argparse.SUPPRESS` on every copy is the whole of the correctness: a subparser's namespace
     is copied onto the parent's, so a `None` default would clobber a global `--workspace DIR`.
-    `test_an_absent_subcommand_workspace_does_not_clobber_the_global_one`. Walked through
+    `test_workspace_parses_identically_before_and_after_the_command`. Walked through
     `_actions`/`_SubParsersAction` (argparse enumerates nothing publicly), as `test_cli_flag_names.py` has since #72."""
     seen: set[int] = set()
 

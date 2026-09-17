@@ -1,14 +1,4 @@
-"""Requivo Web security: the request-side guard -- CSRF token, body cap, Host/Origin trust.
-
-Split from the single `test_web_security.py` by #555, once that file crossed the 800-line
-ceiling -- response headers, the disk cache, the slug guard and redirect safety stayed there. The
-final section, what must never reach the browser (an API key, unescaped user content), lives here
-rather than in that file: it shares this file's `full_model` import (the other file has no use for
-it), and splitting two tests alone would not have cleared either file's budget on its own.
-
-Offline (a fake provider), isolated workspace per test; the fixtures and the seeded-session helper
-live in `tests/web/conftest.py`.
-"""
+"""Requivo Web security: the request-side guard -- CSRF token, body cap, Host/Origin trust (#555)."""
 
 from __future__ import annotations
 
@@ -31,9 +21,7 @@ from requivo.web.security import (
 from tests.web.conftest import HIGH_EXPLICIT, _make_session, full_model
 
 # ── cross-site protection ─────────────────────────────────────────────────────
-# Listening on 127.0.0.1 keeps nobody out: any page open in the same browser can post to a known local
-# port without a preflight, and for this app writing *is* the damage (sessions created, provider calls
-# billed). These pin each layer of web/security.py independently.
+# Listening on 127.0.0.1 keeps nobody out: any page open in the same browser can post to a known local port without a preflight, and for this app writing *is* the damage (sessions created, provider calls billed).
 
 def test_a_write_without_the_request_token_is_refused(raw_client):
     r = raw_client.post("/sessions", data={"request_text": "x", "slug": "evil", "provider": "create_only"})
@@ -53,11 +41,7 @@ def test_forms_render_the_request_token(client):
 
 
 def test_a_token_this_server_cannot_compare_is_refused_rather_than_crashing(raw_client):
-    """A token the comparison cannot read is a wrong token, not an unhandled exception (#212).
-    `secrets.compare_digest` raises `TypeError` unless both `str` args are ASCII-only, and one non-ASCII
-    character escaped `_guard`'s two `except` arms and `security_headers`, landing on the outermost 500
-    with no CSP, no nosniff and no Referrer-Policy. The headers assertion is the point: a fix catching
-    `TypeError` at the wrong layer would satisfy the status code and still answer without them."""
+    """A token the comparison cannot read is a wrong token, not an unhandled exception (#212)."""
     hostile = raw_client.post(
         "/sessions",
         data={"request_text": "x", "provider": "create_only", CSRF_FIELD: "é"})
@@ -67,17 +51,14 @@ def test_a_token_this_server_cannot_compare_is_refused_rather_than_crashing(raw_
         assert header in hostile.headers, (
             f"the refusal answered without {header} — it escaped the header middleware")
 
-    # Must fire. An ASCII wrong token already took this path before the fix, so without this control
-    # the assertions above would also pass against a guard that refused *every* token, headers and
-    # all, and told us nothing about the non-ASCII one.
+    # Must fire.
     control = raw_client.post(
         "/sessions",
         data={"request_text": "x", "provider": "create_only", CSRF_FIELD: "wrong"})
     assert control.status_code == 403
     assert "Content-Security-Policy" in control.headers
 
-    # …and the other must-fire half: a *valid* token still passes, so the fix did not close the door
-    # on the browser path it exists to serve.
+    # …and the other must-fire half: a *valid* token still passes.
     ok = raw_client.post(
         "/sessions",
         data={"request_text": "x", "slug": "still-works", "provider": "create_only",
@@ -87,11 +68,7 @@ def test_a_token_this_server_cannot_compare_is_refused_rather_than_crashing(raw_
 
 
 def test_a_latin1_token_header_reaches_the_refusal_rather_than_the_comparison(app):
-    """The header half of the same defect, driven at the ASGI seam where it actually arrives. Starlette
-    decodes header bytes as latin-1, so a raw 0xe9 byte in `x-csrf-token` becomes a one-character
-    non-ASCII `str` before `_enforce` sees it -- a value no HTTP client library lets a test send
-    through the ordinary API, since httpx encodes headers as ASCII. Driving the scope directly is
-    what makes this leg assertable, the same input a proxy or mangling client can send."""
+    """The header half of the same defect, driven at the ASGI seam where it actually arrives."""
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -117,11 +94,7 @@ def test_a_latin1_token_header_reaches_the_refusal_rather_than_the_comparison(ap
 # ── the body cap (#216) ────────────────────────────────────────────────────────
 
 def test_a_chunked_body_is_refused_before_being_read(app):
-    """#216: `MAX_BODY_BYTES` used to be checked only against a declared `Content-Length` -- a chunked
-    request (no such header) sailed past that check and was read in full before the size was measured.
-    An instrumented `receive` reproduces a chunked POST at the ASGI layer: no `content-length`, one
-    `http.request` event after another. Asserting the status code alone is not enough (the old code
-    also answers 413, after buffering everything) -- what matters is that `receive` is never called."""
+    """#216: `MAX_BODY_BYTES` used to be checked only against a declared `Content-Length`."""
     import asyncio
 
     from starlette.requests import Request
@@ -131,10 +104,7 @@ def test_a_chunked_body_is_refused_before_being_read(app):
     receive_calls = []
 
     async def instrumented_receive():
-        # However many bytes are behind it, this body must never be asked for one of them. Bounded
-        # at MAX_BODY_BYTES worth of chunks (plus one) rather than genuinely unbounded, so a version
-        # of the guard that does not refuse in time fails this test in finite time instead of hanging
-        # the suite -- MAX_BODY_BYTES is comfortably exceeded well before the generator runs out.
+        # However many bytes are behind it, this body must never be asked for one of them.
         receive_calls.append(len(receive_calls))
         more = len(receive_calls) <= MAX_BODY_BYTES // 1_000 + 1
         return {"type": "http.request", "body": b"x" * 1_000, "more_body": more}
@@ -152,9 +122,8 @@ def test_a_chunked_body_is_refused_before_being_read(app):
 
 
 def test_a_declared_length_post_is_unaffected(app):
-    """Must-fire control for the refusal above: a real client always declares a length (the
-    app's own forms, curl, httpx, requests all do), and that path must still work exactly as
-    before -- this is not a tightening of what a legitimate caller can do."""
+    """Must-fire control for the refusal above: a real client always declares a length (the app's own forms,
+    curl, httpx, requests all do), and that path must still work exactly as before."""
     control = TestClient(app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False)
     control.headers[CSRF_HEADER] = csrf_token()
     accepted = control.post(
@@ -164,10 +133,7 @@ def test_a_declared_length_post_is_unaffected(app):
 
 
 def test_a_request_with_no_body_and_no_content_length_is_still_refused(app):
-    """The refusal is keyed on the *header*, not on whether bytes actually follow -- an unsafe
-    method carrying no declared length at all is refused the same way regardless of what a
-    real chunked stream would eventually contain, which is the point: the check must never
-    need to look."""
+    """The refusal is keyed on the *header*, not on whether bytes actually follow."""
     import asyncio
 
     from starlette.requests import Request
@@ -201,28 +167,18 @@ def test_a_browser_declared_cross_site_write_is_refused(client):
 
 
 def test_a_request_addressed_to_another_host_is_refused(app):
-    # DNS rebinding: `evil.example` resolving to 127.0.0.1 is same-origin to the browser, so it would
-    # pass every other check *and* be able to read the token off the page. The host allowlist is the
-    # only guard that catches it, which is why it also runs on reads.
+    # DNS rebinding: `evil.example` resolving to 127.0.0.1 is same-origin to the browser.
     rebound = TestClient(app, base_url="http://evil.example", raise_server_exceptions=False)
     assert rebound.get("/").status_code == 403
 
 
 def test_a_host_the_server_cannot_determine_is_refused_rather_than_skipped(app):
-    """#45: the allowlist used to read `if host and host not in allowed_hosts()`, so `""` -- what `_hostname`
-    returns when it could not determine a host -- skipped the check entirely instead of failing it: a check
-    that cannot read its input treats that as no check needed, reporting nothing while off. Observed at the
-    socket against 0.10.1: an empty `Host:` answered 200, reproduced here via `TestClient`. The accept
-    beside it is the control: a determined loopback `GET` must still answer 200 in this same fixture."""
+    """#45: the allowlist used to read `if host and host not in allowed_hosts()`, so `""`."""
     c = TestClient(app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False)
 
     empty = c.get("/", headers={"Host": ""})
     assert empty.status_code == 403
-    # Names its own arm rather than borrowing the generic another-origin wording, as #43 did for the
-    # opaque origin: a guard that could not look must not print what a guard that looked and refused
-    # prints. Since #52 that arm has its own **code**, which is the stable identifier
-    # `docs/compatibility.md` says to assert on — this used to match the message text because
-    # `cross_site_request` was raised for all six arms and the wording was the only handle there was.
+    # Names its own arm rather than borrowing the generic another-origin wording (#43).
     assert "undetermined_host" in empty.text
 
     # whitespace-only is the same undetermined state by a different spelling — `_hostname` strips first
@@ -234,11 +190,7 @@ def test_a_host_the_server_cannot_determine_is_refused_rather_than_skipped(app):
 
 
 def test_a_request_that_states_no_host_at_all_is_refused(app):
-    """The other observed row: `GET / HTTP/1.0` with no `Host` header, which h11 admits (only required on
-    HTTP/1.1), and which answered 200. Driven against `_enforce` over a hand-built ASGI scope, since no client
-    this suite can build will omit the header -- httpx raises on a `None` value, and `TestClient` always derives
-    one from `base_url`. The determined-host scope is asserted first as the must-fire control -- without it a
-    malformed scope, or an `_enforce` that raised on everything, would pass this test while checking nothing."""
+    """The other observed row: `GET / HTTP/1.0` with no `Host` header."""
     import asyncio
 
     from starlette.requests import Request
@@ -246,9 +198,7 @@ def test_a_request_that_states_no_host_at_all_is_refused(app):
     from requivo.web.security import CrossSiteRequestError, _enforce
 
     def verdict(headers: list[tuple[bytes, bytes]]) -> str:
-        """`"accepted"`, or the refusal's error **code** — never a bare boolean, so the arm is
-        visible here. The code rather than the message since #52: each arm now carries its own,
-        and a code is the identifier `docs/compatibility.md` says to assert on."""
+        """`"accepted"`, or the refusal's error **code** (#52)."""
         async def run() -> str:
             scope = {"type": "http", "method": "GET", "path": "/", "query_string": b"",
                      "headers": headers}
@@ -267,9 +217,7 @@ def test_a_request_that_states_no_host_at_all_is_refused(app):
 # ── the origin check: which hostnames are one trust domain (#43) ──────────────
 
 def _guard_post(app, *, host: str, slug: str, headers: dict | None = None):
-    """One write, addressed to `host`, carrying a valid request token — so the only thing under
-    test is the origin check. Redirects are not followed, so an accepted write reads as 303
-    and a refused one as 403 rather than both landing on a rendered page."""
+    """One write, addressed to `host`, carrying a valid request token."""
     c = TestClient(app, base_url=f"http://{host}", raise_server_exceptions=False)
     c.headers[CSRF_HEADER] = csrf_token()
     return c.post("/sessions",
@@ -279,11 +227,7 @@ def _guard_post(app, *, host: str, slug: str, headers: dict | None = None):
 
 
 def test_the_loopback_spellings_are_one_origin_and_evil_example_still_is_not(app):
-    """#43: `localhost`, `127.0.0.1` and `::1` are three spellings of one machine -- the host allowlist
-    already treats them as interchangeable, but the origin check compared them as strings, so a page
-    served on one spelling could not post to the other. Reported from a real browser on 0.10.0: the
-    form could not be submitted, and the natural recovery resubmits the stale `Origin` and reproduces
-    the same 403. The refusal half lives here on purpose: acceptance alone would pass a deleted guard."""
+    """#43: `localhost`, `127.0.0.1` and `::1` are three spellings of one machine."""
     assert _guard_post(app, host="127.0.0.1:8765", slug="lb-localhost-origin",
                        headers={"Origin": "http://localhost:8765"}).status_code == 303
     assert _guard_post(app, host="localhost:8765", slug="lb-ipv4-origin",
@@ -298,9 +242,7 @@ def test_the_loopback_spellings_are_one_origin_and_evil_example_still_is_not(app
 
 
 def test_a_referer_gets_the_same_equivalence_and_the_same_refusal(app):
-    """`Referer` is the fallback the same line reads, so it has to move with `Origin` — the
-    reporter's probe measured both, and a fix that widened only one would leave half the
-    dead end in place."""
+    """`Referer` is the fallback the same line reads, so it has to move with `Origin`."""
     assert _guard_post(app, host="127.0.0.1:8765", slug="ref-loopback",
                        headers={"Referer": "http://localhost:8765/sessions"}).status_code == 303
     # must still fire
@@ -309,11 +251,7 @@ def test_a_referer_gets_the_same_equivalence_and_the_same_refusal(app):
 
 
 def test_the_opaque_origin_is_refused_deliberately_and_says_which_arm_fired(app):
-    """`Origin: null` is a browser declining to attribute where it is posting from. Before #43 it was
-    refused only by accident -- `_hostname("null")` returns the literal string `"null"`, which
-    failed an equality test -- and an accident is not a decision. Refused on purpose now: browsers
-    attach `Origin` to every POST, so silence means no browser is speaking, while `null` is the
-    one origin a browser-borne attacker can emit. The accept beside it is the control."""
+    """`Origin: null` is a browser declining to attribute where it is posting from (#43)."""
     r = _guard_post(app, host="127.0.0.1:8765", slug="opaque-origin", headers={"Origin": "null"})
     assert r.status_code == 403
     assert "opaque origin" in r.text          # the opaque arm, not the generic another-origin refusal
@@ -322,12 +260,7 @@ def test_the_opaque_origin_is_refused_deliberately_and_says_which_arm_fired(app)
                        headers={"Origin": "http://localhost:8765"}).status_code == 303
 
 
-# Fetch's *append a request `Origin` header* consults the referrer policy for any request that is not
-# CORS-mode — an ordinary HTML form submit is a navigation, not CORS — and whose method is not
-# GET/HEAD. This table is that algorithm restricted to the only case this app's plain forms produce: a
-# **same-origin** post over plain HTTP. Only `no-referrer` replaces the origin with the opaque value.
-# The downgrade-sensitive policies null it solely on an HTTPS→HTTP downgrade, which a same-origin
-# request cannot be, and `same-origin` nulls it solely when the request is genuinely cross-origin.
+# Fetch's *append a request `Origin` header* consults the referrer policy for any request that is not CORS-mode — an ordinary HTML form submit is a navigation, not CORS — and whose method is not GET/HEAD.
 _ORIGIN_A_BROWSER_SENDS_ON_A_SAME_ORIGIN_FORM_POST = {
     "no-referrer": "null",
     "no-referrer-when-downgrade": "SELF",
@@ -341,11 +274,7 @@ _ORIGIN_A_BROWSER_SENDS_ON_A_SAME_ORIGIN_FORM_POST = {
 
 
 def test_the_policy_this_app_sends_and_the_origin_guard_it_runs_agree(app, client):
-    """The header this app emits must not produce an `Origin` this app's own guard refuses (#47). Neither half was wrong alone:
-    `Referrer-Policy: no-referrer` is defensible, and refusing the opaque origin is a deliberate decision (#43) -- the
-    defect lived only in the composition, a same-origin post arriving as `Origin: null` because of a header this server had
-    just sent, then refused by the server that sent it. `TestClient` implements no referrer policy, so the browser's half
-    comes from the table above; what is under test is the header this app emits and the guard's verdict on it."""
+    """The header this app emits must not produce an `Origin` this app's own guard refuses (#47)."""
     policy = client.get("/").headers["Referrer-Policy"]
     assert policy in _ORIGIN_A_BROWSER_SENDS_ON_A_SAME_ORIGIN_FORM_POST, (
         f"Referrer-Policy {policy!r} is not in the table this test reasons over. Add what Fetch says "
@@ -354,9 +283,7 @@ def test_the_policy_this_app_sends_and_the_origin_guard_it_runs_agree(app, clien
     if origin == "SELF":
         origin = "http://127.0.0.1:8765"
 
-    # must fire: the guard really is refusing opaque origins in this fixture. Without it the acceptance
-    # below would read exactly the same against a guard that had been deleted — and `no-referrer`
-    # shipping a second time would then land green.
+    # must fire: the guard really is refusing opaque origins in this fixture.
     assert _guard_post(app, host="127.0.0.1:8765", slug="composed-opaque",
                        headers={"Origin": "null"}).status_code == 403
 
@@ -367,11 +294,7 @@ def test_the_policy_this_app_sends_and_the_origin_guard_it_runs_agree(app, clien
 
 
 def test_no_origin_headers_at_all_keeps_its_current_behaviour(app):
-    """A scripted client sends neither header and the request token is what gates it — `curl`
-    with a valid token is a supported caller, and this suite's own posts are that caller.
-    #43 asked whether the absent case should be tightened to match `null`; it is
-    deliberately left alone, so it is pinned here rather than left implicit, with the token-
-    less post beside it as the control that the write path is still guarded at all."""
+    """A scripted client sends neither header and the request token is what gates it (#43)."""
     assert _guard_post(app, host="127.0.0.1:8765", slug="no-origin-stated").status_code == 303
     bare = TestClient(app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False)
     assert bare.post("/sessions", data={"request_text": "x", "slug": "no-token-at-all",
@@ -379,11 +302,7 @@ def test_no_origin_headers_at_all_keeps_its_current_behaviour(app):
 
 
 def test_two_hostnames_nobody_could_determine_are_not_a_match():
-    """`_hostname` returns `""` when it could not find a hostname -- an absent/unparseable `Host`, or an origin
-    like `http:///` naming nobody. Two of those compared equal and read as same trust domain, so the one
-    input where neither side was determined produced the same verdict as a verified match -- a check that
-    could not look has to say so rather than answer. Asserted directly rather than over HTTP, since no
-    client this suite can build will omit a `Host` header; the rows below are the must-fire control."""
+    """`_hostname` returns `""` when it could not find a hostname."""
     assert _same_trust_domain("", "") is False              # neither side determined — not a match
     assert _same_trust_domain("", "127.0.0.1") is False
     assert _same_trust_domain("127.0.0.1", "") is False
@@ -394,11 +313,7 @@ def test_two_hostnames_nobody_could_determine_are_not_a_match():
 
 
 def test_a_cross_port_loopback_origin_is_accepted_and_that_is_the_decision(app):
-    """#46: `_hostname` discards the port on both sides, so this check accepts any page on any loopback port -- not, as the
-    docstring used to claim, only a page from this process; the behaviour is deliberate and pinned here. Deliberate because the
-    request token gates the write, a foreign-port page cannot obtain it, the browser's own same-origin policy already blocks the
-    cross-origin read, and `Sec-Fetch-Site` refuses the cross-port post before this line is reached -- comparing the port would
-    add nothing and repeats #43's exact false-positive shape. The hostile row beside it is the must-fire control."""
+    """#46: `_hostname` discards the port on both sides, so this check accepts any page on any loopback port."""
     assert _guard_post(app, host="127.0.0.1:8765", slug="cross-port-loopback",
                        headers={"Origin": "http://localhost:3000"}).status_code == 303
     # must still fire — a port is not what makes a foreign host acceptable either
@@ -407,11 +322,7 @@ def test_a_cross_port_loopback_origin_is_accepted_and_that_is_the_decision(app):
 
 
 def test_operator_listed_hosts_are_not_interchangeable_with_one_another(app, monkeypatch):
-    """The equivalence is the fixed loopback set this module defines, never whatever an
-    operator put in `REQUIVO_WEB_ALLOWED_HOSTS`. Those are real hostnames and two of them
-    may well be meant as two distinct origins; a blanket `allowed_hosts()` membership test
-    would have made that call on the operator's behalf. Each is still same-origin with
-    itself, which is the accept half."""
+    """The equivalence is the fixed loopback set this module defines."""
     monkeypatch.setenv("REQUIVO_WEB_ALLOWED_HOSTS", "app.internal,admin.internal")
     assert _guard_post(app, host="app.internal", slug="named-self",
                        headers={"Origin": "http://app.internal"}).status_code == 303

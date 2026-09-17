@@ -1,16 +1,4 @@
-"""Requivo Web discovery and artifact flows: the workflow the product leads with, end to end.
-
-Split out of `test_web.py` by #142. Every test here drives the provider seam with a fake — create,
-answer, generate, regenerate — including the MVP flow's own rendering assertions, which stay with the
-flow they are a step of rather than moving to a file about markup.
-
-The busy-rule (#50), honest-wait (#236) and failed-analysis-recovery (#207) tests split out to
-`test_web_generation_busy.py` and `test_web_analysis_recovery.py` by #555, once this file crossed the
-800-line ceiling — each is a distinct subject in its own right, not a template concern.
-
-Offline, isolated workspace per test; the fixtures and the seeded-session helper live in
-`tests/web/conftest.py`.
-"""
+"""Requivo Web discovery and artifact flows: the workflow the product leads with, end to end (#142)."""
 
 from __future__ import annotations
 
@@ -66,10 +54,7 @@ def test_answers_apply_and_return_status_partial(client, with_provider):
 
 
 def test_revision_conflict_is_clean(client, with_provider):
-    # One reply, for the discovery. The answers turn never reaches the provider: since #205 the
-    # certain conflict is detected against the snapshot *before* the call, so a second scripted reply
-    # would go unused. `test_a_stale_answers_form_is_refused_before_the_provider_is_paid` is what pins
-    # that position; this one pins that the refusal is still a clean 409 rather than a traceback.
+    # One reply, for the discovery (#205).
     with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED))
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval", "provider": "anthropic"})
     r = client.post("/sessions/leave-approval/answers",
@@ -78,11 +63,7 @@ def test_revision_conflict_is_clean(client, with_provider):
 
 
 def test_a_hand_crafted_answers_post_on_a_revision_zero_session_is_refused(client, with_provider):
-    """The web's own door onto #421: the rendered page never shows the answers form at revision
-    0, but invariant 14 says the service is the boundary, not the form -- a client posting straight
-    to `POST /sessions/{slug}/answers` with `expected_revision=0` is as real a caller as the
-    browser. Before the fix this reached the provider with the typed answers in no kwarg of the
-    call; the service gate closes that regardless of which surface reaches it."""
+    """The web's own door onto #421: the rendered page never shows the answers form at revision 0."""
     fake = with_provider()  # no reply queued — a call reaching the provider fails loudly, not silently
     client.post("/sessions", data={"request_text": "x", "slug": "bare-rev0", "provider": "create_only"})
     assert fake.calls == []                            # create_only never touches the provider
@@ -96,11 +77,7 @@ def test_a_hand_crafted_answers_post_on_a_revision_zero_session_is_refused(clien
 
 
 def test_a_stale_answers_form_is_refused_before_the_provider_is_paid(client, with_provider):
-    """A conflict that is already certain must not be discovered by paying for it (#205).
-    `answer()` read a fresh snapshot, ran the paid call, and only then applied against
-    `expected_revision` -- so a second tab moving the session past that revision was billed for a
-    full turn thrown away (invariant 13's "the check is cheap and the call is not"). Asserted on
-    the call count, not the 409: the refusal already happened at the apply."""
+    """A conflict that is already certain must not be discovered by paying for it (#205)."""
     fake = with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED))
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval",
                                    "provider": "anthropic"})
@@ -116,12 +93,7 @@ def test_a_stale_answers_form_is_refused_before_the_provider_is_paid(client, wit
 
 
 def test_a_matching_answers_form_still_reaches_the_provider(client, with_provider):
-    """The must-fire half of the test above (#205).
-
-    `len(fake.calls) == spent_on_discovery` is also true of a gate that refuses *every* answers turn,
-    of a route that stopped working and of a harness that never posted — so without this control the
-    pre-call check could be wrong in the widening-refusal direction and still look green.
-    """
+    """The must-fire half of the test above (#205)."""
     fake = with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED),
                          engine_reply(converged=True, problem=HIGH_EXPLICIT,
                                       business_rules=HIGH_EXPLICIT))
@@ -156,11 +128,8 @@ def test_generate_brief_and_prd_and_view(client, with_provider):
 
 
 def test_downloading_an_unknown_artifact_type_refuses_rather_than_inventing_a_filename(client, with_provider):
-    """#270. The route used to fall back to `f"{artifact_type}.md"` for a type
-    `ARTIFACT_FILENAMES` does not know, against invariant 3 -- a fallback that could never fire,
-    since `artifacts.show()` already raises `UnknownArtifactTypeError` for this input. Must-fire
-    half: an unknown type must produce the structured refusal (400), not a guessed filename.
-    `test_generate_brief_and_prd_and_view` is the must-not-fire control."""
+    """#270. The route used to fall back to `f"{artifact_type}.md"` for a type `ARTIFACT_FILENAMES` does not
+    know, against invariant 3."""
     with_provider(engine_reply(converged=True, problem=HIGH_EXPLICIT))
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval", "provider": "anthropic"})
 
@@ -171,11 +140,7 @@ def test_downloading_an_unknown_artifact_type_refuses_rather_than_inventing_a_fi
 
 
 def test_a_saved_artifact_reads_as_a_document_not_as_source(client, with_provider):
-    """The money screen, rendered (#235). The decision brief is the product's stated primary
-    deliverable -- "the one to hand someone who has a request and half an hour" -- and it was
-    served as literal `# Decision Brief` and `**Objective:**` inside a monospace code block. The
-    reader who must not have to learn the engine's model was handed Markdown source at the exact
-    moment the product delivers its value."""
+    """The money screen, rendered (#235). The decision brief is the product's stated primary deliverable."""
     with_provider(engine_reply(converged=True, problem=HIGH_EXPLICIT), BRIEF_REPLY)
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval",
                                    "provider": "anthropic"})
@@ -190,10 +155,7 @@ def test_a_saved_artifact_reads_as_a_document_not_as_source(client, with_provide
 
 
 def test_downloading_an_artifact_still_serves_the_bytes_that_were_saved(client, with_provider):
-    """Rendering is a *view*. The file is the artifact, and it is what the reader hands on — to a
-    tracker, to a colleague, to the CLI — so the download has to be byte-identical to what
-    `ArtifactService` saved. A renderer that quietly reformatted the download would break every
-    consumer that is not a browser."""
+    """Rendering is a *view*. The file is the artifact, and it is what the reader hands on."""
     with_provider(engine_reply(converged=True, problem=HIGH_EXPLICIT), BRIEF_REPLY)
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval",
                                    "provider": "anthropic"})
@@ -208,11 +170,7 @@ def test_downloading_an_artifact_still_serves_the_bytes_that_were_saved(client, 
 
 
 def test_hostile_markup_in_a_saved_artifact_is_shown_not_executed(client, with_provider):
-    """The rendered page turns Jinja's autoescape off for this one value, so escaping has to be
-    complete before it gets there (#235). Written to disk directly -- the honest reproduction,
-    since an artifact file is a file the user owns and can edit, written by a language model.
-    `test_render_html.py` owns the per-construct proof; this is the end-to-end check that the page
-    actually goes through it."""
+    """The rendered page turns Jinja's autoescape off for this one value (#235)."""
     with_provider(engine_reply(converged=True, problem=HIGH_EXPLICIT), BRIEF_REPLY)
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval",
                                    "provider": "anthropic"})
@@ -243,9 +201,7 @@ def test_related_change_marks_artifact_stale(client, with_provider):
 
 
 def test_the_web_offers_every_artifact_the_service_can_generate(client, with_provider, monkeypatch):
-    # The Web used to keep its own two-entry list while the service could produce five. The buttons
-    # still come from the service's vocabulary — what changed is their weight: the decision brief is
-    # the primary action, the rest live under "More documents". Available, not equal.
+    # The Web used to keep its own two-entry list while the service could produce five.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")   # the toolbar only shows with a provider
     with_provider(CRITERIA_REPLY)
     _make_session("leave-approval", problem=HIGH_EXPLICIT)
@@ -262,11 +218,7 @@ def test_the_web_offers_every_artifact_the_service_can_generate(client, with_pro
 
 
 def test_the_two_former_analyses_are_generatable_and_an_unknown_type_still_is_not(client, with_provider):
-    # Until #519 this test pinned the opposite for `stories`: it reasoned but produced no document, so
-    # the route refused it. Both analyses save a document now (`decision: the-estimate-graduates`),
-    # and `estimate` saves the stories it was reasoned against beside itself, from one snapshot. The
-    # unknown-type refusal is the must-fire half: the fake would raise if reached, since it holds no
-    # reply for that call.
+    # Until #519 this test pinned the opposite for `stories`.
     with_provider(
         json.dumps({"stories": [{"id": "S1", "title": "Request leave"}]}),
         json.dumps({"stories": [{"id": "S1", "title": "Request leave"}]}),
@@ -285,23 +237,18 @@ def test_the_two_former_analyses_are_generatable_and_an_unknown_type_still_is_no
 
 
 # ── the MVP flow ──────────────────────────────────────────────────────────────
-# One workflow leads the product: paste a request → read what was understood → answer the few
-# questions that could change the solution → see what moved → generate one decision brief. These
-# tests pin that flow's shape, not just that its routes respond.
+# One workflow leads the product: paste a request → read what was understood → answer the few questions that could change the solution → see what moved → generate one decision brief.
 
 def test_home_leads_with_the_request_form(client):
     page = client.get("/").text
     assert 'name="request_text"' in page
     assert "Save request" in page or "Analyse request" in page
-    # The provider is a setting, not a question the reader has to answer: it exists, but only inside
-    # the advanced disclosure. Position is the honest assertion here — server-rendered <details>
-    # keeps its contents in the markup, so "not present" would be a lie.
+    # The provider is a setting, not a question the reader has to answer.
     assert page.index("Advanced settings") < page.index('id="provider"')
 
 
 def test_home_survives_a_session_with_no_model(client):
-    """A captured-but-unanalysed session is a normal row. It used to take the whole list down: the row
-    builder asked for a status, `status()` needs a model, and one 404 became the home page's."""
+    """A captured-but-unanalysed session is a normal row."""
     from requivo.services.discovery import DiscoveryService
     DiscoveryService().create_only("A leave approval system", slug="not-analysed-yet")
     r = client.get("/")
@@ -330,8 +277,7 @@ def test_no_raw_slot_ids_reach_the_page(client, with_provider):
     with_provider(engine_reply(problem=HIGH_EXPLICIT, business_rules=HIGH_INFERRED))
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval", "provider": "anthropic"})
     page = client.get("/sessions/leave-approval").text
-    # Every slot id with an underscore — the ones no human label contains, so a hit is the engine's
-    # vocabulary leaking into the reader's.
+    # Every slot id with an underscore — the ones no human label contains.
     for slot_id in ("business_rules", "config_vs_custom", "success_metrics", "current_process",
                     "edge_cases", "business_objects"):
         assert slot_id not in page, f"slot id {slot_id!r} rendered to the reader"
@@ -363,10 +309,7 @@ def test_answers_report_what_changed_and_what_needs_review(client, with_provider
 
 
 def test_a_threshold_only_invalidation_is_not_a_false_all_clear_on_the_web():
-    """Codex review on #604: `impact_view` ignored `invalidated_thresholds`, so a change that
-    unseats only a threshold rendered as "nothing to review" -- the primary screen stating a fact
-    it cannot support (CLAUDE.md: "the counts are always stated"). A direct unit test, not an
-    end-to-end flow: `impact_view` is a pure function over `UpdateResult`."""
+    """Codex review on #604: `impact_view` ignored `invalidated_thresholds`."""
     from requivo.services.sessions import Readiness, UpdateResult
     from requivo.web.viewmodels.status import impact_view
 
@@ -379,8 +322,7 @@ def test_a_threshold_only_invalidation_is_not_a_false_all_clear_on_the_web():
 
 
 def test_an_unrelated_change_leaves_a_document_alone(client, with_provider):
-    """The differentiator cuts both ways: a change that misses a document's dependencies must not
-    flag it. Reporting is not one of the PRD's inputs, so moving it changes nothing the PRD rests on."""
+    """The differentiator cuts both ways: a change that misses a document's dependencies must not flag it."""
     with_provider(
         engine_reply(problem=HIGH_EXPLICIT, reporting={"completeness": 10, "confidence": "empty",
                                                        "impact": "low"}),
@@ -397,9 +339,7 @@ def test_an_unrelated_change_leaves_a_document_alone(client, with_provider):
 
 
 def test_a_changed_answer_moves_the_scope_and_the_brief(client, with_provider):
-    """The canonical scope-change story, end to end: a two-way sync during migration is decided, a
-    brief is written from it, then the answer changes to a one-time cutover — and the integration
-    topic moves, the brief is marked as needing an update, and the page says so."""
+    """The canonical scope-change story, end to end."""
     with_provider(
         engine_reply(problem=HIGH_EXPLICIT,
                      integrations={"completeness": 40, "confidence": "inferred", "impact": "high",
@@ -424,11 +364,7 @@ def test_a_changed_answer_moves_the_scope_and_the_brief(client, with_provider):
 
 
 def test_a_resolved_session_can_still_be_refined(client, with_provider):
-    """Questions run out; the conversation does not. Once the engine returns no question, the
-    page says so -- and used to remove the answer box with the question list it lived in, so a
-    session ready for a first decision brief could no longer be told anything: not a correction,
-    not a constraint that arrived late, not scope the client
-    added after the fact. `answer()` never needed a question to fold text into the model."""
+    """Questions run out; the conversation does not."""
     with_provider(engine_reply(converged=True, problem=HIGH_EXPLICIT),
                   engine_reply(converged=True, problem=HIGH_EXPLICIT, business_rules=HIGH_EXPLICIT))
     client.post("/sessions", data={"request_text": "x", "slug": "leave-approval", "provider": "anthropic"})

@@ -1,10 +1,5 @@
-"""The perimeter mechanism (#608): plural schemas, perimeter as session identity, and the one
-place the permissive-reader rule is deliberately inverted.
-
-Split out on its own rather than folded into `test_dependencies.py`/`test_sessions_service.py`:
-this is a cross-cutting mechanism (contracts, persistence, services, doctor, integrity all move
-together), and a reader asking "how does #608 work" should find one file, not eight diffs.
-"""
+"""The perimeter mechanism (#608): plural schemas, perimeter as session identity, and the one place the
+permissive-reader rule is deliberately inverted."""
 from __future__ import annotations
 
 import json
@@ -37,9 +32,7 @@ def _isolate_workspace(tmp_path, monkeypatch):
 
 
 def _go_to_market_slots() -> dict:
-    """A complete go-to-market model, all slots explicit and covered -- the model a real discovery
-    reply would carry, built directly from that perimeter's own schema rather than the software
-    one every other fixture in this suite assumes."""
+    """A complete go-to-market model, all slots explicit and covered."""
     allowed, required = schema_slot_ids(GO_TO_MARKET)
     return {sid: {"completeness": 90, "confidence": "explicit", "impact": "high",
                   "value": "x", "evidence": "y"} for sid in required}
@@ -53,12 +46,7 @@ def _go_to_market_out() -> EngineOutput:
 
 
 def test_a_go_to_market_discovery_completes_through_the_real_provider_completion_path():
-    """[P1, review] `_require_complete_model` used to call `completeness_gap(out)` with no
-    perimeter, so a complete go-to-market reply was rejected for missing `business_rules` and every
-    other software-only required slot -- and adding those to satisfy it then failed the perimeter
-    vocabulary check instead, burning every retry. The stub-provider evidence this issue originally
-    shipped with never exercised `_complete()`'s `validate` hook at all; this goes through the real
-    completion path (`FakeClient` -> `run()` -> `_complete()`) instead of a stub's own `analyze()`."""
+    """[P1, review] `_require_complete_model` used to call `completeness_gap(out)` with no perimeter."""
     from _fakes import FakeClient
 
     from requivo.providers.anthropic.generators import run
@@ -71,14 +59,7 @@ def test_a_go_to_market_discovery_completes_through_the_real_provider_completion
 
 
 def test_a_same_text_request_under_a_different_perimeter_does_not_reuse_the_session():
-    """[P1, review] `_same_identity`/`_identity_hash` used to compare only the request and the card
-    selection, so a revision-zero `software` session and a `go-to-market` request with identical
-    text collided on the same slug -- `_same_identity` said "yes, reuse", `DiscoveryService.start`
-    then paid for the analysis under the requested perimeter, and `update_model` rejected the result
-    against the existing session's vocabulary *after* the call. `create_session_report` runs before
-    any provider call in every discovery entry point (invariant 13), so fixing the identity
-    comparison itself is what keeps the refusal-or-reuse decision ahead of the paid call -- there is
-    no separate ordering to get right here, only a correct comparison."""
+    """[P1, review] `_same_identity`/`_identity_hash` used to compare only the request and the card selection."""
     svc = SessionService()
     software_meta = svc.create_session("grow the funnel", perimeter=SOFTWARE)
 
@@ -91,10 +72,7 @@ def test_a_same_text_request_under_a_different_perimeter_does_not_reuse_the_sess
 
 
 def test_an_explicit_slug_reused_under_a_different_perimeter_is_refused_before_any_reasoning():
-    """The `strict_slug=True` arm (the API's `POST /sessions`) refuses outright, before a
-    `DiscoveryService` caller could ever reach a provider call with it: an explicit slug already
-    claimed by a different perimeter is exactly the "different identity" `strict_slug` exists to
-    refuse rather than silently suffix."""
+    """The `strict_slug=True` arm (the API's `POST /sessions`) refuses outright."""
     svc = SessionService()
     svc.create_session("grow the funnel", slug="gtm", perimeter=SOFTWARE)
 
@@ -114,8 +92,7 @@ def test_two_perimeters_are_installed():
 
 
 def test_a_go_to_market_model_validates_and_reaches_readiness_against_its_own_vocabulary():
-    """#608 acceptance: a model built under go-to-market validates, and its readiness reasons over
-    its own twelve slots, not software's fifteen."""
+    """#608 acceptance: a model built under go-to-market validates."""
     out = _go_to_market_out()
     allowed, _ = schema_slot_ids(GO_TO_MARKET)
     assert set(out.model) == allowed
@@ -123,10 +100,7 @@ def test_a_go_to_market_model_validates_and_reaches_readiness_against_its_own_vo
 
 
 def test_a_software_slot_id_is_refused_in_a_go_to_market_model():
-    """#608: a slot id valid in one perimeter and not the other is refused in the model itself.
-    Must-fire proof: reverting `_context_perimeter`/`_validate_slot_vocabulary` to ignore `info`
-    (i.e. always validating against software) makes this pass wrongly -- ran by hand, confirmed red
-    is the failure mode this guards."""
+    """#608: a slot id valid in one perimeter and not the other is refused in the model itself."""
     model = _go_to_market_slots()
     model["business_rules"] = {"completeness": 10, "confidence": "empty", "impact": "low"}
     with pytest.raises(Exception, match="business_rules"):
@@ -147,8 +121,7 @@ def test_a_go_to_market_slot_id_is_refused_in_a_software_model():
 
 
 def test_a_question_targeting_the_other_perimeters_slot_is_refused():
-    """The DAG-edge rule extends to `Question.slot` -- a software-only slot named by a question in a
-    go-to-market reply is refused the same way an unknown slot in the model itself is."""
+    """The DAG-edge rule extends to `Question.slot`."""
     model = _go_to_market_slots()
     with pytest.raises(Exception, match="business_rules"):
         ModelProposal.model_validate(
@@ -160,8 +133,8 @@ def test_a_question_targeting_the_other_perimeters_slot_is_refused():
 
 
 def test_a_dag_edge_targeting_the_other_perimeters_slot_is_refused():
-    """`derived_from`/`contests`/`rests_on` are checked against the same vocabulary as the model and
-    the questions -- a decision resting on a software-only slot is refused under go-to-market."""
+    """`derived_from`/`contests`/`rests_on` are checked against the same vocabulary as the model and the
+    questions -- a decision resting on a software-only slot is refused under go-to-market."""
     model = _go_to_market_slots()
     with pytest.raises(Exception, match="business_rules"):
         ModelProposal.model_validate(
@@ -172,8 +145,7 @@ def test_a_dag_edge_targeting_the_other_perimeters_slot_is_refused():
 
 
 def test_impact_is_scoped_to_the_sessions_own_perimeter():
-    """`requivo impact` (`SessionService.impact`) reasons over the session's own vocabulary only: a
-    go-to-market session accepts `capacity` and refuses `business_rules` as unknown."""
+    """`requivo impact` (`SessionService.impact`) reasons over the session's own vocabulary only."""
     svc = SessionService()
     disco = DiscoveryService(provider=_StubProvider(), sessions=svc)
     slug = disco.start("grow the funnel", finalize=False, perimeter=GO_TO_MARKET)
@@ -184,8 +156,8 @@ def test_impact_is_scoped_to_the_sessions_own_perimeter():
 
 
 def test_perimeter_is_frozen_at_creation_and_visible_in_status_and_session_show():
-    """#608 acceptance: recorded, frozen, and visible through both `status --json` (service) and
-    `session show --json` (SessionMeta itself, via extra="allow" round-trip)."""
+    """#608 acceptance: recorded, frozen, and visible through both `status --json` (service) and `session show
+    --json` (SessionMeta itself, via extra="allow" round-trip)."""
     svc = SessionService()
     meta = svc.create_session("grow the funnel", slug="gtm", perimeter=GO_TO_MARKET)
     assert meta.perimeter == GO_TO_MARKET
@@ -196,9 +168,7 @@ def test_perimeter_is_frozen_at_creation_and_visible_in_status_and_session_show(
 
 
 def test_an_unknown_perimeter_is_refused_by_name_by_the_loader():
-    """#608's deliberate inversion of invariant 8: the loader (`SessionService.meta` /
-    `migrate_session`) refuses a session naming a perimeter this install does not have, by name,
-    rather than tolerating or defaulting it."""
+    """#608's deliberate inversion of invariant 8."""
     svc = SessionService()
     svc.create_session("a request", slug="unk")
     p = svc.repo.store().canonical_dir("unk") / "session.json"
@@ -211,10 +181,8 @@ def test_an_unknown_perimeter_is_refused_by_name_by_the_loader():
 
 
 def test_an_unknown_perimeter_is_refused_by_name_by_session_verify_and_doctor():
-    """The same session, read through `inspect_session_dir` (what `session verify` and `doctor`'s
-    per-session health scan both call) -- reported as a named `unknown_perimeter` problem rather
-    than raised, since this module reports for a caller that decides, and rather than silently
-    passing as a session `read_meta` would open fine (invariant 8's ordinary tolerance)."""
+    """The same session, read through `inspect_session_dir` (what `session verify` and `doctor`'s per-session
+    health scan both call)."""
     svc = SessionService()
     svc.create_session("a request", slug="unk2")
     d = svc.repo.store().canonical_dir("unk2")
@@ -229,9 +197,7 @@ def test_an_unknown_perimeter_is_refused_by_name_by_session_verify_and_doctor():
 
 
 def test_a_pre_perimeter_session_still_opens_as_software():
-    """The forward sibling `test_a_session_written_by_an_older_requivo_still_loads` asks for
-    (#608): a session with no `perimeter` key at all -- the shape every session had before this
-    issue -- opens without a migration step, reading as the software perimeter."""
+    """The forward sibling `test_a_session_written_by_an_older_requivo_still_loads` asks for (#608)."""
     svc = SessionService()
     svc.create_session("an old-shaped session", slug="old")
     p = svc.repo.store().canonical_dir("old") / "session.json"
@@ -247,18 +213,16 @@ def test_a_pre_perimeter_session_still_opens_as_software():
 
 
 def test_doctor_reports_installed_perimeters():
-    """#608 acceptance: `requivo doctor` reports the installed perimeters the way it already
-    reports the context cards."""
+    """#608 acceptance: `requivo doctor` reports the installed perimeters the way it already reports the
+    context cards."""
     r = doctor_report()
     assert r["perimeters"]["ok"] is True
     assert set(r["perimeters"]["installed"]) == {GO_TO_MARKET, SOFTWARE}
 
 
 def test_go_to_market_ships_exactly_its_one_artifact():
-    """#607's cost rule ("each new perimeter ships with exactly one artifact... a second is added
-    when a user asks"), now that #609 has registered it: go-to-market owns exactly `gtm_plan`, and
-    `artifact_slots` expands its `"*"` mapping to the perimeter's own twelve slots -- never
-    software's fifteen, and never empty the way #608 left it."""
+    """#607's cost rule ("each new perimeter ships with exactly one artifact... a second is added when a user
+    asks"), now that #609 has registered it."""
     assert get_perimeter(GO_TO_MARKET).artifact_types == frozenset({"gtm_plan"})
     slots = artifact_slots(GO_TO_MARKET)
     assert set(slots) == {"gtm_plan"}
@@ -269,9 +233,7 @@ def test_go_to_market_ships_exactly_its_one_artifact():
 
 def test_the_real_artifact_registries_agree_on_their_key_sets_per_perimeter():
     """#608 acceptance: the same relationships `test_the_real_artifact_registries_agree_on_their_key_sets`
-    pins for the real tables (test_dependencies.py), filtered to each perimeter's own `artifact_types`
-    -- trivially true for go-to-market today (it owns no type yet), but this is the guard that would
-    catch a future artifact registered under the wrong perimeter."""
+    pins for the real tables (test_dependencies.py), filtered to each perimeter's own `artifact_types`."""
     from tests.test_dependencies import _artifact_vocabulary_mismatches  # noqa: PLC0415
 
     for pid in known_perimeter_ids():
@@ -289,11 +251,7 @@ def test_the_real_artifact_registries_agree_on_their_key_sets_per_perimeter():
 
 
 def test_generate_refuses_an_artifact_type_the_sessions_perimeter_does_not_own():
-    """A go-to-market session cannot be handed to a software-only generator (`prd`, `brief`, ...) --
-    refused before any provider call, naming the perimeter, rather than validating the reply
-    against the wrong schema two layers down. A structured `RequivoError` (#609), not the bare
-    `ValueError` this used to be -- reachable by `app()`'s `except RequivoError` on the CLI and by
-    the Web's `RequivoError` handler, rather than a traceback or a 500."""
+    """A go-to-market session cannot be handed to a software-only generator (`prd`, `brief`, ..., #609)."""
     svc = SessionService()
     disco = DiscoveryService(provider=_StubProvider(), sessions=svc)
     slug = disco.start("grow the funnel", finalize=False, perimeter=GO_TO_MARKET)
@@ -305,19 +263,8 @@ def test_generate_refuses_an_artifact_type_the_sessions_perimeter_does_not_own()
 
 
 def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
-    """#609 acceptance, through the real completion path (`FakeClient` -> `AnthropicProvider` ->
-    `advise_gtm` -> `_complete()`), not a stub -- the same review finding
-    `test_a_go_to_market_discovery_completes_through_the_real_provider_completion_path` documents for
-    discovery applies here too: a stub's own `generate()` would never exercise `advise_gtm`'s prompt
-    assembly or `GoToMarketPlan`'s slot-vocabulary validator at all.
-
-    Covers, in one pass: the artifact saves with its source revision (not stale); its two typed
-    reasoning items (#599, #604) land in `model.json`, not only in the rendered document; its
-    provenance names go-to-market's own prompt hash rather than software's default -- the exact bug
-    a review of this branch found (`_provenance()` called with no `perimeter=`) and this pins by
-    reverting the `perimeter=snap.perimeter` argument in `DiscoveryService.generate` and confirming
-    red; and changing the slot the exclusion rests on goes stale end to end, not merely as an
-    `impact` prediction."""
+    """#609 acceptance, through the real completion path (`FakeClient` -> `AnthropicProvider` -> `advise_gtm`
+    -> `_complete()`), not a stub."""
     from _fakes import FakeClient
 
     from requivo.providers.anthropic.generators import prompt_version
@@ -360,10 +307,8 @@ def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
 
 
 def test_impact_on_capacity_reaches_the_go_to_market_artifact():
-    """#609 acceptance: `requivo impact <slug> capacity` (`SessionService.impact`) returns a real
-    blast radius over go-to-market's edges *including this artifact* -- `capacity` carries the
-    binding-constraint impact default, and `artifact_slots(GO_TO_MARKET)["gtm_plan"]` is `"*"`
-    expanded to the perimeter's own twelve slots (core/dependencies.py), so it must appear."""
+    """#609 acceptance: `requivo impact <slug> capacity` (`SessionService.impact`) returns a real blast radius
+    over go-to-market's edges *including this artifact*."""
     svc = SessionService()
     disco = DiscoveryService(provider=_StubProvider(), sessions=svc)
     slug = disco.start("grow the funnel", finalize=False, perimeter=GO_TO_MARKET)
@@ -373,8 +318,7 @@ def test_impact_on_capacity_reaches_the_go_to_market_artifact():
 
 
 class _StubProvider:
-    """A minimal `ReasoningProvider` for the discovery-service tests above: one `analyze()` that
-    returns a complete model under whatever perimeter it is asked for."""
+    """A minimal `ReasoningProvider` for the discovery-service tests above."""
 
     name = "stub"
 

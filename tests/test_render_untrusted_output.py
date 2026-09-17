@@ -1,28 +1,4 @@
-"""LLM-authored prose cannot write a line of the terminal render path (#213).
-
-The sibling of `tests/test_cli_untrusted_metadata.py`, and the gap it left. That file sweeps the
-*diagnostic* verbs -- doctor, session verify, session show, artifact list, impact -- where the
-untrusted string is a value read off disk. This one sweeps the **primary** render path, where the
-untrusted string is the model's own reply: the questions, the challenges, the opportunities and the
-brief prose a first-time user sees on `discover`, `status`, `brief`, `stories` and `estimate`.
-
-The threat is neither hypothetical nor about a hostile model. SECURITY.md frames a *client request*
-as untrusted business data the tool runs on, and the engine's whole job is turning that request into
-prose. A request that steers the reply carries an embedded newline into `Question.q`, and the line
-after it is a sentence Requivo appears to be saying -- a forged `Ready` verdict, a challenge hidden
-behind a screen clear.
-
-`streams.py` does not help here, and it is worth saying why, because it looks as though it should:
-`errors="backslashreplace"` acts on characters the console *cannot encode*, and ESC is perfectly
-encodable in UTF-8. It is emitted verbatim.
-
-Two things are pinned. Each named field, so a regression names itself; and a **sweep** over every
-LLM-authored string the terminal renders, which is what catches the field somebody adds next --
-`display_text` at fifteen call sites is a discipline, and the sweep is what a discipline needs.
-
-The control test is the other half. An escaper that made ordinary prose unreadable would be a worse
-bug than the one it fixed, and it would ship green, because nobody re-reads output that looks busy.
-"""
+"""LLM-authored prose cannot write a line of the terminal render path (#213)."""
 from __future__ import annotations
 
 import ast
@@ -64,13 +40,10 @@ from requivo.render.terminal import (
 )
 from requivo.services.discovery import DiscoveryService
 
-# A newline, then a claim at column 0, then a screen clear. The three shapes together: the newline is
-# what ends Requivo's line, the column-0 text is what reads as Requivo's own output, and the escape
-# is what a terminal *executes* rather than displays.
+# A newline, then a claim at column 0, then a screen clear.
 FORGED = "Real text.\nFORGED AT COLUMN ZERO\x1b[2J"
 
-# Every character that can move a cursor or end a line -- the same class `core/selectors.py` guards a
-# selector token against, and deliberately no wider.
+# Every character that can move a cursor or end a line.
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
@@ -86,10 +59,7 @@ def _forged_lines(text: str) -> list:
 
 
 def _raw_controls(text: str) -> str:
-    """The literal control characters still present, newlines excluded -- a renderer's own line
-    breaks are not the threat. The forged-line check above catches a line; this catches an escape
-    sequence that never needed one. A cursor move or a colour change is invisible to a
-    `splitlines()` comparison and is the half of the threat that does not announce itself."""
+    """The literal control characters still present, newlines excluded."""
     return "".join(c for c in _CONTROL.findall(text) if c != "\n")
 
 
@@ -100,10 +70,7 @@ def _model_with_question(q: str) -> EngineOutput:
 
 
 class _StubProvider:
-    """The minimal `ReasoningProvider` a `converse()` drive needs -- a scripted list of turns and
-    nothing else. Self-contained rather than imported from `tests/test_cli_interactive.py`, on the
-    same rule that file's own sibling states: reaching into another test module for a helper breaks
-    when that module reorganises."""
+    """The minimal `ReasoningProvider` a `converse()` drive needs."""
 
     name = "stub"
 
@@ -129,10 +96,8 @@ class _StubProvider:
 
 
 def _drive_converse(disco, request, *, answer="an answer") -> list:
-    """Run `converse()` for real, patching `input()` to record the exact prompt string it was
-    handed -- not just to supply an answer, the way every other patch of `input()` in this repo
-    does. The prompt string *is* the surface under test for #330: `cli.py:205` builds it from
-    `q.q` one statement after `render_turn` neutralizes the same field."""
+    """Run `converse()` for real, patching `input()` to record the exact prompt string it was handed -- not
+    just to supply an answer, the way every other patch of `input()` in this repo does (#330)."""
     prompts: list[str] = []
 
     def fake_input(prompt=""):
@@ -163,22 +128,17 @@ def _brief(**overrides) -> Brief:
 
 
 def test_a_question_cannot_forge_a_line_of_the_turn_view():
-    """`render_turn` is the first thing a user ever sees -- `discover`, `answer`, `status` and the
-    offline `demo` all print it -- and `print(f"  {i}. {q.q}")` put the reply straight on the line.
-    The readiness verdict it can forge sits three lines above it."""
+    """`render_turn` is the first thing a user ever sees."""
     text = _render(render_turn, _model_with_question(FORGED))
     assert not _forged_lines(text), text
     assert _raw_controls(text) == ""
-    # Must fire: neutralized means escaped and still readable, never dropped. Without this the
-    # assertions above are satisfied by a renderer that prints nothing at all.
+    # Must fire: neutralized means escaped and still readable, never dropped.
     assert "FORGED AT COLUMN ZERO" in text
     assert "\\x1b[2J" in text
 
 
 def test_a_challenge_cannot_forge_a_line_of_the_decision_brief():
-    """The brief is the deliverable and a challenge is the part a reader acts on. All five of its
-    fields are rendered, so all five are checked -- a fix covering `headline` alone would look
-    complete and leave four open."""
+    """The brief is the deliverable and a challenge is the part a reader acts on."""
     model = out({"problem": slot(80, "explicit", "high")})
     for field in ("headline", "premise", "alternative", "consequence", "recommendation"):
         fields = {"headline": "H", "premise": "P", "alternative": "A", "consequence": "C",
@@ -191,11 +151,7 @@ def test_a_challenge_cannot_forge_a_line_of_the_decision_brief():
 
 
 def test_a_persisted_usage_priced_as_of_cannot_forge_a_line_of_the_session_cost_view():
-    """`render_session_cost`'s `usage_priced_as_of` is a persisted `RevisionRecord` field, read back
-    off `session.json` on every `requivo status` -- the same untrusted-every-time-it-is-read-back
-    class invariant 14 names for `context_cards`, arriving via `session import` (#388). Two revisions:
-    a clean one whose date must appear (the must-fire half), a forged one that must not open a line
-    of its own at column 0."""
+    """`render_session_cost`'s `usage_priced_as_of` is a persisted `RevisionRecord` field (#388)."""
     clean = RevisionRecord(
         revision=1, created_at="2026-01-01T00:00:00Z",
         usage_input_tokens=1000, usage_output_tokens=200,
@@ -211,18 +167,13 @@ def test_a_persisted_usage_priced_as_of_cannot_forge_a_line_of_the_session_cost_
     text = _render(render_session_cost, [clean, forged])
     assert not _forged_lines(text), text
     assert _raw_controls(text) == ""
-    # Must fire, both halves: the clean revision's date proves the "rates as of" stamp actually
-    # rendered, and the forged text still showing up (inside the neutralized token, never at
-    # column 0) proves it was processed rather than silently dropped.
+    # Must fire, both halves: the clean revision's date proves the "rates as of" stamp actually rendered, and the forged text still showing up (inside the neutralized token, never at column 0) proves it was processed rather than silently dropped.
     assert "2026-01-01" in text
     assert "FORGED AT COLUMN ZERO" in text
 
 
 def test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu():
-    """`render_docs_menu`'s filename comes off a persisted `ArtifactStatus`, read back off
-    session.json on every `requivo docs` -- the same disk-sourced class `render_session_cost` and
-    `render_grounding` are swept for below, not model prose. `docs_menu_rows` escapes it with
-    `display_token` before `render_docs_menu` ever sees it (#544)."""
+    """`render_docs_menu`'s filename comes off a persisted `ArtifactStatus` (#544)."""
     forged = ArtifactStatus(revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)
     text = _render(render_docs_menu, docs_menu_rows({"prd": forged}))
     assert not _forged_lines(text), text
@@ -232,11 +183,7 @@ def test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu():
 
 
 def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout():
-    """`render_grounding`'s input is a persisted `context_cards` entry, which invariant 14 names as
-    untrusted every time it is read back, whatever wrote it -- and #40 is the reproduced instance: a
-    stored card name forged a line at column 0 of `doctor`'s own output, arriving via `session
-    import`. Two calls: the second is the must-fire half, proving the unnarrowed branch printed the
-    install's real card names rather than nothing."""
+    """`render_grounding`'s input is a persisted `context_cards` entry (#40)."""
     text = _render(render_grounding, [FORGED])
     assert not _forged_lines(text), text
     assert _raw_controls(text) == ""
@@ -246,74 +193,44 @@ def test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout
     assert "Product context" in unnarrowed, "the other branch rendered nothing to be forged through"
 
 
-# The renderer names the forged sweep below actually calls. A module-level constant rather than a
-# local variable, so `test_the_forged_sweep_covers_every_prose_renderer_in_the_module` can compare
-# against it without re-deriving the dict -- see that test for why this is checked rather than just
-# trusted (#331).
+# The renderer names the forged sweep below actually calls (#331).
 _SWEPT_RENDERERS = {
     "render_turn", "render_brief", "render_stories", "render_estimate",
     "render_dependency_map", "render_impact",
     # Prints the decision text of every flagged and every unreviewable decision (#493).
     "render_evidence",
-    # render_session_cost is swept separately, below -- its untrusted field is a persisted
-    # RevisionRecord.usage_priced_as_of, not model prose, so it does not fit the model/brief/
-    # stories/estimate fixture shape the big sweep below is built from (#388).
+    # render_session_cost is swept separately, below (#388).
     "render_session_cost",
-    # render_grounding likewise, and for the same class one field along: its input is a persisted
-    # `context_cards` entry, which is the field invariant 14 is actually written about and the one
-    # #40 forged a line of `doctor`'s output through. Swept by
-    # `test_a_forged_context_card_name_cannot_write_a_line_of_the_grounding_readout` (#492).
+    # render_grounding likewise, and for the same class one field along (#40).
     "render_grounding",
-    # render_docs_menu's untrusted field is a persisted ArtifactStatus.filename, the same disk-sourced
-    # class as the two above. Swept by
-    # `test_a_forged_artifact_filename_cannot_write_a_line_of_the_docs_menu` (#544).
+    # render_docs_menu's untrusted field is a persisted ArtifactStatus.filename (#544).
     "render_docs_menu",
-    # render_context_judgment's untrusted field is `ContextJudgment.reason` -- LLM-authored prose
-    # over an untrusted request, like `Question.q`, but it does not fit the model/brief/stories
-    # fixture shape the big sweep is built from. Swept by
-    # `test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout` (#593).
+    # render_context_judgment's untrusted field is `ContextJudgment.reason` (#593).
     "render_context_judgment",
 }
 
-# `render_*` functions in `render/terminal.py` that render no model-authored prose, named with a
-# reason rather than silently absent from `_SWEPT_RENDERERS` -- the same discipline
-# `_SURFACE_STORAGE_ALLOWLIST` in `tests/test_boundaries.py` already uses.
+# `render_*` functions in `render/terminal.py` that render no model-authored prose.
 _NON_PROSE_RENDERERS = {
     "render_understanding": "labels are schema slot ids (via slot_label), not model-authored prose",
     "render_readiness": "a fixed verdict string plus schema slot id labels",
     "render_next_command": "a fixed command template plus a slug and an artifact type, no model text",
     "render_stale": "artifact filenames from ARTIFACT_FILENAMES and schema slot labels, no model text",
-    # render_usage's `as_of` comes off the in-process UsageLedger this run's own provider calls
-    # built (usage.py's `priced_as_of`, stamped by the provider that made the call) -- it is never
-    # written to session.json and never read back off disk, so nothing between the API reply and
-    # this renderer is a channel for someone else's input. That is what makes it safe and is why it
-    # is exempt rather than swept, unlike its disk-sourced sibling render_session_cost, whose
-    # RevisionRecord.usage_priced_as_of is exactly that channel -- session.json, read back on every
-    # `requivo status`, forgeable through `session import` (#388).
+    # render_usage's `as_of` comes off the in-process UsageLedger this run's own provider calls built (usage.py's `priced_as_of`, stamped by the provider that made the call) -- it is never written to session.json and never read back off disk, so nothing between the API reply and this renderer is a channel for someone else's input (#388).
     "render_usage": "the in-process usage ledger this run itself built -- never persisted, never "
                      "read back off disk, so it carries nothing another process could have forged",
-    # render_turn minus its question block (#592). What it prints is render_understanding plus the
-    # readiness verdict, both already exempt above for the same reason -- and the questions it no
-    # longer prints are neutralized where the interactive loops now ask them, at cli.py's `input()`
-    # prompt, swept by `test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt`.
+    # render_turn minus its question block (#592).
     "render_turn_state": "render_understanding plus the readiness verdict -- schema slot labels and "
                           "a fixed verdict string, no model-authored prose",
 }
 
 
 def test_every_llm_authored_string_the_terminal_renders_is_neutralized():
-    """The sweep, and the reason this file exists rather than five tests beside five renderers.
-
-    Every LLM-authored string field carries the payload at once and every terminal renderer runs, so
-    a field added later and printed raw goes red here under its own renderer's name. That is the
-    only guard that survives somebody adding a sixth field to `Challenge`."""
+    """The sweep, and the reason this file exists rather than five tests beside five renderers."""
     model = out({"problem": slot(80, "explicit", "high")})
     d = model.model_dump()
     d["questions"] = [{"q": FORGED, "slot": "problem", "why": FORGED}]
     d["summary"]["objective"] = FORGED
-    # `render_dependency_map` reads the *model's* reasoning layer, not the brief's, so a forged brief
-    # alone leaves that renderer with nothing to render -- which the must-fire assertion below
-    # correctly refused to call a pass.
+    # `render_dependency_map` reads the *model's* reasoning layer.
     d["decisions"] = [{"decision": FORGED, "why": FORGED, "alternative": FORGED,
                        "tradeoff": FORGED, "derived_from": ["problem"]}]
     d["challenges"] = [{"headline": FORGED, "premise": FORGED, "alternative": FORGED,
@@ -344,17 +261,14 @@ def test_every_llm_authored_string_the_terminal_renders_is_neutralized():
         "render_estimate": _render(render_estimate, estimate, ["problem"], "low"),
         "render_dependency_map": _render(render_dependency_map, forged_model),
         "render_impact": _render(render_impact, propagate(forged_model, ["problem"])),
-        # Both arms print a decision: the forged one rests on `problem`, thin in `thinner` and
-        # explicit in `forged_model`, so it is flagged; the second decision records no slots, so
-        # it lands under "Could not check" -- and that arm prints the decision text too.
+        # Both arms print a decision: the forged one rests on `problem`.
         "render_evidence": _render(render_evidence, thinner_evidence(_thinner(forged_model),
                                                                      _with_unreviewable(forged_model))),
     }
     for name, text in renders.items():
         assert not _forged_lines(text), f"{name} let LLM text start a line: {_forged_lines(text)}"
         assert _raw_controls(text) == "", f"{name} emitted a raw control character"
-        # Must fire: every one of these renderers must actually have printed the payload, or the
-        # two assertions above are green on a renderer that emitted nothing.
+        # Must fire: every one of these renderers must actually have printed the payload.
         assert "FORGED AT COLUMN ZERO" in text, f"{name} rendered none of the forged fields"
 
 
@@ -374,11 +288,7 @@ def _with_unreviewable(model: EngineOutput) -> EngineOutput:
 
 
 def test_the_forged_sweep_covers_every_prose_renderer_in_the_module():
-    """Derived, not enumerated (#331): the scan set used to be a fixed tuple of six imported names --
-    real for those six, and silent about a seventh. This introspects `render/terminal.py` for every
-    `render_*` function and requires each to be named either in `_SWEPT_RENDERERS` (covered by the
-    forged sweep) or `_NON_PROSE_RENDERERS` (exempt, with a reason), so a new renderer that starts
-    touching model text fails here, by name, before it ships unguarded like `cli.py`'s own prompt did."""
+    """Derived, not enumerated (#331): the scan set used to be a fixed tuple of six imported names."""
     from requivo.render import terminal as terminal_module
 
     declared = {
@@ -398,11 +308,7 @@ def test_the_forged_sweep_covers_every_prose_renderer_in_the_module():
 
 
 def test_ordinary_prose_renders_byte_for_byte_unchanged():
-    """The control, and the half a security fix ships without. An escaper that quoted every string
-    would satisfy every assertion above, make the product unreadable, and ship green.
-
-    Short strings on purpose: `textwrap.fill` wraps at 80 columns, so a long line would fail this
-    for a reason with nothing to do with escaping."""
+    """The control, and the half a security fix ships without."""
     text = _render(render_turn, _model_with_question("How are approvals routed today?"))
     assert "1. How are approvals routed today?" in text
     assert "\\" not in text
@@ -414,39 +320,15 @@ def test_ordinary_prose_renders_byte_for_byte_unchanged():
 
 
 # -- #331: a static sweep whose *scan set* is a file tree, not a list of modules ---------------------
-# `test_every_llm_authored_string_the_terminal_renders_is_neutralized` proved the assertions are real
-# by covering every renderer it knows about; it could not prove anything about a call site outside
-# `render/terminal.py`, because it never looked. `cli.py`'s own `input()` prompt was exactly that --
-# same field (`Question.q`), same threat, a different module, invisible to a sweep keyed by import
-# name.
+# `test_every_llm_authored_string_the_terminal_renders_is_neutralized` proved the assertions are real by covering every renderer it knows about; it could not prove anything about a call site outside `render/terminal.py`, because it never looked.
 #
-# What follows is a static AST scan, the same technique `tests/test_boundaries.py` already uses for
-# the core/provider boundary, pointed at a narrower and more tractable question: does any code under
-# `src/requivo/` (excluding `core/`, `providers/` and `services/`, which never touch a terminal) *read*
-# a `Question`'s `q` or `why` field -- the two fields #330 forged -- other than as the direct argument
-# of `display_text`/`display_token`?
+# What follows is a static AST scan, the same technique `tests/test_source_form.py` already uses for the core/provider boundary, pointed at a narrower and more tractable question: does any code under `src/requivo/` (excluding `core/`, `providers/` and `services/`, which never touch a terminal) *read* a `Question`'s `q` or `why` field -- the two fields #330 forged -- other than as the direct argument of `display_text`/`display_token`?
 #
-# The scan checks every read of the field, not only a read that sits directly inside a
-# `print()`/`input()` call. An earlier version was scoped to the call site, and review found the gap:
-# `msg = q.q` followed by `print(f"{msg}")` several lines later puts the raw attribute access in the
-# *assignment*, outside the print call's own AST subtree, so a call-site-gated scan cannot see it
-# however far `msg` travels afterward -- and that is exactly the shape a contributor gets by copying
-# the fix's own `safe_q = display_text(q.q)` idiom and forgetting the escaping call inside it. Checking
-# every read matches what `render/terminal.py`'s own docstring already says about this field: escape
-# at the point of read, because there is no chokepoint that can catch an f-string written downstream.
+# The scan checks every read of the field, not only a read that sits directly inside a `print()`/`input()` call.
 #
-# This derives its *file* coverage rather than enumerating modules: a brand-new surface file that
-# iterates `<engine_output>.questions` and reads `q.q` raw is caught on the day it is written, with no
-# scan-set list to remember to extend. What is still named explicitly is the *vocabulary* -- the two
-# prose fields a `Question` actually carries untrusted text in -- because that is fixed by the
-# contract in `core/contracts.py`, not by which module happens to render it next.
+# This derives its *file* coverage rather than enumerating modules.
 #
-# What this cannot see, stated rather than assumed clean: a `Question` reached through anything other
-# than a `for ... in <expr>.questions` loop (`question = out.questions[0]; print(question.q)` would
-# not be recognised as a Question-bound name), a value escaped through something other than
-# `display_text`/`display_token` by name, and a threat shaped like this one but on a different
-# contract (`Challenge`, `DesignDecision`, ...) reached from outside `render/terminal.py` -- the forged
-# sweep above is still the guard for those, inside the one module they are currently rendered from.
+# What this cannot see, stated rather than assumed clean.
 
 
 def _parse_module(path: Path) -> ast.Module:
@@ -473,18 +355,8 @@ def _question_bound_names(tree: ast.Module) -> set:
 
 
 def _question_prose_leaks_in_file(path: Path) -> list:
-    """Every *read* of a Question-bound name's `.q` or `.why` attribute in `path` that is not the
-    direct argument of `display_text`/`display_token`.
-
-    Deliberately not scoped to "inside a `print()`/`input()` call" -- an earlier version was, and a
-    reviewer found the gap it leaves: `msg = q.q; print(f"{msg}")` puts the raw attribute access in
-    the *assignment*, not inside the print call's own AST subtree, so a scan gated on the call site
-    never sees it, however far `msg` travels afterward. Checking every read of the field, regardless
-    of where it sits, closes that -- and matches the discipline `render/terminal.py`'s own docstring
-    already states for this field: escape at the point of read, because there is no chokepoint that
-    can catch an f-string written downstream of it. The `safe_q = display_text(q.q)` idiom the #330
-    fix itself uses still passes, because the raw attribute access in that line *is* the direct
-    argument of `display_text`."""
+    """Every *read* of a Question-bound name's `.q` or `.why` attribute in `path` that is not the direct
+    argument of `display_text`/`display_token` (#330)."""
     tree = _parse_module(path)
     parents: dict = {}
     for node in ast.walk(tree):
@@ -511,10 +383,7 @@ def _question_prose_leaks_in_file(path: Path) -> list:
 
 
 def _question_prose_leaks(root: Path) -> list:
-    """`_question_prose_leaks_in_file`, over every `.py` file under `root`.
-
-    `root` is expected to be a package directory (an empty or missing one is refused, never read as
-    'no offenders' -- the same #10 discipline `tests/test_boundaries.py`'s own `scan()` enforces)."""
+    """`_question_prose_leaks_in_file`, over every `.py` file under `root` (#10)."""
     if not root.is_dir():
         raise AssertionError(f"scan could not read {root}: no such directory")
     found = sorted(root.rglob("*.py"))
@@ -531,11 +400,7 @@ _TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web")
 
 
 def _terminal_surface_entries() -> tuple[str, ...]:
-    """The scan set: three packages, plus every top-level module, *derived* rather than listed.
-    A hand-written filename does not follow a split -- #550 moved 207 printing lines into
-    `cli_support.py` and this tuple kept naming `cli.py` alone (#587). Sweeping every top-level
-    module needs no exclusions: one that binds no `Question` contributes no violation, so the
-    safe default is in the scan set rather than beside it."""
+    """The scan set: three packages, plus every top-level module, *derived* rather than listed (#550)."""
     modules = sorted(p.name for p in SRC_ROOT.glob("*.py"))
     if not modules:
         raise AssertionError(f"scan of {SRC_ROOT} found no top-level modules -- 'could not look'")
@@ -543,15 +408,11 @@ def _terminal_surface_entries() -> tuple[str, ...]:
 
 
 def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_surface_tree():
-    """The real scan, over the real tree: every `src/requivo/` subtree that can touch a terminal
-    (`core/`, `providers/` and `services/` are guarded elsewhere never to print or prompt), plus
-    every top-level module. Passing proves there is no leak of *this* shape in *this* tree today --
-    see the file-level docstring for what the scan cannot see."""
+    """The real scan, over the real tree."""
     violations: list = []
     for entry in _terminal_surface_entries():
         target = SRC_ROOT / entry
-        # A top-level module is a single file, not a directory -- `_question_prose_leaks_in_file`
-        # works on either, so both branches reach the same one function.
+        # A top-level module is a single file, not a directory.
         violations += (_question_prose_leaks(target) if target.is_dir()
                        else _question_prose_leaks_in_file(target))
     assert not violations, "\n".join(violations)
@@ -587,11 +448,7 @@ def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_sur
     ],
 )
 def test_the_question_scan_tells_a_raw_read_from_an_escaped_one(tmp_path, tui_body, expect_violation):
-    """Three defining shapes of the scan, by id: a direct raw `q.q` read must-fire -- the point of
-    the scan; the same field escaped through `display_text` must-not-fire -- the fix idiom must not
-    itself trip the guard; and a local-variable indirection (`msg = q.q`, printed later) must still
-    fire -- the review finding that the scan checks every *read* of the field, since a call-site-gated
-    scan cannot see the raw access sitting in the assignment rather than the print call."""
+    """Three defining shapes of the scan, by id: a direct raw `q.q` read must-fire."""
     pkg = tmp_path / "requivo"
     pkg.mkdir()
     (pkg / "tui.py").write_text(tui_body, encoding="utf-8")
@@ -605,8 +462,7 @@ def test_the_question_scan_tells_a_raw_read_from_an_escaped_one(tmp_path, tui_bo
 
 
 def test_the_question_scan_refuses_an_empty_or_missing_root(tmp_path):
-    """The #10 discipline: `Path.rglob` on a directory that does not exist returns `[]` and raises
-    nothing, so a scan that read that as 'no offenders' would pass green while checking nothing."""
+    """The #10 discipline: `Path.rglob` on a directory that does not exist returns `[]` and raises nothing."""
     import pytest
 
     with pytest.raises(AssertionError, match="no such directory"):
@@ -619,17 +475,12 @@ def test_the_question_scan_refuses_an_empty_or_missing_root(tmp_path):
 
 
 # -- #330: the interactive loop's own `input()` prompt, not a renderer ----------------------------
-# `render_turn` neutralizes `q.q` (pinned above), and `cli.py:205` -- one statement later, in the
-# same function that just called it -- printed the same field raw into `input()`'s prompt. Driven
-# through `converse()` over a stub provider and the real `DiscoveryService`, the way `requivo
-# discover` reaches it, because a defect in a call site is not established by a renderer test.
+# `render_turn` neutralizes `q.q` (pinned above), and `cli.py:205`.
 
 
 def test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_prompt():
-    """The reproduction: a forged `Question.q` reaches `input()`'s prompt string through the real
-    `converse()` path, not through `render_turn`. Before the fix this fails -- the prompt contains a
-    literal newline, "FORGED AT COLUMN ZERO" sits at the start of its own line, and the raw ESC byte
-    is still in the string `input()` would have written to the terminal."""
+    """The reproduction: a forged `Question.q` reaches `input()`'s prompt string through the real `converse()`
+    path, not through `render_turn`."""
     forged = EngineOutput.model_validate({
         "model": full_slots(problem=slot(80, "explicit", "high")),
         "questions": [{"q": FORGED, "slot": "problem", "why": "because"}],
@@ -650,9 +501,7 @@ def test_a_forged_question_cannot_write_a_line_at_column_zero_of_the_input_promp
 
 
 def test_an_ordinary_question_still_reads_at_the_input_prompt():
-    """Must-fire control for the test above, in the same fixture. Escaping every prompt into
-    unreadability would satisfy the assertions above and make the product unusable -- the same
-    failure mode `test_ordinary_prose_renders_byte_for_byte_unchanged` guards for the renderers."""
+    """Must-fire control for the test above, in the same fixture."""
     plain = EngineOutput.model_validate({
         "model": full_slots(problem=slot(80, "explicit", "high")),
         "questions": [{"q": "How are approvals routed today?", "slot": "problem", "why": "because"}],
@@ -668,9 +517,8 @@ def test_an_ordinary_question_still_reads_at_the_input_prompt():
 
 
 def test_a_forged_question_cannot_break_the_answer_folded_back_to_the_provider():
-    """`cli.py:210` folds `q.q` into the `[slot: ...] Q: ... -> A: ...` string sent back as the next
-    turn's `answers` -- the same field, lower value. An embedded newline there breaks that structure
-    for the provider reading it back on the refinement turn, even though nothing is displayed."""
+    """`cli.py:210` folds `q.q` into the `[slot: ...] Q: ... -> A: ...` string sent back as the next turn's
+    `answers` -- the same field, lower value."""
     forged = EngineOutput.model_validate({
         "model": full_slots(problem=slot(80, "explicit", "high")),
         "questions": [{"q": FORGED, "slot": "problem", "why": "because"}],
@@ -698,8 +546,7 @@ def test_a_forged_question_cannot_break_the_answer_folded_back_to_the_provider()
 
 
 def test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout():
-    """`ContextJudgment.reason` is LLM-authored prose over an untrusted request and is printed
-    verbatim, so it is the same threat as `Question.q` one readout along."""
+    """`ContextJudgment.reason` is LLM-authored prose over an untrusted request and is printed verbatim."""
     from requivo.core.contracts import ContextJudgment
     from requivo.render.terminal import render_context_judgment
     from requivo.services.discovery import Grounding
@@ -709,18 +556,13 @@ def test_a_forged_grounding_reason_cannot_write_a_line_of_the_judgment_readout()
 
     assert not _forged_lines(text), text
     assert _raw_controls(text) == ""
-    # Must fire: neutralized means escaped and still readable, never dropped. Asserted on tokens
-    # rather than the whole phrase, because this renderer wraps at 80 columns and a wrap is not a
-    # drop -- the same reason `test_ordinary_prose_renders_byte_for_byte_unchanged` keeps its
-    # fixtures short.
+    # Must fire: neutralized means escaped and still readable, never dropped.
     assert "FORGED" in text and "ZERO" in text, "the reason was dropped rather than neutralized"
     assert "\\n" in text, "the embedded newline was removed instead of being made visible"
 
 
 def test_the_four_grounding_outcomes_read_as_four_different_answers():
-    """The control, and the reason the renderer exists at all: *nobody looked*, *nothing special
-    applies*, *these cards cover it* and *nothing covers it* are four facts. Two of them ending with
-    no card selected is what makes collapsing them tempting and wrong (#492, #593)."""
+    """The control, and the reason the renderer exists at all (#492)."""
     from requivo.core.contracts import ContextJudgment
     from requivo.render.terminal import render_context_judgment
     from requivo.services.discovery import Grounding

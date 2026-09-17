@@ -1,14 +1,4 @@
-"""The boundary contracts: the slot vocabulary, and the pointers that have to point at something.
-
-Split out of `test_engine.py` (#72). Two groups, both about `core/contracts.py` and neither of them
-needing a provider, a session or a filesystem:
-
-* **Vocabulary and strictness** — invariant 4. Everything an LLM fills inherits `StrictModel`, every
-  slot id is checked against the schema, and a field the model invented fails loudly instead of being
-  dropped.
-* **References that resolve** — the structural rules at the foot of the file, each one guarding a
-  field something downstream follows.
-"""
+"""The boundary contracts: the slot vocabulary, and the pointers that have to point at something (#72)."""
 import pytest
 from _fakes import out, slot
 from pydantic import ValidationError
@@ -45,8 +35,7 @@ def test_output_requires_model():
 
 
 def test_output_rejects_unknown_slots():
-    # A slot id the schema doesn't define (typo / hallucination) is rejected at the contract, so it
-    # can never sit in the model unseen by the schema-driven views. `real_problem` is the classic typo.
+    # A slot id the schema doesn't define (typo / hallucination) is rejected at the contract.
     with pytest.raises(ValidationError):
         EngineOutput.model_validate({
             "model": {"real_problem": slot(80, "explicit", "high")},
@@ -55,8 +44,7 @@ def test_output_rejects_unknown_slots():
 
 
 def test_output_allows_a_partial_but_known_model():
-    # Completeness (the full required set) is enforced at the discovery boundary, NOT the contract —
-    # internal projections (diff/propagate) legitimately carry a subset of *known* slots.
+    # Completeness (the full required set) is enforced at the discovery boundary, NOT the contract.
     part = EngineOutput.model_validate({
         "model": {"workflow": slot(60, "inferred", "high")},
         "questions": [], "summary": {},
@@ -86,8 +74,7 @@ def test_output_caps_questions_at_six():
     ("thresholds", [{"condition": "c", "measure": "m", "action": "a", "rests_on": ["not_a_slot"]}]),
 ], ids=["question", "decision", "challenge", "exclusion", "threshold"])
 def test_output_rejects_a_pointer_to_an_unknown_slot(extra_key, extra_value):
-    # A question/decision/challenge must point at a slot the schema defines — a dangling pointer would
-    # make the dependency graph look rigorous while pointing at nothing.
+    # A question/decision/challenge must point at a slot the schema defines.
     base = {"model": {"workflow": slot(60, "inferred", "high")}, "questions": [], "summary": {}}
     base[extra_key] = extra_value
     with pytest.raises(ValidationError):
@@ -95,15 +82,8 @@ def test_output_rejects_a_pointer_to_an_unknown_slot(extra_key, extra_value):
 
 
 def test_contracts_reject_a_field_the_schema_does_not_define():
-    """Invariant 4: boundary contracts are strict — everything an LLM fills inherits `StrictModel`;
-    an invented field must fail loudly and ride the retry loop, not be silently discarded.
-    Completeness lives at the discovery boundary instead, since a partial `EngineOutput` is legitimate
-    (`test_output_allows_a_partial_but_known_model` is that half; moved here from CLAUDE.md by
-    #286)."""
-    # Pydantic's default is to drop unknown keys. For an LLM boundary that is the wrong default: the
-    # output reads as conformant while carrying less than the model produced, and a prompt that has
-    # drifted from its contract looks like a clean success. Rejecting also lets the retry loop tell the
-    # model what it got wrong.
+    """Invariant 4: boundary contracts are strict (#286)."""
+    # Pydantic's default is to drop unknown keys.
     with pytest.raises(ValidationError):
         EngineOutput.model_validate({
             "model": {"workflow": slot(60, "inferred", "high")},
@@ -127,8 +107,7 @@ def test_contracts_reject_an_empty_question():
 
 
 def test_contracts_reject_a_challenge_missing_a_load_bearing_part():
-    # A challenge without its alternative or recommendation is an objection with nowhere to go — and
-    # it renders in the assessment as though it were actionable.
+    # A challenge without its alternative or recommendation is an objection with nowhere to go.
     base = {"headline": "h", "premise": "p", "alternative": "a", "consequence": "c", "recommendation": "r"}
     for missing in ("premise", "alternative", "consequence", "recommendation"):
         with pytest.raises(ValidationError):
@@ -136,9 +115,7 @@ def test_contracts_reject_a_challenge_missing_a_load_bearing_part():
 
 
 def test_a_testable_slot_with_no_test_plan_is_refused():
-    """#610: "testable" with nothing naming what would settle it is `empty` with better manners.
-    Refused, not accepted -- the same rule `test_contracts_reject_a_challenge_missing_a_load_bearing_part`
-    pins for `Challenge`'s five required parts. Guards `Slot._testable_names_its_settlement`."""
+    """#610: "testable" with nothing naming what would settle it is `empty` with better manners."""
     with pytest.raises(ValidationError):
         out({"problem": {"completeness": 0, "confidence": "testable", "impact": "high"}})
 
@@ -151,21 +128,16 @@ def test_a_testable_slot_naming_its_test_plan_is_accepted():
 
 
 def test_reasoning_items_carry_a_stable_content_derived_id():
-    """Invariant 5: `DesignDecision`, `Challenge` and `Opportunity` carry an `id` recomputed from
-    their own text on every validation. A supplied one is never trusted — an LLM that echoes a
-    stale id back would otherwise let two different decisions share a handle (moved here from
-    CLAUDE.md by #286)."""
-    # A consumer will want to refer back to a decision — comment on it, mark it accepted, follow it across
-    # revisions — and text is a poor handle. The id is derived from the content, so it is identical
-    # across revisions, surfaces and machines for as long as the statement is unchanged.
+    """Invariant 5: `DesignDecision`, `Challenge` and `Opportunity` carry an `id` recomputed from their own
+    text on every validation (#286)."""
+    # A consumer will want to refer back to a decision.
     d1 = DesignDecision.model_validate({"decision": "Draft-first", "derived_from": ["permissions"]})
     d2 = DesignDecision.model_validate({"decision": "Draft-first", "why": "different rationale"})
     assert d1.id.startswith("dec_") and d1.id == d2.id            # same statement → same handle
     assert d1.id != DesignDecision.model_validate({"decision": "Approve-first"}).id
     # Survives the round-trip through model.json unchanged…
     assert DesignDecision.model_validate_json(d1.model_dump_json()).id == d1.id
-    # …and a supplied id is never trusted: it is recomputed from the content, so a model (or a
-    # hand-edited session file) cannot invent an identity for a statement.
+    # …and a supplied id is never trusted: it is recomputed from the content.
     assert DesignDecision.model_validate({"decision": "Draft-first", "id": "dec_forged"}).id == d1.id
 
 
@@ -181,9 +153,7 @@ def test_reasoning_ids_are_distinct_per_kind():
 
 
 def test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_id():
-    """#599: an excluded option gets the same identity treatment as its three siblings
-    (invariant 5) — a supplied id is never trusted, and the same option/reason yields the
-    same id regardless of `rests_on`."""
+    """#599: an excluded option gets the same identity treatment as its three siblings (invariant 5)."""
     e1 = Exclusion.model_validate({"option": "Bulk import", "reason": "Out of scope for v1",
                                    "rests_on": ["workflow"]})
     e2 = Exclusion.model_validate({"option": "Bulk import", "reason": "Out of scope for v1",
@@ -193,9 +163,8 @@ def test_an_exclusion_is_a_fourth_reasoning_item_with_a_stable_content_derived_i
 
 
 def test_brief_carries_typed_exclusions_it_can_propose_600():
-    """#600: a generator populates exclusions through `Brief`, the same typed `Exclusion`
-    #599 gave a home to model.json — not prose. Default is `[]`, matching the "a forced
-    challenge is worse than none" rule `brief.md` already applies to `challenges`."""
+    """#600: a generator populates exclusions through `Brief`, the same typed `Exclusion` #599 gave a home to
+    model.json — not prose."""
     assert Brief(complexity="low").exclusions == []
     brief = Brief(complexity="low", exclusions=[Exclusion.model_validate(
         {"option": "A full audit-trail UI", "reason": "The stated timeline funds the approval "
@@ -205,9 +174,7 @@ def test_brief_carries_typed_exclusions_it_can_propose_600():
 
 
 def test_a_threshold_is_a_fifth_reasoning_item_with_a_stable_content_derived_id():
-    """#604: a decision threshold gets the same identity treatment as its four siblings
-    (invariant 5) — a supplied id is never trusted, and the same condition/action yields
-    the same id regardless of `measure` or `rests_on`."""
+    """#604: a decision threshold gets the same identity treatment as its four siblings (invariant 5)."""
     t1 = Threshold.model_validate({"condition": "CAC exceeds 40", "measure": "CAC",
                                    "action": "stop the paid channel", "rests_on": ["workflow"]})
     t2 = Threshold.model_validate({"condition": "CAC exceeds 40", "measure": "different measure",
@@ -220,10 +187,7 @@ def test_a_threshold_is_a_fifth_reasoning_item_with_a_stable_content_derived_id(
 
 
 def test_a_threshold_with_no_action_or_no_slot_it_rests_on_is_refused():
-    """#604 acceptance criterion: "a condition with no action, or no slot it rests on, is
-    refused" — the same rule `Challenge`'s five required parts already enforce
-    (`test_contracts_reject_a_challenge_missing_a_load_bearing_part`). `Exclusion.rests_on`
-    stays optional (#599); this is the deliberate divergence."""
+    """#604 acceptance criterion: "a condition with no action, or no slot it rests on, is refused"."""
     base = {"condition": "CAC exceeds 40", "measure": "CAC", "action": "stop the paid channel",
            "rests_on": ["workflow"]}
     with pytest.raises(ValidationError):
@@ -233,8 +197,8 @@ def test_a_threshold_with_no_action_or_no_slot_it_rests_on_is_refused():
 
 
 def test_brief_carries_typed_thresholds_it_can_propose_604():
-    """#604, mirroring #600: a generator populates thresholds through `Brief`, the same typed
-    `Threshold` this issue gave a home to model.json — not prose. Default is `[]`."""
+    """#604, mirroring #600: a generator populates thresholds through `Brief`, the same typed `Threshold` this
+    issue gave a home to model.json — not prose."""
     assert Brief(complexity="low").thresholds == []
     brief = Brief(complexity="low", thresholds=[Threshold.model_validate(
         {"condition": "CAC exceeds the stated budget ceiling", "measure": "cost per paid signup",
@@ -244,10 +208,7 @@ def test_brief_carries_typed_thresholds_it_can_propose_604():
 
 
 # ── artifact contracts: references that point at something ───────────────────
-# These are *structural* rules, never judgments about content. Each one exists because the field is a
-# pointer that something downstream follows: an estimate finds its story by id, a tracker turns
-# `depends_on` into a real link, a story's `slots` is the trace back to the model. A pointer that
-# resolves to nothing survives every render looking exactly like one that resolves.
+# These are *structural* rules, never judgments about content.
 
 
 def test_a_story_cannot_be_traced_to_a_slot_that_does_not_exist():
@@ -274,8 +235,7 @@ def test_an_estimate_range_cannot_be_inverted():
 
     EstimateItem(story_id="S1", title="X", complexity="M", days_low=1, days_high=5)
     with pytest.raises(ValidationError):
-        # Not a wide estimate — a broken one. The totals sum both ends, so this drags the project's
-        # low bound above its high bound and the spread reads backwards.
+        # Not a wide estimate — a broken one.
         EstimateItem(story_id="S1", title="X", complexity="M", days_low=5, days_high=1)
 
 
@@ -310,14 +270,12 @@ def test_a_prd_requirement_cannot_be_an_empty_row():
 
 
 # -- the PRD envelope (#603) ---------------------------------------------------
-# The same honesty split `confidence` already draws for slots, applied to a generated artifact's own
-# assumed resource envelope: a value read off the model names its slot; one the generator assumed
-# does not name one at all.
+# The same honesty split `confidence` already draws for slots.
 
 
 def test_an_envelope_element_s_origin_and_source_slot_must_agree():
-    """A slot-sourced element with no slot, or an assumed one that names one anyway, is a
-    provenance claim that contradicts itself -- the exact confusion this field exists to end."""
+    """A slot-sourced element with no slot, or an assumed one that names one anyway, is a provenance claim
+    that contradicts itself -- the exact confusion this field exists to end."""
     from requivo.core.contracts import EnvelopeElement
 
     EnvelopeElement(kind="Budget", value="50k", origin="slot", source_slot="constraints")
@@ -336,8 +294,8 @@ def test_a_prd_envelope_cannot_cite_a_slot_the_schema_does_not_define():
 
 
 def test_a_prd_with_no_constraint_content_has_an_empty_envelope_by_default():
-    """Acceptance criterion (#603): a model with nothing to say about its envelope must not have one
-    invented for it -- `envelope` defaults to empty rather than requiring a provider to fill it."""
+    """Acceptance criterion (#603): a model with nothing to say about its envelope must not have one invented
+    for it -- `envelope` defaults to empty rather than requiring a provider to fill it."""
     assert PRD(title="X", problem="P").envelope == []
 
 
@@ -353,9 +311,7 @@ def test_a_prd_with_no_constraint_content_has_an_empty_envelope_by_default():
      "uncovered names a card it has just said covers nothing"),
 ])
 def test_a_judgment_whose_payload_contradicts_its_decision_is_refused(payload, why):
-    """A verdict and a payload that disagree is what this contract exists to catch. The empty-
-    `installed` case is invariant 3's "refuse, don't filter" one call earlier: an empty selection
-    widens the context to everything instead of narrowing it (#593)."""
+    """A verdict and a payload that disagree is what this contract exists to catch (#593)."""
     from requivo.core.contracts import ContextJudgment
 
     with pytest.raises(ValidationError):

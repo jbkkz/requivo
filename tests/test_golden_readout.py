@@ -1,24 +1,5 @@
-"""The golden harness's readout: what each lens says, what the run's verdict is, and what happens
-when the console cannot encode it.
-
-Two defects, both found by the #137 lane and filed rather than folded into that diff.
-
-**#162 — a lens that never ran, reported as a lens that ran and found nothing.** `diff_one`
-short-circuited the *whole function* on a flat slot consensus: it printed "no change above the noise
-floor" and returned before the assessment lens ran. So a `brief.md` edit that moved the complexity
-verdict or the challenges without moving a single slot reported as no change -- on the one capture a
-maintainer had paid double for, since `--brief` doubles that request's calls. `golden_diff`'s own
-docstring names the rule this breaks: a false all-clear is the one failure mode a regression lens
-must not have. This is that failure one lens over.
-
-**#164 — invariant 16, in the scripts that measure the product.** Neither harness script routed its
-output through `streams.py`, so a glyph the console cannot encode raised `UnicodeEncodeError` at the
-`print` -- after the capture had been paid for and written to disk.
-
-Nothing here touches the network or the committed baselines. `GOLDEN` is redirected into a tmp
-directory and `_head_version` is stubbed, so every capture below is a fixture; `golden_run`'s client
-and capture loop are stubbed out entirely.
-"""
+"""The golden harness's readout: what each lens says, what the run's verdict is, and what happens when the
+console cannot encode it (#137)."""
 from __future__ import annotations
 
 import io
@@ -58,17 +39,7 @@ K = 3  # runs per captured baseline, matching the harness default
 
 def _model(impact: Impact = Impact.medium, completeness: int = 80, *,
           slot_id: str = "problem", perimeter: str = DEFAULT_PERIMETER) -> dict:
-    """One captured run. `completeness` is what varies between two otherwise identical baselines:
-    `movements()` grades impact and confidence only, so moving it makes the two files differ in bytes
-    -- which is what stops `diff_one` reporting `stale` -- while leaving the slot consensus flat.
-    That is the exact situation #162 is about.
-
-    `slot_id`/`perimeter` (#621) default to software's own `problem`, unchanged for every existing
-    caller. Construction itself validates `slot_id` against `perimeter`'s real schema -- via
-    `model_validate(..., context=...)` rather than the bare constructor -- so a fixture naming a
-    slot its own perimeter does not define fails here, at the builder, rather than producing the
-    exact defect Codex found on #622: a forged capture whose envelope claims one perimeter while
-    its content is quietly another's."""
+    """One captured run. `completeness` is what varies between two otherwise identical baselines (#162)."""
     slot = Slot(value="v", completeness=completeness, confidence=Confidence.explicit,
                 impact=impact, evidence="e")
     return EngineOutput.model_validate(
@@ -78,8 +49,7 @@ def _model(impact: Impact = Impact.medium, completeness: int = 80, *,
 
 
 def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
-    """One captured assessment, contesting the named slots. `contests` is populated rather than left
-    to the headline fallback so the theme labels are exact on both sides of a diff."""
+    """One captured assessment, contesting the named slots."""
     challenges = [Challenge(headline=f"about {slot_id}", premise="p", alternative="a",
                             consequence="c", recommendation="r", contests=[slot_id])
                   for slot_id in contested]
@@ -89,18 +59,7 @@ def _brief(contested: list[str], complexity: Level = Level.high) -> dict:
 def _capture(*, impact: Impact = Impact.medium, completeness: int = 80,
              briefs: list[dict] | None = None, model: str | None = None,
              perimeter: str | None = None, slot_id: str = "problem") -> str:
-    """A `.runs.json` envelope with K identical runs, and optionally K assessments.
-
-    `model` defaults to **absent**, which is what every baseline written before #515 looks like --
-    so the lens tests above keep exercising the third state incidentally, the way a reader's own
-    checkout does today. `perimeter` (#621) defaults to absent on the same principle, and
-    `captured_perimeter` reads that as `software` rather than as a third unknown state -- see its
-    own docstring for why that default differs from `model`'s.
-
-    `slot_id` (#621) is what the K runs actually carry, and `_model` refuses it if it does not
-    belong to `perimeter`'s real schema -- so, unlike Codex's #622 finding, this builder can never
-    write an envelope whose recorded perimeter disagrees with its own content. A caller building a
-    go-to-market fixture must name one of that schema's own ids (`icp`, `capacity`, …)."""
+    """A `.runs.json` envelope with K identical runs, and optionally K assessments (#515)."""
     content_perimeter = perimeter if perimeter is not None else DEFAULT_PERIMETER
     body: dict = {"request": "r",
                   "runs": [_model(impact, completeness, slot_id=slot_id, perimeter=content_perimeter)
@@ -123,13 +82,7 @@ _CURRENT_FRESHNESS = {"state": "current", "captured_at": "2026-01-01T00:00:00+00
 
 @pytest.fixture
 def diff(tmp_path, monkeypatch):
-    """`diff_one` over two forged baselines. Returns its verdict and everything it printed.
-
-    `baseline_commits_since` shells out to real git, which has nothing to do with the lens logic
-    every other test in this module exercises -- stubbed to `current` by default so those tests stay
-    hermetic and deterministic (an unstubbed call would answer against *this* checkout's own git
-    history, which none of them are testing). The freshness tests below pass their own dict to reach
-    the other two states."""
+    """`diff_one` over two forged baselines. Returns its verdict and everything it printed."""
     def run(old_text: str | None, new_text: str, freshness: dict | None = None) -> tuple[str, list[str]]:
         monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
         (tmp_path / "forged.runs.json").write_text(new_text, encoding="utf-8")
@@ -151,8 +104,7 @@ def _line(lines: list[str], needle: str) -> str | None:
 
 
 def _model_line(lines: list[str]) -> str:
-    """The preamble's model line. Asserted to exist before anything reads it: a line that is simply
-    absent must never be the way this readout renders a state, which is half of what #515 asks."""
+    """The preamble's model line. Asserted to exist before anything reads it (#515)."""
     line = _line(lines, "model") or _line(lines, "captured on")
     assert line is not None, f"no capture-model line in the readout: {lines}"
     return line
@@ -167,9 +119,7 @@ def test_two_captures_on_the_same_model_say_so(diff):
 
 
 def test_a_model_swap_is_named_rather_than_left_to_read_as_prompt_movement(diff):
-    """The defect this key exists for: export `REQUIVO_MODEL=<something else>`, re-capture one
-    request, and every lens below reports the swap as a prompt edit -- #405's confident readout,
-    about something the reader did not change."""
+    """The defect this key exists for: export `REQUIVO_MODEL=<something else>` (#405)."""
     _, lines = diff(_capture(model="claude-sonnet-5"),
                     _capture(completeness=70, model="claude-opus-4-8"))
     line = _model_line(lines)
@@ -178,10 +128,8 @@ def test_a_model_swap_is_named_rather_than_left_to_read_as_prompt_movement(diff)
 
 
 def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
-    """The third state, and the whole of it. Every baseline on disk the day this landed carries no
-    model key; rendering that as "same model" -- or as nothing at all -- is the collapse
-    `_freshness_from_git_data` already refuses one axis along: *`unknown` must never read as
-    `current`*."""
+    """The third state, and the whole of it. Every baseline on disk the day this landed carries no model key;
+    rendering that as "same model" -- or as nothing at all."""
     _, lines = diff(_capture(), _capture(completeness=70, model="claude-sonnet-5"))
     line = _model_line(lines)
     assert "unknown" in line
@@ -195,12 +143,7 @@ def test_a_baseline_with_no_model_key_does_not_read_as_agreement(diff):
 
 
 def test_a_same_perimeter_comparison_actually_compares(diff):
-    """#621, must-fire (Codex, #622). Both captures are genuinely go-to-market -- a real `icp` slot,
-    not software's `problem` under a relabelled envelope -- so this is the positive control that
-    would have caught the original defect: `load_runs` failing to thread `perimeter` crashes here
-    with a `ValidationError` on construction alone, before the assertions below even run. Beyond not
-    crashing, the movement must actually be found and labeled with go-to-market's own schema label
-    (`slot_label("icp", "go-to-market")`), not a raw id or software's fallback."""
+    """#621, must-fire (Codex, #622). Both captures are genuinely go-to-market."""
     verdict, lines = diff(
         _capture(perimeter="go-to-market", slot_id="icp", impact=Impact.medium),
         _capture(perimeter="go-to-market", slot_id="icp", impact=Impact.high))
@@ -213,13 +156,7 @@ def test_a_same_perimeter_comparison_actually_compares(diff):
 
 
 def test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed(diff):
-    """#621, must-fire (Codex, #622's exact finding). The baseline is genuinely software (a real
-    `problem` slot) and the candidate is genuinely go-to-market (a real `icp` slot) -- disjoint
-    schemas, not one relabelled copy of the other. If `diff_one`'s comparability gate ran after
-    either side was parsed into an `EngineOutput`, THIS fixture raises `ValidationError` rather than
-    returning `perimeter_mismatch` cleanly -- the exact crash Codex found, and the fixture a
-    same-schema mismatch (the shape this test used before #622) cannot expose, because it happens to
-    validate against the wrong schema by accident."""
+    """#621, must-fire (Codex, #622's exact finding)."""
     verdict, lines = diff(
         _capture(perimeter="software", slot_id="problem"),
         _capture(perimeter="go-to-market", slot_id="icp", completeness=70))
@@ -227,18 +164,15 @@ def test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed(diff):
     refusal = _line(lines, "cannot compare")
     assert refusal is not None, lines
     assert "software" in refusal and "go-to-market" in refusal
-    # Moves no verdict: none of the slot lens's own lines -- strong/weak tiers or its flat dash --
-    # may appear, because that lens must never have run.
+    # Moves no verdict: none of the slot lens's own lines.
     assert _line(lines, "no change above the noise floor") is None, lines
     assert _line(lines, "strong") is None, lines
     assert _line(lines, "weak") is None, lines
 
 
 def test_a_first_go_to_market_capture_is_read_back_and_reported_honestly(diff):
-    """#621, must-fire. No baseline yet, and the working-tree capture is genuinely go-to-market (a
-    real `icp` slot). The ⊕ NEW branch must read it back against its own schema -- not the software
-    default every `EngineOutput.model_validate` call used to carry -- or a first go-to-market capture
-    could never even be looked at, the readout Codex named on #622."""
+    """#621, must-fire. No baseline yet, and the working-tree capture is genuinely go-to-market (a real `icp`
+    slot)."""
     verdict, lines = diff(None, _capture(perimeter="go-to-market", slot_id="icp"))
     assert verdict == "moved", lines
     assert _line(lines, "NEW") is not None, lines
@@ -246,9 +180,7 @@ def test_a_first_go_to_market_capture_is_read_back_and_reported_honestly(diff):
 
 
 def test_a_baseline_with_no_perimeter_key_is_comparable_with_an_explicit_software_capture(diff):
-    """A baseline written before #621 carries no `perimeter` key at all and must read as `software`
-    -- the same migration #608 already gives a session -- so it stays comparable against a candidate
-    that explicitly names `software`, rather than being refused as a mismatch."""
+    """A baseline written before #621 carries no `perimeter` key at all and must read as `software`."""
     verdict, lines = diff(_capture(), _capture(completeness=70, perimeter="software"))
     line = _line(lines, "captured under perimeter")
     assert line is not None, lines
@@ -259,10 +191,8 @@ def test_a_baseline_with_no_perimeter_key_is_comparable_with_an_explicit_softwar
 # ── #162: every lens runs, and the verdict is the union of the ones that did ─────────────────────
 
 def test_the_assessment_lens_runs_when_the_slot_consensus_held_still(diff):
-    """The finding. Slots flat, challenges moved: the run must report the challenge and must not
-    report itself as flat. Asserting the verdict or exit code alone is not enough -- `golden_diff`
-    exited 0 throughout the defect -- what settles it is that the assessment line is present, proof
-    the lens actually looked."""
+    """The finding. Slots flat, challenges moved: the run must report the challenge and must not report itself
+    as flat."""
     old = _capture(completeness=80, briefs=_briefs(["problem", "workflow"]))
     new = _capture(completeness=70, briefs=_briefs(["workflow"]))
 
@@ -272,17 +202,12 @@ def test_the_assessment_lens_runs_when_the_slot_consensus_held_still(diff):
     assert lost is not None, lines
     assert slot_label("problem") in lost, lost
     assert verdict == "moved", lines
-    # The short-circuit still decides the *slot* section, and only that: the flat line is the honest
-    # readout for a consensus that held still, and removing it would trade one silence for another.
+    # The short-circuit still decides the *slot* section, and only that.
     assert _line(lines, "no change above the noise floor") is not None, lines
 
 
 def test_a_captured_assessment_that_held_still_says_so_rather_than_going_quiet(diff):
-    """The positive control for the test above, and for the one below it.
-
-    An assertion that a lens reported nothing passes when the lens never ran, so the clean case has
-    to *speak*: `verdict and challenges unchanged` is what distinguishes a measurement from an
-    absence, and it is a different sentence from the not-captured line."""
+    """The positive control for the test above, and for the one below it."""
     briefs = _briefs(["problem"])
     verdict, lines = diff(_capture(completeness=80, briefs=briefs),
                           _capture(completeness=70, briefs=briefs))
@@ -293,9 +218,7 @@ def test_a_captured_assessment_that_held_still_says_so_rather_than_going_quiet(d
 
 
 def test_an_assessment_nobody_captured_is_named_as_a_lens_that_did_not_look(diff):
-    """The third state. `--brief` is an opt-in flag rather than a property of the request, so an
-    absent assessment is *not measured* -- and with nothing said, it reads exactly like the clean
-    case above. One line is what separates them."""
+    """The third state. `--brief` is an opt-in flag rather than a property of the request."""
     verdict, lines = diff(_capture(completeness=80), _capture(completeness=70))
 
     not_run = _line(lines, "did not look")
@@ -307,11 +230,7 @@ def test_an_assessment_nobody_captured_is_named_as_a_lens_that_did_not_look(diff
 
 
 def test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal(diff):
-    """HEAD has an assessment and this capture does not. Marked `!` because committing this capture
-    would drop a lens the baseline had -- graded as *nothing measured*, not a finding. Grading it
-    `strong` (by analogy with `_show_turns`) fails because `--brief` is a per-invocation flag no
-    capture remembers, unlike interactivity, which is declared in `requests.md`. The assertion that
-    matters is the second one."""
+    """HEAD has an assessment and this capture does not."""
     verdict, lines = diff(_capture(completeness=80, briefs=_briefs(["problem"])),
                           _capture(completeness=70))
 
@@ -324,8 +243,7 @@ def test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_s
 
 
 def test_a_first_capture_prints_the_assessment_it_has_nothing_to_compare_against(diff):
-    """No baseline in HEAD at all. There is nothing to diff, and the consensus readout is the finding
-    -- the same shape the noise floor beside it already has."""
+    """No baseline in HEAD at all. There is nothing to diff, and the consensus readout is the finding."""
     verdict, lines = diff(None, _capture(briefs=_briefs(["problem"], Level.medium)))
 
     first = _line(lines, "first capture")
@@ -335,9 +253,7 @@ def test_a_first_capture_prints_the_assessment_it_has_nothing_to_compare_against
 
 
 def test_the_verdict_is_the_union_of_the_lenses_that_ran(diff):
-    """What happens when the lenses disagree: the strongest signal any of them produced wins. They
-    are independent measurements of one capture, not votes on one question, so a null result from one
-    is not evidence against a finding from another."""
+    """What happens when the lenses disagree: the strongest signal any of them produced wins."""
     # slots moved strongly, assessment clean -> still strong.
     briefs = _briefs(["problem"])
     verdict, lines = diff(_capture(impact=Impact.low, briefs=briefs),
@@ -355,9 +271,7 @@ def test_the_verdict_is_the_union_of_the_lenses_that_ran(diff):
 
 # ── #163: the sheet a SHALLOW capture never got to ───────────────────────────────────────────────
 #
-# `_show_turns` prints `unreached_layers` from `turn_lens` only when a run stopped short of
-# `MEASURABLE_DEPTH` -- a healthy capture is deliberately given a sheet deeper than five turns so it
-# never runs dry before the loop's own cap, and leftover layers there are by design, not a finding.
+# `_show_turns` prints `unreached_layers` from `turn_lens` only when a run stopped short of `MEASURABLE_DEPTH` -- a healthy capture is deliberately given a sheet deeper than five turns so it never runs dry before the loop's own cap, and leftover layers there are by design, not a finding.
 
 def _q(slot: str) -> Question:
     return Question(q=f"tell me about {slot}", slot=slot, why="drives the shape")
@@ -369,9 +283,8 @@ def _iturn(index: int, answered: list[str], *, asks: tuple = ()) -> Turn:
 
 
 def test_a_shallow_capture_reports_which_sheet_layers_went_unused():
-    """The #163 finding. A run that converged at turn 2 with two of three `business_rules` layers
-    still on the sheet has to say so -- that is exactly the diagnosis that had to be run by hand to
-    explain the 4/5/4 depths."""
+    """The #163 finding. A run that converged at turn 2 with two of three `business_rules` layers still on the
+    sheet has to say so."""
     layers = {"business_rules": ["l1", "l2", "l3"]}
     run = [_iturn(1, ["business_rules"], asks=("business_rules",)), _iturn(2, [])]
     buf = io.StringIO()
@@ -383,9 +296,7 @@ def test_a_shallow_capture_reports_which_sheet_layers_went_unused():
 
 
 def test_a_deep_capture_with_layers_left_over_does_not_report_them():
-    """must not fire: leftover layers on a run that reached `MEASURABLE_DEPTH` are by design -- the
-    sheet is deliberately authored deeper than five turns so a run doesn't go dry before the loop's
-    own cap. Reporting them here would be noise on every healthy capture."""
+    """must not fire: leftover layers on a run that reached `MEASURABLE_DEPTH` are by design."""
     layers = {"business_rules": [f"l{i}" for i in range(1, 11)]}
     run = [_iturn(i, ["business_rules"], asks=("business_rules",)) for i in range(1, 6)]
     buf = io.StringIO()
@@ -395,8 +306,8 @@ def test_a_deep_capture_with_layers_left_over_does_not_report_them():
 
 
 def test_a_shallow_capture_with_nothing_left_on_the_sheet_reports_nothing():
-    """must not fire, the other control: a run can converge early because the engine genuinely
-    moved on, with the sheet fully spent. That is not this diagnosis and must not print as one."""
+    """must not fire, the other control: a run can converge early because the engine genuinely moved on, with
+    the sheet fully spent."""
     layers = {"business_rules": ["l1"]}
     run = [_iturn(1, ["business_rules"], asks=("business_rules",)), _iturn(2, [])]
     buf = io.StringIO()
@@ -407,10 +318,7 @@ def test_a_shallow_capture_with_nothing_left_on_the_sheet_reports_nothing():
 
 # ── #164: a glyph must not be able to kill a script after the work has landed ────────────────────
 #
-# `PYTHONIOENCODING=ascii` is what reaches a real strict encoder on every platform rather than only
-# on a Windows leg -- `streams._target_encoding` honours an operator-named codec, so without it
-# `configure_streams` would move the stream to UTF-8 and these tests would prove nothing. It is the
-# same mechanism `tests/test_encoding.py` uses for the product's own streams.
+# `PYTHONIOENCODING=ascii` is what reaches a real strict encoder on every platform rather than only on a Windows leg -- `streams._target_encoding` honours an operator-named codec, so without it `configure_streams` would move the stream to UTF-8 and these tests would prove nothing.
 
 @pytest.fixture
 def ascii_console(monkeypatch):
@@ -439,8 +347,7 @@ def golden_diff_run(tmp_path, monkeypatch):
 
 @pytest.fixture
 def golden_run_run(tmp_path, monkeypatch):
-    """`golden_run.main([])` with the client and the capture loop stubbed out -- no key, no call, no
-    write. What survives is the header line, which is where the glyphs are."""
+    """`golden_run.main([])` with the client and the capture loop stubbed out -- no key, no call, no write."""
     def run() -> int:
         monkeypatch.setattr(golden_run, "GOLDEN", tmp_path)
         monkeypatch.setattr(golden_run, "REPO", tmp_path.parent)
@@ -456,9 +363,8 @@ def golden_run_run(tmp_path, monkeypatch):
                                             ("golden_run", "golden_run_run")])
 def test_a_strict_console_kills_a_harness_script_that_does_not_configure_its_streams(
         script, runner, request, ascii_console, monkeypatch):
-    """must fire. Without this the two silence assertions below would pass on a harness that printed
-    nothing at all, or on a script that had quietly stopped emitting the glyph rather than surviving
-    it -- which is the sweep #164 explicitly refuses."""
+    """must fire. Without this the two silence assertions below would pass on a harness that printed nothing
+    at all (#164)."""
     ascii_console()
     monkeypatch.setattr(sys.modules[script], "configure_output", lambda: None)
     with pytest.raises(UnicodeEncodeError):
@@ -468,10 +374,7 @@ def test_a_strict_console_kills_a_harness_script_that_does_not_configure_its_str
 @pytest.mark.parametrize("runner", ["golden_diff_run", "golden_run_run"])
 def test_a_harness_script_survives_a_console_that_cannot_encode_its_output(
         runner, request, ascii_console):
-    """must not fire, and the escape is the evidence it ran rather than fell silent. The handler is
-    asserted directly rather than by hunting for a `?` in the bytes: `backslashreplace` over `replace`
-    is the decision that matters, since a reader cannot tell a substituted character from one that was
-    never there, and scanning for `?` would assume no line of the harness ever legitimately prints one."""
+    """must not fire, and the escape is the evidence it ran rather than fell silent."""
     raw = ascii_console()
     assert request.getfixturevalue(runner)() == 0
     sys.stdout.flush()
@@ -481,16 +384,10 @@ def test_a_harness_script_survives_a_console_that_cannot_encode_its_output(
 
 # -- #405/#410: baseline freshness is named before any lens output ------------------------------
 #
-# `diff_one` reports whether the committed baseline in HEAD predates a commit that changes what a
-# capture measures (`WATCHED_PATHS`) -- printed first, so a reader sees it before reading a single
-# slot or assessment movement below. Three states, and the third (`unknown`) must not collapse into
-# the clean one: `_freshness_from_git_data` is unit-tested directly in `tests/test_golden_lib.py`;
-# these three exercise `diff_one`'s own reporting of what `baseline_commits_since` hands back.
+# `diff_one` reports whether the committed baseline in HEAD predates a commit that changes what a capture measures (`WATCHED_PATHS`) -- printed first, so a reader sees it before reading a single slot or assessment movement below.
 
 def test_a_stale_baseline_is_named_before_any_lens_output(diff):
-    """The finding. A baseline that predates a watched-path commit has to say so, by name, ahead of
-    the slot/assessment sections -- CLAUDE.md's own worked example for this: "baseline captured
-    2026-08-01; 3 asset commits since"."""
+    """The finding. A baseline that predates a watched-path commit has to say so."""
     stale = {"state": "stale", "captured_at": "2026-08-01T00:00:00+00:00",
              "commits": [{"sha": "abc123def", "date": "2026-08-15", "subject": "edit engine.md"},
                         {"sha": "def456abc", "date": "2026-08-20", "subject": "add a context card"}]}
@@ -507,9 +404,8 @@ def test_a_stale_baseline_is_named_before_any_lens_output(diff):
 
 
 def test_a_current_baseline_says_so_without_alarm(diff):
-    """must not fire, the positive control: a baseline with nothing watched changed since it was
-    captured reports plainly, with no warning glyph and no commit count -- the same shape
-    `golden_diff`'s own "verdict and challenges unchanged" line has for the assessment lens."""
+    """must not fire, the positive control: a baseline with nothing watched changed since it was captured
+    reports plainly, with no warning glyph and no commit count."""
     current = {"state": "current", "captured_at": "2026-08-01T00:00:00+00:00"}
     verdict, lines = diff(_capture(completeness=80), _capture(completeness=70), freshness=current)
 
@@ -521,10 +417,7 @@ def test_a_current_baseline_says_so_without_alarm(diff):
 
 
 def test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current(diff):
-    """must fire -- the third state. A shallow clone or a git failure has to read as *could not
-    tell*, never silently as *current*: the same collapse `golden_diff`'s own module docstring
-    already refuses for a byte-identical capture, one layer up, for a commit count instead of a
-    byte comparison."""
+    """must fire -- the third state. A shallow clone or a git failure has to read as *could not tell*."""
     unknown = {"state": "unknown", "reason": "shallow clone -- commit history is truncated"}
     verdict, lines = diff(_capture(completeness=80), _capture(completeness=70), freshness=unknown)
 
@@ -536,11 +429,8 @@ def test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current(dif
 
 
 def test_a_hostile_freshness_reason_cannot_forge_a_line(diff):
-    """must fire -- #461. `reason` is the only one of `_show_freshness`'s three printed fields that
-    carries text from outside the process (git's stderr, or `str(exc)`) rather than a fixed git format
-    -- #456 wrapped `date`/`sha` in `display_token` for the stale branch's rows and left this unknown
-    branch's `reason` raw, so a carriage return in it forges an unrelated second line, the same shape
-    #456 already fixed once for a commit subject. must-not-fire control: the sibling test above."""
+    """must fire -- #461. `reason` is the only one of `_show_freshness`'s three printed fields that carries
+    text from outside the process (git's stderr, or `str(exc)`) rather than a fixed."""
     hostile = {"state": "unknown",
                "reason": "git log failed: fatal: bad object\rFORGED continuation"}
     verdict, lines = diff(_capture(completeness=80), _capture(completeness=70), freshness=hostile)

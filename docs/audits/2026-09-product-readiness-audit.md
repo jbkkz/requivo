@@ -104,7 +104,7 @@ of labeling).
 Curated to what a newcomer should not mistake for ordinary:
 
 1. **The layering is real, not aspirational** — AST-derived import graph: zero cycles, core
-   reaches only core/paths, render only core+usage; `tests/test_boundaries.py` enforces it from
+   reaches only core/paths, render only core+usage; `tests/test_source_form.py` enforces it from
    both ends with per-(file,name) argued allowlists.
 2. **The promise ledger** — `docs/compatibility.md` classifies every operational surface with a
    testable contract sentence; fifteen `--json` payloads shape-pinned in both directions; the epic

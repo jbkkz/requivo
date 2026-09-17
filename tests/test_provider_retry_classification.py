@@ -1,8 +1,5 @@
-"""Which transport failures are worth retrying and which are not, and the parse-first rule for a
-reply flagged `max_tokens`: a reply whose JSON is nonetheless complete still succeeds.
-
-Split out of `test_provider.py` (#555) once that file grew past the module ceiling.
-"""
+"""Which transport failures are worth retrying and which are not, and the parse-first rule for a reply flagged
+`max_tokens`: a reply whose JSON is nonetheless complete still succeeds (#555)."""
 import json
 
 import anthropic
@@ -43,11 +40,7 @@ def _complete_failing_with(exc):
 
 
 def test_an_auth_failure_names_the_key_and_does_not_advise_retry():
-    """The message that was actively wrong. `AuthenticationError`, `PermissionDeniedError` and
-    `RateLimitError` are all `APIError` subclasses, so one `except APIError` arm answered a rejected
-    key with "Retry the command in a moment" -- advice that never works on a 401 (#201). The
-    negative half is the load-bearing half: it is easy to add the key remedy and leave the retry
-    sentence underneath, reading as "your key is wrong, try again"."""
+    """The message that was actively wrong. `AuthenticationError` (#201)."""
     for cls in (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
         msg = _complete_failing_with(_api_status(cls, 401 if cls is anthropic.AuthenticationError else 403))
         assert "ANTHROPIC_API_KEY" in msg, "the remedy is the message's whole job"
@@ -68,9 +61,7 @@ def test_a_rate_limit_says_so_and_does_not_send_the_operator_straight_back():
 
 
 def test_a_connection_failure_keeps_the_wording_that_was_right_for_it():
-    """The third branch exists to leave something alone. Splitting an over-general message is only
-    an improvement if the case it was actually correct for still gets it: a connection drop, a
-    timeout or a 5xx *is* transient, and "retry in a moment" is the right thing to say."""
+    """The third branch exists to leave something alone."""
     exc = anthropic.APIConnectionError(message="boom", request=httpx.Request("POST", "https://api.anthropic.com"))
     msg = _complete_failing_with(exc)
     assert "Anthropic API unavailable" in msg
@@ -79,11 +70,7 @@ def test_a_connection_failure_keeps_the_wording_that_was_right_for_it():
 
 
 def test_a_typeerror_out_of_the_sdk_is_not_a_traceback():
-    """The belt, and the shape of the defect it is a belt against. #201 was an SDK raising a bare
-    `TypeError` out of its own auth resolution: not an `APIError`, so `_complete`'s transport arm
-    did not see it, and not a `RequivoError`, so `cli.app()` did not either -- it reached the
-    operator as twenty-five lines of stack. `new_client()` refuses upfront now, so this arm should
-    be unreachable, which is the point of testing it: one nobody exercises is one that rots."""
+    """The belt, and the shape of the defect it is a belt against (#201)."""
     msg = _complete_failing_with(TypeError("Could not resolve authentication method."))
     assert "TypeError" in msg
     assert "ANTHROPIC_API_KEY" in msg
@@ -91,8 +78,7 @@ def test_a_typeerror_out_of_the_sdk_is_not_a_traceback():
 
 
 class _MaxTokensClient:
-    """Returns a reply flagged as cut off at the token ceiling (stop_reason == 'max_tokens'),
-    carrying whatever text it is given — so we can exercise both the broken- and complete-JSON cases."""
+    """Returns a reply flagged as cut off at the token ceiling (stop_reason == 'max_tokens')."""
 
     def __init__(self, text):
         self._text = text
@@ -108,8 +94,7 @@ class _MaxTokensClient:
 
 
 def test_complete_rejects_a_truncated_reply_that_fails_to_parse():
-    # Genuine truncation: the JSON is cut off mid-object, so parsing fails and the ceiling is the
-    # named cause — retrying at the same ceiling wouldn't help, so it fails fast and cleanly.
+    # Genuine truncation: the JSON is cut off mid-object, so parsing fails and the ceiling is the named cause.
     client = _MaxTokensClient('{"model": {"problem":')
     with pytest.raises(EngineError) as ei:
         _complete(client, "sys", [{"role": "user", "content": "x"}], EngineOutput)
@@ -117,8 +102,7 @@ def test_complete_rejects_a_truncated_reply_that_fails_to_parse():
 
 
 def test_complete_accepts_a_max_tokens_reply_whose_json_is_complete():
-    # Parse-first: rich discovery outputs run right against the ceiling and can be flagged max_tokens
-    # while still carrying complete, valid JSON. That must succeed — not be rejected as truncated.
+    # Parse-first: rich discovery outputs run right against the ceiling and can be flagged max_tokens while still carrying complete, valid JSON.
     complete = json.dumps({"model": full_slots(problem=slot(80, "explicit", "high")),
                            "questions": [], "summary": {}})
     result = _complete(_MaxTokensClient(complete), "sys", [{"role": "user", "content": "x"}], EngineOutput)
