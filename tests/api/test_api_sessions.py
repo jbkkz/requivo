@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import json
 
+from _fakes import full_slots
+
 from requivo.core import persistence as store
 from requivo.core.contracts import Challenge, DesignDecision, EngineOutput
 from requivo.services.sessions import SessionService
-from tests._fakes import full_slots
 from tests.api.conftest import seed_session
 
 
