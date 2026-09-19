@@ -77,6 +77,10 @@ The context-card selector is spelled **`--context`** everywhere — on `run`, on
 five, kept because `context` spelled it that way first (#85); the two are one option, so they can
 never mean different things.
 
+When `run` or `docs` cannot determine whether a named session exists, it reports the storage error
+and stops before a provider call. It does not reinterpret an unreadable session as a new request
+or a document type for another session.
+
 A selector — `--context a,b`, or the slot names given to `impact` — is checked rather than best-guessed.
 An **empty** name is refused: `requivo impact <slug> ""`, which is what an unset shell variable expands
 to, used to match every label and report the whole model as changed with nothing in the output to say

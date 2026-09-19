@@ -234,6 +234,7 @@ missing a card exits 1, not 4.
 |---|---|---|
 | `4` is a shape of answer ("done, partly unreachable"), not a code per verb; a new condition of that shape gets 4, not a new number | #86 | `test_the_degraded_exit_code_is_published_as_a_value_not_as_a_name` |
 | A `KeyboardInterrupt` reaching the CLI exits 130, including from inside `discover`'s interactive loop | #206 | `test_a_top_level_interrupt_on_an_existing_session_exits_130_with_no_traceback` |
+| `run` and `docs` refuse an unreadable session-existence probe at exit 1 before any provider call, rather than routing to a new request or another session | #589 | `test_run_refuses_an_unreadable_session_before_discovery`, `test_docs_refuses_an_unreadable_session_before_selecting_a_default` |
 | `requivo impact <slug> <unknown-slot>` exits 1 (invalid input), not 0 | #250 | `test_impact_refuses_an_unknown_slot_naming_it_in_details` |
 | `session init` on a request over `MAX_INPUT_CHARS` (20,000) refuses before any provider call, at exit 1 | #255 | `test_an_oversized_request_is_refused_before_any_provider_call` |
 | `discover -` reads stdin like its siblings and refuses an empty source before any provider call, rather than discovering on the literal text `-` | #360 | `test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on`, `test_an_empty_stdin_is_refused_rather_than_discovered_on` |
