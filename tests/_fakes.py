@@ -238,6 +238,22 @@ def run_cli_stdin(argv, text, monkeypatch, client=None) -> str:
     return run_cli(argv, client)
 
 
+def blind_to_session(monkeypatch, slug: str) -> None:
+    """`Path.exists` raises EACCES on this session's `session.json` alone: existence undeterminable (#589)."""
+    marker, original = store.canonical_dir(slug) / "session.json", Path.exists
+
+    def exists(path):
+        if path == marker:
+            raise PermissionError(13, "permission denied", str(path))
+        return original(path)
+
+    monkeypatch.setattr(Path, "exists", exists)
+
+
+def tree_bytes(root: Path) -> dict:
+    return {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
 def forge_meta(slug: str, fields: dict) -> None:
     """Write arbitrary values into a session's `session.json`, the way an imported archive can."""
     p = store.canonical_dir(slug) / "session.json"

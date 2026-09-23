@@ -13,7 +13,9 @@ from _fakes import deny_access, run_cli, run_cli_exit, run_cli_json, seed_sessio
 
 from conftest import symlink_or_skip
 from requivo.core import persistence as store
+from requivo.core.contracts import schema_slot_ids, schema_slots
 from requivo.core.errors import InvalidSlugError, SessionLockedError
+from requivo.core.perimeters import get_perimeter, known_perimeter_ids
 from requivo.deterministic import doctor as det
 from requivo.services.artifacts import ArtifactService
 from requivo.services.sessions import SessionService
@@ -111,6 +113,84 @@ def card(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("REQUIVO_CONTEXT_DIR", str(cards))
     run_cli(["session", "init", "Something.", "--slug", "s", "--context", "lost-domain", "--json"])
     return cards
+
+
+# ── one schema per perimeter (#623) ─────────────────────────────────────────────
+
+
+@pytest.fixture
+def uncached_schemas():
+    schema_slot_ids.cache_clear()
+    schema_slots.cache_clear()
+    yield
+    schema_slot_ids.cache_clear()
+    schema_slots.cache_clear()
+
+
+def _schema_read_as(monkeypatch, pid: str, content) -> None:
+    """`Path.read_text` on `pid`'s schema returns `content`, or raises a forged-looking error when it is None."""
+    target, original = get_perimeter(pid).schema_path, Path.read_text
+
+    def read(path, *args, **kwargs):
+        if path != target:
+            return original(path, *args, **kwargs)
+        if content is None:
+            raise FileNotFoundError("missing schema\nforged row\x1b[31m")
+        return content
+
+    monkeypatch.setattr(Path, "read_text", read)
+
+
+def test_doctor_reports_each_perimeters_schema_health(uncached_schemas):
+    """#623: listing a perimeter is not proof that doctor loaded its schema."""
+    expected = {pid: {"ok": True, "slots": len(json.loads(get_perimeter(pid).schema_path.read_text(encoding="utf-8"))["slots"]),
+                      "error": None} for pid in known_perimeter_ids()}
+    r = _doctor()
+    assert r["perimeters"]["schemas"] == expected and r["perimeters"]["installed"] == list(known_perimeter_ids())
+    assert r["schema"] == expected["software"], "keep the legacy default-perimeter result"
+    text = run_cli(["doctor"])
+    for pid, result in expected.items():
+        line = _check_line(text, f"schema {pid}")
+        assert "✅" in line and f"{result['slots']} slots" in line
+
+
+@pytest.mark.parametrize("pid", ["go-to-market", "software"])
+@pytest.mark.parametrize("content", [None, "{", "{}"], ids=["missing", "invalid-json", "missing-slots"])
+def test_doctor_isolates_a_broken_perimeter_schema(uncached_schemas, monkeypatch, pid, content):
+    """#623: a real loader failure must be visible without hiding the healthy sibling."""
+    _schema_read_as(monkeypatch, pid, content)
+    with pytest.raises((OSError, ValueError, KeyError)) as failure:
+        schema_slot_ids(pid)
+    r = _doctor()
+    rows, sibling = r["perimeters"]["schemas"], "software" if pid == "go-to-market" else "go-to-market"
+    assert rows[pid] == {"ok": False, "slots": None, "error": str(failure.value)}
+    assert rows[sibling] == {"ok": True, "slots": len(schema_slot_ids(sibling)[0]), "error": None}
+    assert r["schema"] == ({"ok": False, "slots": 0, "error": str(failure.value)} if pid == "software" else rows["software"])
+    assert r["perimeters"]["ok"] is True, "registry discovery succeeded, independently of schema health"
+    text = run_cli(["doctor"])
+    line = _check_line(text, f"schema {pid}")
+    assert "❌" in line and "unreadable" in line and ("missing schema" if content is None else str(failure.value)) in line
+    assert "✅" in _check_line(text, f"schema {sibling}")
+    assert "\nforged row" not in text and "\x1b[31m" not in text and "sessions" in text, "other doctor checks still render"
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_doctor_counts_the_slots_actually_loaded(uncached_schemas, monkeypatch, count):
+    """#623: report a reduced schema's measured size, not software's size or a hard-coded expectation."""
+    data = json.loads(get_perimeter("go-to-market").schema_path.read_text(encoding="utf-8"))
+    _schema_read_as(monkeypatch, "go-to-market", json.dumps({**data, "slots": data["slots"][:count]}))
+    assert _doctor("perimeters")["schemas"]["go-to-market"] == {"ok": True, "slots": count, "error": None}
+    assert f"{count} slots" in _check_line(run_cli(["doctor"]), "schema go-to-market")
+
+
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_doctor_does_not_invent_schemas_when_registry_is_unavailable(monkeypatch, unreadable):
+    """#623: an empty or unreadable registry has no per-member measurements."""
+    monkeypatch.setattr("requivo.core.perimeters.known_perimeter_ids",
+                        _raise(OSError("registry unavailable")) if unreadable else tuple)
+    assert _doctor("perimeters") == {"ok": False, "status": "unreadable" if unreadable else "empty", "installed": [],
+                                     "error": "registry unavailable" if unreadable else None, "schemas": {}}
+    assert "schema go-to-market" not in run_cli(["doctor"])
 
 
 # ── credentials and the model source ──────────────────────────────────────────────

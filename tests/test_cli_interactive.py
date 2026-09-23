@@ -16,6 +16,7 @@ from _fakes import (
     _ROUTING_REPLY,
     FakeClient,
     StubProvider,
+    blind_to_session,
     forge_meta,
     full_model,
     printed,
@@ -23,9 +24,11 @@ from _fakes import (
     run_cli_fails,
     seed_session,
     slot,
+    tree_bytes,
 )
 
 from requivo.cli import MAX_TURNS, QUESTIONS_PER_CHECKPOINT, converse
+from requivo.core import persistence as store
 from requivo.core.contracts import MAX_QUESTIONS, Brief, EngineOutput, Question, Slot, Summary, schema_slot_ids
 from requivo.core.errors import ProviderOutputError
 from requivo.core.perimeters import GO_TO_MARKET
@@ -387,6 +390,31 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
     SessionService().create_session(_REQUEST, slug="claimed-only")
     fake = FakeClient()
     assert run_cli_fails(["run", "claimed-only"], client=fake)[0] == 1 and fake.calls == []
+
+
+@pytest.mark.parametrize("slug", ["leave-approval", "the-leave-approval-system"])
+@pytest.mark.parametrize("once", [False, True], ids=["interactive", "once"])
+def test_run_refuses_an_unreadable_session_before_discovery(monkeypatch, workspace, slug, once):
+    """#589: an unreadable resume target is not a request, even when deriving it changes the slug."""
+    SessionService().create_session("An existing request.", slug=slug)
+    before = tree_bytes(workspace)
+    blind_to_session(monkeypatch, slug)
+    _at_a_terminal(monkeypatch, "q")
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
+    code, err = run_cli_fails(["run", slug, *(["--once"] if once else [])], client=fake)
+    assert code == 1 and f"could not determine whether session '{slug}' exists" in err and "Traceback" not in err
+    assert fake.calls == [], "an unreadable resume target must not pay for a new discovery"
+    assert tree_bytes(workspace) == before
+
+
+@pytest.mark.parametrize("text", ["fresh-request", "A new leave approval system"])
+def test_run_still_discovers_a_missing_slug_or_request(text):
+    """#589: request text and genuinely absent valid slugs still allow discovery."""
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
+    run_cli(["run", text, "--once"], client=fake)
+    sessions = SessionService().list_sessions()
+    assert len(fake.calls) == 3 and len(sessions) == 1 and sessions[0].current_revision == 1
+    assert store.session_request(sessions[0].slug) == text
 
 
 def test_run_with_no_argument_and_one_session_resumes_it(monkeypatch):

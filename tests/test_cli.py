@@ -16,6 +16,7 @@ from _fakes import (
     _ROUTING_REPLY,
     FakeClient,
     _model_in_out,
+    blind_to_session,
     forge_meta,
     full_model,
     printed,
@@ -23,6 +24,7 @@ from _fakes import (
     run_cli_fails,
     seed_session,
     slot,
+    tree_bytes,
 )
 from _fakes import out as _built_model
 
@@ -315,6 +317,19 @@ def test_docs_all_flag_generates_every_document_skipping_the_menu():
         run_cli(["docs", p.parent.name, "--all"], client=FakeClient(*replies))
         for name in ("solution-assessment.md", "prd.md", "stories.md", "estimate.md", "acceptance-criteria.md", "epic.md", "release-notes.md"):
             assert (p.parent / "artifacts" / name).exists(), name
+
+
+def test_docs_refuses_an_unreadable_session_before_selecting_a_default(monkeypatch, workspace):
+    """#589: an unreadable slug that is also a document type must not generate on another session."""
+    SessionService().create_session("An existing request.", slug="brief")
+    with _model_in_out("other-session"):
+        before = tree_bytes(workspace)
+        blind_to_session(monkeypatch, "brief")
+        fake = FakeClient('{"complexity": "low"}')
+        code, err = run_cli_fails(["docs", "brief"], client=fake)
+        assert code == 1 and "could not determine whether session 'brief' exists" in err and "Traceback" not in err
+        assert fake.calls == [], "an unreadable explicit session must not fall back to another one"
+        assert tree_bytes(workspace) == before
 
 
 @pytest.mark.parametrize("argv, message", [
