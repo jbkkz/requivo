@@ -36,10 +36,11 @@ can tweak a bundled card without editing the package.
 ## Scoping a session to relevant cards
 
 By default every card is loaded for every request, so cards dilute one another, and it is the most
-expensive default (#257). The bundled cards weigh 23,262 bytes, ~5.8k tokens (measured with
-`core.context.card_byte_size`, which ignores a Windows checkout's CRLF), which is **58–75% of every
-call's system prompt** across the eight generator prompts (`build_prompt()`, offline). Both figures
-are held against the tree by `tests/test_context.py`.
+expensive default (#257). Together the bundled cards are **the larger part of every call's system
+prompt**, so each one you add costs every all-cards session. The weight is measured live rather than
+written down here: `requivo discover` (when `--context` is not given) and the Web home page state
+the average card size (`core.context.average_card_byte_size`, which ignores a Windows checkout's
+CRLF).
 
 Each added card weighs on every all-cards session and can blunt a neighbour's sharpest question:
 adding `financial-reporting` cost `doc-reapproval` its sharpest question (3/3 golden runs down to
