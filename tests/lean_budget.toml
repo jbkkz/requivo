@@ -14,11 +14,12 @@ module_docstring_max_lines = 15
 function_docstring_max_lines = 12
 
 [tests]
-# tests/, .py files. `largest_module_max_lines` excludes the meta-guard estate. Measured after #627's
-# tranche 3 cut tests/ prose by the rule; `function_docstring_max_lines` is the rule's own five-line
-# ceiling (`decision: the-tree-records-the-rule`), measured at 2 on this tree.
-ratio_max = 2.61
-largest_module_max_lines = 757
+# tests/, .py files. `largest_module_max_lines` excludes the meta-guard estate. Measured 2026-09-23 after
+# #627's tranche 4 cut tests/ code to one file per subject (ratio 1.60x, largest module 670 lines);
+# `function_docstring_max_lines` is the rule's own five-line ceiling (`decision: the-tree-records-the-rule`),
+# measured at 2 on this tree.
+ratio_max = 1.68
+largest_module_max_lines = 700
 module_docstring_max_lines = 4
 function_docstring_max_lines = 5
 
