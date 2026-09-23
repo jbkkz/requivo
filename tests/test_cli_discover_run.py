@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import json
+from pathlib import Path
 
 import pytest
 from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, _ROUTING_REPLY, FakeClient, _run_app, full_slots, slot
@@ -173,6 +174,46 @@ def test_run_on_a_session_with_no_model_refuses_before_any_paid_call():
 
     assert exit_.value.code == 1
     assert fake.calls == []
+
+
+@pytest.mark.parametrize("slug", ["leave-approval", "the-leave-approval-system"])
+@pytest.mark.parametrize("once", [False, True], ids=["interactive", "once"])
+def test_run_refuses_an_unreadable_session_before_discovery(monkeypatch, workspace, capsys, slug, once):
+    """#589: an unreadable resume target is not a request, even when deriving it changes the slug."""
+    SessionService().create_session("An existing request.", slug=slug)
+    marker = store.canonical_dir(slug) / "session.json"
+    before = {p.relative_to(workspace): p.read_bytes() for p in workspace.rglob("*") if p.is_file()}
+    original = Path.exists
+
+    def exists(path):
+        if path == marker:
+            raise PermissionError(13, "permission denied", str(path))
+        return original(path)
+
+    monkeypatch.setattr(Path, "exists", exists)
+    _at_a_terminal(monkeypatch)
+    monkeypatch.setattr(builtins, "input", lambda prompt="": "q")
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ASKING_REPLY)
+    with pytest.raises(SystemExit) as exit_:
+        app(["run", slug, *(["--once"] if once else [])], client=fake)
+
+    assert exit_.value.code == 1
+    err = capsys.readouterr().err
+    assert f"could not determine whether session '{slug}' exists" in err
+    assert "Traceback" not in err
+    assert fake.calls == [], "an unreadable resume target must not pay for a new discovery"
+    assert {p.relative_to(workspace): p.read_bytes() for p in workspace.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("text", ["fresh-request", "A new leave approval system"])
+def test_run_still_discovers_a_missing_slug_or_request(text):
+    """#589: request text and genuinely absent valid slugs still allow discovery."""
+    fake = FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, _ENGINE_REPLY)
+    _run_app(["run", text, "--once"], client=fake)
+    assert len(fake.calls) == 3
+    sessions = SessionService().list_sessions()
+    assert len(sessions) == 1 and sessions[0].current_revision == 1
+    assert store.session_request(sessions[0].slug) == text
 
 
 def test_run_with_no_argument_and_one_session_resumes_it(monkeypatch):

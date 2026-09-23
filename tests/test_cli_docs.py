@@ -1,6 +1,8 @@
 """`requivo docs` (#544): one verb over the seven generators, a menu when no type is given."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from _fakes import FakeClient, _model_in_out, _run_app, slot
 from _fakes import out as _built_model
@@ -133,6 +135,32 @@ def test_docs_refuses_an_unknown_type_argument_before_any_call(capsys):
         assert exit_.value.code == 1
         assert "neither a document type nor a session" in capsys.readouterr().err
         assert fake.calls == []
+
+
+def test_docs_refuses_an_unreadable_session_before_selecting_a_default(monkeypatch, workspace, capsys):
+    """#589: an unreadable slug that is also a document type must not generate on another session."""
+    SessionService().create_session("An existing request.", slug="brief")
+    with _model_in_out("other-session"):
+        marker = store.canonical_dir("brief") / "session.json"
+        before = {p.relative_to(workspace): p.read_bytes() for p in workspace.rglob("*") if p.is_file()}
+        original = Path.exists
+
+        def exists(path):
+            if path == marker:
+                raise PermissionError(13, "permission denied", str(path))
+            return original(path)
+
+        monkeypatch.setattr(Path, "exists", exists)
+        fake = FakeClient('{"complexity": "low"}')
+        with pytest.raises(SystemExit) as exit_:
+            app(["docs", "brief"], client=fake)
+
+        assert exit_.value.code == 1
+        err = capsys.readouterr().err
+        assert "could not determine whether session 'brief' exists" in err
+        assert "Traceback" not in err
+        assert fake.calls == [], "an unreadable explicit session must not fall back to another one"
+        assert {p.relative_to(workspace): p.read_bytes() for p in workspace.rglob("*") if p.is_file()} == before
 
 
 def test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session(capsys):

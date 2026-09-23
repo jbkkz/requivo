@@ -27,7 +27,7 @@ from requivo.core.analysis import model_status, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
 from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots
-from requivo.core.errors import AmbiguousPerimeterError, RequivoError, SessionNotFoundError
+from requivo.core.errors import AmbiguousPerimeterError, InvalidSlugError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
@@ -429,10 +429,10 @@ def _cmd_answer(a, client) -> None:
 
 
 def _is_existing_session(svc: SessionService, ref: str) -> bool:
-    """Whether `ref` names a session (#540); an `InvalidSlugError` fails closed to "no"."""
+    """Return False for invalid slugs; let storage failures stop routing (#589)."""
     try:
         return svc.exists(ref)
-    except RequivoError:
+    except InvalidSlugError:
         return False
 
 
