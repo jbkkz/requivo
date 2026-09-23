@@ -12,6 +12,7 @@ from requivo.core import persistence as store
 from requivo.core.context import available_cards
 from requivo.core.errors import InvalidModelError, SessionLockedError
 from requivo.core.integrity import SEVERITY_NOTE, IntegrityProblem, blocking, inspect_session
+from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import _NO_DETAIL, _resolve_cards, print_json
 from requivo.deterministic.remedies import _REPAIR_HINT, _RESTORABLE_CARD_CODES, _RESTORE_HINT, _card_health
@@ -21,18 +22,21 @@ from requivo.services.sessions import SessionService
 from requivo.streams import describe_streams
 
 
+def _schema_health(perimeter: str) -> dict:
+    # A failed measurement is not zero slots: test_doctor_isolates_a_broken_perimeter_schema.
+    try:
+        from requivo.core.contracts import schema_slot_ids
+        allowed, _ = schema_slot_ids(perimeter)
+        return {"ok": True, "slots": len(allowed), "error": None}
+    except Exception as e:  # noqa: BLE001 - doctor reports any failure rather than raising
+        return {"ok": False, "slots": None, "error": str(e)}
+
+
 def doctor_report() -> dict:
     """A self-diagnosis of the install; a missing SDK or key is informational, not an error."""
     from requivo import __version__
 
-    # Assets + schema.
-    schema_ok, slot_count, schema_err = True, 0, None
-    try:
-        from requivo.core.contracts import schema_slot_ids
-        allowed, _ = schema_slot_ids()
-        slot_count = len(allowed)
-    except Exception as e:  # noqa: BLE001 - doctor reports any failure rather than raising
-        schema_ok, schema_err = False, str(e)
+    schema = _schema_health(DEFAULT_PERIMETER)
 
     # Context cards have three states: `ok`, `empty` (a broken install) and `unreadable` (could not look).
     # `test_doctor_tells_a_loaded_context_dir_from_a_lost_one_and_from_an_unreadable_one`.
@@ -51,6 +55,7 @@ def doctor_report() -> dict:
     except Exception as e:  # noqa: BLE001 - doctor reports any failure rather than raising
         perimeters_err = str(e)
     perimeters_status = "unreadable" if perimeters_err else ("ok" if perimeters else "empty")
+    schemas = {pid: schema if pid == DEFAULT_PERIMETER else _schema_health(pid) for pid in perimeters}
 
     # Provider (optional).
     provider_installed, provider_version = False, None
@@ -84,13 +89,14 @@ def doctor_report() -> dict:
         "model": model,
         "assets": {"root": str(ASSETS), "present": ASSETS.exists()},
         "output": {"ok": all(s["state"] == "safe" for s in output), "streams": output},
-        "schema": {"ok": schema_ok, "slots": slot_count, "error": schema_err},
+        # Preserve the legacy default-perimeter field, including zero on a failed load (#623).
+        "schema": {**schema, "slots": schema["slots"] if schema["ok"] else 0},
         # `context_cards` stays the plain list: a published `--json` key. The verdict is the sibling.
         "context_cards": cards,
         "context": {"ok": cards_status == "ok", "status": cards_status, "count": len(cards),
                     "error": cards_err, "roots": [str(CONTEXT), str(user_context_dir())]},
         "perimeters": {"ok": perimeters_status == "ok", "status": perimeters_status,
-                       "installed": perimeters, "error": perimeters_err},
+                       "installed": perimeters, "error": perimeters_err, "schemas": schemas},
         "provider_anthropic": {
             "installed": provider_installed,
             "version": provider_version,
@@ -252,9 +258,6 @@ def _cmd_doctor(a, client) -> None:
             print(f"  {warn} {stream['stream']:<15} {stream['encoding']} — characters it cannot "
                   f"encode are escaped, not dropped, and never crash")
     print(f"  {ok if r['assets']['present'] else '❌'} assets          {r['assets']['root']}")
-    s = r["schema"]
-    print(f"  {ok if s['ok'] else '❌'} schema          {s['slots']} slots"
-          + (f"  (error: {display_token(s['error'])})" if not s["ok"] else ""))
     c = r["context"]
     if c["status"] == "unreadable":
         print(f"  ❌ context cards   unreadable — {display_token(c['error'])}")
@@ -272,6 +275,9 @@ def _cmd_doctor(a, client) -> None:
         print("  ❌ perimeters      0 installed — this install is incomplete")
     else:
         print(f"  {ok} perimeters      {', '.join(pr['installed'])}")
+    for pid, s in pr["schemas"].items():
+        detail = f"{s['slots']} slots" if s["ok"] else f"unreadable — {display_token(s['error'])}"
+        print(f"  {ok if s['ok'] else '❌'} schema {display_token(pid)}  {detail}")
     p = r["provider_anthropic"]
     prov = f"installed (v{p['version']})" if p["installed"] else "not installed"
     # A `credential_problem` means a profile IS configured and unloadable (#365): checked first, so

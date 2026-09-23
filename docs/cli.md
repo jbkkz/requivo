@@ -258,7 +258,8 @@ at all.
 |---|---|
 | `requivo_version` / `python_version` / `os` | The three facts a bug report needs, printed as the first rows of the human view so a paste of them is a bug report |
 | `model.name` / `model.source` | The model this install will reason with, and whether it came from an environment override (`env` — `REQUIVO_MODEL`, or the deprecated bare `MODEL`) or the built-in `default` |
-| `schema.ok` / `schema.slots` / `schema.error` | The slot schema loaded, and how many slots it defines |
+| `schema.ok` / `schema.slots` / `schema.error` | The legacy software-perimeter schema result; `slots` remains `0` on failure |
+| `perimeters.schemas` | Each installed perimeter's schema result (`ok`, `slots`, `error`), also shown as a named row in the human view. A failed load has `slots: null` and its own error; other rows still report. A successful load reports the observed slot count, not validation against an expected count |
 | `context.status` | `ok`, `empty` (the install has no context cards) or `unreadable` (a card directory exists but could not be enumerated — permissions, usually). `context.ok` is true only for `ok` |
 | `context_cards` | The card names themselves — the plain list it has always been |
 | `sessions.readable` / `sessions.total` / `sessions.error` | Whether the session directory could be listed at all. When it could not, `total` is `null` rather than `0`, because *no sessions* and *we could not look* are different answers and a user told the first concludes their sessions were deleted |

@@ -142,6 +142,7 @@ narrows or widens exactly one field, never a shape:
 
 | Field | Promise | Since | Test |
 |---|---|---|---|
+| `doctor`'s `perimeters.schemas` | Per-installed-ID `{ok, slots, error}`; a load failure has `slots: null` and does not hide other rows. Legacy `schema` and perimeter-discovery fields retain their meanings | #623 | `test_doctor_reports_each_perimeters_schema_health`, `test_doctor_isolates_a_broken_perimeter_schema` |
 | `sessions.total` | `null`, not `0`, when the session root itself could not be read | #34-family | `test_doctor_tells_an_empty_workspace_from_an_unreadable_one` |
 | `sessions.non_sessions[]` | what is under the session root and is not a session; `slug_shaped` asks the read-time reserved-name rule, so a `con` directory now reads `true` | #67, #408 | `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`, `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken` |
 | `sessions.unexaminable[]` | names under the session root whose examination raised; distinct from `non_sessions` and excluded from `total` | #80 | `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick` |
