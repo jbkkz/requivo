@@ -5,9 +5,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 
-from requivo.core.persistence.identifiers import _is_lock_stem, _shape_only
+from requivo.core.persistence.identifiers import _is_lock_stem, _shape_only, _stat_exists
 
 _NON_SESSION_SAMPLE = 5
 
@@ -80,12 +81,12 @@ class _ScanMixin:
 
     def _scan_session_root(self) -> tuple[list[str], list[Path], list[UnexaminableEntry]]:
         """One listing of the session root, partitioned three ways: sessions, everything else, and the
-        entries whose examination raised (#80; `Path.exists()` does not swallow `EACCES`).
+        entries whose examination raised (#80, #636; metadata errors must not look like absence).
         `test_the_partition_answers_in_three_states_and_the_third_is_neither_neighbour`. Dot-prefixed
         entries are staging areas and in none of the three. A missing root is an empty workspace; a
         root that cannot be listed still raises."""
         root = self.session_root()
-        if not root.exists():
+        if not _stat_exists(root):
             return [], [], []
         slugs: list[str] = []
         others: list[Path] = []
@@ -94,7 +95,7 @@ class _ScanMixin:
             if p.name.startswith("."):
                 continue
             try:
-                is_session = (p / "session.json").exists()
+                is_session = _stat_exists(p / "session.json")
             except Exception as e:  # noqa: BLE001 - the third outcome, not a failure of the listing
                 # `Exception`, not `OSError`: the ways a probe can fail are open-ended. `BaseException` is not caught.
                 unexaminable.append(UnexaminableEntry(p.name, str(e)))
@@ -135,7 +136,7 @@ class _ScanMixin:
         only *is there a lock file*, never *is `slug` still a session*. A root that cannot be listed
         raises: `test_the_lock_root_being_unlistable_is_not_reported_as_no_residue`."""
         root = self.lock_root()
-        if not root.exists():
+        if not _stat_exists(root):
             return [], [], []
         lock_slugs: list[str] = []
         unexpected: list[str] = []
@@ -146,7 +147,7 @@ class _ScanMixin:
             # not folded into `lock_slugs` (#391).
             guard_slug = p.name[: -len(".discovering")] if p.name.endswith(".discovering") else None
             try:
-                is_ordinary_file = p.is_file() and not p.is_symlink()
+                is_ordinary_file = S_ISREG(p.stat().st_mode) and not p.is_symlink()
                 # `_is_lock_stem`, shape alone (#401, #409): a classification, not a creation.
                 if is_ordinary_file and lock_slug and _is_lock_stem(lock_slug):
                     lock_slugs.append(lock_slug)

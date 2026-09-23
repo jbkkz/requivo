@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from _fakes import full_model, slot
+from _fakes import full_model, simulate_py314_denied_path, slot
 
 from conftest import blind_to_dangling_links, healthy_session, symlink_or_skip
 from requivo.core import persistence as store
@@ -425,6 +425,18 @@ def test_a_session_path_is_not_resolved_before_it_exists(tmp_path, monkeypatch):
     resolved = _counting_resolve(monkeypatch)
     assert store._child_of(root, "s") == root / "s"
     assert resolved == [], resolved
+
+
+def test_an_unreadable_child_is_not_accepted_as_contained_on_py314(tmp_path, monkeypatch):
+    """#636: a denied path is not the same as a missing child at the containment boundary."""
+    root = tmp_path / "sessions"
+    root.mkdir()
+    child = root / "blocked"
+    child.touch()
+    simulate_py314_denied_path(monkeypatch, child)
+    assert store.is_contained(child, root) is False
+    with pytest.raises(InvalidSlugError):
+        store._child_of(root, "blocked")
 
 
 def test_an_artifact_path_is_not_resolved_before_it_exists(monkeypatch):

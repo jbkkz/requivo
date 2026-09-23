@@ -15,7 +15,7 @@ from requivo.core.errors import InvalidSlugError, SessionLockedError, SessionUnr
 
 if TYPE_CHECKING:
     from requivo.core.errors import SessionNotFoundError
-from requivo.core.persistence.identifiers import _refuse_new_reserved_slug, _slug_shape
+from requivo.core.persistence.identifiers import _refuse_new_reserved_slug, _slug_shape, _stat_exists
 
 try:  # POSIX
     import fcntl
@@ -107,7 +107,11 @@ def is_contained(child: Path, parent: Path) -> bool:
     `test_a_session_path_is_not_resolved_before_it_exists`); an absent child is True because every
     caller validated a single flat component. False means *not confirmed inside*: elsewhere, or the
     resolver could not tell."""
-    if not (child.exists() or child.is_symlink()):
+    try:
+        exists = _stat_exists(child)
+    except OSError:
+        return False  # cannot confirm containment of a path that could not be examined (#636)
+    if not (exists or child.is_symlink()):
         return True
     root = _resolve(parent)
     resolved = _resolve(child)

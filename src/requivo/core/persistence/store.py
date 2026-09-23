@@ -25,7 +25,13 @@ from requivo.core.errors import (
 )
 from requivo.core.perimeters import resolve_perimeter
 from requivo.core.persistence.atomic import _atomic_write
-from requivo.core.persistence.identifiers import _probe, _refuse_new_reserved_slug, _slug_shape, validate_filename
+from requivo.core.persistence.identifiers import (
+    _probe,
+    _refuse_new_reserved_slug,
+    _slug_shape,
+    _stat_exists,
+    validate_filename,
+)
 from requivo.core.persistence.lock import _LockHandle, _LockMixin, _resolve, is_contained
 from requivo.core.persistence.models import (
     ArtifactStatus,
@@ -283,7 +289,7 @@ class Store(_ScanMixin, _LockMixin):
     def load_session_model(self, slug: str) -> EngineOutput:
         """The current model of a canonical session."""
         p = self.canonical_dir(slug) / "model.json"
-        if not p.exists():
+        if not _stat_exists(p):
             raise SessionNotFoundError(
                 f"session '{slug}' has no model yet (apply a proposal first)", details={"slug": slug})
         # The session's own perimeter; `read_meta` already refused an unknown one by name (#608).
@@ -294,7 +300,7 @@ class Store(_ScanMixin, _LockMixin):
     def load_revision_model(self, slug: str, revision: int) -> EngineOutput:
         """A historical model revision — the basis for `impact` since a given point."""
         p = self.canonical_dir(slug) / "revisions" / f"{revision:04d}-model.json"
-        if not p.exists():
+        if not _stat_exists(p):
             raise SessionNotFoundError(
                 f"session '{slug}' has no revision {revision}", details={"slug": slug, "revision": revision})
         perimeter = resolve_perimeter(self.read_meta(slug).perimeter)
@@ -303,7 +309,7 @@ class Store(_ScanMixin, _LockMixin):
 
     def session_request(self, slug: str) -> str:
         p = self.canonical_dir(slug) / "request.md"
-        return p.read_text(encoding="utf-8") if p.exists() else ""
+        return p.read_text(encoding="utf-8") if _stat_exists(p) else ""
 
 
     def save_session_artifact(self, slug: str, artifact_type: str, filename: str, content: str,
@@ -352,12 +358,12 @@ class Store(_ScanMixin, _LockMixin):
         from requivo.core.dependencies import ARTIFACT_FILENAMES  # local import avoids a load-time cycle
 
         src = self.legacy_dir(slug)
-        if not (src / "model.json").exists():
+        if not _stat_exists(src / "model.json"):
             raise SessionNotFoundError(f"no legacy session '{slug}' under {self.output_root()}",
                                        details={"slug": slug})
         request = ""
         for name in ("request.md", "request.txt"):
-            if (src / name).exists():
+            if _stat_exists(src / name):
                 request = (src / name).read_text(encoding="utf-8")
                 break
         old: dict = {}
@@ -395,7 +401,7 @@ class Store(_ScanMixin, _LockMixin):
             filename_to_type = {fn: t for t, fn in ARTIFACT_FILENAMES.items()}
             for fn, atype in filename_to_type.items():
                 legacy_file = src / fn
-                if legacy_file.exists():
+                if _stat_exists(legacy_file):
                     content = legacy_file.read_text(encoding="utf-8")
                     self.save_session_artifact(slug, atype, fn, content, source_revision=rev)
             return self.read_meta(slug)
