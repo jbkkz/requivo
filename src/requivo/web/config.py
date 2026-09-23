@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from requivo.core.contracts import MAX_INPUT_CHARS
 
 # Field ceilings, refused rather than trimmed (invariant 3): aliases for the one cap Core enforces
-# (#255, invariant 14). `test_an_oversized_request_is_refused_not_truncated`.
+# (#255, invariant 14). `test_an_oversized_field_is_refused_and_the_ceiling_itself_is_accepted`.
 MAX_REQUEST_CHARS = MAX_INPUT_CHARS
 MAX_ANSWERS_CHARS = MAX_INPUT_CHARS
 MAX_SLUG_CHARS = 80
@@ -63,7 +63,7 @@ class ProviderStatus:
 def provider_status() -> ProviderStatus:
     """Probe the provider without touching the key value or making a call. `key_present` reads
     `credential_present()`, the definition `new_client()` authenticates from, so a bearer token counts
-    (#332, `test_a_bearer_token_alone_is_read_as_a_credential`); since #334 that constructs a transient
+    (#332, `test_the_provider_probe_reads_either_credential_name`); since #334 that constructs a transient
     client but never calls."""
     try:
         # the SDK handle (or None if not installed) and the shared credential probe

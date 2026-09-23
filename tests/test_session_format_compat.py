@@ -1,20 +1,20 @@
-"""Invariant 8: `.requivo/sessions/` is the interface between every surface, at `format_version` 1. A session
-an older Requivo wrote still loads (session.json); a model a *newer* Requivo wrote loads, survives a
-refinement turn, and is still refused at the provider boundary (model.json, #14)."""
+"""Invariant 8: `.requivo/sessions/` is public at `format_version` 1 -- older session.json still loads, a newer
+model.json loads and survives a turn, and the provider boundary still refuses it (#14)."""
 from __future__ import annotations
 
 import json
 import typing
 
 import pytest
+from _fakes import full_model, slot
 from pydantic import BaseModel, ValidationError
 
-from conftest import full_model as _full_model
-from conftest import slot as _slot
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput, ModelProposal, PersistedEngineOutput
 from requivo.core.errors import RequivoError
 from requivo.services.sessions import SessionService
+
+pytestmark = pytest.mark.usefixtures("workspace")
 
 # ── the session format is public ──────────────────────────────────────────────
 
@@ -48,12 +48,11 @@ SESSION_JSON_0_8_2 = """{
 }"""
 
 
-def test_a_session_written_by_an_older_requivo_still_loads(workspace):
-    """Invariant 8, the backward half. `.requivo/sessions/` is the interface between every surface, at
-    `format_version` 1. Adding a field is free (#286)."""
+def test_a_session_written_by_an_older_requivo_still_loads():
+    """Invariant 8, the backward half: adding a field is free (#286)."""
     d = store.canonical_dir("leave-approval")
     d.mkdir(parents=True, exist_ok=True)
-    (d / "session.json").write_text(SESSION_JSON_0_8_2)
+    (d / "session.json").write_text(SESSION_JSON_0_8_2, encoding="utf-8")
 
     meta = store.read_meta("leave-approval")
     assert meta.current_revision == 2 and meta.provider == "anthropic"
@@ -113,10 +112,10 @@ def test_every_arm_of_the_family_names_a_distinct_fact():
     assert "invalid_session" not in codes, "the base is the family, not an arm"
 
 
-def test_a_session_from_a_newer_requivo_is_refused_not_guessed(workspace):
+def test_a_session_from_a_newer_requivo_is_refused_not_guessed():
     d = store.canonical_dir("from-the-future")
     d.mkdir(parents=True, exist_ok=True)
-    (d / "session.json").write_text(SESSION_JSON_0_8_2.replace('"format_version": 1', '"format_version": 2'))
+    (d / "session.json").write_text(SESSION_JSON_0_8_2.replace('"format_version": 1', '"format_version": 2'), encoding="utf-8")
     with pytest.raises(RequivoError) as ei:
         store.read_meta("from-the-future")
     assert ei.value.code == "unsupported_format_version"
@@ -130,7 +129,7 @@ def test_a_session_from_a_newer_requivo_is_refused_not_guessed(workspace):
 
 def _model_from_the_future() -> dict:
     """A model as a Requivo one minor version ahead might write it."""
-    m = _full_model()
+    m = full_model()
     m["risk_register"] = [{"id": "R1", "text": "adoption"}]        # a new top-level collection
     m["model"]["workflow"]["provenance"] = "interview-3"           # a new field inside a slot
     m["summary"]["horizon"] = "two quarters"                       # a new field inside the summary
@@ -139,7 +138,7 @@ def _model_from_the_future() -> dict:
     return m
 
 
-def test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip(workspace):
+def test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip():
     """The forward half of invariant 8, for `model.json` (#14)."""
     store.create_session("mixed", "A leave approval system.")
     d = store.canonical_dir("mixed")
@@ -160,11 +159,11 @@ def test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip(work
         assert written["decisions"][0]["settled_at"] == "r1", path.name
 
 
-def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit(workspace):
+def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit():
     """Invariant 8, extended to a closed enum, not only unknown keys (#610)."""
     store.create_session("future-confidence", "A leave approval system.")
     d = store.canonical_dir("future-confidence")
-    m = _full_model(workflow=_slot(90, "measured", "high"))   # a confidence value this build refuses
+    m = full_model(workflow=slot(90, "measured", "high"))   # a confidence value this build refuses
     (d / "model.json").write_text(json.dumps(m, indent=2), encoding="utf-8")
 
     loaded = store.load_session_model("future-confidence")   # must not raise
@@ -173,15 +172,15 @@ def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unre
     assert "workflow" in readiness_blockers(loaded)   # tolerated, never promoted to "confirmed"
 
 
-def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save(workspace):
-    """The half the first version of this fix got wrong, and the reason it is worth a second test (#14)."""
+def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save():
+    """The half the first version of the fix got wrong (#14)."""
     store.create_session("refined", "A leave approval system.")
     d = store.canonical_dir("refined")
     (d / "model.json").write_text(json.dumps(_model_from_the_future(), indent=2), encoding="utf-8")
     store.save_revision("refined", store.load_session_model("refined"))   # now at revision 1
 
     # An ordinary refinement turn: the full slot set and a new objective.
-    SessionService().update_model("refined", {**_full_model(), "summary": {"objective": "Refined"}})
+    SessionService().update_model("refined", {**full_model(), "summary": {"objective": "Refined"}})
 
     written = json.loads((d / "model.json").read_text(encoding="utf-8"))
     assert written["summary"]["objective"] == "Refined", "the turn did not land"
@@ -193,8 +192,7 @@ def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save(worksp
 
 
 def test_the_provider_boundary_still_refuses_the_same_payload():
-    """The positive control for the test above, and the reason the fix is a sibling contract rather than a
-    relaxed flag on `StrictModel`."""
+    """The positive control: the fix is a sibling contract, not a relaxed flag on `StrictModel`."""
     for contract in (EngineOutput, ModelProposal):
         with pytest.raises(ValidationError) as ei:
             contract.model_validate(_model_from_the_future())
@@ -202,7 +200,7 @@ def test_the_provider_boundary_still_refuses_the_same_payload():
     # And permissive is not the same as credulous: the persisted contract still enforces the slot vocabulary.
     with pytest.raises(ValidationError):
         PersistedEngineOutput.model_validate(
-            {**_full_model(), "model": {**_full_model()["model"], "real_problem": _slot()}})
+            {**full_model(), "model": {**full_model()["model"], "real_problem": slot()}})
 
 
 def _contracts_reachable_from(cls: type[BaseModel]) -> set[type[BaseModel]]:
@@ -241,11 +239,11 @@ def test_the_persisted_mirror_copies_every_constraint_it_restates():
     pairs = [(p, p.__mro__[1]) for p in _contracts_reachable_from(PersistedEngineOutput)]
     for permissive, strict in pairs:
         assert issubclass(strict, BaseModel) and strict is not BaseModel, permissive.__name__
-    # Not vacuous, on both counts: nine twins exist (#604 added Threshold/PersistedThreshold), and the mirror really does re-point eight fields at permissive types — which is exactly why it has to restate their constraints.
+    # Not vacuous: nine twins exist (#604), and the mirror re-points these fields at permissive types.
     assert len(pairs) == 9
     redeclared = {name for p, s in pairs for name in p.model_fields
                   if p.model_fields[name].annotation != s.model_fields[name].annotation}
-    # `confidence` joined this set with #610: `PersistedSlot` widens it to `Confidence | str` so a value this build does not define survives a round-trip instead of raising (invariant 8).
+    # `confidence` joined with #610: `PersistedSlot` widens it to `Confidence | str` (invariant 8).
     assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities",
                           "exclusions", "thresholds", "confidence"}
 

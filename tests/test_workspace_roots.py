@@ -1,99 +1,74 @@
-"""#272: the workspace root is constructor state on `FileSessionRepository`/`Store`, not ambient process
-environment -- two instances against two distinct tmp roots, in one process, with no `os.environ` mutation,
-address and lock independently (`test_two_repositories_against_two_roots_are_independent_in_one_process`)."""
+"""#272: the workspace root is constructor state on `FileSessionRepository`/`Store`, not ambient process environment."""
 from __future__ import annotations
 
 import os
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from _fakes import out, slot
+from _fakes import StubProvider
 
+from requivo.core import persistence as store
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import Store
+from requivo.core.persistence import store as store_module
 from requivo.paths import workspace_root
 from requivo.services.discovery import DiscoveryService
 from requivo.services.repository import FileSessionRepository
 from requivo.services.sessions import SessionService
 
-# ── the acceptance test, verbatim against the issue's own wording ──────────────────────────────
+
+@pytest.fixture
+def two_roots(tmp_path_factory) -> tuple[Path, Path]:
+    return tmp_path_factory.mktemp("workspace-a"), tmp_path_factory.mktemp("workspace-b")
 
 
-def test_two_repositories_against_two_roots_are_independent_in_one_process(tmp_path_factory):
-    """The issue's own acceptance criterion: two `FileSessionRepository` instances against two distinct tmp
-    roots in one process, creating a session in each and listing them independently."""
+@pytest.fixture
+def rooted(tmp_path_factory, monkeypatch) -> tuple[Path, Path]:
+    """An explicit root, with cwd elsewhere and no `REQUIVO_WORKSPACE`, so the ambient default is somewhere else."""
+    explicit, elsewhere = tmp_path_factory.mktemp("explicit"), tmp_path_factory.mktemp("ambient-elsewhere")
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
+    return explicit, elsewhere
+
+
+def test_two_repositories_against_two_roots_are_independent_in_one_process(two_roots):
+    """#272's acceptance criterion, with the must-fire half: a slug in one root does not appear in the other."""
     before_env = dict(os.environ)
-    root_a = tmp_path_factory.mktemp("workspace-a")
-    root_b = tmp_path_factory.mktemp("workspace-b")
-
-    repo_a = FileSessionRepository(root=root_a)
-    repo_b = FileSessionRepository(root=root_b)
-
+    root_a, root_b = two_roots
+    repo_a, repo_b = FileSessionRepository(root=root_a), FileSessionRepository(root=root_b)
     repo_a.create("leave-approval", "A request filed against workspace A.")
     repo_b.create("leave-approval", "A different request, filed against workspace B.")
-
-    assert repo_a.list_slugs() == ["leave-approval"]
-    assert repo_b.list_slugs() == ["leave-approval"]
+    repo_a.create("only-in-a", "Only workspace A should ever see this.")
+    assert (repo_a.list_slugs(), repo_b.list_slugs()) == (["leave-approval", "only-in-a"], ["leave-approval"])
     assert repo_a.request_text("leave-approval") == "A request filed against workspace A."
     assert repo_b.request_text("leave-approval") == "A different request, filed against workspace B."
-
-    # Independent on disk, not merely independent in what each repository reports.
-    assert (root_a / ".requivo" / "sessions" / "leave-approval" / "session.json").exists()
-    assert (root_b / ".requivo" / "sessions" / "leave-approval" / "session.json").exists()
-
-    # The must-not-fire half: this test changed nothing about the process it ran in.
+    assert repo_b.exists("only-in-a") is False
+    for root in (root_a, root_b):
+        assert (root / ".requivo" / "sessions" / "leave-approval" / "session.json").exists()
     assert os.environ == before_env, "the environment must not have been touched at all"
 
 
-def test_a_third_slug_created_in_one_repository_does_not_appear_in_the_other(tmp_path_factory):
-    """The must-fire complement to the test above: two repositories over two roots are not simply reporting
-    the same store twice by coincidence."""
-    root_a = tmp_path_factory.mktemp("workspace-a")
-    root_b = tmp_path_factory.mktemp("workspace-b")
-    repo_a = FileSessionRepository(root=root_a)
-    repo_b = FileSessionRepository(root=root_b)
-
-    repo_a.create("only-in-a", "Only workspace A should ever see this.")
-
-    assert repo_a.list_slugs() == ["only-in-a"]
-    assert repo_b.list_slugs() == []
-    assert repo_b.exists("only-in-a") is False
-
-
-# ── the re-entrancy fix `Store`'s own docstring names ───────────────────────────────────────────
-
-
-def test_two_roots_sharing_a_slug_do_not_share_a_lock(tmp_path_factory):
-    """Root identity, not `id(self)`, has to decide re-entrancy (see `Store`'s own docstring, #272)."""
-    root_a = tmp_path_factory.mktemp("workspace-a")
-    root_b = tmp_path_factory.mktemp("workspace-b")
-    store_a = Store(root_a)
-    store_b = Store(root_b)
+def test_two_roots_sharing_a_slug_do_not_share_a_lock(two_roots):
+    """Root identity, not `id(self)`, decides re-entrancy: the inner take must open store_b's own lock file."""
+    root_a, root_b = two_roots
+    store_a, store_b = Store(root_a), Store(root_b)
     store_a.create_session("shared-slug", "req A")
     store_b.create_session("shared-slug", "req B")
-
-    with store_a.session_lock("shared-slug"):
-        # If this silently believed it already held store_b's lock (a bug the shared-slug keying would produce), it would return without ever opening store_b's own lock file -- so the positive assertion below is the one that actually catches it: the lock file must exist.
-        with store_b.session_lock("shared-slug"):
-            assert (root_a / ".requivo" / "locks" / "shared-slug.lock").exists()
-            assert (root_b / ".requivo" / "locks" / "shared-slug.lock").exists()
+    with store_a.session_lock("shared-slug"), store_b.session_lock("shared-slug"):
+        assert (root_a / ".requivo" / "locks" / "shared-slug.lock").exists()
+        assert (root_b / ".requivo" / "locks" / "shared-slug.lock").exists()
 
 
-def test_reentrant_acquisition_across_fresh_ambient_stores_is_still_recognised(tmp_path, monkeypatch):
-    """The other half of the same fix. The *ambient* module-level wrapper (`persistence.session_lock`, what
-    `cli.py` and every un-rooted caller use) builds a **fresh** `Store`."""
-    from requivo.core import persistence as store
-
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+def test_reentrant_acquisition_across_fresh_ambient_stores_is_still_recognised(workspace):
+    """The ambient wrapper `persistence.session_lock` builds a fresh `Store` per call; nesting must not deadlock."""
     store.create_session("amb-slug", "an ambient-workspace request")
-
     finished = threading.Event()
 
     def _nest():
-        with store.session_lock("amb-slug"):
-            with store.session_lock("amb-slug"):
-                finished.set()
+        with store.session_lock("amb-slug"), store.session_lock("amb-slug"):
+            finished.set()
 
     t = threading.Thread(target=_nest, daemon=True)
     t.start()
@@ -101,216 +76,91 @@ def test_reentrant_acquisition_across_fresh_ambient_stores_is_still_recognised(t
     assert finished.is_set(), "nested ambient session_lock calls deadlocked or timed out"
 
 
-def test_an_explicit_repository_root_is_immune_to_a_later_workspace_env_mutation(
-        tmp_path_factory, monkeypatch):
-    """The other half of `FileSessionRepository`'s own docstring."""
-    fixed_root = tmp_path_factory.mktemp("fixed")
-    elsewhere = tmp_path_factory.mktemp("elsewhere")
-    repo = FileSessionRepository(root=fixed_root)
-    repo.create("s", "req")
-    assert repo.list_slugs() == ["s"]
-
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(elsewhere))
-    # The same instance, after the environment moved out from under it -- must still see `fixed_root`.
-    assert repo.list_slugs() == ["s"]
-    assert repo.request_text("s") == "req"
-    assert not (elsewhere / ".requivo").exists()
-
-
-def test_the_ambient_default_repository_still_tracks_a_mid_process_workspace_mutation(
-        tmp_path_factory, monkeypatch):
-    """The CLI's own contract, pinned directly rather than only through a CLI-level test."""
-    first = tmp_path_factory.mktemp("first")
-    second = tmp_path_factory.mktemp("second")
-
+def test_an_explicit_root_is_immune_to_an_env_mutation_the_ambient_default_tracks(two_roots, monkeypatch):
+    """The two halves of `FileSessionRepository`'s contract, on the same instances, across one env mutation."""
+    first, second = two_roots
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(first))
-    repo = FileSessionRepository()          # constructed while REQUIVO_WORKSPACE names `first`
-    repo.create("only-first", "req")
-    assert repo.list_slugs() == ["only-first"]
+    fixed, ambient = FileSessionRepository(root=first), FileSessionRepository()
+    fixed.create("s", "req")
+    ambient.create("only-first", "req")
+    assert fixed.list_slugs() == ambient.list_slugs() == ["only-first", "s"]
 
     monkeypatch.setenv("REQUIVO_WORKSPACE", str(second))
-    # The SAME instance -- not a new one -- must now address `second`.
-    assert repo.list_slugs() == []
-    repo.create("only-second", "req")
-    assert repo.list_slugs() == ["only-second"]
-
-
-# ── the scope amendment: the three ambient reads outside core/persistence ──────────────────────
-
-
-def _stub_provider():
-    class _Stub:
-        name = "stub"
-
-        def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
-                perimeter=None):
-            return out({"problem": slot(80, "explicit", "high")})
-
-        def generate(self, *a, **k):  # pragma: no cover - unused here
-            raise NotImplementedError
-
-        def model_name(self):
-            return "stub-model"
-
-        def provenance(self, op, *, only=None, perimeter=None):
-            return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
-
-    return _Stub()
-
-
-def test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace(
-        tmp_path_factory, monkeypatch):
-    """#272's scope amendment."""
-    explicit_root = tmp_path_factory.mktemp("explicit")
-    ambient_elsewhere = tmp_path_factory.mktemp("ambient-elsewhere")
-    monkeypatch.chdir(ambient_elsewhere)
-    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
-
-    repo = FileSessionRepository(root=explicit_root)
-    sessions = SessionService(repo)
-    disco = DiscoveryService(provider=_stub_provider(), sessions=sessions)
-    slug = sessions.create_session("a leave approval system").slug
-
-    disco.run_discovery(slug, surface="test")
-
-    assert (explicit_root / ".requivo" / "locks" / f"{slug}.discovering").exists(), (
-        "the discovery guard did not land under the repository's own explicit root"
-    )
-    assert not (ambient_elsewhere / ".requivo").exists(), (
-        "the discovery guard reached the ambient default instead of the repository's explicit root"
-    )
-    assert sessions.repo.read_meta(slug).current_revision == 1
-
-
-def test_a_repository_with_no_store_falls_back_to_the_ambient_workspace(tmp_path, monkeypatch):
-    """The other arm of `DiscoveryService._store_for_repo`, found unpinned in review of #483's first pass."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-
-    class _NoStoreRepo:  # duck-typed: the only attribute `_store_for_repo` reads is `.store`
-        pass
-
-    disco = DiscoveryService.__new__(DiscoveryService)
-    disco.sessions = SimpleNamespace(repo=_NoStoreRepo())
-
-    store = disco._store_for_repo()
-    assert isinstance(store, Store)
-    assert store.root == workspace_root()
-    assert store.lock_root() == tmp_path / ".requivo" / "locks"
-
-
-def test_no_session_names_the_root_of_an_explicitly_rooted_repository(tmp_path_factory, monkeypatch):
-    """#272's cosmetic fourth: `SessionService.no_session`'s error text used to be built by
-    `store.no_session_message`, which always named the *ambient* session root."""
-    explicit_root = tmp_path_factory.mktemp("explicit")
-    ambient_elsewhere = tmp_path_factory.mktemp("ambient-elsewhere")
-    monkeypatch.chdir(ambient_elsewhere)
-    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
-
-    svc = SessionService(FileSessionRepository(root=explicit_root))
-    err = svc.no_session("missing-slug")
-
-    assert isinstance(err, SessionNotFoundError)
-    assert str(explicit_root) in str(err), (
-        f"the refusal must name the repository's own root, got: {err}"
-    )
-    assert str(ambient_elsewhere) not in str(err), (
-        "the refusal named the ambient workspace instead of the repository's explicit root"
-    )
-
-
-def test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one(
-        tmp_path_factory, monkeypatch):
-    """#457: `snapshot()` raised through the module-level ambient `store.no_session_message(slug)` instead of
-    `self.no_session(slug)`."""
-    explicit_root = tmp_path_factory.mktemp("explicit")
-    ambient_elsewhere = tmp_path_factory.mktemp("ambient-elsewhere")
-    monkeypatch.chdir(ambient_elsewhere)
-    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
-
-    svc = SessionService(FileSessionRepository(root=explicit_root))
-    with pytest.raises(SessionNotFoundError) as ei:
-        svc.snapshot("missing-slug")
-
-    assert str(explicit_root) in str(ei.value), (
-        f"the refusal must name the repository's own root, got: {ei.value}"
-    )
-    assert str(ambient_elsewhere) not in str(ei.value), (
-        "the refusal named the ambient workspace instead of the repository's explicit root"
-    )
-
-
-def test_no_session_still_names_the_ambient_root_for_the_default_repository(monkeypatch, tmp_path):
-    """The must-not-regress control for the fix above."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    svc = SessionService()
-    err = svc.no_session("missing-slug")
-    assert str(tmp_path) in str(err)
+    assert fixed.list_slugs() == ["only-first", "s"] and fixed.request_text("s") == "req"
+    assert ambient.list_slugs() == []
+    ambient.create("only-second", "req")
+    assert ambient.list_slugs() == ["only-second"]
+    assert not (second / ".requivo" / "sessions" / "s").exists()
 
 
 @pytest.mark.parametrize("root_kw", [{}, {"root": None}])
-def test_default_repository_construction_is_unchanged(root_kw, tmp_path, monkeypatch):
-    """`FileSessionRepository()` and `FileSessionRepository(root=None)` are the same ambient default."""
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+def test_default_repository_construction_is_unchanged(root_kw, workspace):
     repo = FileSessionRepository(**root_kw)
     repo.create("s", "req")
     assert repo.list_slugs() == ["s"]
 
 
-# ── found in review: output_root must stay ambient, on every Store alike ───────────────────────
+# ── the scope amendment: the ambient reads outside core/persistence ──────────
 
 
-def test_an_explicit_stores_legacy_root_still_honours_the_ambient_output_dir_override(
-        tmp_path_factory, monkeypatch):
-    """A reviewer's finding, fixed before this shipped past this branch."""
-    explicit_root = tmp_path_factory.mktemp("explicit-workspace")
-    legacy_root = tmp_path_factory.mktemp("legacy-out-dir")
+def test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace(rooted):
+    explicit_root, ambient_elsewhere = rooted
+    sessions = SessionService(FileSessionRepository(root=explicit_root))
+    disco = DiscoveryService(provider=StubProvider(), sessions=sessions)
+    slug = sessions.create_session("a leave approval system").slug
+    disco.run_discovery(slug, surface="test")
+    assert (explicit_root / ".requivo" / "locks" / f"{slug}.discovering").exists()
+    assert not (ambient_elsewhere / ".requivo").exists()
+    assert sessions.repo.read_meta(slug).current_revision == 1
+
+
+def test_a_repository_with_no_store_falls_back_to_the_ambient_workspace(workspace):
+    """The other arm of `DiscoveryService._store_for_repo` (#483)."""
+    disco = DiscoveryService.__new__(DiscoveryService)
+    disco.sessions = SimpleNamespace(repo=SimpleNamespace())    # duck-typed: nothing but `.store` is read
+    got = disco._store_for_repo()
+    assert isinstance(got, Store) and got.root == workspace_root()
+    assert got.lock_root() == workspace / ".requivo" / "locks"
+
+
+def test_no_session_names_the_root_of_an_explicitly_rooted_repository(rooted, tmp_path, monkeypatch):
+    """#272's cosmetic fourth: the refusal names the repository's own root, and still the ambient one by default."""
+    explicit_root, ambient_elsewhere = rooted
+    err = SessionService(FileSessionRepository(root=explicit_root)).no_session("missing-slug")
+    assert isinstance(err, SessionNotFoundError)
+    assert str(explicit_root) in str(err) and str(ambient_elsewhere) not in str(err)
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+    assert str(tmp_path) in str(SessionService().no_session("missing-slug"))
+
+
+def test_snapshot_names_the_root_of_an_explicitly_rooted_repository_not_the_ambient_one(rooted):
+    """#457: `snapshot()` raised through the ambient `no_session_message` instead of `self.no_session`."""
+    explicit_root, ambient_elsewhere = rooted
+    with pytest.raises(SessionNotFoundError) as ei:
+        SessionService(FileSessionRepository(root=explicit_root)).snapshot("missing-slug")
+    assert str(explicit_root) in str(ei.value) and str(ambient_elsewhere) not in str(ei.value)
+
+
+# ── found in review: output_root stays ambient, on every Store alike ─────────
+
+
+def test_an_explicit_stores_legacy_root_still_honours_the_ambient_output_dir_override(two_roots, monkeypatch):
+    """`REQUIVO_OUTPUT_DIR` wins on an explicit Store and on the ambient default alike; with no override, cwd-relative."""
+    explicit_root, legacy_root = two_roots
+    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
     monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(legacy_root))
-    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
-
-    explicit_store = Store(explicit_root)
-    assert explicit_store.output_root() == legacy_root
-    assert explicit_store.output_root() != explicit_root / "out"
-
-    # And the ambient default (root=None, what session migrate's scan and its actual migration both ultimately read) must agree with the same override too.
-    from requivo.core import persistence as store
-    assert store.output_root() == legacy_root
-
-
-def test_an_explicit_stores_legacy_root_is_cwd_relative_with_no_override(
-        tmp_path_factory, monkeypatch):
-    """The must-fire complement, with no `REQUIVO_OUTPUT_DIR` set at all."""
-    explicit_root = tmp_path_factory.mktemp("explicit-workspace")
+    assert Store(explicit_root).output_root() == legacy_root == store.output_root()
     monkeypatch.delenv("REQUIVO_OUTPUT_DIR", raising=False)
-    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
-
-    from pathlib import Path
-    explicit_store = Store(explicit_root)
-    assert explicit_store.output_root() == Path.cwd() / "out"
-    assert explicit_store.output_root() != explicit_root / "out"
+    assert Store(explicit_root).output_root() == Path.cwd() / "out" != explicit_root / "out"
 
 
-def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(
-        tmp_path_factory, monkeypatch):
-    """Found in review: `_lock_key` used to call `_resolve(self.root)` (#272)."""
-    from requivo.core import persistence as store
-
-    # `Store.__init__` (in `core/persistence/store.py`) imports `_resolve` from `lock.py` and calls the bare name, which resolves in `store.py`'s own globals -- not the package-level re-export (#550): patching `store._resolve` is a second binding the constructor never reads.
-    from requivo.core.persistence import store as store_module
-
-    root = tmp_path_factory.mktemp("workspace")
+def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(tmp_path, monkeypatch):
+    """`Store.__init__` calls `_resolve` through `store.py`'s own globals, so that is the binding to count (#550)."""
     calls = []
     real_resolve = store_module._resolve
-
-    def _counting_resolve(path):
-        calls.append(path)
-        return real_resolve(path)
-
-    monkeypatch.setattr(store_module, "_resolve", _counting_resolve)
-
-    s = store.Store(root)
+    monkeypatch.setattr(store_module, "_resolve", lambda path: (calls.append(path), real_resolve(path))[1])
+    s = store.Store(tmp_path)
     assert len(calls) == 1, "constructing a Store must resolve its root exactly once"
-
-    # `_lock_key` in isolation, not the whole of `session_lock`.
     calls.clear()
     for _ in range(5):
         assert s._lock_key("s") == s._lock_key("s")

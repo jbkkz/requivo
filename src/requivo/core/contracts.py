@@ -492,7 +492,7 @@ class Brief(StrictModel):
     decisions: list[DesignDecision] = Field(default_factory=list)  # settled decisions, with tradeoffs
     # Typed exclusions the brief proposes (#600): `test_brief_carries_typed_exclusions_it_can_propose_600`.
     exclusions: list[Exclusion] = Field(default_factory=list)
-    # Typed thresholds (#604): `test_brief_carries_typed_thresholds_it_can_propose_604`.
+    # Typed thresholds (#604): `test_brief_carries_typed_exclusions_it_can_propose_600`.
     thresholds: list[Threshold] = Field(default_factory=list)
     open_decisions: list[str] = Field(default_factory=list)  # decisions still to make
 

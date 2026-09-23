@@ -24,7 +24,7 @@ _WRITE_GRANTS = {
 
 def _workflow_files():
     files = sorted(list(WORKFLOWS.glob("*.yml")) + list(WORKFLOWS.glob("*.yaml")))
-    # A glob over a directory that has moved returns [], and every assertion below would then pass over nothing.
+    # A glob over a moved directory returns [], and every assertion would pass over nothing.
     assert files, f"no workflow files under {WORKFLOWS} -- the scan set is empty"
     return files
 
@@ -63,8 +63,7 @@ def _permission_blocks(text):
 
 
 def test_the_job_scoped_exception_list_names_files_that_exist():
-    """Both directions. An entry pointing at a workflow that has been renamed or deleted is prose claiming to
-    describe a decision nobody can find, and it exempts nothing."""
+    """An entry naming a renamed or deleted workflow exempts nothing."""
     present = {p.name for p in _workflow_files()}
     stale = sorted(set(_JOB_SCOPED) - present)
     assert stale == [], f"_JOB_SCOPED names workflows that no longer exist: {stale}"

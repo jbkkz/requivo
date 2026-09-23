@@ -10,8 +10,7 @@ from tests._surfaces import SURFACES
 
 @pytest.mark.parametrize("surface", SURFACES, ids=repr)
 def test_a_loopback_host_is_accepted_by_every_surface(surface):
-    """The must-fire control. Without this row a guard that refused *everything* would pass every other row in
-    this file, and the two policies it would have broken."""
+    """The must-fire control: a guard that refused everything would pass every other row here."""
     assert surface.client().get(surface.ok_path).status_code == 200
 
 
@@ -33,8 +32,7 @@ def test_a_host_nobody_could_read_is_refused_by_every_surface(surface):
 
 @pytest.mark.parametrize("surface", SURFACES, ids=repr)
 def test_a_refused_host_names_its_code_rather_than_only_its_status(surface):
-    """403 is the status; the code is what a caller is told to match on (`docs/compatibility.md`: *assert on
-    the code, never the message*, #52)."""
+    """403 is the status; the code is what a caller is told to match on (#52)."""
     client = surface.client()
     unrecognised = client.get(surface.ok_path, headers={"Host": "evil.example.com"})
     unreadable = client.get(surface.ok_path, headers={"Host": ""})

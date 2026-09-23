@@ -1,5 +1,4 @@
-"""The declared Python import seam (#423) exists, and compatibility.md's declaration of it actually names
-things the package has."""
+"""The declared Python import seam (#423) exists, and compatibility.md's declaration of it names real things."""
 from __future__ import annotations
 
 import importlib
@@ -37,12 +36,7 @@ NEWLY_CLASSIFIED_MODULES = ("requivo.render", "requivo.paths", "requivo.streams"
 
 
 def test_every_declared_seam_name_actually_resolves():
-    unresolved = []
-    for module_name, names in SEAM.items():
-        module = importlib.import_module(module_name)
-        for name in names:
-            if not hasattr(module, name):
-                unresolved.append(f"{module_name}.{name}")
+    unresolved = [f"{m}.{n}" for m, names in SEAM.items() for n in names if not hasattr(importlib.import_module(m), n)]
     assert unresolved == [], f"declared but does not exist: {unresolved}"
 
 
@@ -65,11 +59,7 @@ def test_py_typed_is_shipped_as_package_data():
 
 def test_compatibility_md_declares_the_seam():
     text = COMPAT_MD.read_text(encoding="utf-8")
-    missing = []
-    for module_name, names in SEAM.items():
-        for name in names:
-            if name not in text:
-                missing.append(f"{module_name}.{name}")
+    missing = [f"{m}.{n}" for m, names in SEAM.items() for n in names if n not in text]
     assert missing == [], f"declared seam names not mentioned in docs/compatibility.md: {missing}"
 
 

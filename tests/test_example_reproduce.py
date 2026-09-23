@@ -7,6 +7,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
+from _fakes import RaisingClient
 
 from requivo.cli import app
 from requivo.core import persistence as store
@@ -17,14 +18,6 @@ EXAMPLES = ("leave-approval", "event-checkin-reconciliation")
 
 class ReachedProvider(Exception):
     """Raised in place of the API call."""
-
-
-class _SentinelClient:
-    def __init__(self):
-        self.messages = self
-
-    def create(self, **kwargs):
-        raise ReachedProvider
 
 
 def _reproduce_commands(example: str) -> list[list[str]]:
@@ -46,23 +39,20 @@ def _reproduce_commands(example: str) -> list[list[str]]:
     return cmds
 
 
-@pytest.fixture
-def workspace(tmp_path, monkeypatch):
-    # cwd stays at the repo root, because the documented commands name `examples/<name>/…` relative to it.
-    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
-    monkeypatch.setenv("REQUIVO_OUTPUT_DIR", str(tmp_path / "out"))
+@pytest.fixture(autouse=True)
+def _at_the_repo_root(workspace, monkeypatch):
+    # The documented commands name `examples/<name>/…` relative to the repo root.
     monkeypatch.chdir(REPO)
-    return tmp_path
 
 
 @pytest.mark.parametrize("example", EXAMPLES)
-def test_the_documented_reproduce_sequence_runs_on_a_fresh_workspace(example, workspace):
+def test_the_documented_reproduce_sequence_runs_on_a_fresh_workspace(example):
     """Each command in order: the offline ones complete, the paid ones reach the provider (#222)."""
     reached = 0
     for argv in _reproduce_commands(example):
         try:
             with redirect_stdout(io.StringIO()):
-                app(argv, client=_SentinelClient())
+                app(argv, client=RaisingClient(ReachedProvider()))
         except ReachedProvider:
             reached += 1
         except SystemExit as e:  # pragma: no cover - only on a real failure
@@ -74,7 +64,7 @@ def test_the_documented_reproduce_sequence_runs_on_a_fresh_workspace(example, wo
 
 
 @pytest.mark.parametrize("example", EXAMPLES)
-def test_no_example_documents_a_generator_against_a_bare_model_file(example, workspace):
+def test_no_example_documents_a_generator_against_a_bare_model_file(example):
     """The regression in its own words, so a red run names the defect rather than a stack (#222)."""
     generators = {"brief", "prd", "criteria", "epic", "release", "stories", "estimate"}
     for argv in _reproduce_commands(example):

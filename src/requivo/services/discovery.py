@@ -585,7 +585,7 @@ class DiscoveryService:
         between two concurrent callers with the revision re-checked inside it (#209). The discovery
         lands as revision 1 before the brief is attempted (#467).
         `test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing`,
-        `test_a_failed_brief_leaves_the_analyzed_discovery_applied_467`."""
+        `test_a_failed_brief_leaves_the_analyzed_discovery_applied`."""
         provider = self._need_provider()
         meta = self.claim_session(request, cards=cards, slug=slug, perimeter=perimeter)
         with _discovery_guard(meta.slug, self._store_for_repo()):
@@ -612,7 +612,7 @@ class DiscoveryService:
         """One un-persisted discovery turn: the request alone first, then the model so far plus the
         answers. `reuse_system=True` because this is the one repeated operation
         (`test_the_loop_declares_its_repeated_prompt_at_the_seam`); the size cap runs here too, since
-        the turn resends the request every call (`test_draft_turn_refuses_an_oversized_request_before_reasoning`)."""
+        the turn resends the request every call (`test_an_oversized_request_is_refused_before_any_provider_call`)."""
         require_input_within_bounds(request, field="request")
         if answers is not None:
             require_input_within_bounds(answers, field="answers")

@@ -14,7 +14,7 @@ from requivo.services.sessions import SessionService
 # Absent a collision (see `is_example`); not `cli.DEMO_SLUG` (the browsable copy under `examples/`).
 EXAMPLE_SLUG = "example-event-check-in"
 
-# provider/model_name stay absent (invariant 6) -- test_the_revision_claims_no_provider_it_did_not_use.
+# provider/model_name stay absent (invariant 6) -- test_one_click_yields_a_browsable_session_through_the_validated_path.
 EXAMPLE_SURFACE = "web-example"
 
 
@@ -58,7 +58,7 @@ def is_example(request_text: str) -> bool:
 def seed_example(sessions: SessionService, artifacts: ArtifactService | None = None) -> str:
     """Materialise the bundled example as a real session and return its slug. Idempotent: a second
     click navigates, the model applies only at revision 0, a racing click's conflict is swallowed
-    (test_a_second_click_returns_to_the_same_session_rather_than_making_another); the brief is seeded
+    (test_a_second_click_does_not_reseed_or_duplicate_the_brief); the brief is seeded
     under the same lock, gated on presence (#429)."""
     artifacts = artifacts if artifacts is not None else ArtifactService(repo=sessions.repo)
     meta = sessions.create_session(example_request(), slug=EXAMPLE_SLUG)

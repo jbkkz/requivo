@@ -4,25 +4,12 @@ from pathlib import Path
 
 import pytest
 from _credentials import _CREDENTIAL_ENV, SINKHOLE_BASE_URL
+from _fakes import StubProvider, _FakeResponse, full_model, slot  # noqa: F401  (re-exported for the suites)
 
 from requivo.core import persistence as _persistence_store
-from requivo.core.contracts import _schema_order, schema_slot_ids
+from requivo.core.contracts import EngineOutput
 from requivo.services.artifacts import ArtifactService as _ArtifactService
 from requivo.services.sessions import SessionService as _SessionService
-
-
-def slot(completeness=0, confidence="empty", impact="low", value=""):
-    """A raw slot dict -- the four keys `full_model` and every direct `svc.update_model(...)` call in the
-    persistence/sessions/integrity suites build a proposal out of (#555)."""
-    return {"completeness": completeness, "confidence": confidence, "impact": impact, "value": value}
-
-
-def full_model(**overrides) -> dict:
-    """A complete required-slot model proposal, with per-slot overrides."""
-    _, required = schema_slot_ids()
-    model = {sid: slot() for sid in _schema_order() if sid in required}
-    model.update(overrides)
-    return {"model": model, "questions": [], "summary": {"objective": "A leave approval system"}}
 
 
 @pytest.fixture
@@ -34,8 +21,7 @@ def workspace(tmp_path, monkeypatch):
     return tmp_path
 
 
-# ── a stub ReasoningProvider that records calls, shared by the sessions-service and ─────────
-# discovery-provider-seam suites (#555) -- was declared twice in test_sessions.py before the split.
+# ── the stub providers the sessions-service and discovery-seam suites share (#555) ──────────
 
 
 class RacingClient:
@@ -47,49 +33,21 @@ class RacingClient:
 
     def create(self, **kwargs):
         self._on_call()          # the concurrent write lands while "reasoning" is in flight
-        return RacingReply(self._reply)
+        return _FakeResponse(self._reply)
 
 
-class RacingReply:
-    def __init__(self, text):
-        self.content = [type("B", (), {"type": "text", "text": text})()]
-        self.stop_reason = "end_turn"
-        self.usage = None
-
-
-class FakeProvider:
+class FakeProvider(StubProvider):
     """A `ReasoningProvider` with no vendor behind it -- the stand-in for a second implementation."""
 
     name = "fake"
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
-        from requivo.core.contracts import EngineOutput
+    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False, perimeter=None):
+        self.analyze_calls += 1
         return EngineOutput.model_validate({**full_model(), "summary": {"objective": "A leave system"}})
-
-    def generate(self, artifact_type, model, *, only=None):
-        raise AssertionError("not needed for this test")
-
-    def model_name(self):
-        return "fake-model-1"
-
-    def provenance(self, op, *, only=None, perimeter=None):
-        return {"provider": self.name, "model_name": self.model_name(), "prompt_version": "sha256:fake"}
 
 
 class CountingProvider(FakeProvider):
     """A provider that records whether it was asked to reason -- the point of a pre-flight check."""
-
-    def __init__(self):
-        self.calls = 0
-
-    def analyze(self, request, *, current_model=None, answers=None, only=None, perimeter=None):
-        self.calls += 1
-        return super().analyze(request, current_model=current_model, answers=answers, only=only)
-
-    def generate(self, artifact_type, model, *, only=None, **kwargs):
-        # Overrides `FakeProvider.generate`, which raises "not needed for this test".
-        self.calls += 1
-        raise AssertionError(f"the provider was reached with model={model!r}")
 
 
 # ── a session at a given revision with a saved artifact, and the symlink-containment probes ──

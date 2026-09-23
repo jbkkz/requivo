@@ -58,7 +58,7 @@ def view_artifact(
     artifacts: ArtifactService = Depends(get_artifacts),
 ):
     """View a saved artifact as a document, or download the raw Markdown byte-identical to what was
-    saved (#235, `test_downloading_an_artifact_still_serves_the_bytes_that_were_saved`). The rendered
+    saved (#235, `test_a_saved_artifact_reads_as_a_document_not_as_source`). The rendered
     half goes through `markdown_to_html`, which escapes before it builds any tag, since the template
     renders it with autoescape off."""
     # `artifacts.show()` refuses an unknown type first (400), so the branch below sees a real key.

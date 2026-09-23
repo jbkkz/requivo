@@ -1,60 +1,43 @@
-"""Named stdlib loggers at the service seams (#435): `requivo.services.sessions`, `.artifacts` and
-`.discovery` each emit a handful of INFO/DEBUG/WARNING records at real seams."""
-
+"""`DiscoveryService`, the one provider-backed orchestration: its logging seams (#435), the provider and
+storage seams (#424), the first-discovery guard (#209), and the input ceiling (#255)."""
 from __future__ import annotations
 
 import io
 import json
 import logging
-from contextlib import redirect_stderr, redirect_stdout
+import os
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 import pytest
-from _fakes import FakeClient, out, slot
+from _fakes import _ENGINE_REPLY, FakeClient, StubProvider, full_model, out, seeded, slot
 
-from requivo.core.contracts import Brief
-from requivo.core.errors import RevisionConflictError
+from conftest import FakeProvider, RacingClient
+from requivo.core import persistence as store
+from requivo.core.contracts import MAX_INPUT_CHARS
+from requivo.core.errors import InputTooLargeError, InvalidSlugError, RevisionConflictError, SessionLockedError
+from requivo.core.persistence import ensure_store_dir
 from requivo.providers.errors import EngineError
 from requivo.services.artifacts import ArtifactService
-from requivo.services.discovery import DiscoveryService
+from requivo.services.discovery import DiscoveryService, _discovery_guard_path, fcntl
 from requivo.services.sessions import SessionService
 
+pytestmark = pytest.mark.usefixtures("workspace")
 
-@pytest.fixture(autouse=True)
-def _isolate_workspace(workspace):
-    """conftest's `workspace` fixture, applied automatically to every test in this module."""
+REQUEST = "a leave approval system"
 
 
-class _StubProvider:
-    """A minimal `ReasoningProvider`."""
+def _disco(provider=None, sessions=None):
+    sessions = sessions or SessionService()
+    return sessions, DiscoveryService(provider=provider or StubProvider(), sessions=sessions)
 
-    name = "stub"
 
-    def __init__(self, *, analyze_error: Exception | None = None,
-                generate_error: Exception | None = None):
-        self._analyze_error = analyze_error
-        self._generate_error = generate_error
-        self.analyze_calls = 0
-        self.generate_calls = 0
+def _conflict(sessions: SessionService, slug: str) -> None:
+    """`_plan`'s WARNING-level "model apply refused" line, the seam most likely to leak."""
+    with pytest.raises(RevisionConflictError):
+        sessions.update_model(slug, out({"problem": slot(1, "empty", "low")}).model_dump_json(), expected_revision=99)
 
-    def analyze(self, request, *, current_model=None, answers=None, only=None, reuse_system=False,
-                perimeter=None):
-        self.analyze_calls += 1
-        if self._analyze_error is not None:
-            raise self._analyze_error
-        return out({"problem": slot(80, "explicit", "high")})
 
-    def generate(self, artifact_type, model, *, only=None, **kwargs):
-        self.generate_calls += 1
-        if self._generate_error is not None:
-            raise self._generate_error
-        assert artifact_type == "brief"
-        return Brief(complexity="low", solution="S", decisions=[], challenges=[], opportunities=[])
-
-    def model_name(self):
-        return "stub-model"
-
-    def provenance(self, op, *, only=None, perimeter=None):
-        return {"provider": self.name, "model_name": self.model_name(), "surface": "test"}
+# ── the logging seams (#435) ────────────────────────────────────────────────────
 
 
 class _CollectingHandler(logging.Handler):
@@ -65,203 +48,301 @@ class _CollectingHandler(logging.Handler):
     def emit(self, record):
         self.records.append(record)
 
+    def messages(self, level=logging.DEBUG) -> list[str]:
+        return [r.getMessage() for r in self.records if r.levelno >= level]
+
 
 @pytest.fixture
-def _attached(request):
-    """Attach a collecting handler to a named logger for one test, restoring whatever handlers/level it had
-    whether the test passes or not."""
+def _attached():
+    """Attach a collecting handler to a named logger for one test, restoring it afterwards."""
     restores = []
 
-    def _attach(name: str, level: int = logging.DEBUG) -> _CollectingHandler:
+    def _attach(name: str) -> _CollectingHandler:
         logger = logging.getLogger(name)
-        before = (list(logger.handlers), logger.level)
-        restores.append((logger, before))
+        restores.append((logger, list(logger.handlers), logger.level))
         handler = _CollectingHandler()
         logger.addHandler(handler)
-        logger.setLevel(level)
+        logger.setLevel(logging.DEBUG)
         return handler
 
     yield _attach
-    for logger, (handlers, level) in restores:
+    for logger, handlers, level in restores:
         logger.handlers, logger.level = handlers, level
 
 
-def _messages(handler: _CollectingHandler) -> list[str]:
-    return [r.getMessage() for r in handler.records]
+def _artifact_saved(sessions):
+    ArtifactService(repo=sessions.repo).save(seeded(sessions, REQUEST), "prd", "# PRD", source_revision=1)
 
 
-# ── the documented seams: attach a handler, trigger the seam, see the record ────
+def _failed_call(sessions):
+    with pytest.raises(EngineError):
+        DiscoveryService(provider=StubProvider(analyze_error=EngineError("boom")), sessions=sessions).start(REQUEST)
 
 
-def test_session_created_is_logged(_attached):
-    handler = _attached("requivo.services.sessions")
-    sessions = SessionService()
-    sessions.create_session("a leave approval system")
-    messages = _messages(handler)
-    assert any("session created" in m for m in messages), messages
-
-
-def test_model_applied_is_logged_with_its_revision(_attached):
-    handler = _attached("requivo.services.sessions")
-    sessions = SessionService()
-    meta = sessions.create_session("a leave approval system")
-    sessions.update_model(
-        meta.slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json(),
-        expected_revision=0)
-    messages = _messages(handler)
-    assert any("model applied" in m and "revision=1" in m for m in messages), messages
-
-
-def test_a_write_conflict_is_logged_as_refused(_attached):
-    handler = _attached("requivo.services.sessions")
-    sessions = SessionService()
-    meta = sessions.create_session("a leave approval system")
-    with pytest.raises(RevisionConflictError):
-        sessions.update_model(
-            meta.slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json(),
-            expected_revision=99)
-    warnings = [r for r in handler.records if r.levelno == logging.WARNING]
-    assert any("conflict" in r.getMessage() for r in warnings), _messages(handler)
+@pytest.mark.parametrize("logger,act,needles,level", [
+    ("sessions", lambda s: s.create_session(REQUEST), ["session created"], logging.DEBUG),
+    ("sessions", lambda s: seeded(s, REQUEST), ["model applied", "revision=1"], logging.DEBUG),
+    ("sessions", lambda s: _conflict(s, s.create_session(REQUEST).slug), ["conflict"], logging.WARNING),
+    ("artifacts", _artifact_saved, ["artifact saved", "stale=False"], logging.DEBUG),
+    ("discovery", _failed_call, ["provider call failed", "operation=analyze"], logging.WARNING),
+], ids=["created", "applied", "conflict", "artifact saved", "provider failed"])
+def test_each_service_seam_logs_its_line(_attached, logger, act, needles, level):
+    handler = _attached(f"requivo.services.{logger}")
+    act(SessionService())
+    assert any(all(n in m for n in needles) for m in handler.messages(level)), handler.messages()
 
 
 def test_a_rescope_that_mints_a_revision_is_logged_too(_attached):
-    """`rescope()` is `sessions.py`'s *second* `save_revision(...)` call site (#168's own revision-
-    per-selection-switch, distinct from `_plan`'s)."""
+    """`rescope()` is `sessions.py`'s second `save_revision(...)` call site (#168)."""
     handler = _attached("requivo.services.sessions")
     sessions = SessionService()
-    meta = sessions.create_session("a leave approval system")
-    sessions.update_model(
-        meta.slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json(),
-        expected_revision=0)
+    slug = seeded(sessions, REQUEST)
     handler.records.clear()
-    sessions.rescope(meta.slug, None)  # a no-op re-scope: create_session already recorded None
-    # force a genuine change so a revision is actually minted
-    sessions.rescope(meta.slug, ["b2b-platform"])
-    messages = _messages(handler)
-    assert any("revision" in m and "2" in m for m in messages), messages
-
-
-def test_artifact_saved_is_logged_with_its_stale_verdict(_attached):
-    handler = _attached("requivo.services.artifacts")
-    sessions = SessionService()
-    meta = sessions.create_session("a leave approval system")
-    sessions.update_model(
-        meta.slug, out({"problem": slot(80, "explicit", "high")}).model_dump_json(),
-        expected_revision=0)
-    artifacts = ArtifactService(repo=sessions.repo)
-    artifacts.save(meta.slug, "prd", "# PRD", source_revision=1)
-    messages = _messages(handler)
-    assert any("artifact saved" in m and "stale=False" in m for m in messages), messages
+    sessions.rescope(slug, None)              # a no-op re-scope: create_session already recorded None
+    sessions.rescope(slug, ["b2b-platform"])  # a genuine change, so a revision is minted
+    assert any("revision" in m and "2" in m for m in handler.messages()), handler.messages()
 
 
 def test_a_successful_provider_call_logs_started_and_finished(_attached):
     handler = _attached("requivo.services.discovery")
-    provider = _StubProvider()
-    disco = DiscoveryService(provider=provider, sessions=SessionService())
-    disco.start("a leave approval system")
-    messages = _messages(handler)
-    assert any("provider call started" in m and "operation=analyze" in m for m in messages), messages
-    assert any("provider call finished" in m and "operation=analyze" in m for m in messages), messages
+    _disco()[1].start(REQUEST)
+    for phase in ("started", "finished"):
+        assert any(f"provider call {phase}" in m and "operation=analyze" in m for m in handler.messages()), handler.messages()
 
 
-def test_a_failed_provider_call_logs_a_warning_and_still_raises(_attached):
-    handler = _attached("requivo.services.discovery")
-    provider = _StubProvider(analyze_error=EngineError("boom"))
-    disco = DiscoveryService(provider=provider, sessions=SessionService())
-    with pytest.raises(EngineError):
-        disco.start("a leave approval system")
-    warnings = [r for r in handler.records if r.levelno == logging.WARNING]
-    assert any("provider call failed" in r.getMessage() and "operation=analyze" in r.getMessage()
-              for r in warnings), _messages(handler)
-
-
-# ── silence by default, with a positive control on the mechanism itself ─────────
-#
-# pytest attaches its own capture handler to the ROOT logger for the length of every test.
-
-
-def _trigger_conflict_refused(sessions: SessionService, meta) -> None:
-    """The one seam most likely to leak: `_plan`'s WARNING-level "model apply refused" line."""
-    with pytest.raises(RevisionConflictError):
-        sessions.update_model(
-            meta.slug, out({"problem": slot(1, "empty", "low")}).model_dump_json(),
-            expected_revision=99)
-
-
-def test_default_run_leaves_the_conflict_refused_warning_off_every_stream():
-    root = logging.getLogger()
-    root_before = (list(root.handlers), root.level)
+@pytest.mark.parametrize("strip_null_handler", [False, True], ids=["default", "null handler stripped (must-fire)"])
+def test_default_run_leaves_the_conflict_refused_warning_off_every_stream(strip_null_handler):
+    """Must-fire control: with `requivo/__init__.py`'s NullHandler stripped, `logging.lastResort` leaks the WARNING."""
+    root, requivo_logger = logging.getLogger(), logging.getLogger("requivo")
+    saved = (list(root.handlers), root.level, list(requivo_logger.handlers), requivo_logger.level, requivo_logger.propagate)
     root.handlers = []
+    if strip_null_handler:
+        requivo_logger.handlers = []
     try:
         sessions = SessionService()
-        meta = sessions.create_session("a leave approval system")
+        slug = sessions.create_session(REQUEST).slug
         buf_out, buf_err = io.StringIO(), io.StringIO()
         with redirect_stdout(buf_out), redirect_stderr(buf_err):
-            _trigger_conflict_refused(sessions, meta)
-        assert buf_out.getvalue() == "", buf_out.getvalue()
-        assert buf_err.getvalue() == "", buf_err.getvalue()
+            _conflict(sessions, slug)
     finally:
-        root.handlers, root.level = root_before
+        root.handlers, root.level, requivo_logger.handlers, requivo_logger.level, requivo_logger.propagate = saved
+    if strip_null_handler:
+        assert "conflict" in buf_err.getvalue(), f"the default case is not exercising the mechanism: {buf_err.getvalue()!r}"
+    else:
+        assert buf_out.getvalue() == "" and buf_err.getvalue() == "", (buf_out.getvalue(), buf_err.getvalue())
 
 
-def test_removing_the_null_handler_reproduces_the_leak_the_test_above_guards_against():
-    """Must-fire control. Strips `requivo/__init__.py`'s own `NullHandler` (and the root logger's handlers)
-    and proves the *identical* seam, with nothing configured anywhere in the process."""
-    root = logging.getLogger()
-    requivo_logger = logging.getLogger("requivo")
-    root_before = (list(root.handlers), root.level)
-    requivo_before = (list(requivo_logger.handlers), requivo_logger.level, requivo_logger.propagate)
-    root.handlers = []
-    requivo_logger.handlers = []  # the fix under test, removed
+# ── the provider seam (#424) and invariant 6 ────────────────────────────────────
+
+# Every member `ReasoningProvider` declares and nothing more: no `name`.
+def _never(self, *a, **k):
+    raise AssertionError("a provider missing `name` must fail before it is asked to reason")
+
+
+_NamelessProvider = type("_NamelessProvider", (), {m: _never for m in ("analyze", "generate", "model_name", "provenance")})
+
+
+def test_discovery_runs_on_a_provider_that_is_not_anthropic():
+    slug = DiscoveryService(FakeProvider()).start("A leave approval system.", slug="fake-prov")
+    meta = SessionService().meta(slug)
+    # Nothing hard-codes "anthropic": the session and its revision are stamped by the provider itself.
+    assert meta.provider == "fake" and meta.model_name == "fake-model-1"
+    assert [(r.provider, r.model_name) for r in meta.revisions] == [("fake", "fake-model-1")]
+
+
+def test_the_provider_protocol_declares_every_member_the_orchestration_reads():
+    """`provider.name` is read on the first discovery, so it is part of the contract."""
+    from requivo.providers.anthropic import AnthropicProvider
+    from requivo.providers.base import ReasoningProvider
+
+    assert isinstance(FakeProvider(), ReasoningProvider)
+    assert isinstance(AnthropicProvider.__new__(AnthropicProvider), ReasoningProvider)  # no API key needed
+    assert not isinstance(_NamelessProvider(), ReasoningProvider)
+    with pytest.raises(AttributeError, match="name"):
+        DiscoveryService(_NamelessProvider()).start("A leave approval system.", slug="nameless")
+
+
+def test_a_revision_records_the_prompt_it_was_reasoned_against():
+    """Invariant 6: provenance is real or absent (#286); it follows the card selection (#13)."""
+    from requivo.providers.anthropic import prompt_version
+
+    slug = DiscoveryService(client=RacingClient(json.dumps(full_model()), lambda: None)).start(
+        "A leave approval system.", slug="prov")
+    rec = SessionService().meta(slug).revisions[-1]
+    assert rec.provider == "anthropic" and rec.model_name
+    assert rec.prompt_version and rec.prompt_version.startswith("sha256:")
+    assert prompt_version("analyze") != prompt_version("analyze", only=["b2b-platform"])
+
+
+# ── a generation or a turn holds the revision it read (invariant 2) ─────────────
+
+_BRIEF_REPLY = json.dumps({"complexity": "medium", "problem": "P", "solution": "S", "risks": [], "next_steps": []})
+
+
+@pytest.mark.parametrize("op,reply,moved", [
+    (lambda d: d.generate("s", "brief"), _BRIEF_REPLY, "business_rules"),
+    (lambda d: d.answer("s", "here are my answers"), json.dumps(full_model()), "risks"),
+], ids=["generate", "answer"])
+def test_a_generation_or_a_turn_holds_the_revision_it_read(op, reply, moved):
+    svc = SessionService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", full_model())          # revision 1 -- what the provider call will read
+
+    def concurrent():
+        svc.update_model("s", full_model(**{moved: slot(90, "explicit", "high", "landed mid-flight")}))
+
+    with pytest.raises(RevisionConflictError):
+        op(DiscoveryService(client=RacingClient(reply, concurrent)))
+    # The slot that landed mid-flight is still there: the losing apply did not write over it.
+    assert svc.load_model("s").model[moved].value == "landed mid-flight"
+
+
+def test_an_answers_turn_that_says_nothing_about_reasoning_keeps_it():
+    """The full journey the tri-state exists for: discovery -> assessment -> an ordinary answer (invariant 10)."""
+    svc, art = SessionService(), ArtifactService()
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", {**full_model(), "decisions": [{"decision": "Managers approve in-app", "derived_from": ["permissions"]}]})
+    art.save("s", "prd", "# PRD\n", source_revision=1)
+    reply = full_model(workflow=slot(90, "explicit", "high", "request -> approve"))
+    DiscoveryService(client=RacingClient(json.dumps(reply), lambda: None)).answer("s", "in-app")
+    after = svc.load_model("s")
+    assert [d.decision for d in after.decisions] == ["Managers approve in-app"]
+    assert after.model["workflow"].value == "request -> approve"   # the facts did move
+    assert art.list("s")["prd"]["stale"] is True                  # ...and that alone marks the PRD stale
+
+
+# ── the first-discovery guard (#209) ────────────────────────────────────────────
+
+_POSIX_ONLY = pytest.mark.skipif(fcntl is None, reason="POSIX-only branch: fcntl.flock has no Windows equivalent "
+                                 "here, and the msvcrt branch takes the same non-blocking path. REASONED, NOT OBSERVED on Windows -- see #209.")
+
+
+@contextmanager
+def _guard_held(slug: str):
+    """Someone else holds the first-discovery guard for `slug`."""
+    guard_path = _discovery_guard_path(slug, store.Store(store.workspace_root()))
+    ensure_store_dir(guard_path.parent)
+    fd = os.open(guard_path, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
     try:
-        sessions = SessionService()
-        meta = sessions.create_session("a leave approval system")
-        buf_err = io.StringIO()
-        with redirect_stderr(buf_err):
-            _trigger_conflict_refused(sessions, meta)
-        assert "conflict" in buf_err.getvalue(), (
-            "expected logging.lastResort to leak this WARNING to stderr with no handler anywhere "
-            "in the process -- if it did not, the test above is not exercising the mechanism it "
-            f"claims to. stderr was: {buf_err.getvalue()!r}")
+        yield
     finally:
-        root.handlers, root.level = root_before
-        requivo_logger.handlers = requivo_before[0]
-        requivo_logger.level = requivo_before[1]
-        requivo_logger.propagate = requivo_before[2]
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
-def test_a_judgment_naming_a_card_the_install_does_not_have_is_refused():
-    """An invented card name is not inert: it would reach `resolve_cards` as a selection and refuse the very
-    discovery the judgment was supposed to ground (#593)."""
-    from requivo.core.context import CardSummary
-    from requivo.core.errors import ProviderOutputError
-    from requivo.providers.anthropic.generators import judge_context
-
-    cards = [CardSummary(stem="b2b-platform", domain="enterprise management")]
-    invented = json.dumps({"decision": "installed", "reason": "r", "cards": ["dentistry-es"]})
-    client = FakeClient(invented, invented, invented)
-
-    # `ProviderOutputError`, a `RequivoError` *sibling* of `EngineError` rather than a subclass.
-    with pytest.raises(ProviderOutputError):
-        judge_context(client, "a request", cards)
-    assert len(client.calls) == 3, "the correction did not ride the retry loop"
-
-    # Must fire: the same shape naming a card that *is* installed comes straight back.
-    good = json.dumps({"decision": "installed", "reason": "r", "cards": ["b2b-platform"]})
-    judged = judge_context(FakeClient(good), "a request", cards)
-    assert judged.cards == ["b2b-platform"]
+@_POSIX_ONLY
+@pytest.mark.parametrize("entry", ["run_discovery", "start"])
+def test_a_concurrent_first_discovery_is_refused_before_any_provider_call(entry):
+    """Two concurrent first-discovery requests must not both pay, through either door (#209)."""
+    sessions, disco = _disco()
+    if entry == "start":
+        slug = disco.claim_session(REQUEST, cards=None, slug=None).slug
+        assert slug.startswith(sessions.slug_hint(REQUEST))
+    else:
+        slug = sessions.create_session(REQUEST).slug
+    with _guard_held(slug), pytest.raises(SessionLockedError) as exc_info:
+        disco.start(REQUEST, slug=slug) if entry == "start" else disco.run_discovery(slug, surface="test")
+    assert exc_info.value.code == "session_locked" and slug in str(exc_info.value)
+    assert disco._provider.calls == 0 and sessions.repo.read_meta(slug).current_revision == 0
 
 
-def test_the_judgment_prompt_carries_neither_the_schema_nor_the_cards():
-    """Its whole economy is asking about ~9k of context for the price of a few hundred tokens (#593)."""
-    from requivo.core.context import SHARED_PROMPT_HEAD, CardSummary
-    from requivo.providers.anthropic.generators import judge_context
+def test_run_discovery_still_succeeds_once_the_guard_is_free():
+    """Must-fire control: a guard that refused everything would also pass the test above."""
+    sessions, disco = _disco()
+    slug = sessions.create_session(REQUEST).slug
+    disco.run_discovery(slug, surface="test")
+    assert disco._provider.calls == 1 and sessions.repo.read_meta(slug).current_revision == 1
 
-    client = FakeClient(json.dumps({"decision": "none", "reason": "r"}))
-    judge_context(client, "a leave approval system", [CardSummary(stem="b2b-platform", domain="d")])
 
-    system = client.calls[0]["system"]
-    text = system if isinstance(system, str) else "".join(b["text"] for b in system)
-    assert not text.startswith(SHARED_PROMPT_HEAD[:40])
-    assert "# Model schema" not in text, "the judgment call is paying for the schema"
-    assert "a leave approval system" in text and "b2b-platform" in text
+def test_a_late_caller_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
+    """The revision is re-checked after the guard is won, not only against a snapshot that can go stale (#209)."""
+    from requivo.services.sessions import SessionSnapshot
+
+    sessions, disco = _disco()
+    slug = sessions.create_session(REQUEST).slug
+    real_snapshot = sessions.snapshot
+    disco.run_discovery(slug, surface="test")
+    stale = SessionSnapshot(slug=slug, revision=0, model=None, request=REQUEST, context_cards=None)
+    seen = {"n": 0}
+
+    def fake_snapshot(s):
+        seen["n"] += 1
+        return stale if seen["n"] == 1 else real_snapshot(s)  # 1st (outer) call is stale, rest real
+
+    monkeypatch.setattr(sessions, "snapshot", fake_snapshot)
+    late = StubProvider()
+    with pytest.raises(RevisionConflictError):
+        DiscoveryService(provider=late, sessions=sessions).run_discovery(slug, surface="test")
+    assert late.calls == 0 and sessions.repo.read_meta(slug).current_revision == 1
+
+
+def test_a_late_caller_of_start_with_a_stale_outer_check_still_pays_nothing(monkeypatch):
+    """The same race, one entry point over."""
+    sessions, disco = _disco()
+    slug = sessions.slug_hint(REQUEST)
+    disco.start(REQUEST, slug=slug, surface="test")
+    real_create_session = sessions.create_session
+    monkeypatch.setattr(sessions, "create_session",
+                        lambda *a, **k: real_create_session(*a, **k).model_copy(update={"current_revision": 0}))
+    late = StubProvider()
+    with pytest.raises(RevisionConflictError):
+        DiscoveryService(provider=late, sessions=sessions).start(REQUEST, slug=slug, surface="test")
+    assert late.calls == 0 and sessions.repo.read_meta(slug).current_revision == 1
+
+
+@pytest.mark.skipif(fcntl is None, reason="a directory literally named 'con' cannot exist on Windows, so a session at a "
+                    "reserved slug is a state only a platform that never enforced the restriction can reach. REASONED, NOT OBSERVED (#372).")
+def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery_guard():
+    """#390: a two-commit join no single diff showed."""
+    d = store.session_root() / "con"
+    (d / "revisions").mkdir(parents=True)
+    (d / "artifacts").mkdir()
+    (d / "request.md").write_text("A request captured before #221 shipped.", encoding="utf-8")
+    (d / "session.json").write_text(json.dumps({
+        "session_id": "deadbeef", "slug": "con", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+        "provider": None, "model_name": None, "context_cards": None, "current_revision": 0, "format_version": 1,
+        "revisions": [], "artifact_status": {}}), encoding="utf-8")
+    # The siblings #372 swept already reach it; the join is visible in one fixture.
+    assert store.session_exists("con") is True and store.canonical_dir("con") == d
+    assert store.lock_path("con").name == "con.lock"
+    assert _discovery_guard_path("con", store.Store(store.workspace_root())) == store.lock_root() / "con.discovering"
+    sessions, disco = _disco()
+    disco.run_discovery("con", surface="test")
+    assert disco._provider.calls == 1 and sessions.repo.read_meta("con").current_revision == 1
+    with pytest.raises(InvalidSlugError):  # must-not-fire control, in the same fixture (#221)
+        _discovery_guard_path("nul", store.Store(store.workspace_root()))
+
+
+# ── the input ceiling lives in the service (#255, invariant 3) ──────────────────
+
+
+@pytest.mark.parametrize("entry", ["start", "create_only", "draft_turn"])
+def test_an_oversized_request_is_refused_before_any_provider_call(entry):
+    """Invariant 3, first half: refuse, don't truncate (#286); exactly the ceiling still reaches the provider."""
+    fake = FakeClient(_ENGINE_REPLY)
+    disco = DiscoveryService(client=fake)
+    with pytest.raises(InputTooLargeError):
+        getattr(disco, entry)("x" * (MAX_INPUT_CHARS + 1))
+    assert fake.calls == [] and not SessionService().list_sessions()
+    getattr(disco, entry)("x" * MAX_INPUT_CHARS)  # must-fire control, same fixture
+    assert len(fake.calls) == (0 if entry == "create_only" else 1)
+    assert len(SessionService().list_sessions()) == (0 if entry == "draft_turn" else 1)
+
+
+@pytest.mark.parametrize("entry", ["answer", "draft_turn"])
+def test_oversized_answers_are_refused_before_the_paid_turn(entry):
+    """`draft_turn` is the interactive loop's own un-persisted entry point."""
+    fake = FakeClient(_ENGINE_REPLY, _ENGINE_REPLY)
+    disco = DiscoveryService(client=fake)
+    if entry == "answer":
+        slug = disco.start(REQUEST)
+        turn = lambda answers: disco.answer(slug, answers)  # noqa: E731
+    else:
+        model = disco.draft_turn(REQUEST)
+        turn = lambda answers: disco.draft_turn(REQUEST, current_model=model, answers=answers)  # noqa: E731
+    with pytest.raises(InputTooLargeError):
+        turn("y" * (MAX_INPUT_CHARS + 1))
+    assert len(fake.calls) == 1                       # refused before the second call was billed
+    turn("y" * MAX_INPUT_CHARS)                       # must-fire control, same fixture
+    assert len(fake.calls) == 2

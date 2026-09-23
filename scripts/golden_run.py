@@ -27,7 +27,7 @@ for that request, so it is opt-in -- but check the baselines before reasoning fr
 single-pass baseline in ``fixtures/golden/`` currently carries one, and a lens's grading was once
 designed around the description rather than the fixtures (#162). Guarded by
 `test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`
-in `tests/test_golden_readout.py`.
+in `tests/test_golden_harness.py`.
 
 A request carrying an **answer sheet** (``answer.<slot>:`` lines in ``requests.md``) is captured
 differently again: `capture_interactive` drives `DiscoveryService.draft_turn` for up to

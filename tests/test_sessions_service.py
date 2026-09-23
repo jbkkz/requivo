@@ -1,721 +1,442 @@
-"""`SessionService`/`ArtifactService`: proposal validation, the store, the apply pipeline and its
-dependency-graph staleness, re-scoping context cards (#168), the pre-flight discovery guards (#152, #421,
-#133), and the artifact/impact read paths."""
+"""`SessionService`/`ArtifactService`: validation, the store, the apply pipeline and its staleness, re-scoping
+(#168), the pre-flight discovery guards (#152, #421, #133), the read paths, and artifact provenance (#6)."""
 from __future__ import annotations
 
 import json
 import threading
 
 import pytest
+from _fakes import full_model, slot
 
-from conftest import CountingProvider as _CountingProvider
-from conftest import FakeProvider as _FakeProvider
-from conftest import RacingClient as _RacingClient
-from conftest import full_model as _full_model
-from conftest import slot as _slot
+from conftest import CountingProvider, FakeProvider, RacingClient
+from requivo.core import errors as E
 from requivo.core import persistence as store
-from requivo.core.contracts import EngineOutput, Exclusion, Threshold
-from requivo.core.errors import MissingRequiredSlotError, RequivoError, SessionNotFoundError, UnknownSlotError
+from requivo.core.contracts import Brief, Challenge, DesignDecision, EngineOutput, Exclusion, Threshold
+from requivo.core.dependencies import propagate
 from requivo.core.validation import validate_proposal
-from requivo.services.artifacts import ArtifactService
+from requivo.services.artifacts import ArtifactService, UnstatedSourceRevisionError
+from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionService
+
+pytestmark = pytest.mark.usefixtures("workspace")
+
+MOVED = full_model(workflow=slot(90, "explicit", "high", "new flow"))
+REFRAMED = full_model(problem=slot(80, "explicit", "high", "reframed"))
+CHALLENGE = {"headline": "Archive vs delete", "premise": "p", "alternative": "a", "consequence": "c",
+             "recommendation": "r", "contests": ["workflow"]}
+
+
+def _session(*models, slug="s", cards=None) -> SessionService:
+    """A session at revision `len(models)`, each model applied in order."""
+    svc = SessionService()
+    svc.create_session("Something.", slug=slug, context_cards=cards)
+    for m in models:
+        svc.update_model(slug, m)
+    return svc
+
+
+def _with_reasoning(**slots) -> dict:
+    """A full model whose one decision rests on `permissions` and whose one challenge contests `workflow`."""
+    return {**full_model(**slots), "decisions": [{"decision": "Draft-first", "derived_from": ["permissions"]}],
+            "challenges": [CHALLENGE]}
+
+
+@pytest.fixture
+def art() -> ArtifactService:
+    return ArtifactService()
+
+
+def _revision_file(slug: str, revision: int):
+    return store.canonical_dir(slug) / "revisions" / f"{revision:04d}-model.json"
+
 
 # ── validation ────────────────────────────────────────────────────────────────
 
 
-def test_validate_accepts_a_complete_model():
-    out = validate_proposal(_full_model())
-    assert isinstance(out, EngineOutput)
-
-
-def test_validate_rejects_unknown_slot():
-    bad = _full_model()
-    bad["model"]["not_a_real_slot"] = _slot()
-    with pytest.raises(UnknownSlotError) as e:
+@pytest.mark.parametrize("damage, error, code, named", [
+    (lambda m: m["model"].__setitem__("not_a_real_slot", slot()), E.UnknownSlotError, "unknown_slot", "not_a_real_slot"),
+    (lambda m: m["model"].pop("problem"), E.MissingRequiredSlotError, "missing_required_slot", "problem"),
+], ids=["unknown-slot", "missing-required-slot"])
+def test_validate_rejects_unknown_slot(damage, error, code, named):
+    bad = full_model()
+    damage(bad)
+    with pytest.raises(error) as e:
         validate_proposal(bad)
-    assert e.value.code == "unknown_slot"
-    assert "not_a_real_slot" in e.value.details["slots"]
-
-
-def test_validate_rejects_missing_required_slot():
-    partial = _full_model()
-    a_required = next(iter(partial["model"]))
-    del partial["model"][a_required]
-    with pytest.raises(MissingRequiredSlotError) as e:
-        validate_proposal(partial)
-    assert e.value.code == "missing_required_slot"
-    assert a_required in e.value.details["slots"]
-
-
-def test_validate_rejects_a_complete_model_with_no_objective():
-    """Completeness is the full slot set *and* an objective."""
-    from requivo.core.errors import InvalidModelError
-
-    with pytest.raises(InvalidModelError) as e:
-        validate_proposal({**_full_model(), "summary": {"objective": "   "}})
-    assert e.value.path == "summary.objective"
-    # A projection is a different claim — it never promised completeness in the first place.
-    validate_proposal({**_full_model(), "summary": {}}, require_complete=False)
-
-
-def test_validate_allows_partial_when_not_required():
-    partial = _full_model()
-    del partial["model"][next(iter(partial["model"]))]
-    out = validate_proposal(partial, require_complete=False)  # no raise
-    assert isinstance(out, EngineOutput)
-
-
-def test_validate_rejects_non_json_string():
-    with pytest.raises(RequivoError) as e:
+    assert e.value.code == code and named in e.value.details["slots"]
+    with pytest.raises(E.RequivoError) as e:
         validate_proposal("{not json")
     assert e.value.code == "invalid_model"
 
 
+def test_validate_rejects_a_complete_model_with_no_objective():
+    """Completeness is the full slot set *and* an objective; a projection never promised completeness."""
+    with pytest.raises(E.InvalidModelError) as e:
+        validate_proposal({**full_model(), "summary": {"objective": "   "}})
+    assert e.value.path == "summary.objective"
+    assert isinstance(validate_proposal(full_model()), EngineOutput)
+    partial = {**full_model(), "summary": {}}
+    partial["model"].pop("problem")
+    assert isinstance(validate_proposal(partial, require_complete=False), EngineOutput)
+
+
 def test_error_to_dict_is_serializable():
-    err = UnknownSlotError("bad", path="model.x", details={"slots": ["x"]})
-    d = err.to_dict()
+    d = E.UnknownSlotError("bad", path="model.x", details={"slots": ["x"]}).to_dict()
     assert d == {"code": "unknown_slot", "message": "bad", "path": "model.x", "details": {"slots": ["x"]}}
-    json.dumps(d)  # must round-trip
+    json.dumps(d)
 
 
-# ── store: revisions + artifacts ────────────────────────────────────────────────
+# ── store: revisions ────────────────────────────────────────────────────────────
 
 
-def test_store_creates_session_and_revisions(workspace):
+def test_store_creates_session_and_revisions():
     store.create_session("s1", "Build a leave system.", provider="claude-code")
     assert store.read_meta("s1").current_revision == 0
-    out = EngineOutput.model_validate(_full_model())
+    out = EngineOutput.model_validate(full_model())
     rev1, _ = store.save_revision("s1", out)
     rev2, meta = store.save_revision("s1", out)
     assert (rev1, rev2, meta.current_revision) == (1, 2, 2)
-    d = store.canonical_dir("s1")
-    assert (d / "model.json").exists()
-    assert (d / "revisions" / "0001-model.json").exists()
-    assert (d / "revisions" / "0002-model.json").exists()
+    assert (store.canonical_dir("s1") / "model.json").exists() and _revision_file("s1", 2).exists()
     assert store.list_session_slugs() == ["s1"]
 
 
-def test_store_migrate_session_rejects_a_future_format(workspace):
-    from requivo.core.errors import InvalidSessionError
-    with pytest.raises(InvalidSessionError):
-        store.migrate_session({"format_version": 999, "session_id": "x", "slug": "s",
-                               "created_at": "t", "updated_at": "t"})
+def test_store_migrate_session_rejects_a_future_format():
+    with pytest.raises(E.InvalidSessionError):
+        store.migrate_session({"format_version": 999, "session_id": "x", "slug": "s", "created_at": "t", "updated_at": "t"})
 
 
-# ── services: the apply pipeline, and its dependency-graph staleness ─────────────
+# ── the apply pipeline, and its dependency-graph staleness ─────────────────────
 
 
-def _with_reasoning(model: dict) -> dict:
-    """A full model that also carries baked-in reasoning."""
-    model["decisions"] = [{"decision": "Draft-first", "derived_from": ["permissions"]}]
-    model["challenges"] = [{
-        "headline": "Archive vs delete", "premise": "p", "alternative": "a",
-        "consequence": "c", "recommendation": "r", "contests": ["workflow"],
-    }]
-    return model
-
-
-def test_session_service_create_and_apply(workspace):
+def test_session_service_create_and_apply():
     svc = SessionService()
     meta = svc.create_session("Build a leave approval system.", slug="leave", provider="claude-code")
     assert meta.slug == "leave" and meta.current_revision == 0
-
-    # A high-impact slot left unconfirmed must block readiness.
-    result = svc.update_model("leave", _full_model(**{"problem": _slot(0, "empty", "high")}))
-    assert result.status == "applied"
-    assert result.revision == 1
-    assert set(result.changed_slots)  # every slot present counts as changed on the first apply
-    assert result.readiness.ready is False
-    assert "problem" in result.readiness.blocking_slots
-
-
-def test_apply_diff_reports_changed_slots_and_readiness(workspace):
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    # First model: everything empty.
-    svc.update_model("s", _full_model())
-    # Second: fill one slot explicitly → it should be the changed slot.
-    changed_model = _full_model(**{"problem": _slot(90, "explicit", "high", "A real problem")})
-    result = svc.update_model("s", changed_model)
-    assert result.revision == 2
-    assert "problem" in result.changed_slots
+    result = svc.update_model("leave", full_model(problem=slot(0, "empty", "high")))
+    assert (result.status, result.revision) == ("applied", 1)
+    assert set(result.changed_slots)                      # every slot counts as changed on the first apply
+    assert result.readiness.ready is False and "problem" in result.readiness.blocking_slots
+    plan = svc.diff("leave", REFRAMED)
+    assert plan.status == "planned" and store.read_meta("leave").current_revision == 1
+    result = svc.update_model("leave", REFRAMED)
+    assert result.revision == 2 and "problem" in result.changed_slots
 
 
-def test_diff_does_not_write(workspace):
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-    before = store.read_meta("s").current_revision
-    plan = svc.diff("s", _full_model(**{"problem": _slot(90, "explicit", "high", "X")}))
-    assert plan.status == "planned"
-    assert store.read_meta("s").current_revision == before  # unchanged — no write
+@pytest.mark.parametrize("artifact, change", [("prd", MOVED), ("brief", REFRAMED)], ids=["prd-consumes-workflow", "assessment-is-star"])
+def test_apply_flags_generated_artifact_stale(art, artifact, change):
+    """The assessment maps to `*`: no decision or challenge is needed to unseat it."""
+    svc = _session(full_model())
+    art.save("s", artifact, "# doc\n", source_revision=1)
+    assert art.list("s")[artifact]["stale"] is False
+    result = svc.update_model("s", change)
+    assert artifact in result.stale_artifacts and art.list("s")[artifact]["stale"] is True
 
 
-def test_apply_flags_generated_artifact_stale(workspace):
-    svc = SessionService()
-    art = ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-    art.save("s", "prd", "# PRD\n", source_revision=1)  # generated at revision 1
-    assert art.list("s")["prd"]["stale"] is False
-    # Change a slot the PRD consumes (workflow) → PRD goes stale.
-    result = svc.update_model("s", _full_model(**{"workflow": _slot(80, "explicit", "high", "new flow")}))
-    assert "prd" in result.stale_artifacts
-    assert art.list("s")["prd"]["stale"] is True
-
-
-def test_propagate_reports_challenges_via_contests():
-    from requivo.core.dependencies import propagate
-    out = EngineOutput.model_validate(_with_reasoning(_full_model()))
-    hit = propagate(out, ["workflow"])
-    assert [c.headline for c in hit.challenges] == ["Archive vs delete"]
-    assert hit.reasoning_hit is True
-    # A change that touches neither derived_from nor contests unseats no reasoning.
-    miss = propagate(out, ["success_metrics"])
+def test_apply_flags_assessment_stale_when_reasoning_is_unseated(art):
+    out = EngineOutput.model_validate(_with_reasoning())
+    hit, miss = propagate(out, ["workflow"]), propagate(out, ["success_metrics"])
+    assert [c.headline for c in hit.challenges] == ["Archive vs delete"] and hit.reasoning_hit is True
     assert not miss.challenges and not miss.decisions and not miss.reasoning_hit
-
-
-def test_apply_flags_assessment_stale_when_reasoning_is_unseated(workspace):
-    svc = SessionService()
-    art = ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _with_reasoning(_full_model()))
-    art.save("s", "brief", "# Assessment\n", source_revision=1)  # the saved assessment renders that reasoning
+    svc = _session(_with_reasoning())
+    art.save("s", "brief", "# Assessment\n", source_revision=1)
     assert art.list("s")["brief"]["stale"] is False
-
-    # Change `workflow` — a challenge contests it → the assessment on disk no longer holds.
-    changed = _with_reasoning(_full_model())
-    changed["model"]["workflow"] = _slot(80, "explicit", "high", "new flow")
-    result = svc.update_model("s", changed)
+    result = svc.update_model("s", _with_reasoning(workflow=slot(80, "explicit", "high", "new flow")))
     assert "Archive vs delete" in result.invalidated_challenges
-    assert "brief" in result.stale_artifacts
-    assert art.list("s")["brief"]["stale"] is True
-    # The decision (on `permissions`) was untouched, so it is not reported.
-    assert result.invalidated_decisions == []
+    assert "brief" in result.stale_artifacts and art.list("s")["brief"]["stale"] is True
+    assert result.invalidated_decisions == []             # the decision rests on `permissions`, untouched
     assert "invalidated_challenges" in result.to_dict()
 
 
-def test_changing_the_problem_marks_a_saved_assessment_stale(workspace):
-    # The assessment used to sit outside the artifact→slot map entirely.
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())          # no decisions, no challenges — nothing to unseat
-    art.save("s", "brief", "# Assessment\n", source_revision=1)
-    assert art.list("s")["brief"]["stale"] is False
-
-    result = svc.update_model("s", _full_model(**{"problem": _slot(80, "explicit", "high", "reframed")}))
-    assert "brief" in result.stale_artifacts
-    assert art.list("s")["brief"]["stale"] is True
-
-
-def test_artifact_cannot_be_recorded_against_an_impossible_revision(workspace):
-    # Provenance that cannot be true is worse than none.
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())          # session is at revision 1
-    with pytest.raises(RequivoError) as ei:
-        art.save("s", "prd", "# PRD\n", source_revision=999)
-    assert ei.value.code == "artifact_revision_out_of_range"
-    with pytest.raises(RequivoError):
-        art.save("s", "prd", "# PRD\n", source_revision=0)
-    assert "prd" not in art.list("s")            # nothing was recorded
+@pytest.mark.parametrize("revision, history_lies, code", [
+    (999, False, "artifact_revision_out_of_range"), (0, False, "artifact_revision_out_of_range"), (1, True, "unreadable_source_revision"),
+], ids=["future", "zero", "unreadable-history"])
+def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(art, revision, history_lies, code):
+    """`False` is not "I don't know" -- it is the claim that the artifact is up to date."""
+    _session(full_model(), MOVED)
+    if history_lies:
+        _revision_file("s", 1).unlink()
+    with pytest.raises(E.RequivoError) as e:
+        art.save("s", "prd", "# PRD\n", source_revision=revision)
+    assert e.value.code == code and "prd" not in art.list("s")
 
 
 # ── rescoping context cards (#168) ──────────────────────────────────────────────
 
 
-def test_rescope_before_any_model_only_mutates_metadata(workspace):
-    """Before any turn has reasoned against the old selection, there is no provenance to keep honest."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-
+def test_rescope_before_any_model_only_mutates_metadata():
+    svc = _session(cards=["b2b-platform"])
     result = svc.rescope("s", context_cards=["event-ops"])
-
-    assert result.changed is True
-    assert result.revision == 0
-    assert svc.cards("s") == ["event-ops"]
+    assert (result.changed, result.revision, svc.cards("s")) == (True, 0, ["event-ops"])
     meta = store.read_meta("s")
-    assert meta.current_revision == 0
-    assert meta.revisions == []
+    assert meta.current_revision == 0 and meta.revisions == []
+    result = svc.rescope("s", context_cards=None)          # every card: the selection resets to none
+    assert result.changed is True and result.context_cards is None and svc.cards("s") is None
 
 
-def test_rescope_after_a_model_records_a_new_revision_with_unchanged_content(workspace):
-    """Once a model exists, every revision already on disk was reasoned under the *old* selection."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-    svc.update_model("s", _full_model())          # revision 1, reasoned under b2b-platform
+def test_rescope_after_a_model_records_a_new_revision_with_unchanged_content():
+    """Every revision on disk was reasoned under the old selection; a re-scope re-runs nothing (#168)."""
+    from requivo.core.integrity import check_session_dir
 
+    svc = _session(full_model(), cards=["b2b-platform"])
     result = svc.rescope("s", context_cards=["event-ops"])
-
-    assert result.changed is True
-    assert result.revision == 2
-    assert result.previous_context_cards == ["b2b-platform"]
-    assert result.context_cards == ["event-ops"]
+    assert (result.changed, result.revision) == (True, 2)
+    assert (result.previous_context_cards, result.context_cards) == (["b2b-platform"], ["event-ops"])
     meta = store.read_meta("s")
-    assert meta.current_revision == 2
-    assert meta.context_cards == ["event-ops"]
-    assert len(meta.revisions) == 2
-    new_rec = meta.revisions[-1]
-    assert new_rec.revision == 2
-    assert new_rec.surface == "session-rescope"
-    # the model itself did not move — same content, same hash as the revision it succeeds
-    assert new_rec.model_hash == meta.revisions[0].model_hash
+    assert meta.current_revision == 2 and meta.context_cards == ["event-ops"] and len(meta.revisions) == 2
+    assert (meta.revisions[-1].revision, meta.revisions[-1].surface) == (2, "session-rescope")
+    assert meta.revisions[-1].model_hash == meta.revisions[0].model_hash
     assert store.load_revision_model("s", 2).model_dump() == store.load_revision_model("s", 1).model_dump()
+    assert svc.snapshot("s").context_cards == ["event-ops"]
+    assert check_session_dir(store.canonical_dir("s"), expected_slug="s") == []
 
 
-def test_rescope_resolves_and_normalizes_cards_like_creation(workspace):
-    """Invariant 14's second door: `create_session` resolves the caller's selection rather than trusting it,
-    and a re-scope is a second entrance onto the same persisted value."""
-    from requivo.core.errors import UnknownContextCardError
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-
-    with pytest.raises(UnknownContextCardError):
-        svc.rescope("s", context_cards=["made-up"])
-    assert svc.cards("s") is None  # refused before anything was written
+def test_rescope_to_the_current_selection_is_a_no_op():
+    svc = _session(full_model(), cards=["b2b-platform", "event-ops"])
+    result = svc.rescope("s", context_cards=["event-ops", "b2b-platform"])   # same set, other order
+    assert (result.changed, result.revision) == (False, 1)
+    assert store.read_meta("s").current_revision == 1 and len(store.read_meta("s").revisions) == 1
 
 
-def test_rescope_to_the_current_selection_is_a_no_op(workspace):
-    """Re-scoping to the selection a session already has changes nothing."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform", "event-ops"])
-    svc.update_model("s", _full_model())           # revision 1
-
-    result = svc.rescope("s", context_cards=["event-ops", "b2b-platform"])  # same set, other order
-
-    assert result.changed is False
-    assert result.revision == 1
-    meta = store.read_meta("s")
-    assert meta.current_revision == 1
-    assert len(meta.revisions) == 1
-
-
-def test_rescope_to_every_card_resets_the_selection_to_none(workspace):
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-
-    result = svc.rescope("s", context_cards=None)
-
-    assert result.changed is True
-    assert result.context_cards is None
-    assert svc.cards("s") is None
-
-
-def test_rescope_does_not_mark_existing_artifacts_stale(workspace):
-    """Question 2, decided: context is not a fifth kind of dependency edge."""
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-    svc.update_model("s", _full_model())                       # revision 1
+def test_rescope_does_not_mark_existing_artifacts_stale(art):
+    """Context is not a fifth kind of dependency edge; a model change on the same artifact is the control."""
+    svc = _session(full_model(), cards=["b2b-platform"])
     art.save("s", "prd", "# PRD\n", source_revision=1)
-
     svc.rescope("s", context_cards=["event-ops"])
-
     assert art.list("s")["prd"]["stale"] is False
-
-
-def test_a_model_change_still_marks_the_same_artifact_stale(workspace):
-    """The positive control for the assertion above."""
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())                       # revision 1
-    art.save("s", "prd", "# PRD\n", source_revision=1)
-
-    svc.update_model("s", _full_model(**{"workflow": _slot(90, "explicit", "high", "new flow")}))
-
+    svc.update_model("s", MOVED)
     assert art.list("s")["prd"]["stale"] is True
 
 
-def test_rescope_does_not_re_run_anything_the_next_snapshot_reads_the_new_cards(workspace):
-    """Question 3, decided: a re-scope re-runs nothing."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-    svc.update_model("s", _full_model())
-
-    svc.rescope("s", context_cards=["event-ops"])
-
-    assert svc.snapshot("s").context_cards == ["event-ops"]
+@pytest.mark.parametrize("call", [
+    lambda svc: svc.rescope("ghost", context_cards=["event-ops"]), lambda svc: svc.update_model("ghost", full_model()),
+], ids=["rescope", "update_model"])
+def test_a_missing_session_is_refused_by_name(call):
+    with pytest.raises(E.SessionNotFoundError):
+        call(SessionService())
 
 
-def test_a_rescoped_session_with_a_model_still_passes_its_own_integrity_check(workspace):
-    """The duplicated revision this produces is a real revision, not a shortcut."""
-    from requivo.core.integrity import check_session_dir
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s", context_cards=["b2b-platform"])
-    svc.update_model("s", _full_model())
-    svc.rescope("s", context_cards=["event-ops"])
-
-    problems = check_session_dir(store.canonical_dir("s"), expected_slug="s")
-    assert problems == []
-
-
-def test_rescope_refuses_a_session_that_does_not_exist(workspace):
-    with pytest.raises(SessionNotFoundError):
-        SessionService().rescope("ghost", context_cards=["event-ops"])
-
-
-def test_the_same_request_under_different_cards_is_a_different_session(workspace):
+def test_the_same_request_under_different_cards_is_a_different_session():
     """Context cards are provenance, not decoration."""
     svc = SessionService()
     first = svc.create_session("Same request.", context_cards=["b2b-platform"])
     again = svc.create_session("Same request.", context_cards=["b2b-platform"])
     other = svc.create_session("Same request.", context_cards=["event-ops"])
-
-    assert again.slug == first.slug                       # same discovery: still idempotent
-    assert other.slug != first.slug
-    assert svc.cards(other.slug) == ["event-ops"]         # and it got the cards it asked for
+    assert again.slug == first.slug and other.slug != first.slug and svc.cards(other.slug) == ["event-ops"]
 
 
 # ── the pre-flight discovery guards (#152, #421, #133) ───────────────────────────
 
 
-def test_a_fresh_discovery_refuses_to_replace_a_model_that_already_exists(workspace):
-    """Session creation is idempotent, so re-running `discover` on the same request lands on the same session."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    disco = DiscoveryService(_FakeProvider())
+@pytest.mark.parametrize("again", [
+    lambda d: d.start("A leave approval system.", slug="dup"), lambda d: d.run_discovery("dup"),
+], ids=["start", "run_discovery"])
+def test_a_repeat_discovery_is_refused_before_the_provider_is_paid(again):
+    """`start()` used to reason first and discover the conflict afterwards (#133)."""
+    provider = CountingProvider()
+    disco = DiscoveryService(provider)
     slug = disco.start("A leave approval system.", slug="dup")
-    SessionService().update_model(slug, _full_model(**{"workflow": _slot(90, "explicit", "high", "kept")}))
-
-    with pytest.raises(RevisionConflictError):
-        disco.start("A leave approval system.", slug="dup")
-    assert SessionService().load_model(slug).model["workflow"].value == "kept"
-
-
-def test_run_discovery_refuses_a_session_that_already_has_a_model(workspace):
-    """`run_discovery` reasons from the request alone."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model(**{"workflow": _slot(90, "explicit", "high", "refined")}))
-
-    provider = _CountingProvider()
-    with pytest.raises(RevisionConflictError) as e:
-        DiscoveryService(provider).run_discovery("s")
-
-    assert e.value.details["actual"] == 1 and e.value.details["expected"] == 0
-    assert provider.calls == 0                                    # refused before the paid call
-    assert svc.load_model("s").model["workflow"].value == "refined"
+    SessionService().update_model(slug, full_model(workflow=slot(90, "explicit", "high", "kept")))
+    with pytest.raises(E.RevisionConflictError) as e:
+        again(disco)
+    assert e.value.details["actual"] == 2 and e.value.details["expected"] == 0   # the discovery, then the refinement
+    assert provider.calls == 1 and SessionService().load_model(slug).model["workflow"].value == "kept"
 
 
 @pytest.mark.parametrize("call", [
-    lambda d: d.generate("s", "brief"),
-    lambda d: d.generate("s", "prd"),
+    lambda d: d.answer("s", "here are my answers"), lambda d: d.generate("s", "brief"), lambda d: d.generate("s", "prd"),
     lambda d: d.reason("s", "stories"),
-], ids=["generate-brief", "generate-prd", "reason-stories"])
-def test_generation_refuses_a_session_that_has_no_model_yet(workspace, call):
-    """The mirror of the rule above, and it was missing (#152)."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    SessionService().create_session("Something.", slug="s")     # created, never analysed
-    provider = _CountingProvider()
-
-    with pytest.raises(RevisionConflictError) as e:
+], ids=["answer", "generate-brief", "generate-prd", "reason-stories"])
+def test_answer_refuses_a_session_that_has_no_model_yet(call):
+    """The mirror of the rule above (#152); `answer()` was the one write verb it missed, and its remedy named itself (#421)."""
+    _session()
+    provider = CountingProvider()
+    with pytest.raises(E.RevisionConflictError) as e:
         call(DiscoveryService(provider))
-
     assert e.value.details["actual"] == 0 and e.value.details["expected"] == 1
-    assert provider.calls == 0                                    # refused before reaching the provider
-    assert "discover" in str(e.value)                             # the refusal names the remedy
+    assert provider.calls == 0 and "discover" in str(e.value) and "requivo answer" not in str(e.value)
 
 
-def test_answer_refuses_a_session_that_has_no_model_yet(workspace):
-    """`answer()` is the one write verb `_require_a_model` did not cover (#421)."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    SessionService().create_session("Something.", slug="s")     # created, never analysed
-    provider = _CountingProvider()
-
-    with pytest.raises(RevisionConflictError) as e:
-        DiscoveryService(provider).answer("s", "here are my answers")
-
-    assert e.value.details["actual"] == 0 and e.value.details["expected"] == 1
-    assert provider.calls == 0                                    # refused before reaching the provider
-    assert "discover" in str(e.value)                             # the refusal names the remedy
-    # The co-requisite half of #421: before this fix the remedy text itself suggested `requivo answer` "if a discovery is in progress" — i.e. it routed a reader straight back into the ungated path.
-    assert "requivo answer" not in str(e.value)
+# ── freshness, impact, and locked reads ──────────────────────────────────────────
 
 
-def test_a_repeat_discovery_is_refused_before_the_provider_is_paid(workspace):
-    """Same rule, the other entry point. `start()` used to reason first and discover the conflict afterwards,
-    so an accidental re-run bought a discovery turn."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    provider = _CountingProvider()
-    disco = DiscoveryService(provider)
-    disco.start("A leave approval system.", slug="dup")
-    assert provider.calls == 1
-
-    with pytest.raises(RevisionConflictError):
-        disco.start("A leave approval system.", slug="dup")
-    assert provider.calls == 1                                    # the second run never reasoned
-
-
-# ── artifact freshness, impact, and locked reads ──────────────────────────────────
-
-
-def test_the_artifact_service_defaults_to_the_session_service_s_storage(workspace):
-    """Two services, one backing. On files the default and the injected repository resolve to the same
-    workspace, so a split was invisible."""
-    from requivo.services.discovery import DiscoveryService
+def test_the_artifact_service_defaults_to_the_session_service_s_storage():
     from requivo.services.repository import FileSessionRepository
 
     repo = FileSessionRepository()
-    disco = DiscoveryService(_FakeProvider(), sessions=SessionService(repo))
-    assert disco.artifacts.repo is repo
-    assert DiscoveryService(_FakeProvider(), repo=repo).sessions.repo is repo
+    assert DiscoveryService(FakeProvider(), sessions=SessionService(repo)).artifacts.repo is repo
+    assert DiscoveryService(FakeProvider(), repo=repo).sessions.repo is repo
 
 
-def test_the_service_refuses_a_context_card_that_does_not_exist(workspace):
-    """The CLI and the Web both resolve cards before they get here, which made the service look safe."""
-    from requivo.core.errors import UnknownContextCardError
-
-    with pytest.raises(UnknownContextCardError):
+def test_the_service_refuses_a_context_card_that_does_not_exist():
+    """Invariant 14: creation and re-scope both resolve the selection rather than trusting it."""
+    with pytest.raises(E.UnknownContextCardError):
         SessionService().create_session("Something.", context_cards=["made-up"])
-    assert SessionService().create_session(
-        "Something.", context_cards=["b2b-platform"]).context_cards == ["b2b-platform"]
+    assert SessionService().create_session("Something.", context_cards=["b2b-platform"]).context_cards == ["b2b-platform"]
+    svc = _session()
+    with pytest.raises(E.UnknownContextCardError):
+        svc.rescope("s", context_cards=["made-up"])
+    assert svc.cards("s") is None
 
 
-def test_impact_reports_what_a_named_slot_reaches(workspace):
-    """`SessionService.impact` -- the XS addition #425's HTTP API `/impact` route is built on."""
-    from requivo.core.contracts import Challenge, DesignDecision
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    model = EngineOutput.model_validate({
-        **_full_model(**{"workflow": _slot(80, "explicit", "high")}),
-        "decisions": [DesignDecision(decision="Draft-first invoices",
-                                     derived_from=["workflow"]).model_dump()],
-        "challenges": [Challenge(headline="Invoice at signature", premise="p", alternative="a",
-                                 consequence="c", recommendation="r",
-                                 contests=["workflow"]).model_dump()],
-    })
-    svc.update_model("s", model.model_dump())
-
-    report = svc.impact("s", ["workflow"])
+def test_impact_reports_what_a_named_slot_reaches():
+    """`SessionService.impact` -- what #425's HTTP API `/impact` route is built on."""
+    model = {**full_model(workflow=slot(80, "explicit", "high")),
+             "decisions": [DesignDecision(decision="Draft-first invoices", derived_from=["workflow"]).model_dump()],
+             "challenges": [Challenge(headline="Invoice at signature", premise="p", alternative="a", consequence="c",
+                                      recommendation="r", contests=["workflow"]).model_dump()]}
+    report = _session(model).impact("s", ["workflow"])
     assert any(d.decision == "Draft-first invoices" for d in report.decisions)
     assert any(c.headline == "Invoice at signature" for c in report.challenges)
     assert report.to_dict()["decisions"][0]["decision"] == "Draft-first invoices"
 
 
-def test_impact_refuses_an_unknown_slot_naming_it_in_details(workspace):
-    """Unlike the CLI's own `_cmd_impact`, which prints a warning for an unmatched token and keeps rendering
-    whatever did match, the service raises."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-
-    with pytest.raises(UnknownSlotError) as e:
-        svc.impact("s", ["not-a-real-slot"])
+def test_impact_refuses_an_unknown_slot_naming_it_in_details():
+    with pytest.raises(E.UnknownSlotError) as e:
+        _session(full_model()).impact("s", ["not-a-real-slot"])
     assert e.value.details["unmatched"] == ["not-a-real-slot"]
 
 
-def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal(workspace):
-    """An empty list is "no slots named", the same reading `resolve_slots([])` already gives it
-    (`normalize_tokens`'s own docstring) -- not the same thing as a token that matched nothing."""
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-
-    report = svc.impact("s", [])
-    assert report.empty
+def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal():
+    assert _session(full_model()).impact("s", []).empty
 
 
-def test_show_with_status_reads_content_and_freshness_together(workspace):
-    """`ArtifactService.show_with_status`."""
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-    art.save("s", "brief", "# Brief\n", source_revision=1)
-
-    content, row = art.show_with_status("s", "brief")
-    assert content == "# Brief\n"
-    assert row == {"revision": 1, "filename": "solution-assessment.md",
-                   "updated_at": row["updated_at"], "stale": False}
-
-
-def test_show_with_status_404s_when_nothing_was_ever_saved(workspace):
-    from requivo.core.errors import SessionNotFoundError
-
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-
-    with pytest.raises(SessionNotFoundError):
+def test_show_with_status_is_not_interleaved_by_a_concurrent_save(art):
+    """The must-fire proof behind `show_with_status`'s own docstring (#425); the plain read is its control."""
+    _session(full_model())
+    with pytest.raises(E.SessionNotFoundError):
         art.show_with_status("s", "brief")
-
-
-def test_show_with_status_is_not_interleaved_by_a_concurrent_save(workspace):
-    """The must-fire proof behind the claim in `show_with_status`'s own docstring (found in review, #425)."""
-
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
     art.save("s", "brief", "V1", source_revision=1)
+    inside, may_finish, written = threading.Event(), threading.Event(), threading.Event()
+    real_load, shown = art.repo.load_artifact, []
 
-    reader_inside_lock = threading.Event()
-    reader_may_finish = threading.Event()
-    real_load_artifact = art.repo.load_artifact
-
-    def paused_load_artifact(slug, filename):
-        content = real_load_artifact(slug, filename)
-        reader_inside_lock.set()
-        assert reader_may_finish.wait(timeout=5), "the writer thread below never released the reader"
+    def paused_load(slug, filename):
+        content = real_load(slug, filename)
+        inside.set()
+        assert may_finish.wait(timeout=5), "the writer thread below never released the reader"
         return content
 
-    art.repo.load_artifact = paused_load_artifact
-
-    result: dict = {}
-
-    def do_show():
-        result["content"], result["row"] = art.show_with_status("s", "brief")
-
-    reader = threading.Thread(target=do_show, daemon=True)
+    art.repo.load_artifact = paused_load
+    reader = threading.Thread(target=lambda: shown.append(art.show_with_status("s", "brief")), daemon=True)
     reader.start()
-    assert reader_inside_lock.wait(timeout=5), "the reader never reached its locked read"
-
-    writer_finished = threading.Event()
-
-    def do_save():
-        art.save("s", "brief", "V2", source_revision=1)
-        writer_finished.set()
-
-    writer = threading.Thread(target=do_save, daemon=True)
-    writer.start()
-
-    # Must genuinely be waiting on the reader's held lock, not racing ahead of it.
-    assert not writer_finished.wait(timeout=0.2), (
-        "a concurrent save() proceeded while show_with_status still held the lock -- reverting to "
-        "two separate unlocked calls (show() then list()) would let this assertion fail")
-
-    reader_may_finish.set()
+    assert inside.wait(timeout=5), "the reader never reached its locked read"
+    threading.Thread(target=lambda: (art.save("s", "brief", "V2", source_revision=1), written.set()), daemon=True).start()
+    assert not written.wait(timeout=0.2), "a concurrent save() proceeded while show_with_status held the lock"
+    may_finish.set()
     reader.join(timeout=5)
-    assert writer_finished.wait(timeout=5), "the writer never finished once the reader released"
-
-    # Because the read was atomic, content and status describe the SAME save.
-    assert result["content"] == "V1"
-    assert result["row"]["revision"] == 1
-
-
-def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(workspace):
-    """`False` is not "I don't know" — it is the claim that the artifact is up to date."""
-    from requivo.core.errors import RequivoError
-
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())                                   # revision 1
-    svc.update_model("s", _full_model(**{"workflow": _slot(90, "explicit", "high", "moved")}))  # 2
-    (store.canonical_dir("s") / "revisions" / "0001-model.json").unlink()  # the history is now a lie
-
-    with pytest.raises(RequivoError) as e:
-        art.save("s", "prd", "# PRD\n", source_revision=1)
-    assert e.value.code == "unreadable_source_revision"
-    assert "prd" not in art.list("s")                                      # nothing was recorded
+    assert written.wait(timeout=5), "the writer never finished once the reader released"
+    content, row = shown[0]
+    assert content == "V1"
+    assert row == {"revision": 1, "filename": "solution-assessment.md", "updated_at": row["updated_at"], "stale": False}
 
 
-def test_a_first_discovery_that_races_a_concurrent_write_conflicts(workspace):
-    """`run_discovery` reasons from revision N and applies."""
-    from requivo.core.errors import RevisionConflictError
-    from requivo.services.discovery import DiscoveryService
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-
-    def concurrent_apply():
-        svc.update_model("s", _full_model(**{"risks": _slot(70, "explicit", "high", "rollout risk")}))
-
-    reply = {**_full_model(), "summary": {"objective": "A leave approval system"}}
-    disco = DiscoveryService(client=_RacingClient(json.dumps(reply), concurrent_apply))
-    with pytest.raises(RevisionConflictError):
+def test_a_first_discovery_that_races_a_concurrent_write_conflicts():
+    svc = _session()
+    racing = full_model(risks=slot(70, "explicit", "high", "rollout risk"))
+    disco = DiscoveryService(client=RacingClient(json.dumps(full_model()), lambda: svc.update_model("s", racing)))
+    with pytest.raises(E.RevisionConflictError):
         disco.run_discovery("s")
     assert svc.load_model("s").model["risks"].value == "rollout risk"
 
 
-def test_an_artifact_generated_from_a_superseded_revision_is_born_stale(workspace):
+def test_an_artifact_generated_from_a_superseded_revision_is_born_stale(art):
     """Invariant 2: a generation carries the revision it read (#286)."""
-    from requivo.services.discovery import DiscoveryService
-
-    svc, art = SessionService(), ArtifactService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())          # revision 1 — the PRD's actual source
-
-    def concurrent_answer():
-        svc.update_model("s", _full_model(**{"workflow": _slot(90, "explicit", "high", "new flow")}))
-
+    svc = _session(full_model())                          # revision 1, the PRD's actual source
     prd_reply = json.dumps({"title": "PRD", "problem": "Approvals are lost in email."})
-    DiscoveryService(client=_RacingClient(prd_reply, concurrent_answer)).generate("s", "prd")
-
+    DiscoveryService(client=RacingClient(prd_reply, lambda: svc.update_model("s", MOVED))).generate("s", "prd")
     saved = art.list("s")["prd"]
-    assert saved["revision"] == 1        # recorded against the revision it was written from…
-    assert saved["stale"] is True        # …and the workflow change it never saw makes it stale
+    assert saved["revision"] == 1 and saved["stale"] is True
 
 
-@pytest.mark.parametrize("field, id_field, make_item, value", [
-    ("exclusions", "option", lambda: Exclusion(
-        option="A full audit-trail UI", reason="The stated timeline funds the approval workflow "
-        "only", rests_on=["constraints"]), "A full audit-trail UI"),
-    ("thresholds", "condition", lambda: Threshold(
-        condition="CAC exceeds the stated budget ceiling", measure="cost per paid signup",
-        action="stop the paid channel", rests_on=["constraints"]),
-     "CAC exceeds the stated budget ceiling"),
+@pytest.mark.parametrize("field, id_field, item", [
+    ("exclusions", "option", Exclusion(option="A full audit-trail UI", reason="The stated timeline funds the approval workflow only",
+                                       rests_on=["constraints"])),
+    ("thresholds", "condition", Threshold(condition="CAC exceeds the stated budget ceiling", measure="cost per paid signup",
+                                          action="stop the paid channel", rests_on=["constraints"])),
 ], ids=["exclusion-600", "threshold-604"])
-def test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model(
-        workspace, field, id_field, make_item, value):
-    """#600/#604: `absorb_reasoning` carries `Brief.exclusions`/`Brief.thresholds` into the model the same way
-    it already carries decisions/challenges/opportunities, so each lands in `model.json`."""
-    from requivo.core.contracts import Brief
-    from requivo.services.discovery import DiscoveryService
-
-    class _BriefProvider(_FakeProvider):
-        def generate(self, artifact_type, model, *, only=None, **kwargs):
-            return Brief(complexity="low", **{field: [make_item()]})
-
-    svc = SessionService()
-    svc.create_session("Something.", slug="s")
-    svc.update_model("s", _full_model())
-    DiscoveryService(_BriefProvider()).generate("s", "brief")
-
+def test_a_generated_briefs_reasoning_items_are_absorbed_into_the_persisted_model(field, id_field, item):
+    """#600/#604: `absorb_reasoning` carries `Brief.exclusions`/`Brief.thresholds` into `model.json`."""
+    svc = _session(full_model())
+    DiscoveryService(FakeProvider(artifacts={"brief": Brief(complexity="low", **{field: [item]})})).generate("s", "brief")
     items = getattr(svc.load_model("s"), field)
-    assert [getattr(i, id_field) for i in items] == [value]
-    assert items[0].rests_on == ["constraints"]
+    assert [getattr(i, id_field) for i in items] == [getattr(item, id_field)] and items[0].rests_on == ["constraints"]
 
 
-# ── misc ──────────────────────────────────────────────────────────────────────
-
-
-def test_update_missing_session_raises(workspace):
-    with pytest.raises(SessionNotFoundError):
-        SessionService().update_model("ghost", _full_model())
-
-
-def test_a_legacy_session_is_named_in_the_error_rather_than_migrated_behind_your_back(workspace):
-    """`out/` was the store until 0.8.0, and until 0.9.8 every read silently fell back to it and every
-    mutation migrated one in place."""
+def test_a_legacy_session_is_named_in_the_error_rather_than_migrated_behind_your_back():
+    """`out/` was the store until 0.8.0, and until 0.9.8 every read silently fell back to it."""
     legacy = store.legacy_dir("old")
     legacy.mkdir(parents=True)
-    (legacy / "model.json").write_text(json.dumps(_full_model()))
-    (legacy / "request.txt").write_text("Legacy request.")
-    (legacy / "prd.md").write_text("# Legacy PRD\n")
-
+    for name, text in (("model.json", json.dumps(full_model())), ("request.txt", "Legacy request."), ("prd.md", "# Legacy PRD\n")):
+        (legacy / name).write_text(text, encoding="utf-8")
     svc = SessionService()
     assert not svc.exists("old")
-    with pytest.raises(SessionNotFoundError) as e:
+    with pytest.raises(E.SessionNotFoundError) as e:
         svc.load_model("old")
-    assert e.value.details.get("legacy") is True
-    assert "session migrate" in str(e.value)
+    assert e.value.details.get("legacy") is True and "session migrate" in str(e.value)
+    store.migrate_legacy("old")                           # the explicit migration: the model becomes revision 1
+    assert store.session_exists("old") and (legacy / "model.json").exists()
+    assert svc.update_model("old", full_model(problem=slot(90, "explicit", "high", "P"))).revision == 2
+    assert _revision_file("old", 1).exists()
+    assert (store.canonical_dir("old") / "artifacts" / "prd.md").read_text(encoding="utf-8") == "# Legacy PRD\n"
 
-    # And the explicit migration is intact: the model becomes revision 1.
-    store.migrate_legacy("old")
-    assert store.session_exists("old")
-    assert (legacy / "model.json").exists()
-    result = svc.update_model("old", _full_model(**{"problem": _slot(90, "explicit", "high", "P")}))
-    assert result.revision == 2
-    d = store.canonical_dir("old")
-    assert (d / "revisions" / "0001-model.json").exists()
-    assert (d / "artifacts" / "prd.md").read_text(encoding="utf-8") == "# Legacy PRD\n"
+
+# ── artifact provenance is stated by the caller or the save is refused (#6) ───────
+
+
+@pytest.fixture
+def moved() -> str:
+    """A session at revision 2 whose `workflow` slot moved between the two."""
+    _session(full_model(workflow=slot(50, "inferred", "high", "draft")),
+             full_model(workflow=slot(90, "explicit", "high", "draft -> issued -> archived")), slug="prov-moved")
+    return "prov-moved"
+
+
+def test_a_stated_source_revision_still_records_the_flag_it_always_did(art, moved):
+    """MUST FIRE: the positive control for every provenance refusal below."""
+    stale = art.save(moved, "prd", "# PRD reasoned from revision 1", source_revision=1)
+    fresh = art.save(moved, "criteria", "# criteria reasoned from revision 2", source_revision=2)
+    assert (stale.revision, stale.stale, fresh.revision, fresh.stale) == (1, True, 2, False)
+
+
+def test_an_omitted_source_revision_is_refused_rather_than_read_as_now(art, moved):
+    """#6 F1: the save that used to be recorded `revision: 2, stale: false`; it writes nothing and says what to pass."""
+    with pytest.raises(UnstatedSourceRevisionError) as e:
+        art.save(moved, "prd", "# PRD reasoned from revision 1")
+    assert isinstance(e.value, E.RequivoError)
+    assert e.value.details["source_revision"] is None and e.value.details["current_revision"] == 2
+    assert all(word in e.value.message for word in ("--revision", "source_revision", "1", "2"))
+    prd = store.canonical_dir(moved) / "artifacts" / "prd.md"
+    assert not prd.exists() and "prd" not in store.read_meta(moved).artifact_status
+    art.save(moved, "prd", "# PRD", source_revision=1)    # must fire: stated, both writes land
+    assert prd.exists() and "prd" in store.read_meta(moved).artifact_status
+
+
+def _corrupt(p):
+    p.write_text('{"model": {"workflow": ', encoding="utf-8")
+
+
+def _unreadable(p):
+    p.unlink()
+    p.mkdir()
+
+
+@pytest.mark.parametrize("damage", [_corrupt, _unreadable, lambda p: p.unlink()], ids=["corrupt", "unreadable", "missing"])
+def test_a_corrupt_revision_file_is_refused_as_a_structured_error(art, moved, damage):
+    """#6 F2: `except E.RequivoError` only caught a *missing* revision; the guard is as wide as the failure set."""
+    damage(_revision_file(moved, 1))
+    with pytest.raises(E.InvalidSessionError) as e:
+        art.save(moved, "prd", "# PRD", source_revision=1)
+    assert e.value.code == "unreadable_source_revision" and e.value.details["source_revision"] == 1
+    if damage is _corrupt:
+        assert "ValidationError" in json.dumps(e.value.details), "the cause is not recorded"
+
+
+def test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape(art, moved):
+    """Two refusals share one `details` shape but ride two codes, and neither answers the family base (#57)."""
+    with pytest.raises(UnstatedSourceRevisionError) as unstated:
+        art.save(moved, "prd", "# PRD")
+    _revision_file(moved, 1).write_text("{", encoding="utf-8")
+    with pytest.raises(E.InvalidSessionError) as unreadable:
+        art.save(moved, "prd", "# PRD", source_revision=1)
+    assert (unstated.value.code, unreadable.value.code) == ("unstated_source_revision", "unreadable_source_revision")
+    assert isinstance(unstated.value, E.InvalidSessionError) and isinstance(unreadable.value, E.InvalidSessionError)
+    assert {"slug", "type", "source_revision", "current_revision", "cause"} == set(unstated.value.details) == set(unreadable.value.details)
+    assert unstated.value.details["cause"] is None and unreadable.value.details["cause"] is not None
