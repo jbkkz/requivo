@@ -48,26 +48,14 @@ reads existing sessions and replays the demo — it just cannot analyse or gener
 | macOS | 3.9 – 3.13 | 3.9 and 3.13 |
 | Windows | 3.9 – 3.13 | 3.9 and 3.13 |
 
-An untested platform and a supported platform look identical from outside, so this table says which
-is which. The ends of the version range are tested on macOS and Windows rather than every minor
-version, and the ends are the point: a platform's own standard library can behave differently at each
-one. Windows on 3.9 cannot resolve a symlink whose target is missing, where Windows on 3.13 can —
-which once left a path-containment guard holding on twelve of thirteen CI legs and not on the
-thirteenth. Differences in the language itself show on the Linux axis, which runs all six (a `3.14`
-leg landed in #298; the macOS/Windows ends and the `3.9` floor itself are a separate, not yet
-decided, question — see [compatibility.md](compatibility.md)).
+macOS and Windows are tested at the ends of the range, where a platform's standard library differs
+(Windows 3.9 cannot resolve a dangling symlink; 3.13 can); Linux runs every version (3.14 since #298).
+CI tests the `requivo` **package**, not the Claude Code plugin, which on native Windows needs
+[Git for Windows](https://git-scm.com/downloads/win) (see the [plugin README](../plugins/claude-code/)).
 
-Those legs test the `requivo` **package**. Nothing in CI exercises the Claude Code plugin, which runs
-inside Claude Code rather than inside Python, and on native Windows that plugin carries a prerequisite
-of its own: [Git for Windows](https://git-scm.com/downloads/win), for the reason the
-[plugin README](../plugins/claude-code/) gives.
-
-Requivo reads and writes **UTF-8 everywhere**, regardless of the machine's locale or the console's
-codepage. A session written on one machine reads back byte-identically on another. Where a console
-cannot represent a character Requivo prints, the character is escaped rather than dropped and never
-crashes the command — `requivo doctor` reports your console's encoding when there is something worth
-saying about it. A file you pass in (`requivo run ./brief.md`) must be UTF-8; one that is not is
-refused by name rather than silently decoded into something that reads like prose and is wrong.
+Requivo reads and writes **UTF-8 everywhere**, whatever the locale or console codepage. A character a
+console cannot show is escaped, never dropped and never fatal (`requivo doctor` reports the console's
+encoding); a file you pass in that is not UTF-8 is refused by name.
 
 ## Try it with no key, no setup
 
@@ -81,9 +69,7 @@ requivo demo
 From a clone instead, with nothing installed: `uv run requivo demo`.
 
 It ends on the step the engine exists for: one answer changes, and Requivo reports which decisions
-have to be re-validated and which documents go stale. That block is computed from the dependency
-graph rather than reasoned, so the same change gives the same answer every time — and it costs
-nothing, which is why the keyless demo is where it is shown.
+to re-validate and which documents go stale — computed from the dependency graph, so it costs nothing.
 
 ## 1. Web — start here
 
@@ -159,10 +145,8 @@ requivo run examples/case1_leave.md
 
 </details>
 
-The conversation claims the session under `.requivo/sessions/<slug>/` before the first paid call, and
-nothing you pay for is discarded after that: stopping it early — or a provider failure part-way
-through — saves the turns that had already run, and resuming picks up where you left off
-(`requivo run <slug>`). Once it is ready:
+Stopping early, or a provider failure part-way, keeps the turns already paid for; `requivo run <slug>`
+resumes. Once it is ready:
 
 ```bash
 requivo status <slug>                      # where the session stands, no network
@@ -180,22 +164,14 @@ Full reference: [cli.md](cli.md).
 
 ## Upgrading (and rolling back)
 
-`pip install -U requivo` is safe for your sessions. Upgrades never touch a session until you write
-to it; a session written by a newer Requivo still opens in an older one (unknown fields are
-preserved, unknown artifact types are tolerated); the one hard refusal is a future `format_version`
-bump, which will say so in a structured error rather than corrupting anything. Avoid running two
-Requivo versions against one workspace *concurrently* — the full promises, including that caveat,
-live in [compatibility.md](compatibility.md).
+`pip install -U requivo` is safe for your sessions: an upgrade touches nothing until you write, a
+newer session opens in an older Requivo, and a future `format_version` bump would refuse with a
+structured error rather than corrupt. Avoid two versions writing one workspace *concurrently*. The
+full promises: [compatibility.md](compatibility.md).
 
 ## Your sessions stay out of git
 
-Sessions are written to `.requivo/` in the directory you run from — your project repository, for the
-Claude Code plugin. They hold the originating request **verbatim**, which for most users is a client's
-own words.
-
-Requivo writes `.requivo/.gitignore` containing `*` the first time it creates that directory, so
-`git add .` picks up nothing and your own `.gitignore` is left alone. It is written once and never
-restored: delete it to commit sessions deliberately and they stay committed. To share a single session
-instead, use `requivo session export <slug> -o <slug>.zip` and `requivo session import <slug>.zip`.
-
-Details in [session-format.md](session-format.md#sessions-and-git).
+Sessions hold the originating request verbatim — usually a client's words — and are written to the
+directory you run from, so Requivo writes `.requivo/.gitignore` (`*`) once, when it creates the store.
+To share one session, `requivo session export` / `session import`. Details:
+[session-format.md](session-format.md#sessions-and-git).
