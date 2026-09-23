@@ -135,8 +135,11 @@ def test_default_run_leaves_the_conflict_refused_warning_off_every_stream(strip_
 # ── the provider seam (#424) and invariant 6 ────────────────────────────────────
 
 # Every member `ReasoningProvider` declares and nothing more: no `name`.
-_NamelessProvider = type("_NamelessProvider", (), {m: (lambda self, *a, **k: None)
-                                                    for m in ("analyze", "generate", "model_name", "provenance")})
+def _never(self, *a, **k):
+    raise AssertionError("a provider missing `name` must fail before it is asked to reason")
+
+
+_NamelessProvider = type("_NamelessProvider", (), {m: _never for m in ("analyze", "generate", "model_name", "provenance")})
 
 
 def test_discovery_runs_on_a_provider_that_is_not_anthropic():

@@ -11,6 +11,7 @@ import pytest
 from _credentials import _no_credentials
 from _fakes import deny_access, run_cli, run_cli_exit, run_cli_json, seed_session
 
+from conftest import symlink_or_skip
 from requivo.core import persistence as store
 from requivo.core.errors import InvalidSlugError, SessionLockedError
 from requivo.deterministic import doctor as det
@@ -82,8 +83,9 @@ def _take_lock(slug: str) -> None:
         pass
 
 
-def _deny(directory: Path, mode: int, what: str) -> None:
+def _deny(directory: Path, mode: int, what: str, request) -> None:
     """Deny `what` with a POSIX mode bit, probed by `iterdir` (which 3.14's `exists()` swallows), or skip naming it."""
+    request.addfinalizer(lambda: directory.chmod(0o755))
     if os.name == "nt":
         pytest.skip(f"POSIX mode bits do not deny {what} on Windows; that arm is untested here")
     directory.chmod(mode)
@@ -91,7 +93,6 @@ def _deny(directory: Path, mode: int, what: str) -> None:
         list(directory.iterdir())
     except OSError:
         return
-    directory.chmod(0o755)
     pytest.skip(f"chmod did not deny {what} here (running as root?); that arm is untested on this run")
 
 
@@ -122,12 +123,14 @@ def test_doctor_still_says_no_api_key_when_none_is_configured_at_all(monkeypatch
     assert r["schema"]["ok"] and r["schema"]["slots"] > 0 and "sessions" in r["workspace"]
     assert r["provider_anthropic"] == {**r["provider_anthropic"], "api_key_present": False, "credential_problem": None}
     assert "no API key" in _check_line(run_cli(["doctor"]), "anthropic")
+    monkeypatch.delenv("MODEL", raising=False)
     monkeypatch.setenv("REQUIVO_MODEL", "claude-opus-4-8")  # #268: `model.source` asks `current_model_name()`
     assert _doctor("model") == {"name": "claude-opus-4-8", "source": "env"}
 
 
 def test_doctor_reports_a_bearer_token_as_a_credential_present(monkeypatch):
     """#332: `ANTHROPIC_AUTH_TOKEN` is a credential the runner accepts (#201)."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sk-ant-whatever")
     assert _doctor("provider_anthropic")["api_key_present"] is True
 
@@ -135,6 +138,8 @@ def test_doctor_reports_a_bearer_token_as_a_credential_present(monkeypatch):
 @_NEEDS_CHAIN
 def test_doctor_names_the_remedy_for_an_unloadable_profile_rather_than_no_api_key(monkeypatch):
     """#365: "no credential" and "a configured credential that cannot load" are two answers, not one False."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.setenv("ANTHROPIC_PROFILE", "a-profile-that-does-not-exist")
     r = _doctor("provider_anthropic")
     assert r["api_key_present"] is False and "could not load the credential configuration" in r["credential_problem"]
@@ -182,16 +187,13 @@ def test_doctor_tells_an_empty_workspace_from_an_unreadable_one():
     assert "unreadable" in unreadable_text
 
 
-def test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty(card):
+def test_a_card_directory_that_cannot_be_read_is_unreadable_not_empty(card, request):
     """The `unreadable` state reached by what makes a directory unreadable; the session is not accused (#12)."""
     healthy = _doctor()
     assert healthy["context"]["status"] == "ok" and "lost-domain" in healthy["context_cards"]
     assert healthy["sessions"]["cards_checked"] is True and healthy["sessions"]["unresolved_cards"] == {}
-    _deny(card, 0o000, "reads")
-    try:
-        broken, broken_text = _doctor(), run_cli(["doctor"])
-    finally:
-        card.chmod(0o755)
+    _deny(card, 0o000, "reads", request)
+    broken, broken_text = _doctor(), run_cli(["doctor"])
     assert broken["context"]["status"] == "unreadable" and broken["context"]["ok"] is False
     assert "lost-domain" not in broken["context_cards"]
     assert broken["sessions"]["cards_checked"] is False and broken["sessions"]["unresolved_cards"] == {}
@@ -237,6 +239,12 @@ def test_doctor_names_what_is_under_the_session_root_and_is_not_a_session():
     text = run_cli(["doctor"])
     assert "leave-approval" in text and ".lock" in text
     assert "✅" in _check_line(text, "sessions") and "🟡" in _check_line(text, "other entries")
+    over, at_limit = "a" * (store.MAX_SLUG_LENGTH + 1), "b" * store.MAX_SLUG_LENGTH  # `slug_shaped` is pattern + length
+    _lock_ghost(over), _lock_ghost(at_limit)
+    by_name = {e["name"]: e for e in _doctor("sessions")["non_sessions"]}
+    assert by_name[at_limit]["slug_shaped"] is True and by_name[over]["slug_shaped"] is False
+    with pytest.raises(InvalidSlugError):
+        store.canonical_dir(over)
 
 
 @pytest.mark.parametrize("populate, kind, entries, count, hint", [
@@ -266,24 +274,11 @@ def test_a_symlink_is_reported_as_one_and_its_target_is_not_read(tmp_path):
     elsewhere.mkdir()
     (elsewhere / "secret-project.md").touch()
     store.session_root().mkdir(parents=True)
-    try:
-        (store.session_root() / "leave-approval").symlink_to(elsewhere, target_is_directory=True)
-    except OSError:  # pragma: no cover - Windows without developer mode
-        pytest.skip("this platform refuses an unprivileged symlink; the symlink arm is untested on this run")
+    symlink_or_skip(store.session_root() / "leave-approval", elsewhere, target_is_directory=True)
     entry = _doctor("sessions")["non_sessions"][0]
     assert entry["kind"] == "symlink" and entry["entries"] is None and entry["entry_count"] is None
     assert entry["error"] is None and entry["slug_shaped"] is True
     assert "secret-project.md" not in run_cli(["doctor"]), "the target's contents were listed into the report"
-
-
-def test_a_name_too_long_to_be_a_slug_is_not_marked_as_taken():
-    """`slug_shaped` is the pattern and the length; the flag stands for a refusal, not a substitution (#67)."""
-    over, at_limit = "a" * (store.MAX_SLUG_LENGTH + 1), "b" * store.MAX_SLUG_LENGTH
-    _lock_ghost(over), _lock_ghost(at_limit)
-    by_name = {e["name"]: e for e in _doctor("sessions")["non_sessions"]}
-    assert by_name[at_limit]["slug_shaped"] is True and by_name[over]["slug_shaped"] is False
-    with pytest.raises(InvalidSlugError):
-        store.canonical_dir(over)
 
 
 @_NEEDS_POSIX_NAMES
@@ -308,16 +303,13 @@ def test_the_name_taken_hint_names_what_import_does_about_it():
     assert "only symptom" not in hint and "plus a hash" in hint
 
 
-def test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty():
+def test_an_entry_that_could_not_be_looked_inside_is_not_reported_as_empty(request):
     """The third state one level below the one `_session_health` already has (#80)."""
     d = _lock_ghost()
     readable = _doctor("sessions")["non_sessions"][0]
     assert readable["entries"] == [".lock"] and readable["error"] is None
-    _deny(d, 0o111, "listing")
-    try:
-        denied, denied_text = _doctor("sessions")["non_sessions"][0], run_cli(["doctor"])
-    finally:
-        d.chmod(0o755)
+    _deny(d, 0o111, "listing", request)
+    denied, denied_text = _doctor("sessions")["non_sessions"][0], run_cli(["doctor"])
     assert denied["kind"] == "directory" and denied["entries"] is None and denied["entry_count"] is None
     assert "Permission denied" in (denied["error"] or "") and "Permission denied" in denied_text
     assert "empty directory" not in denied_text
@@ -398,12 +390,8 @@ def test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick(
 
     run_cli(["session", "init", "A real one.", "--slug", "real", "--json"])
     real_scan = store.scan_session_root
-
-    def _one_blind_entry():
-        slugs, non_sessions, _blind = real_scan()
-        return slugs, non_sessions, [UnexaminableEntry(name="ghost", error="Permission denied")]
-
-    r, text = _doctor_when(det.store, "scan_session_root", _one_blind_entry, "sessions")
+    one_blind = lambda: (*real_scan()[:2], [UnexaminableEntry(name="ghost", error="Permission denied")])  # noqa: E731
+    r, text = _doctor_when(det.store, "scan_session_root", one_blind, "sessions")
     assert r["inconsistent"] == {} and r["error"] is None and [e["name"] for e in r["unexaminable"]] == ["ghost"]
     line = _check_line(text, "sessions")
     assert "✅" not in line and "🟡" in line
@@ -472,17 +460,6 @@ def test_an_ordinary_discover_leaves_no_lock_residue_doctor_flags():
     assert "✅" in _check_line(text, "locks") and "s.discovering" not in text
 
 
-@_NEEDS_SYMLINK
-@pytest.mark.parametrize("suffix", [".lock", ".discovering"], ids=["#391-lock-symlink", "#391-discovering-symlink"])
-def test_a_symlink_at_a_lock_name_is_reported_and_not_followed(workspace, suffix):
-    """The same symlink care the non-session partition carries (invariant 17, #391)."""
-    target = workspace / "elsewhere.txt"
-    target.write_text("not a lock or guard file\n", encoding="utf-8")
-    (_lock_files() / f"sneaky{suffix}").symlink_to(target)
-    r = _doctor("locks")
-    assert r["total"] == 0 and r["unexpected"] == [f"sneaky{suffix}"]
-
-
 def test_a_reserved_name_sessions_own_lock_and_guard_files_are_not_reported_as_residue():
     """#401/#409: `con`'s own files are recognised; `nul.lock`/`nul.discovering` with no session are unmatched, never residue."""
     # No skipif: this fixture was observed to materialise on GitHub's windows-latest runners (#582).
@@ -512,12 +489,15 @@ def test_a_reserved_lock_stems_classification_survives_the_session_being_deleted
 
 @_NEEDS_SYMLINK
 def test_a_symlink_at_the_lock_name_does_not_sink_the_guard_file_beside_it(workspace):
-    """A verdict about one entry is not decided by a sibling entry's state (#401)."""
+    """A symlink at either lock name is unexpected and not followed (invariant 17, #391), and a verdict about
+    one entry is not decided by a sibling entry's state (#401)."""
     outside = workspace / "elsewhere.txt"
     outside.write_text("not a lock", encoding="utf-8")
-    (_lock_files("a.discovering", "b.discovering") / "a.lock").symlink_to(outside)
+    lr = _lock_files("a.discovering", "b.discovering")
+    (lr / "a.lock").symlink_to(outside)
+    (lr / "sneaky.discovering").symlink_to(outside)
     r = _doctor("locks")
-    assert r["unexpected"] == ["a.lock"] and r["total"] == 0
+    assert r["unexpected"] == ["a.lock", "sneaky.discovering"] and r["total"] == 0
 
 
 @_NEEDS_POSIX_NAMES

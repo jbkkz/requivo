@@ -77,7 +77,13 @@ def test_one_unreadable_card_degrades_its_own_summary_row(tmp_path, monkeypatch)
     bad.write_text("unreadable", encoding="utf-8")
     monkeypatch.setattr(ctx, "_card_paths", lambda: {"good": good, "bad": bad})
     real_read = type(bad).read_text
-    monkeypatch.setattr(type(bad), "read_text", lambda self, *a, **kw: real_read(self, *a, **kw) if self != bad else (_ for _ in ()).throw(PermissionError("nope")))
+
+    def refuse_one(self, *a, **kw):
+        if self == bad:
+            raise PermissionError("nope")
+        return real_read(self, *a, **kw)
+
+    monkeypatch.setattr(type(bad), "read_text", refuse_one)
     rows = {c.stem: c for c in ctx.card_summaries()}
     assert rows["bad"].unreadable is True and rows["bad"].domain == ""
     assert rows["good"].unreadable is False and rows["good"].domain == "dentistry"

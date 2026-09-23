@@ -52,7 +52,7 @@ def submit_answers(
     text = answers.strip()
     if len(text) > MAX_ANSWERS_CHARS:
         # Refused, not truncated (invariant 3), and re-rendered with the submission in it (#30, #428).
-        # `test_a_no_js_oversized_answers_submit_keeps_the_typed_text_on_a_full_page`.
+        # `test_oversized_answers_come_back_in_the_textarea`.
         if not is_htmx:
             detail = session_detail(sessions, slug)
             return templates.TemplateResponse(request, "sessions/detail.html", {

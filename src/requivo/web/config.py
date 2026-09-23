@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from requivo.core.contracts import MAX_INPUT_CHARS
 
 # Field ceilings, refused rather than trimmed (invariant 3): aliases for the one cap Core enforces
-# (#255, invariant 14). `test_an_oversized_request_is_refused_not_truncated`.
+# (#255, invariant 14). `test_an_oversized_field_is_refused_and_the_ceiling_itself_is_accepted`.
 MAX_REQUEST_CHARS = MAX_INPUT_CHARS
 MAX_ANSWERS_CHARS = MAX_INPUT_CHARS
 MAX_SLUG_CHARS = 80

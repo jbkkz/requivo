@@ -9,19 +9,10 @@ import pytest
 from _fakes import full_model, slot
 
 from conftest import CountingProvider, FakeProvider, RacingClient
+from requivo.core import errors as E
 from requivo.core import persistence as store
 from requivo.core.contracts import Brief, Challenge, DesignDecision, EngineOutput, Exclusion, Threshold
 from requivo.core.dependencies import propagate
-from requivo.core.errors import (
-    InvalidModelError,
-    InvalidSessionError,
-    MissingRequiredSlotError,
-    RequivoError,
-    RevisionConflictError,
-    SessionNotFoundError,
-    UnknownContextCardError,
-    UnknownSlotError,
-)
 from requivo.core.validation import validate_proposal
 from requivo.services.artifacts import ArtifactService, UnstatedSourceRevisionError
 from requivo.services.discovery import DiscoveryService
@@ -62,44 +53,34 @@ def _revision_file(slug: str, revision: int):
 # ── validation ────────────────────────────────────────────────────────────────
 
 
-def _drop_a_required(m: dict) -> str:
-    a_required = next(iter(m["model"]))
-    del m["model"][a_required]
-    return a_required
-
-
-def _add_unknown(m: dict) -> str:
-    m["model"]["not_a_real_slot"] = slot()
-    return "not_a_real_slot"
-
-
-@pytest.mark.parametrize("damage, error, code", [
-    (_add_unknown, UnknownSlotError, "unknown_slot"), (_drop_a_required, MissingRequiredSlotError, "missing_required_slot"),
+@pytest.mark.parametrize("damage, error, code, named", [
+    (lambda m: m["model"].__setitem__("not_a_real_slot", slot()), E.UnknownSlotError, "unknown_slot", "not_a_real_slot"),
+    (lambda m: m["model"].pop("problem"), E.MissingRequiredSlotError, "missing_required_slot", "problem"),
 ], ids=["unknown-slot", "missing-required-slot"])
-def test_validate_rejects_unknown_slot(damage, error, code):
+def test_validate_rejects_unknown_slot(damage, error, code, named):
     bad = full_model()
-    named = damage(bad)
+    damage(bad)
     with pytest.raises(error) as e:
         validate_proposal(bad)
     assert e.value.code == code and named in e.value.details["slots"]
-    with pytest.raises(RequivoError) as e:
+    with pytest.raises(E.RequivoError) as e:
         validate_proposal("{not json")
     assert e.value.code == "invalid_model"
 
 
 def test_validate_rejects_a_complete_model_with_no_objective():
     """Completeness is the full slot set *and* an objective; a projection never promised completeness."""
-    with pytest.raises(InvalidModelError) as e:
+    with pytest.raises(E.InvalidModelError) as e:
         validate_proposal({**full_model(), "summary": {"objective": "   "}})
     assert e.value.path == "summary.objective"
     assert isinstance(validate_proposal(full_model()), EngineOutput)
     partial = {**full_model(), "summary": {}}
-    _drop_a_required(partial)
+    partial["model"].pop("problem")
     assert isinstance(validate_proposal(partial, require_complete=False), EngineOutput)
 
 
 def test_error_to_dict_is_serializable():
-    d = UnknownSlotError("bad", path="model.x", details={"slots": ["x"]}).to_dict()
+    d = E.UnknownSlotError("bad", path="model.x", details={"slots": ["x"]}).to_dict()
     assert d == {"code": "unknown_slot", "message": "bad", "path": "model.x", "details": {"slots": ["x"]}}
     json.dumps(d)
 
@@ -119,7 +100,7 @@ def test_store_creates_session_and_revisions():
 
 
 def test_store_migrate_session_rejects_a_future_format():
-    with pytest.raises(InvalidSessionError):
+    with pytest.raises(E.InvalidSessionError):
         store.migrate_session({"format_version": 999, "session_id": "x", "slug": "s", "created_at": "t", "updated_at": "t"})
 
 
@@ -165,23 +146,17 @@ def test_apply_flags_assessment_stale_when_reasoning_is_unseated(art):
     assert "invalidated_challenges" in result.to_dict()
 
 
-def test_artifact_cannot_be_recorded_against_an_impossible_revision(art):
-    _session(full_model())
-    with pytest.raises(RequivoError) as ei:
-        art.save("s", "prd", "# PRD\n", source_revision=999)
-    assert ei.value.code == "artifact_revision_out_of_range"
-    with pytest.raises(RequivoError):
-        art.save("s", "prd", "# PRD\n", source_revision=0)
-    assert "prd" not in art.list("s")
-
-
-def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(art):
+@pytest.mark.parametrize("revision, history_lies, code", [
+    (999, False, "artifact_revision_out_of_range"), (0, False, "artifact_revision_out_of_range"), (1, True, "unreadable_source_revision"),
+], ids=["future", "zero", "unreadable-history"])
+def test_an_artifact_is_refused_when_its_freshness_cannot_be_established(art, revision, history_lies, code):
     """`False` is not "I don't know" -- it is the claim that the artifact is up to date."""
     _session(full_model(), MOVED)
-    _revision_file("s", 1).unlink()                        # the history is now a lie
-    with pytest.raises(RequivoError) as e:
-        art.save("s", "prd", "# PRD\n", source_revision=1)
-    assert e.value.code == "unreadable_source_revision" and "prd" not in art.list("s")
+    if history_lies:
+        _revision_file("s", 1).unlink()
+    with pytest.raises(E.RequivoError) as e:
+        art.save("s", "prd", "# PRD\n", source_revision=revision)
+    assert e.value.code == code and "prd" not in art.list("s")
 
 
 # ── rescoping context cards (#168) ──────────────────────────────────────────────
@@ -235,7 +210,7 @@ def test_rescope_does_not_mark_existing_artifacts_stale(art):
     lambda svc: svc.rescope("ghost", context_cards=["event-ops"]), lambda svc: svc.update_model("ghost", full_model()),
 ], ids=["rescope", "update_model"])
 def test_a_missing_session_is_refused_by_name(call):
-    with pytest.raises(SessionNotFoundError):
+    with pytest.raises(E.SessionNotFoundError):
         call(SessionService())
 
 
@@ -251,24 +226,19 @@ def test_the_same_request_under_different_cards_is_a_different_session():
 # ── the pre-flight discovery guards (#152, #421, #133) ───────────────────────────
 
 
-def test_a_repeat_discovery_is_refused_before_the_provider_is_paid():
+@pytest.mark.parametrize("again", [
+    lambda d: d.start("A leave approval system.", slug="dup"), lambda d: d.run_discovery("dup"),
+], ids=["start", "run_discovery"])
+def test_a_repeat_discovery_is_refused_before_the_provider_is_paid(again):
     """`start()` used to reason first and discover the conflict afterwards (#133)."""
     provider = CountingProvider()
     disco = DiscoveryService(provider)
     slug = disco.start("A leave approval system.", slug="dup")
     SessionService().update_model(slug, full_model(workflow=slot(90, "explicit", "high", "kept")))
-    with pytest.raises(RevisionConflictError):
-        disco.start("A leave approval system.", slug="dup")
+    with pytest.raises(E.RevisionConflictError) as e:
+        again(disco)
+    assert e.value.details["actual"] == 2 and e.value.details["expected"] == 0   # the discovery, then the refinement
     assert provider.calls == 1 and SessionService().load_model(slug).model["workflow"].value == "kept"
-
-
-def test_run_discovery_refuses_a_session_that_already_has_a_model():
-    svc = _session(full_model(workflow=slot(90, "explicit", "high", "refined")))
-    provider = CountingProvider()
-    with pytest.raises(RevisionConflictError) as e:
-        DiscoveryService(provider).run_discovery("s")
-    assert e.value.details["actual"] == 1 and e.value.details["expected"] == 0
-    assert provider.calls == 0 and svc.load_model("s").model["workflow"].value == "refined"
 
 
 @pytest.mark.parametrize("call", [
@@ -279,7 +249,7 @@ def test_answer_refuses_a_session_that_has_no_model_yet(call):
     """The mirror of the rule above (#152); `answer()` was the one write verb it missed, and its remedy named itself (#421)."""
     _session()
     provider = CountingProvider()
-    with pytest.raises(RevisionConflictError) as e:
+    with pytest.raises(E.RevisionConflictError) as e:
         call(DiscoveryService(provider))
     assert e.value.details["actual"] == 0 and e.value.details["expected"] == 1
     assert provider.calls == 0 and "discover" in str(e.value) and "requivo answer" not in str(e.value)
@@ -298,11 +268,11 @@ def test_the_artifact_service_defaults_to_the_session_service_s_storage():
 
 def test_the_service_refuses_a_context_card_that_does_not_exist():
     """Invariant 14: creation and re-scope both resolve the selection rather than trusting it."""
-    with pytest.raises(UnknownContextCardError):
+    with pytest.raises(E.UnknownContextCardError):
         SessionService().create_session("Something.", context_cards=["made-up"])
     assert SessionService().create_session("Something.", context_cards=["b2b-platform"]).context_cards == ["b2b-platform"]
     svc = _session()
-    with pytest.raises(UnknownContextCardError):
+    with pytest.raises(E.UnknownContextCardError):
         svc.rescope("s", context_cards=["made-up"])
     assert svc.cards("s") is None
 
@@ -320,7 +290,7 @@ def test_impact_reports_what_a_named_slot_reaches():
 
 
 def test_impact_refuses_an_unknown_slot_naming_it_in_details():
-    with pytest.raises(UnknownSlotError) as e:
+    with pytest.raises(E.UnknownSlotError) as e:
         _session(full_model()).impact("s", ["not-a-real-slot"])
     assert e.value.details["unmatched"] == ["not-a-real-slot"]
 
@@ -329,55 +299,40 @@ def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal():
     assert _session(full_model()).impact("s", []).empty
 
 
-def test_show_with_status_reads_content_and_freshness_together(art):
-    _session(full_model())
-    with pytest.raises(SessionNotFoundError):
-        art.show_with_status("s", "brief")
-    art.save("s", "brief", "# Brief\n", source_revision=1)
-    content, row = art.show_with_status("s", "brief")
-    assert content == "# Brief\n"
-    assert row == {"revision": 1, "filename": "solution-assessment.md", "updated_at": row["updated_at"], "stale": False}
-
-
 def test_show_with_status_is_not_interleaved_by_a_concurrent_save(art):
-    """The must-fire proof behind `show_with_status`'s own docstring (#425)."""
+    """The must-fire proof behind `show_with_status`'s own docstring (#425); the plain read is its control."""
     _session(full_model())
+    with pytest.raises(E.SessionNotFoundError):
+        art.show_with_status("s", "brief")
     art.save("s", "brief", "V1", source_revision=1)
-    reader_inside_lock, reader_may_finish, writer_finished = threading.Event(), threading.Event(), threading.Event()
-    real_load_artifact = art.repo.load_artifact
+    inside, may_finish, written = threading.Event(), threading.Event(), threading.Event()
+    real_load, shown = art.repo.load_artifact, []
 
-    def paused_load_artifact(slug, filename):
-        content = real_load_artifact(slug, filename)
-        reader_inside_lock.set()
-        assert reader_may_finish.wait(timeout=5), "the writer thread below never released the reader"
+    def paused_load(slug, filename):
+        content = real_load(slug, filename)
+        inside.set()
+        assert may_finish.wait(timeout=5), "the writer thread below never released the reader"
         return content
 
-    art.repo.load_artifact = paused_load_artifact
-    result: dict = {}
-
-    def do_show():
-        result["content"], result["row"] = art.show_with_status("s", "brief")
-
-    def do_save():
-        art.save("s", "brief", "V2", source_revision=1)
-        writer_finished.set()
-
-    reader = threading.Thread(target=do_show, daemon=True)
+    art.repo.load_artifact = paused_load
+    reader = threading.Thread(target=lambda: shown.append(art.show_with_status("s", "brief")), daemon=True)
     reader.start()
-    assert reader_inside_lock.wait(timeout=5), "the reader never reached its locked read"
-    threading.Thread(target=do_save, daemon=True).start()
-    assert not writer_finished.wait(timeout=0.2), "a concurrent save() proceeded while show_with_status held the lock"
-    reader_may_finish.set()
+    assert inside.wait(timeout=5), "the reader never reached its locked read"
+    threading.Thread(target=lambda: (art.save("s", "brief", "V2", source_revision=1), written.set()), daemon=True).start()
+    assert not written.wait(timeout=0.2), "a concurrent save() proceeded while show_with_status held the lock"
+    may_finish.set()
     reader.join(timeout=5)
-    assert writer_finished.wait(timeout=5), "the writer never finished once the reader released"
-    assert result["content"] == "V1" and result["row"]["revision"] == 1
+    assert written.wait(timeout=5), "the writer never finished once the reader released"
+    content, row = shown[0]
+    assert content == "V1"
+    assert row == {"revision": 1, "filename": "solution-assessment.md", "updated_at": row["updated_at"], "stale": False}
 
 
 def test_a_first_discovery_that_races_a_concurrent_write_conflicts():
     svc = _session()
     racing = full_model(risks=slot(70, "explicit", "high", "rollout risk"))
     disco = DiscoveryService(client=RacingClient(json.dumps(full_model()), lambda: svc.update_model("s", racing)))
-    with pytest.raises(RevisionConflictError):
+    with pytest.raises(E.RevisionConflictError):
         disco.run_discovery("s")
     assert svc.load_model("s").model["risks"].value == "rollout risk"
 
@@ -413,7 +368,7 @@ def test_a_legacy_session_is_named_in_the_error_rather_than_migrated_behind_your
         (legacy / name).write_text(text, encoding="utf-8")
     svc = SessionService()
     assert not svc.exists("old")
-    with pytest.raises(SessionNotFoundError) as e:
+    with pytest.raises(E.SessionNotFoundError) as e:
         svc.load_model("old")
     assert e.value.details.get("legacy") is True and "session migrate" in str(e.value)
     store.migrate_legacy("old")                           # the explicit migration: the model becomes revision 1
@@ -445,7 +400,7 @@ def test_an_omitted_source_revision_is_refused_rather_than_read_as_now(art, move
     """#6 F1: the save that used to be recorded `revision: 2, stale: false`; it writes nothing and says what to pass."""
     with pytest.raises(UnstatedSourceRevisionError) as e:
         art.save(moved, "prd", "# PRD reasoned from revision 1")
-    assert isinstance(e.value, RequivoError)
+    assert isinstance(e.value, E.RequivoError)
     assert e.value.details["source_revision"] is None and e.value.details["current_revision"] == 2
     assert all(word in e.value.message for word in ("--revision", "source_revision", "1", "2"))
     prd = store.canonical_dir(moved) / "artifacts" / "prd.md"
@@ -465,9 +420,9 @@ def _unreadable(p):
 
 @pytest.mark.parametrize("damage", [_corrupt, _unreadable, lambda p: p.unlink()], ids=["corrupt", "unreadable", "missing"])
 def test_a_corrupt_revision_file_is_refused_as_a_structured_error(art, moved, damage):
-    """#6 F2: `except RequivoError` only caught a *missing* revision; the guard is as wide as the failure set."""
+    """#6 F2: `except E.RequivoError` only caught a *missing* revision; the guard is as wide as the failure set."""
     damage(_revision_file(moved, 1))
-    with pytest.raises(InvalidSessionError) as e:
+    with pytest.raises(E.InvalidSessionError) as e:
         art.save(moved, "prd", "# PRD", source_revision=1)
     assert e.value.code == "unreadable_source_revision" and e.value.details["source_revision"] == 1
     if damage is _corrupt:
@@ -479,9 +434,9 @@ def test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape(art, 
     with pytest.raises(UnstatedSourceRevisionError) as unstated:
         art.save(moved, "prd", "# PRD")
     _revision_file(moved, 1).write_text("{", encoding="utf-8")
-    with pytest.raises(InvalidSessionError) as unreadable:
+    with pytest.raises(E.InvalidSessionError) as unreadable:
         art.save(moved, "prd", "# PRD", source_revision=1)
     assert (unstated.value.code, unreadable.value.code) == ("unstated_source_revision", "unreadable_source_revision")
-    assert isinstance(unstated.value, InvalidSessionError) and isinstance(unreadable.value, InvalidSessionError)
+    assert isinstance(unstated.value, E.InvalidSessionError) and isinstance(unreadable.value, E.InvalidSessionError)
     assert {"slug", "type", "source_revision", "current_revision", "cause"} == set(unstated.value.details) == set(unreadable.value.details)
     assert unstated.value.details["cause"] is None and unreadable.value.details["cause"] is not None

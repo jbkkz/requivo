@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from _fakes import full_model, out, slot
+from _fakes import full_model, out, replace_fails, seed_session, slot
 from test_persistence import _legacy, _migrate, _problem
 
 from requivo.core import persistence as store
@@ -28,10 +28,12 @@ POSIX_ONLY = pytest.mark.skipif(store.fcntl is None, reason="POSIX-only branch; 
 
 
 def _session(slug: str, **slots) -> SessionService:
-    svc = SessionService()
-    svc.create_session("A real request.", slug=slug)
-    svc.update_model(slug, full_model(**slots))
-    return svc
+    seed_session(slug, "A real request.", **slots)
+    return SessionService()
+
+
+def _brief(slug: str):
+    return store.save_session_artifact(slug, "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n", source_revision=1)
 
 
 def _race(n: int, work) -> list:
@@ -65,13 +67,9 @@ def test_a_lock_on_a_slug_with_no_session_leaves_no_trace():
         with store.session_lock(slug):
             pass  # pragma: no cover - must never be granted
 
-    routes = {
-        "session-lock": take_the_lock,
-        "save-revision": lambda slug: store.save_revision(slug, out({})),
-        "save-session-artifact": lambda slug: store.save_session_artifact(
-            slug, "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n", source_revision=1),
-        "mark-stale": lambda slug: ArtifactService(FileSessionRepository()).mark_stale(slug, ["problem"]),
-    }
+    routes = {"session-lock": take_the_lock, "save-revision": lambda slug: store.save_revision(slug, out({})),
+              "save-session-artifact": lambda slug: _brief(slug),
+              "mark-stale": lambda slug: ArtifactService(FileSessionRepository()).mark_stale(slug, ["problem"])}
     for name, call in routes.items():
         with pytest.raises(RequivoError) as ei:
             call(f"ghost-{name}")
@@ -116,7 +114,7 @@ def test_the_lock_still_guards_a_session_that_exists():
     assert not (store.canonical_dir("live") / ".lock").exists()
 
     with store.session_lock("live"):   # re-entrant within the thread: the service holds it, every core call takes it again
-        store.save_session_artifact("live", "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n", source_revision=1)
+        _brief("live")
         rev, meta = store.save_revision("live", out({"problem": slot(90, "explicit", "high", "REAL v2")}))
     assert (rev, meta.current_revision, _problem("live")) == (2, 2, "REAL v2")
     assert store.read_meta("live").artifact_status["brief"].revision == 1
@@ -155,7 +153,7 @@ def test_reentrant_acquisition_within_a_thread_still_never_touches_the_lock_twic
     real_acquire = store_lock._acquire
     monkeypatch.setattr(store_lock, "_acquire", lambda fd, slug: (calls.append(slug), real_acquire(fd, slug))[1])
     with store.session_lock("nested"), store.session_lock("nested"):
-        store.save_session_artifact("nested", "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n", source_revision=1)
+        _brief("nested")
     assert calls == ["nested"]
 
 
@@ -330,7 +328,7 @@ def test_delete_waits_for_a_concurrent_writer_then_removes_what_it_wrote():
 
     def hold_and_write():
         with store.session_lock("patient"):
-            store.save_session_artifact("patient", "brief", ARTIFACT_FILENAMES["brief"], "# Brief\n", source_revision=1)
+            _brief("patient")
             writer_holds_lock.set()
             writer_may_finish.wait(timeout=5)
 
@@ -369,16 +367,7 @@ def test_atomic_write_survives_a_transient_permission_error(tmp_path, monkeypatc
     """Invariant 18: on Windows a scanner holding the destination makes `rename` raise; retried, briefly."""
     target = tmp_path / "model.json"
     target.write_text("old", encoding="utf-8")
-    attempts = {"n": 0}
-    real_replace = Path.replace
-
-    def flaky(self, dst):
-        attempts["n"] += 1
-        if attempts["n"] <= 3:
-            raise PermissionError(13, "Access is denied")
-        return real_replace(self, dst)
-
-    monkeypatch.setattr(Path, "replace", flaky)
+    attempts = replace_fails(monkeypatch, 3)
     store._atomic_write(target, "new")
     assert target.read_text(encoding="utf-8") == "new"
     assert attempts["n"] == 4, "the write did not actually go through the retry path"
@@ -388,13 +377,7 @@ def test_atomic_write_still_gives_up_on_a_permanent_permission_error(tmp_path, m
     """Bounded, and the bound is the point: exactly `_REPLACE_ATTEMPTS`, then the original error."""
     target = tmp_path / "model.json"
     target.write_text("old", encoding="utf-8")
-    attempts = {"n": 0}
-
-    def always_denied(self, dst):
-        attempts["n"] += 1
-        raise PermissionError(13, "Access is denied")
-
-    monkeypatch.setattr(Path, "replace", always_denied)
+    attempts = replace_fails(monkeypatch, None)
     with pytest.raises(PermissionError):
         store._atomic_write(target, "new")
     assert attempts["n"] == store._REPLACE_ATTEMPTS
@@ -414,19 +397,8 @@ def test_concurrent_atomic_writes_do_not_collide_on_a_temp_file(workspace):
     """The scratch file must be private to the call: one writer's payload lands, never a blend."""
     d = workspace / "scratch"
     d.mkdir()
-    target, errors = d / "model.json", []
-
-    def write(n: int) -> None:
-        try:
-            store._atomic_write(target, f"payload-{n}\n" * 200)
-        except BaseException as e:  # noqa: BLE001
-            errors.append(e)
-
-    threads = [threading.Thread(target=write, args=(n,)) for n in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-    assert errors == []
+    target = d / "model.json"
+    outcomes = _race(8, lambda n: store._atomic_write(target, f"payload-{n}\n" * 200))
+    assert outcomes == [target] * 8, outcomes
     assert len(set(target.read_text(encoding="utf-8").splitlines())) == 1
     assert not list(d.glob(".*tmp"))

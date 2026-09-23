@@ -18,7 +18,6 @@ from _fakes import (
     _model_in_out,
     forge_meta,
     full_model,
-    full_slots,
     printed,
     run_cli,
     run_cli_fails,
