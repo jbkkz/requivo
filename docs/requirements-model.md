@@ -14,10 +14,8 @@ technical docs speak.
 - **What we are assuming** — inferred from context, or the builder's own unconfirmed belief about the
   world (will users want this, will they pay); confirm before building.
 - **Open question** — not yet known, and worth asking when the answer would move the build.
-- **To test** — not yet known, and **not** worth asking: only a real test would settle it. The
-  default state of a half-formed idea, not an edge case — it names what would settle it and does not
-  block readiness, because a named test still to run is compatible with "precise enough to build
-  from."
+- **To test** — not yet known, and **not** worth asking: only a real test would settle it. It names
+  what would, and does not block readiness.
 - **How we know it vs how fully** — whether something was stated or inferred is separate from whether
   it has been covered in enough detail. Both have to hold before a topic stops blocking.
 - **Decision and assumption to review** — a settled choice with its trade-off; a premise worth
@@ -52,22 +50,15 @@ this same filled model.
 
 ## One engine, several perimeters
 
-> **Not yet built.** Everything on this page describes the only decision structure the product
-> implements today: **software scoping**. `decision: the-job-not-the-artifact-type` records that the
-> scope is the job, not this one artifact type — the same driver, over a different **perimeter**'s
-> slot schema and elicitation spec, for a request that is not about scoping software at all. Until
-> #608 lands there is no plural schema, no perimeter field, and no router — "the model" below means
-> this one perimeter.
-
-A perimeter owns its slot schema, its elicitation spec, and the discovery guidance specific to it. A
-new one ships a single artifact, its equivalent of the decision brief; software scoping carries the
-larger set named below, in *Dependencies and staleness*, because it grew them one at a time and not
-because a perimeter is entitled to them. What is **Core**, unchanged across every perimeter, is the
-*mechanism* the rest of this page describes: the driver, evidence and coverage, the reasoning items
-(decisions, challenges, opportunities, exclusions, decision thresholds), the dependency graph and its
-staleness rule, readiness. Where a section below names a concrete artifact type (`prd`, `stories`, `estimate`,
-`criteria`, `epic`, `release`) or a software-specific slot, that is this one perimeter's own content
-riding on the shared mechanism, not the mechanism itself.
+The scope is the job, not one artifact type (`decision: the-job-not-the-artifact-type`). A
+**perimeter** owns its slot schema, its elicitation spec (`assets/perimeters/<id>/`), its discovery
+guidance and, to begin with, one artifact. Software scoping is the default and carries the larger set
+of artifacts below because it grew them one at a time; go-to-market is the second (#608, #609). A
+session's perimeter is frozen at creation, chosen by `--perimeter` or by the router (#601,
+`decision: two-judgment-calls-not-one`). What is **Core**, identical across perimeters, is the
+mechanism this page describes: the driver, evidence and coverage, the reasoning items, the dependency
+graph and its staleness rule, readiness. Where a section names a concrete artifact type or slot, that
+is software's own content riding on the shared mechanism.
 
 ## The driver: information value = uncertainty × impact
 
@@ -84,28 +75,15 @@ Two independent signals, deliberately not collapsed:
 - **Coverage** — *how fully* a slot is covered (its completeness). A slot can be `explicit` yet thinly
   covered — stated in one word. That still blocks readiness; it reads as "partial", not "confirmed".
 
-**`explicit` needs an authority, not just confidence** (`decision: confidence-stays-one-axis`). It
-means whoever said it can actually commit to it — a client's own word always qualifies. Requivo's
-target user is now as often a solo builder as a PM relaying a client's request, and with no client
-only the builder's own *intent* is an authority on itself: what they want, will build, will spend.
-Their unconfirmed *belief about the world* — will users want this, will they pay for it — is never
-`explicit`, however plainly they state it; it is `inferred` (an assumption to confirm) or `testable`
-(below), the same rule a fact read out of a repository already answers to: it is `inferred`, never
-`explicit`, because it is the artifact speaking and not the client (#611). A model graded on how much
-a solo builder typed, rather than on what is actually settled, would report "ready" on nothing but
-their own guesses — this rule is what keeps readiness meaning something once there is no client to
-hold it to.
+**`explicit` needs an authority** (`decision: confidence-stays-one-axis`, #611): a client's word
+always qualifies; with no client, only the builder's own *intent* (what they want, will build, will
+spend). Their unconfirmed *belief about the world* — will users want or pay for this — is `inferred`
+or `testable`, however plainly stated, just as a fact read out of a repository is `inferred`. Without
+this, readiness would measure how much a solo builder typed.
 
-**`testable` is a fourth kind of unknown, and a different one from `unknown`.** Both name a gap; they
-carry opposite remedies. `unknown` is a gap someone could close by answering — ask it, and it blocks
-readiness correctly until it is asked. `testable` is a gap **no amount of asking closes** — a
-go-to-market bet, whether anyone wants the feature — and it is the default shape of a half-formed
-idea, not an edge case for it. A `testable` slot must name what would settle it, or it is refused
-outright (the same rule a `Challenge`'s five required parts already enforce); named, it does **not**
-block readiness (see below), because a known unknown deliberately deferred to a real test is
-compatible with "precise enough to build from" in a way an unasked question is not. Settling one — a
-test's result folded back in — is an ordinary model change and propagates through `requivo impact`
-like any other.
+**`testable` is a gap no amount of asking closes** — a go-to-market bet, whether anyone wants the
+feature — where `unknown` is one an answer would close. A `testable` slot must name what would settle
+it or it is refused; named, it does not block readiness. Settling one is an ordinary model change.
 
 ## Decisions, challenges, opportunities
 
@@ -117,6 +95,9 @@ The assessment layer, persisted into the model so every generator inherits it:
   alternative, the consequence, and a recommendation. This is the differentiator — it pushes back on
   the request rather than organising it.
 - **Opportunity** — a leverage point, ranked, naming the modules it reaches.
+
+Exclusions (what is deliberately out of scope, #599) and decision thresholds (#604) are reasoning items
+of the same kind, with content-derived ids.
 
 ## Dependencies and staleness
 
@@ -130,20 +111,14 @@ and the artifacts that would go **stale**; a discovery turn that materially move
 already-generated files that no longer match it. An unrelated (or completeness-only) change leaves an
 artifact fresh — staleness follows the dependency graph, not the revision number.
 
-The same edge answers a second question, in the other direction of time: a decision **derived from
-thinner evidence than exists now** is one whose `derived_from` slot was `empty` or `inferred` at the
-revision the decision was first recorded and is `explicit` now (#493). The slot did not move away
-from the decision — it moved *toward* being filled, which is the change nobody re-reads a decision
-for. `requivo impact` and the Web's traceability panel name such decisions as *worth re-reading*.
-Never as *contradicted*: whether the confirmed value disagrees with the decision is a judgment over
-both, and judgment is the assessment's, at the cost of a call.
+The same edge answers the other direction of time: a decision **derived from thinner evidence than
+exists now** — a `derived_from` slot that was `empty` or `inferred` when it was recorded and is
+`explicit` now (#493) — is named *worth re-reading* by `requivo impact` and the Web, never
+*contradicted*: that judgment costs a call.
 
-Every required slot is guaranteed to reach at least one artifact's staleness check — a specific one
-(prd, stories, estimate, criteria, epic, release) when it shapes that artifact's content, or the
-solution assessment's judgment over the whole model when it does not. A slot reaching neither used to
-be possible without anyone noticing: nothing marked the specific artifacts stale when it changed, only
-the assessment. A test now catches it — see CLAUDE.md's "Adding a slot" checklist when introducing a
-new one.
+Every required slot reaches at least one artifact's staleness check — a specific artifact when it
+shapes its content, or the assessment's judgment over the whole model — and a test catches one that
+reaches neither (CLAUDE.md's "Adding a slot").
 
 ## Readiness
 
@@ -151,91 +126,37 @@ Readiness is binary: a high-impact slot must be both `explicit` **and** covered 
 boundary to stop blocking the build. A high-impact gap — empty, unknown, or stated-but-thin — keeps a
 session out of "ready". Requivo does not invent graded "nearly ready" levels; it shows what blocks.
 
-One high-impact state does **not** block: a slot graded `testable` (above), because it already names
-what would settle it and readiness means "precise enough to build from", not "nothing left unproven".
-A session can reach "ready" carrying testable slots in plain view — that is the honest outcome for
-the target persona's half-formed idea, not a loophole. What still blocks, exactly as before, is a
-high-impact slot that is merely `inferred` — an unconfirmed belief nobody has flagged as worth a real
-test — which is exactly what stops a model built entirely of a solo builder's untested guesses from
-reading as settled.
+A `testable` slot does **not** block — it already names what would settle it, and "ready" means
+precise enough to build from, not nothing left unproven. A high-impact slot that is merely `inferred`
+still blocks, which is what stops a model of untested guesses from reading as settled.
 
 ## The language of the outputs
 
-A request often arrives in the client's own language — a forwarded French or Spanish email. Requivo
-splits its outputs in two, because the two halves have different readers:
+Requivo splits its outputs by reader:
 
-- **The conversation mirrors the request.** The questions Requivo asks back, and the understanding it
-  renders every turn — the objective, the likely scope, the assumptions and the least-explored area —
-  are written in the language the request arrived in. They are read by the person who received that
-  email and who has to take the questions back to their client, so mirroring is what makes them
-  usable. Requivo mirrors; it does not translate the request into English and answer in English.
-- **The buildable artifacts anchor English.** The decision brief, the PRD, the stories, the
-  acceptance criteria, the epic and the release notes are written in English whatever language the
-  request was in. They feed dev teams and trackers — a GitHub or GitLab issue body, a backlog, a
-  spec a build team reads — and those are English-speaking destinations by default. The decision
-  brief sits on this side rather than with the conversation because its reasoning is folded into the
-  model and every later generator is prompted with that model: a brief in the request's language
-  would carry that language into all five artifacts downstream of it.
+- **The conversation mirrors the request.** The questions and the understanding rendered each turn
+  are in the request's language: they are read by the person who has to take them back to the client.
+  Requivo mirrors; it does not translate.
+- **The buildable artifacts anchor English** — the decision brief, PRD, stories, acceptance criteria,
+  epic and release notes feed dev teams and trackers. The brief sits on this side because its
+  reasoning is folded into the model every later generator reads.
 
-**The saved decision brief is the one artifact this split does not cleanly divide, and it is
-bilingual on purpose rather than by accident.** `brief_markdown` is the only writer that receives an
-`EngineOutput` as well as its contract, and half of what it emits is a *projection* of the model:
-the objective, the current understanding, each slot's stated value under *What is confirmed*, the
-first half of *Important assumptions*, — since #599 — *Out of scope*, and — since #604 — *Decision
-thresholds*, are the model's own words, copied through. Those words are on the mirroring side, so a
-French request produces a
-`solution-assessment.md` whose judgment — problem, solution, complexity, decisions, challenges,
-risks — is English and whose projected sections are French.
+**The saved brief is bilingual on purpose** (`decision: the-decision-briefs-quoted-half`, #491):
+`brief_markdown` also receives the `EngineOutput`, and its projected sections — the objective, the
+current understanding, *What is confirmed*, the first half of *Important assumptions*, *Out of scope*
+(#599) and *Decision thresholds* (#604) — are the model's own words, quoted, while the judgment is
+English. So a French request yields French questions and understanding, and an English PRD.
 
-That is not a defect to render away, and since #491 it is not an open question either:
-`decision: the-decision-briefs-quoted-half` settles it. **The saved brief stays on the English
-anchor side, and its projected sections are quotations** — the client's own words about their
-own problem, which is the one kind of text not improved by being rendered into the document's
-language. What decides it is the reader: a *saved* `solution-assessment.md` is read by the build
-side and stands as the trail behind a commitment, the same audience the anchor exists for, while the
-PM taking questions back to the client is served by the turn output, which mirrors.
+The policy is one sentence in each prompt asset's *Output format* block — `engine.md` for the
+mirroring half, the six artifact prompts for the English half. Requivo does **not** detect the
+request's language; nothing is stored or branched on.
 
-The two alternatives are rejected in that record with their reasons. In short: translating the
-projection means asking the provider to restate facts it was already given, which is exactly what
-CLAUDE.md refuses (*ask the provider for judgment; read the facts off the model*) — a restatement
-can drift, a projection cannot — and moving the brief to the mirroring side would put the first
-document in the build chain on the opposite side from the rest of it. Either change is confined to
-one function, `brief_markdown`, which is what keeps the cost of reversing this visible.
+**One open edge: `estimate`.** Its prompt carries no language sentence, so its `note` and `risks` come
+back in whatever language the model settles on. It was left open while the estimate was terminal-only;
+since #519 it is saved as `estimate.md`, and closing the edge is a prompt change that owes a golden
+re-capture. Until then "every artifact anchors English" means the six above.
 
-So a French request produces French questions and a French understanding, and an English PRD. That
-is the intended behaviour, not a limitation to work around.
-
-The policy is stated to the model in each prompt asset's *Output format* block — one sentence in
-`engine.md` for the mirroring half, one identical sentence in the six artifact prompts for the
-English half — so it is an instruction on those calls rather than something left to emerge. Requivo
-does **not** detect the request's language: nothing is stored about it and nothing branches on it.
-Both halves are instructions to the model about what it is writing, not a routing decision made in
-Python.
-
-**One call is deliberately outside the policy, and it is named here rather than left to be
-discovered.** `estimate` is prompted with no language sentence, so its `note` and `risks` — free text
-a reader sees — come back in whatever language the model settles on. When the sweep was made that
-was not an oversight: `estimate` was the one generator that produced **no file** — a terminal
-analysis read by the person who ran it, the same reader and the same room as the mirroring half —
-where every artifact on the English side is written to disk and read downstream by a dev team or a
-tracker. Since #519 the estimate *is* written to disk (`estimate.md`, beside the `stories.md` it was
-reasoned from), so the reason for leaving it open has weakened; the edge stays open all the same,
-because closing it is a prompt change, and a prompt change owes a golden re-capture that #519
-deliberately did not make. Until it is decided, "every artifact anchors English" means the six
-that carried a filename before #519, and a mixed-language `estimate.md` is a known consequence
-rather than a contradiction.
-
-Requivo Web reflects the same split. The page declares `lang="en"` for its own chrome, and the
-regions the policy says mirror the request — the request itself, the understanding, the questions —
-declare an empty `lang`, which is HTML's way of saying the language is unknown. Unknown is the
-honest claim: nothing here knows what language the client wrote in, and a guess that is usually
-right is still a guess.
-
-**What that buys, and what it does not.** It removes a false claim: the page no longer asserts that a
-French objective is English. It does **not** make a screen reader pronounce that objective correctly.
-[WCAG 3.1.2](https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts) asks for the actual
-language of each passage to be programmatically determinable, and `lang=""` is the opposite of
-determinable — a reader defaulting to English will read French with English rules exactly as before.
-So this is the strongest *true* statement available without detection, and the accessibility gap
-stays open behind it. Closing it needs a real BCP 47 value, which needs either detection or asking
-the user, and neither has been decided.
+Requivo Web declares `lang="en"` for its chrome and an empty `lang` on the regions that mirror the
+request — the honest claim, since nothing knows the client's language. That removes a false claim but
+does not satisfy [WCAG 3.1.2](https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts), which
+needs a real BCP 47 value, and so either detection or asking the user — neither decided.

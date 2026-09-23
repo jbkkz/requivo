@@ -1,16 +1,9 @@
 """What the runtime dependency floor *is*, and whether the environment is actually at it.
 
-`pyproject.toml`'s lower bounds are a promise to whoever runs `pip install requivo`. This script is
-what makes that promise testable: it owns the two halves a resolver cannot supply on its own --
-*which* requirements the promise covers, and whether the environment that came out is the one that
-was asked for. Why verification means installing the floor rather than inspecting the bound, and why
-a generated constraints file was rejected: `decision: dependency-floor-verified-by-install`.
-
-Scope is the *runtime* promise: `[project] dependencies` plus the `anthropic`, `web` and `api`
-extras, each of which a user installs by name. The `dev` extra is deliberately excluded -- pytest and ruff are
-this project's tooling, not something a user's resolver has to satisfy, and `tomli`/`packaging` are
-how the floor is measured, so flooring them is a leg checking itself.
-"""
+It owns what a resolver cannot: *which* requirements the `pyproject.toml` floor promises, and whether
+the environment that came out is the one asked for (`decision: dependency-floor-verified-by-install`).
+Scope: `[project] dependencies` plus the `anthropic`, `web` and `api` extras; `dev` is tooling, and
+`tomli`/`packaging` measure the floor, so flooring them would check the leg against itself."""
 
 from __future__ import annotations
 
@@ -18,8 +11,7 @@ import re
 import sys
 from pathlib import Path
 
-# Hand-classified rather than "every extra except dev", so a new extra needs a person's decision
-# instead of a silent default -- `api` (#425) escaped it for one review round.
+# Hand-classified, so a new extra needs a decision rather than a default (`api`, #425, slipped once).
 # Guarded by test_every_extra_in_the_manifest_is_either_floored_or_excluded_on_record.
 RUNTIME_EXTRAS = ("anthropic", "web", "api")
 
@@ -29,13 +21,7 @@ _LOWER_BOUND = re.compile(r">=\s*(?P<version>[0-9][0-9A-Za-z.*+!-]*)")
 
 
 class UndeclaredFloor(Exception):
-    """A runtime requirement with no `>=` bound.
-
-    Raised rather than skipped, and that is the whole point of this script existing. A requirement
-    that quietly drops out of the constraints file leaves a leg that installs *the newest* of it and
-    still reports having tested the floor -- the silent absence this file was written to close,
-    reappearing inside the check for it.
-    """
+    """A runtime requirement with no `>=` bound: raised, or its newest release is tested as the floor."""
 
 
 def _floor(requirement: str) -> tuple[str, str]:
@@ -69,11 +55,7 @@ def runtime_requirements(pyproject: dict) -> list[str]:
 
 
 def constraints(pyproject: dict) -> list[str]:
-    """The `name==floor` lines, deduplicated on name and sorted.
-
-    A name appearing in two extras with two different floors is a contradiction pip would resolve by
-    picking one, so it is refused here instead: the manifest is saying two things about one package.
-    """
+    """The `name==floor` lines, deduplicated and sorted; two different floors for one name are refused."""
     pins: dict[str, str] = {}
     for requirement in runtime_requirements(pyproject):
         name, version = _floor(requirement)
@@ -88,16 +70,7 @@ def constraints(pyproject: dict) -> list[str]:
 
 
 def _load_toml(text: str) -> dict:
-    """Parse TOML with the standard library, or with `tomli` below 3.11.
-
-    Not a fallback parser: `tomli` is the library that *became* `tomllib`, same code and same
-    author, so this is one implementation reached by two names rather than two answers that can
-    drift. It is in the `dev` extra and nowhere near the runtime promise this script measures.
-
-    The alternative was to require 3.11 and let the one CI leg pick its interpreter -- rejected
-    because the supported floor is 3.9, and a check that cannot run on the developer's own
-    interpreter is verified only by the leg it is meant to feed.
-    """
+    """Parse TOML with the standard library, or with `tomli` (the same code under its pre-3.11 name)."""
     try:
         import tomllib
     except ModuleNotFoundError:  # pragma: no cover - taken on 3.9/3.10, not on the version CI lints
@@ -108,18 +81,9 @@ def _load_toml(text: str) -> dict:
 def verify(pyproject: dict) -> list[str]:
     """Every runtime requirement whose *installed* version is not in its declared floor series.
 
-    The half that makes the leg mean anything. Asking a resolver for the oldest releases is a
-    request, not an outcome: drop `--resolution lowest-direct` from the command, or install an extra
-    in a second call without it, and the environment comes back at the newest of everything with
-    this leg still green over it.
-
-    **The check is exactly as precise as the declaration, and that is the design rather than a
-    shortfall.** `python-multipart>=0.0.9` names one release, so 0.0.20 fails. `jinja2>=3.1` promises
-    the 3.1 series and nothing narrower, so any 3.1.x satisfies it and 3.2 does not. Demanding an
-    exact match against the literal bound was tried first and is wrong twice over: `jinja2==3.1` names
-    no release that exists — the oldest is 3.1.0 — and `pydantic>=2.0` resolves to 2.0.2, because the
-    releases below it are not installable on every supported interpreter. A floor is the oldest
-    release a user can actually get, not the string in the manifest.
+        A resolver request is not an outcome: without this, dropping `--resolution lowest-direct` leaves
+        the leg green over the newest of everything. The check is as precise as the declaration:
+        `jinja2>=3.1` accepts any 3.1.x (there is no `3.1` release), `python-multipart>=0.0.9` exactly one.
     """
     from importlib.metadata import PackageNotFoundError
     from importlib.metadata import version as installed_version
@@ -154,10 +118,8 @@ With no arguments, write the `name==floor` constraints (one per runtime dependen
 
 Any other leading-dash argument is refused rather than treated as an output path."""
 
-# The only flags this script understands. Anything else starting with "-" is refused rather than
-# treated as an output path: a typo of --verify used to write a file of that name and exit 0, so a
-# reader believed a verification had run that never did (#494). Pinned by
-# test_an_unrecognised_flag_is_refused_not_written_as_a_path.
+# The only flags understood; any other "-..." is refused, not written as an output path (#494).
+# Pinned by test_an_unrecognised_flag_is_refused_not_written_as_a_path.
 _RECOGNISED_FLAGS = ("--verify", "-h", "--help")
 
 
@@ -178,8 +140,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     root = Path(__file__).resolve().parents[1]
-    # Explicit codec (#11): `read_text()` with no encoding decodes with the *locale* codepage, and
-    # this file carries em dashes.
+    # Explicit codec (#11): this file carries em dashes.
     pyproject = _load_toml((root / "pyproject.toml").read_text(encoding="utf-8"))
     if args and args[0] == "--verify":
         wrong = verify(pyproject)

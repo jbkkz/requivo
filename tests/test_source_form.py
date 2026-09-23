@@ -1226,6 +1226,16 @@ def _lean_budget_breaches(budget: dict) -> list[str]:
         if longest_lines > budget["docs"]["decision_record_max_lines"]:
             breaches.append(f"{longest.relative_to(REPO_ROOT).as_posix()} is {longest_lines} lines, over the "
                             f"{budget['docs']['decision_record_max_lines']} ceiling")
+    scripts, sb = prose_measure.measure_group(prose_measure.GROUPS["scripts"]), budget["scripts"]
+    if scripts.prose_share > sb["prose_share_max"]:
+        breaches.append(f"scripts/ prose share is {scripts.prose_share:.1%}, over the {sb['prose_share_max']:.1%} ceiling")
+    if scripts.largest is not None and scripts.largest.total > sb["largest_module_max_lines"]:
+        breaches.append(f"{scripts.largest.path.relative_to(REPO_ROOT).as_posix()} is {scripts.largest.total} lines, over the "
+                        f"{sb['largest_module_max_lines']} ceiling")
+    for kind in ("module", "function"):
+        length, where = scripts.docstring_max(kind)
+        if length > sb[f"{kind}_docstring_max_lines"]:
+            breaches.append(f"{where}'s {kind} docstring is {length} lines, over the {sb[f'{kind}_docstring_max_lines']} ceiling")
     claude_lines = prose_measure.line_count(REPO_ROOT / "CLAUDE.md")
     if claude_lines > budget["claude_md"]["max_lines"]:
         breaches.append(f"CLAUDE.md is {claude_lines} lines, over the {budget['claude_md']['max_lines']} ceiling")
@@ -1242,11 +1252,11 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
     """MUST-FIRE: every numeric ceiling zeroed in a scratch copy is caught and named, not only the first."""
     text = LEAN_BUDGET_TOML.read_text(encoding="utf-8")
     zeroed, count = re.subn(r"(?m)^(\w[\w.]*\s*=\s*)[0-9][0-9.]*\s*$", r"\g<1>0", text)
-    assert count == 12, f"expected 12 numeric ceilings in the real TOML, the scratch edit zeroed {count}"
+    assert count == 16, f"expected 16 numeric ceilings in the real TOML, the scratch edit zeroed {count}"
     scratch = tmp_path / "lean_budget.toml"
     scratch.write_text(zeroed, encoding="utf-8")
     breaches = _lean_budget_breaches(_load_budget(scratch))
-    assert len(breaches) == 12, breaches
+    assert len(breaches) == 16, breaches
     joined = "\n".join(breaches)
     # The largest module names are measured, not hardcoded: a split must not turn a passing guard red.
     src = prose_measure.measure_group(prose_measure.GROUPS["src"])
@@ -1255,5 +1265,6 @@ def test_the_lean_budget_guard_fires_on_a_scratch_copy_and_names_every_breach(tm
     assert largest_src_file is not None and largest_tests_file is not None
     for expected in ("src/", str(largest_src_file.path.relative_to(REPO_ROOT)), "code ratio",
                      str(largest_tests_file.path.relative_to(REPO_ROOT)), "docstring", "meta-guard estate",
-                     "compatibility.md", "docs/decisions/", "CLAUDE.md"):
+                     "compatibility.md", "docs/decisions/", "CLAUDE.md", "scripts/ prose share",
+                     prose_measure.measure_group(prose_measure.GROUPS["scripts"]).largest.path.relative_to(REPO_ROOT).as_posix()):
         assert expected in joined, f"a zeroed ceiling should have named {expected!r}: {joined}"

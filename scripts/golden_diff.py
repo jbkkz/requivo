@@ -1,44 +1,18 @@
 #!/usr/bin/env python
 """The regression lens — changes that clear the noise floor, not run-to-run jitter.
 
-Compares each request's working-tree K-run baseline against its committed baseline in git ``HEAD``,
-and reports a slot's impact/confidence as *moved* only when the old baseline was unanimous on that
-dimension (a reliable reference) and the new consensus clearly shifted. A dimension that flickers
-across the K runs is noise and stays silent — that is the whole point of capturing K runs instead of
-one. Moves are split into **strong** (the new runs are unanimous too, so no single run's jitter can
-explain it) and **weak** (a bare majority — at K=3 that is one run flipping). Act on strong; watch
-weak in aggregate. See ``golden_lib`` for the consensus and floor logic.
-
-With no committed baseline yet (a fresh capture), it instead prints the **noise floor** itself: how
-much of each request's model is stable enough to diff on. A request with few unanimous slots will only
-ever surface large changes; that's information, not a failure.
-
-An **interactive** request (one with an answer sheet) gets a second readout on top: what the capture's
-deep turns did — questions re-asked after the client answered them, confirmations the model stopped
-carrying, completeness that fell back. That lens has its own third state and says *not measured*
-rather than printing an empty finding set, because a single-pass baseline is silent about turn 3 in a
-way that reads exactly like a clean one (#137).
-
-A capture taken with ``golden_run.py --brief`` gets a third: the **assessment** lens, over the
-complexity verdict and the challenge themes. All three run on every request, and the run's verdict is
-the **union** of the ones that ran — the strongest signal any of them found, never the short-circuit
-that once made the assessment lens unreachable behind a flat slot consensus (#162). Guarded by
-`test_the_verdict_is_the_union_of_the_lenses_that_ran` and
-`test_the_assessment_lens_runs_when_the_slot_consensus_held_still`.
-
-A baseline and a fresh capture taken under **different perimeters** (#608, #621) never reach any of
-the three lenses above: a slot id means a different thing in each perimeter's own schema, so nothing
-would be a real comparison. `diff_one` refuses it before loading either side, names both perimeters,
-and moves no verdict — the same shape as a lens that could not look. Guarded by
-`test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`.
-
-Workflow: golden_run.py (re-capture) → golden_diff.py (read the signal) → commit if intended.
+Compares each request's working-tree K-run capture against its committed baseline in ``HEAD``. A
+slot dimension *moved* only when the old baseline was unanimous on it and the new consensus shifted:
+**strong** if the new runs are unanimous too, **weak** on a bare majority. With no baseline yet it
+prints the noise floor. Interactive requests add the deep-turn lens (#137), ``--brief`` captures the
+assessment lens; every lens runs and the verdict is their union (#162,
+`test_the_verdict_is_the_union_of_the_lenses_that_ran`). Captures under different perimeters are
+refused before either side is parsed (#621). The manual is ``docs/evaluations.md``.
 
 Usage:
     python scripts/golden_diff.py              # every request
     python scripts/golden_diff.py <slug>...    # only the named one(s)
-    python scripts/golden_diff.py <slug> --questions   # the questions themselves, old vs new
-"""
+    python scripts/golden_diff.py <slug> --questions   # the questions themselves, old vs new"""
 
 from __future__ import annotations
 
@@ -80,24 +54,15 @@ def _head_version(rel_path: str) -> str | None:
 
 
 def _show_freshness(rel_path: str) -> None:
-    """Is the committed baseline at `rel_path` current with respect to `WATCHED_PATHS`? Printed first,
-    before any lens output, because without it the reader *is* the control -- nothing else says
-    whether the movement a lens reports below is a working-tree edit's own effect or the accumulation
-    of commits nobody has re-captured against yet (#405, #410).
+    """Is the committed baseline at `rel_path` current with respect to `WATCHED_PATHS`? (#405, #410)
 
-    Three states, and `unknown` must never render as `current` — the same collapse `golden_diff`'s
-    own module docstring already refuses for a byte-identical capture, one layer up: a git failure
-    and a clean baseline must not read the same way. Guarded by
-    `test_a_stale_baseline_is_named_before_any_lens_output`,
-    `test_a_current_baseline_says_so_without_alarm` and
-    `test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current`."""
+        Printed before any lens, in three states; `unknown` never renders as `current`
+        (`test_an_unrecoverable_freshness_check_is_reported_as_unknown_not_current`).
+    """
     fr = baseline_commits_since(rel_path)
     watched = ", ".join(WATCHED_PATHS)
     if fr["state"] == "unknown":
-        # `reason` is the only one of this function's three printed fields that carries text from
-        # outside the process (git's stderr, or `str(exc)`) rather than a fixed git format like
-        # `%cI`/`%H` -- so it has the strongest claim to the same guard the commit-row loop below
-        # already gives `date`/`sha`/`subject`, and #461 is that guard reaching this print site too.
+        # `reason` carries text from outside the process (git's stderr), so it is escaped too (#461).
         print(f"  ? baseline freshness: could not tell ({display_token(fr['reason'])})")
         return
     if fr["state"] == "current":
@@ -107,10 +72,8 @@ def _show_freshness(rel_path: str) -> None:
     print(f"  ⚠ baseline captured {fr['captured_at']}; {len(commits)} commit(s) touching {watched} "
           f"since — any movement below may be their combined effect, not only a working-tree edit:")
     for c in commits[:5]:
-        # A commit subject is contributor-written text, untrusted the same way `questions_one`
-        # already treats provider prose (invariant 14, #40): raw `\r` would return the cursor to
-        # column 0 and overwrite the date/sha prefix. `date`/`sha` go through it too, for a future
-        # `--format` field. Guarded by `test_a_hostile_freshness_reason_cannot_forge_a_line`.
+        # A commit subject is contributor text: escaped, or a raw CR could overwrite the date/sha prefix
+        # (invariant 14, test_a_hostile_freshness_reason_cannot_forge_a_line).
         print(f"      {display_token(c['date'])}  {display_token(c['sha'])}  "
               f"{display_token(c['subject'])}")
     if len(commits) > 5:
@@ -118,19 +81,12 @@ def _show_freshness(rel_path: str) -> None:
 
 
 def _show_model(old_text: str | None, new_text: str | None) -> None:
-    """Which model each side of this comparison was captured on — printed beside the freshness line,
-    because it is the other capture-time variable and the cheaper of the two to move (#515).
+    """Which model each side was captured on, beside the freshness line (#515).
 
-    `baseline_commits_since` watches the assets a capture's prompt is built from; nothing watched the
-    model, and two of its three sources are the environment. Export `REQUIVO_MODEL=<something else>`,
-    re-capture one request, and every lens below reports the swap as prompt movement — the confident
-    readout #405 describes, about something the reader did not change.
-
-    **Three states, and the third is the whole of it.** A baseline written before this key existed
-    carries no model, and that renders as *unknown* — never as agreement with whatever is configured
-    now, and never as a missing line. It is `_show_freshness`'s own rule on a second axis: `unknown`
-    must never render as `current`. Pinned by
-    `test_a_baseline_with_no_model_key_does_not_read_as_agreement`."""
+        Nothing else watches the model, and a swap would read as prompt movement in every lens. A baseline
+        with no model key renders *unknown*, never agreement
+        (`test_a_baseline_with_no_model_key_does_not_read_as_agreement`).
+    """
     baseline = captured_model(old_text) if old_text is not None else None
     candidate = captured_model(new_text) if new_text is not None else None
     if baseline is None or candidate is None:
@@ -153,16 +109,11 @@ def _show_model(old_text: str | None, new_text: str | None) -> None:
 
 
 def _perimeters_comparable(old_text: str, new_text: str) -> bool:
-    """Print which perimeter each side of this comparison ran under, and say whether a comparison is
-    even possible (#621).
+    """Print each side's perimeter and whether a comparison is possible at all (#621).
 
-    Unlike a model swap (`_show_model` above, named but not gating -- two models can still be read as
-    opinions on the same question), a perimeter swap is not: a slot id means a different thing in
-    each perimeter's own schema, so `movements()` would silently diff unrelated concepts and print a
-    confident-looking result over a comparison that was never valid. Refused here, before either side
-    is loaded into `EngineOutput`s -- the same shape as a lens that could not look: it says so on its
-    own line and moves no verdict. Guarded by
-    `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
+        A slot id means something different in each perimeter's schema, so a mismatch is refused — said
+        on its own line, moving no verdict — where a model swap is only named.
+    """
     old_p, new_p = captured_perimeter(old_text), captured_perimeter(new_text)
     if old_p == new_p:
         print(f"  · captured under perimeter {display_token(old_p)} (baseline and candidate agree)")
@@ -175,27 +126,19 @@ def _perimeters_comparable(old_text: str, new_text: str) -> bool:
 
 
 def diff_one(slug: str) -> str:
-    """Print the signal for one request. Returns its status: ``moved``, ``flat``, ``stale`` (no
-    capture on disk, or a capture that is byte-identical to HEAD and so never landed), or
-    ``perimeter_mismatch`` (#621: baseline and candidate were captured under different perimeters, so
-    nothing below them is a real comparison).
+    """Print the signal for one request; returns ``moved``, ``flat``, ``stale`` or ``perimeter_mismatch``.
 
-    **Ordering is load-bearing (#621, must-fire P1, Codex on #622).** The perimeter comparability
-    check runs on the two envelopes' raw text -- `captured_perimeter`, never an `EngineOutput` -- and
-    it runs *before* either side is parsed into one. The first cut of this guard checked after `new`
-    was already loaded unconditionally at the top of the function: a genuine go-to-market capture's
-    own valid slots (`icp`, `capacity`, …) then raised `ValidationError` against the software default
-    every `EngineOutput.model_validate` call here used to carry, so the one path this function exists
-    to take was unreachable through a real capture -- it crashed before the refusal ever ran. Guarded
-    by `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`."""
+        ``stale`` is no capture on disk, or one byte-identical to HEAD. The perimeter check reads the raw
+        envelopes *before* either side is parsed: parsing first crashed on a real go-to-market capture
+        (#621, `test_a_perimeter_mismatch_refuses_before_the_candidate_is_ever_parsed`).
+    """
     path = runs_path(slug)
     rel_path = f"fixtures/golden/{slug}.runs.json"
     old_text = _head_version(rel_path)
 
     print(f"\n{slug}")
     if old_text is not None:
-        # Freshness is a fact about the *committed* baseline — there is nothing to say about it when
-        # there isn't one yet; the "⊕ NEW" branch below already names that state on its own.
+        # Freshness is about the committed baseline; the NEW branch below names its absence.
         _show_freshness(rel_path)
         _show_model(old_text, path.read_text(encoding="utf-8") if path.exists() else None)
 
@@ -207,9 +150,7 @@ def diff_one(slug: str) -> str:
     new_perimeter = captured_perimeter(new_text)
 
     if old_text is None:
-        # No baseline yet — report the noise floor so we know how trustworthy future diffs will be.
-        # Nothing to compare against, so nothing to gate: `new_perimeter` is this capture's own, and
-        # every reader below is told it explicitly rather than assuming software.
+        # No baseline yet: report the noise floor, under this capture's own perimeter.
         new = load_runs(new_text, perimeter=new_perimeter)
         st = stability(new, perimeter=new_perimeter)
         print("  ⊕ NEW (no baseline in HEAD)")
@@ -217,18 +158,15 @@ def diff_one(slug: str) -> str:
               f"impact, {st['unanimous']['state']}/{st['total_slots']} on confidence, across "
               f"{st['n']} runs")
         print(f"  stable themes: {', '.join(st['themes']) or '—'}")
-        # On a first capture these readouts *are* the finding — there is nothing to diff against,
-        # and what the deep turns did is the whole reason an interactive request exists (#137). The
-        # assessment gets the same treatment for the same reason (#162).
+        # On a first capture these readouts *are* the finding (#137, #162).
         _show_turns(None, load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
                    perimeter=new_perimeter)
         _show_assessment(None, load_briefs(new_text))
         return "moved"
 
     if new_text == old_text:
-        # Byte-identical to HEAD means the capture never landed — the engine is non-deterministic, so
-        # a genuine re-run can't reproduce a file exactly. Reporting "no change" here would be a false
-        # all-clear, which is the one failure mode a regression lens must not have.
+        # Byte-identical to HEAD means the capture never landed (a real re-run cannot reproduce a file);
+        # "no change" here would be a false all-clear.
         print("  ! capture identical to HEAD — not re-captured (re-run golden_run.py)")
         return "stale"
 
@@ -241,18 +179,9 @@ def diff_one(slug: str) -> str:
     new = load_runs(new_text, perimeter=new_perimeter)
     m = movements(old, new, perimeter=new_perimeter)
 
-    # Every lens runs, and the verdict is the union of what the ones that ran found. Independence is
-    # the point, not the ordering: each watches something the others cannot see, so a null result
-    # from one is not evidence against a finding from another. CLAUDE.md says this directly about
-    # these two — *the slot tiers are a projection; the questions and challenges are the product*.
-    #
-    # It used to be a short-circuit over the whole function: a flat slot consensus printed "no change
-    # above the noise floor" and returned, so the assessment lens was unreachable in exactly the case
-    # it exists for, and `--brief` doubles that request's calls — the maintainer who paid for the
-    # capture was the one told there was nothing to see. A lens that never ran, reported as a lens
-    # that ran and found nothing, which is this file's own stated failure mode one lens over (#162).
-    # `test_the_assessment_lens_runs_when_the_slot_consensus_held_still` is what fails if the
-    # short-circuit comes back.
+    # Every lens runs, and the verdict is the union of those that ran: a flat slot consensus is not
+    # evidence against the assessment lens (#162,
+    # test_the_assessment_lens_runs_when_the_slot_consensus_held_still).
     signals = [
         _show_turns(load_turns(old_text, perimeter=new_perimeter),
                    load_turns(new_text, perimeter=new_perimeter), load_answers(new_text),
@@ -266,10 +195,7 @@ def diff_one(slug: str) -> str:
 
 
 def _show_slots(m: dict) -> str | None:
-    """Print what moved in the slot consensus. Returns its tier: `strong`, `weak` or None.
-
-    The flat line decides only whether *this section* is a dash. It is not a verdict on the run, and
-    reading it as one is what made the assessment lens unreachable (#162)."""
+    """Print what moved in the slot consensus; returns `strong`, `weak` or None (never a run verdict, #162)."""
     if not m["moved"] and not m["themes_added"] and not m["themes_removed"]:
         print("  · no change above the noise floor")
         return None
@@ -293,25 +219,11 @@ def _show_slots(m: dict) -> str | None:
 
 def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None, *,
                 perimeter: str = DEFAULT_PERIMETER) -> str | None:
-    """Print what the interactive capture says about turn 3 and beyond. Returns its tier — `strong`
-    for a finding every run agrees on, None for no signal or no measurement.
+    """Print what the interactive capture says about turn 3 and beyond; returns `strong` or None.
 
-    Four states, and the last two are the ones this function exists for:
-
-    - **not applicable** — neither side is interactive. A single-pass request is not silent about the
-      deep turns, it has none, so this prints nothing at all rather than a reassuring dash.
-    - **compared** — both sides are interactive; the unanimous sets are diffed.
-    - **first capture** — the working tree has turns and HEAD does not. The lens is printed with no
-      comparison, because on a first capture the readout *is* the finding.
-    - **lens lost** — HEAD had turns and the working tree does not. That is a request that stopped
-      being interactive, and it has to be loud: the deep-turn lens went away, which reads exactly like
-      it went quiet.
-
-    `layers` is this capture's answer sheet (#163). It only ever adds a line, and only when the
-    capture is SHALLOW -- a healthy run's leftover layers are by design, and reporting them there
-    would be noise on every clean capture. Guarded by
-    `test_a_shallow_capture_reports_which_sheet_layers_went_unused` and
-    `test_a_deep_capture_with_layers_left_over_does_not_report_them`.
+        States: not applicable (prints nothing), compared, first capture (the readout is the finding),
+        lens lost (loud). `layers` adds a line only on a SHALLOW capture (#163,
+        `test_a_shallow_capture_reports_which_sheet_layers_went_unused`).
     """
     if new_turns is None and old_turns is None:
         return None
@@ -331,8 +243,7 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
         detail = ", ".join(f"{lab} ({c}/{lens['n']})" for lab, c in sorted(lens[key].items()))
         print(f"               {caption:<38} {detail or '—'}")
     if not lens["deep_enough"] and lens.get("unreached_layers"):
-        # The #163 diagnosis: the sheet, not the engine, may be why this run stopped short — it
-        # still had a layer to give on a slot the conversation never came back to.
+        # #163: the sheet, not the engine, may be why this run stopped short.
         detail = ", ".join(f"{lab} ({c})" for lab, c in sorted(lens["unreached_layers"].items()))
         print(f"               {'sheet layers never reached':<38} {detail}")
 
@@ -353,31 +264,12 @@ def _show_turns(old_turns, new_turns, layers: dict[str, list[str]] | None = None
 
 
 def _show_assessment(old_briefs: list | None, new_briefs: list) -> str | None:
-    """Print what moved in the assessment. Returns its tier: `strong`, `weak` or None.
+    """Print what moved in the assessment; returns `strong`, `weak` or None.
 
-    Four states, mirroring `_show_turns` for the same reason: a lens that could not look must say so
-    rather than reading as measured-and-clean, and it contributes nothing to the verdict (#162, #137).
-    Guarded by `test_the_assessment_lens_runs_when_the_slot_consensus_held_still` (the short-circuit
-    this lens used to sit behind) and `test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`.
-
-    - **not captured** — neither side has `--brief` output. Named on a line of its own rather than
-      left silent, because `--brief` is an opt-in flag and not a property of the request.
-    - **first capture** — nothing to compare against, so the consensus readout *is* the finding, the
-      same shape the noise floor beside it already has.
-    - **baseline only** — HEAD has an assessment and this capture does not. Marked `!` rather than
-      `·`, because committing this capture would drop a lens the baseline had — but, unlike
-      `_show_turns`' matching state, it is graded as *nothing measured* rather than strong: `--brief`
-      is a manual per-invocation flag no capture remembers, and every single-pass baseline currently
-      carries one, so grading this strong would turn the documented no-`--brief` workflow into six
-      strong signals over a run where nothing moved.
-    - **compared** — both sides have one, and `brief_movements` grades it.
-
-    A lost challenge theme counts as strong on its own: the engine used to contest that premise in a
-    majority of runs and stopped. On the deliverable, losing a challenge is the regression that
-    matters most — sharper questions are worth little if the pushback quietly disappears.
-
-    Deliberately *not* tallied in the summary line the way `stale` is: the per-request line is where
-    a lens's own state belongs, and a counter that fires on nearly every run is one nobody reads.
+        States: not captured (named on its own line; `--brief` is per-invocation), first capture,
+        baseline only (`!`, yet nothing measured —
+        `test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`), compared.
+        A lost challenge theme is strong on its own: the pushback quietly disappearing is the regression.
     """
     if not new_briefs:
         if old_briefs:
@@ -405,9 +297,7 @@ def _show_assessment(old_briefs: list | None, new_briefs: list) -> str | None:
         tier = "strong"
         print(f"  assessment − challenge(s) no longer raised: {'; '.join(b['themes_removed'])}")
     if b["themes_added"]:
-        # A gained challenge is a movement worth watching rather than acting on: the engine raising
-        # something new is as often a rephrasing that cleared the clustering threshold as it is a
-        # real gain, so it never outranks a loss on the same capture.
+        # A gained challenge is watched, not acted on: often a rephrasing that cleared clustering.
         tier = tier or "weak"
         print(f"  assessment + challenge(s) now raised: {'; '.join(b['themes_added'])}")
     if not (b["complexity"] or b["themes_added"] or b["themes_removed"]):
@@ -418,62 +308,30 @@ def _show_assessment(old_briefs: list | None, new_briefs: list) -> str | None:
 def questions_one(slug: str) -> None:
     """Print the questions each baseline actually asked, run by run, old then new.
 
-    The slot tiers above are a *projection* of the model; the questions are what the user meets. In
-    practice a card or prompt change reads far more clearly here than in a per-slot impact shift, so
-    this is the view to open when a diff says something moved and you want to know whether it moved
-    in a good direction.
-
-    **Every string this prints is provider-written prose read back off disk**, so all of it goes
-    through `display_token` — the same treatment `session show` and `artifact list` give a persisted
-    value, for the same reason (invariant 14, #40). A question carrying a newline would otherwise
-    write what reads as a second, authoritative line of the readout at column 0, and a regression
-    lens whose own output can be forged is answering a different question from the one asked.
-    `display_token` returns a safe line byte-for-byte, so ordinary prose is unchanged, which is what
-    keeps the guard from being deleted for making the view unreadable.
-    `test_a_forged_question_cannot_write_a_line_of_the_golden_readout` is what fails when a print here
-    stops going through it, and `test_an_ordinary_question_is_rendered_byte_for_byte` is the other
-    half.
-
-    **Deliberately not `_log_safe`, the sibling answer in `scripts/plugin_cli_drift.py` (#139,
-    #176).** Same class, two sinks, and the sinks decide the remedy. That one prints into a GitHub
-    Actions step, where the log is *parsed* — at column 0 for `::name::`, and at any column at all
-    for the legacy `##[name]`, which is why a whitespace squash alone was not enough there — and its
-    value is a directory name nobody reads for its wording, so a lossy sanitise at the point the
-    value enters is exactly right. This one prints into a maintainer's terminal, where column 0 is
-    *read*, and the value is the engine's prose being judged on its exact wording: collapsing
-    whitespace here would silently rewrite the text the harness exists to compare, which is a worse
-    failure than the one being fixed. Squashing at entry is also unavailable — these strings arrive
-    inside `EngineOutput`/`Brief`, which `consensus`, `movements` and `_challenge_themes` read too, so
-    a squash there would change what the lens concludes. `_cluster_headlines` is the one place the
-    entry-squash *is* right, and it does it, for the reason stated at that line."""
+        Every string is provider prose read off disk, so it goes through `display_token` (invariant 14,
+        #40): `test_a_forged_question_cannot_write_a_line_of_the_golden_readout` and
+        `test_an_ordinary_question_is_rendered_byte_for_byte`. Not `plugin_cli_drift._log_safe`'s lossy
+        squash (#139, #176): here the exact wording is what is being judged.
+    """
     path = runs_path(slug)
     rel_path = f"fixtures/golden/{slug}.runs.json"
     old_text = _head_version(rel_path)
     if not path.exists() or old_text is None:
         print(f"\n{slug}\n  ! need both a working-tree capture and a HEAD baseline")
         return
-    # A baseline is what this whole readout is about here too -- the freshness line is not just a
-    # `diff_one` fixture, it belongs to every reader of a per-request baseline (#405).
+    # The freshness line belongs to every reader of a baseline (#405).
     _show_freshness(rel_path)
     new_text = path.read_text(encoding="utf-8")
     _show_model(old_text, new_text)
-    # Informational only here, unlike `diff_one`: this view lists each side's questions side by side
-    # rather than diffing slot ids, so a mismatch doesn't invalidate it the way it would a real
-    # comparison -- but a reader piecing together why the headlines read completely differently
-    # deserves the same fact `diff_one` would have refused on (#621).
+    # Informational here: this view lists questions rather than diffing slot ids (#621).
     _perimeters_comparable(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
-        # Each side reads against its *own* recorded perimeter, not a shared one -- unlike `diff_one`,
-        # this view never gates on the two agreeing, so a mismatched pair must still parse cleanly on
-        # both sides rather than crash the half that happens not to be software (#621).
+        # Each side parses against its own recorded perimeter: this view never gates on agreement (#621).
         text_perimeter = captured_perimeter(text)
         turns = load_turns(text, perimeter=text_perimeter)
         if turns is not None:
-            # An interactive capture: the question that settles this issue is *when* something was
-            # asked, not whether it was, so the turn number leads and an already-answered slot is
-            # marked. Reading the final model's questions alone would show only what the last turn
-            # happened to still be asking.
+            # Interactive: *when* a question was asked matters, so the turn leads and answered slots are marked.
             for i, run in enumerate(turns, 1):
                 print(f"  run {i}")
                 covered: set[str] = set()
@@ -493,17 +351,14 @@ def questions_one(slug: str) -> None:
         for i, b in enumerate(load_briefs(text), 1):
             print(f"  run {i} — challenges")
             for c in b.challenges:
-                # headline+premise names the contest; alternative+recommendation are what separate a
-                # real architect's pushback from a bare observation — show them so a prompt edit can be
-                # judged on the half of the challenge that actually carries the domain grounding.
+                # alternative+recommendation carry the domain grounding a prompt edit is judged on.
                 print(f"    ‹{display_token(c.headline)}› {display_token(c.premise)}")
                 print(f"        alt: {display_token(c.alternative)}")
                 print(f"        rec: {display_token(c.recommendation)}")
 
 
 def main(argv: list[str]) -> int:
-    # First, before anything can print: a box rule or an arrow must not be able to kill this script
-    # on a console that cannot encode it (invariant 16, #164).
+    # First: a glyph must not kill this script on a console that cannot encode it (invariant 16, #164).
     configure_output()
     show_questions = "--questions" in argv
     argv = [a for a in argv if a != "--questions"]
@@ -528,10 +383,7 @@ def main(argv: list[str]) -> int:
     if stale:
         line += f"  ⚠ {stale} not re-captured — that is not a clean bill of health."
     if mismatched:
-        # A perimeter change is a different situation from either of the two above — it was
-        # re-captured, and it may be byte-different from HEAD — so it earns its own count rather than
-        # folding into `stale`, the same "three genuinely different situations" rule
-        # `tests/test_golden_harness.py` already applies to drift (#621).
+        # A perimeter change is its own count, not `stale` (#621).
         line += (f"  ⚠ {mismatched} could not be compared — captured under a different perimeter "
                  f"than its baseline.")
     print(f"\n{'─' * 60}\n{line}")

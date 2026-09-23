@@ -4,7 +4,7 @@
 # one-line PR; raising one is legal and visible, and costs the PR one sentence here saying why the
 # tree needed to grow. The estate's membership is `ESTATE_FILES` in tests/test_source_form.py.
 #
-# Last measured 2026-09-17 on 627-t3-tests-prose (#627, tranche 3: tests/ prose and the estate). Tranches 4-5 lower the rest.
+# Last measured 2026-09-23 on 627-t5-docs-scripts (#627, tranche 5 of 5: docs/decisions, docs/ and scripts/).
 
 [src]
 # src/requivo, .py files. Measured after #627's tranche 2 cut src/ prose by the rule.
@@ -29,8 +29,18 @@ function_docstring_max_lines = 5
 total_max_lines = 2899
 
 [docs]
+# `decision_record_max_lines`: #627's tranche 5 rewrote every record to Context / Decision / Cost /
+# Alternatives; the longest (0004, the HTTP API facade, eight numbered sub-decisions) measured 80.
 compatibility_max_lines = 418
-decision_record_max_lines = 485
+decision_record_max_lines = 84
+
+[scripts]
+# scripts/, .py files. Measured after #627's tranche 5 cut scripts/ prose by the src/ rule (41.2% -> 19.5%,
+# largest module golden_lib.py at 633 lines, longest module docstring 23, longest function docstring 9).
+prose_share_max = 0.204
+largest_module_max_lines = 664
+module_docstring_max_lines = 24
+function_docstring_max_lines = 9
 
 [claude_md]
 # CLAUDE.md is loaded into every session; it holds the rules and the map, and nothing else (#627).

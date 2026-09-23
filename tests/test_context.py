@@ -1,4 +1,4 @@
-"""The context cards: the measured cost `docs/context-cards.md` states (#257), the card summaries the grounding
+"""The context cards: how a card's weight is measured (#257), the card summaries the grounding
 judgment reads (#593), and the one artifact caption the assets may not drift from (#166)."""
 import re
 from pathlib import Path
@@ -6,17 +6,10 @@ from pathlib import Path
 import pytest
 
 from requivo.core import context as ctx
-from requivo.core.context import (
-    available_cards,
-    average_card_byte_size,
-    build_prompt,
-    build_standalone_prompt,
-    card_byte_size,
-)
+from requivo.core.context import average_card_byte_size, build_standalone_prompt, card_byte_size
 from requivo.paths import CONTEXT
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_CONTEXT_DOC = _REPO_ROOT / "docs" / "context-cards.md"
 
 
 def _bundled_card_sizes() -> dict[str, int]:
@@ -24,20 +17,6 @@ def _bundled_card_sizes() -> dict[str, int]:
     sizes = {p.stem: card_byte_size(p) for p in sorted(CONTEXT.glob("*.md")) if not p.name.startswith("_")}
     assert sizes, "no bundled context cards found -- this test is not exercising anything"
     return sizes
-
-
-def _documented(pattern: str, what: str) -> re.Match:
-    m = re.search(pattern, re.sub(r"\s+", " ", _CONTEXT_DOC.read_text(encoding="utf-8")))
-    assert m, f"docs/context-cards.md no longer states {what} -- update this pattern if the wording moved"
-    return m
-
-
-def test_the_docs_stated_bundled_card_byte_total_matches_the_files_on_disk():
-    sizes = _bundled_card_sizes()
-    assert len(available_cards()) >= len(sizes)
-    m = _documented(r"([\d,]+) bytes, ~[\d.]+k tokens", "a 'N bytes, ~Xk tokens' figure")
-    documented, total = int(m.group(1).replace(",", "")), sum(sizes.values())
-    assert documented == total, f"docs/context-cards.md says {documented} bytes; the real total is {total} from {sizes}"
 
 
 def test_average_card_byte_size_matches_an_independent_computation(monkeypatch):
@@ -55,16 +34,6 @@ def test_a_card_weighs_the_same_whatever_its_line_endings(tmp_path):
     crlf.write_bytes(body.replace("\n", "\r\n").encode("utf-8"))
     assert crlf.stat().st_size == lf.stat().st_size + body.count("\n"), "must fire: two different on-disk sizes"
     assert card_byte_size(crlf) == card_byte_size(lf) == len(body.encode("utf-8"))
-
-
-def test_the_docs_stated_prompt_weight_range_matches_a_live_measurement():
-    card_total = sum(_bundled_card_sizes().values())
-    names = ["engine.md", "brief.md", "stories.md", "estimate.md", "prd.md", "criteria.md", "epic.md", "release.md"]
-    percentages = [card_total / len(build_prompt(n).encode("utf-8")) * 100 for n in names]
-    low, high = round(min(percentages)), round(max(percentages))
-    m = _documented(r"(\d+)[-–](\d+)% of every call.s system prompt", "an 'N-M% of every call's system prompt' range")
-    assert (int(m.group(1)), int(m.group(2))) == (low, high), (
-        f"docs/context-cards.md says {m.group(1)}-{m.group(2)}%; a live measurement gives {low}-{high}% ({list(zip(names, percentages))})")
 
 
 # ── the grounding judgment's deterministic half (#593) ───────────────────────────

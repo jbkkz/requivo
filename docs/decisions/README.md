@@ -1,28 +1,21 @@
 # Decision records
 
-The narrow set of things that belong here, and why the set is narrow.
+A bug's *story* lives on the tracker — the issue and the pull request that closed it; the tree keeps
+the *rule* (`decision: the-tree-records-the-rule`). So a record here is for a **decision** — a choice
+between alternatives a reader could reopen — and never for an incident. In practice, three shapes:
 
-This project's home for a bug's *story* is the tracker — the issue and the pull request that closed
-it. The tree keeps the *rule*: one line at the call site naming the test that goes red, five lines at
-most in that test's docstring citing the issue. `CLAUDE.md` states it under *Where a bug narrative
-lives*, and `decision: the-tree-records-the-rule` is the argument. An external review once proposed
-moving every narrative here instead; that was rejected, because the person about to simplify a
-subtlety away is in the editor and a pointer they will not follow is worse than the line it replaced.
-
-So a record here is for a **decision** — a choice between alternatives a reader could reopen — and
-never for an incident. In practice that is three shapes:
-
-- **A fact about something outside the repository** — an API's behaviour, a platform's, a service's.
+- **A fact about something outside the repository** — an API's, a platform's, a service's behaviour.
   Nothing here can exercise it, so nothing here can go red for it.
 - **A rejected alternative.** Nothing goes red when a path is *not* taken.
 - **A cost tradeoff with a threshold** — an argument, not a guard.
 
-If you are about to write a record for anything else, the honest answer is usually a missing test.
+For anything else, the honest answer is usually a missing test.
 
 ## Shape
 
-Four headings, in this order. Keep them; a record that argues in a different order is one nobody can
-scan against its siblings.
+Four headings, in this order, so records can be scanned against each other. `tests/lean_budget.toml`
+caps a record's length: state the decision so it can be disagreed with, each alternative with its
+reason, and stop — measurements and narrative go in the issue.
 
 ```markdown
 # <Title>
@@ -36,39 +29,22 @@ What was true, and what question came up.
 What was decided, stated so it can be disagreed with.
 
 ## What breaking it cost
-The concrete failure — the one that makes this worth a file. If there is none yet, say so plainly
-rather than inventing one.
+The concrete failure. If there is none yet, say so plainly rather than inventing one.
 
 ## Alternatives rejected
-Each with the reason. This is usually the half a reader actually needs.
+Each with the reason.
 ```
 
-## Tense: a record written ahead of the code
+## Tense
 
-A record is usually written while the thing it decides is still being built, so most of it describes
-a tree that does not exist yet. **Write that in a form a reader cannot mistake for a description of
-the tree** — name the issue or slice that builds it, or mark the paragraph's status outright. The
-failure is not a wrong sentence; it is an ambiguous one, where *"what it keeps"* reads equally as
-*keeps, once built* and *keeps, today*, and a reader checking the record before wiring something up
-is told a protection exists.
-
-**When a record's forward half lands, correct the record in place** and say it was forward-looking
-when written — `0006`'s *"carried 31 open alerts at the time this record was written — since
-dismissed"* is the shape. Do not silently rewrite it into the present: the argument is the record,
-and when it was made is part of it.
-
-This is a convention and not a guard, deliberately. `tests/test_source_form.py`'s reference guard resolves a
-name and has no opinion about tense, and nothing mechanical can have one —
-`CLAUDE.md`'s meta-guard budget says a taste does not get a test. It is written down because the
-two-instance bar this repo applies is met: **#505** (`0006` describing a traversal guard on an
-unmerged branch as though it were in the tree) and **#509** (`0004` §5 describing a cross-site
-posture the API did not have), one release apart, in two records.
+A record is usually written while its subject is still being built. **Write the unbuilt half so it
+cannot be mistaken for a description of the tree** — name the issue that builds it, or mark its
+status outright. When it lands, **correct the record in place** and say it was forward-looking. A
+convention, not a guard; written down because #505 (`0006`) and #509 (`0004`) each described a
+protection the tree did not yet have.
 
 ## Referencing one
 
-**By slug, never by path.** Paths in this repository move: the package was renamed once, a module
-became a package, and a 2147-line test file became seven, all inside a fortnight. A slug is greppable
-and survives every one of those. Write it as `` `decision: <slug>` `` at the line that rests on it, on
-one line, so it can be grepped; `tests/test_source_form.py`'s reference guard checks that it resolves.
-
-The filename carries a number for ordering and the slug for meaning. The number is not the reference.
+**By slug, never by path**: `` `decision: <slug>` `` on one line at the line that rests on it.
+`tests/test_source_form.py`'s reference guard checks that it resolves. The filename's number is for
+ordering, not reference.

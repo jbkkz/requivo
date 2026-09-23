@@ -2,177 +2,62 @@
 
 **Slug:** `the-engine-writes-the-missing-card`
 
-> **Partly landed.** The judgment and the ordering below are in the tree; writing the card is not.
-> The *Ordering* section was corrected in place once building it revealed a step this record had not
-> foreseen — see the paragraph marked there. The Context section describes the tree as of 3.3.0.
+> **Partly landed.** The judgment and the ordering are in the tree; writing the card is not (#593).
+> The ordering was corrected in place once building it revealed the re-claim step below.
 
 ## Context
 
-`information_value = uncertainty × impact` is the engine's whole driver, and the *impact* half is
-estimated against the product context cards. The cards are therefore not decoration: they decide
-which questions get asked and which gaps are left as assumptions.
-
-Three things are true of them today, and they compose badly at a first run:
-
-- **The default is every card.** With no `--context`, `load_context()` concatenates every installed
-  card. The four bundled ones describe B2B enterprise domains.
-- **Dilution is measured, not theoretical.** Adding `financial-reporting` cost `doc-reapproval` its
-  sharpest question — 3 runs in 3 down to 1 in 3, displaced by that card's audit-trail emphasis.
-  A second instance is on record. `--context` lets a session opt into a subset; nothing routes
-  automatically.
-- **Relevance is deliberately not computed, and the repo says so twice.** `render_grounding`'s
-  docstring (#492) refuses a `context.status: mismatched` and names the trade it refused: a
-  relevance judgment needs either a model call in the free deterministic preflight — putting a paid,
-  fallible verdict in front of the one path whose value is that it is decidable — or a keyword
-  heuristic, "right often enough to be trusted and wrong silently". The plugin's `run` skill says
-  the same from the other side (#489): *"`ok` means present and readable. It does not mean relevant,
-  and there is no status that does."* Both conclude the same way: **the human is the detector.**
-
-That conclusion is correct for a free, deterministic preflight, and it is the wrong outcome for a
-**first** run. The detector it appoints has, at that exact moment, never heard of context cards, does
-not know what the installed ones describe, and has no way to know that their relevance is what is
-quietly choosing the questions. A request from outside the bundled domains is scored against a
-product it has nothing to do with, produces a model, reaches `ready`, and says nothing on screen
-about any of it.
-
-`render_grounding` also writes down the revisit trigger: *a third measured instance of a card
-diluting its neighbour funds automatic relevance routing. Two are on record.* This record does not
-claim that third instance, and does not need to — see **Decision**, which is a different feature from
-the one that trigger gates.
+*Impact* is estimated against the context cards, so they decide which questions get asked. With no
+`--context` every installed card loads, and dilution is measured: `financial-reporting` cost
+`doc-reapproval` its sharpest question (3/3 → 1/3). Relevance is deliberately not computed:
+`render_grounding` (#492) and the plugin's `run` skill (#489) both appoint **the human as the
+detector**. Right for a free deterministic preflight; wrong at a **first** run, when that human has
+never heard of cards, and a request from outside the bundled domains reaches `ready` silently.
 
 ## Decision
 
-At the **first** discovery, and only there, the engine judges the request's domain and takes exactly
-one of three paths:
+At the **first** discovery only, the engine judges the request's domain and takes one path: **no card
+warranted** (one line, no menu); **an installed card covers it** (named, selected, reason given); or
+**none covers a domain that needs one** — write one from the request, in `_template.md`'s sections.
+Warranting signals are those that can change the solution: heavy legislation, a licensed
+profession, safety- or money-critical obligations, unsettled frontier tech, a niche vocabulary. A
+written card is **session-scoped, shown in full, and frozen** for the session (like `only`, #258);
+promotion to `user_context_dir()` is a separate explicit act that names a stem collision first.
 
-1. **No card warranted.** The common case. One line, no menu, no prompt, no installed card offered.
-2. **An installed card covers it.** Name it, select it, say what it was chosen for.
-3. **The domain warrants a card and none covers it.** Write one, from the request, following
-   `assets/context/_template.md`'s sections.
+**Not what #492 refused.** That was *selection* — silently ranking installed cards inside a free,
+decidable preflight. This is a paid call at discovery, shown to the user before it influences
+anything, and ranks nothing; `doctor`, `session verify` and `render_grounding` are unchanged.
 
-The signals that warrant a card are those that carry constraints capable of *changing the solution*:
-jurisdictional or heavy legislation, an accredited or licensed profession, a safety- or
-money-critical obligation, frontier tech with unsettled conventions, a niche vertical with its own
-object vocabulary. That is the same test the engine already applies to everything else.
+**Claim, then judge, then discover.** `claim_session` runs first on the user's cards, so invariant 13
+holds: a repeat discovery is refused before anything is billed. The judgment is its own small call
+without `SHARED_PROMPT_HEAD`, and its card is in hand before the first turn, the one that builds the
+model. A **written** card is provenance on the revision (invariant 6), not identity (invariant 11).
+A **selected** card does change identity after the claim, so when the verdict narrows the empty
+session is **deleted and re-claimed** — only if the verdict narrows, the caller named no cards, this
+call created the session, and it is still at revision 0 re-read under the lock (invariant 9).
+`DiscoveryService.claim_and_ground` owns the sequence (invariant 14).
 
-A written card is **session-scoped, shown, and frozen**: written into the session, rendered to the
-user in full, applied to every subsequent turn of that session, and never re-derived mid-session —
-the same rule `converse()` already holds for `only`, for the same reason (#258). Promotion to
-`user_context_dir()` is a separate, explicit act, offered afterwards, which names a stem collision
-before causing one.
-
-### Why this survives #492, which refused the neighbouring thing
-
-The thing refused was **selection**: deciding whether installed card X applies to request Y, cheaply
-and silently, inside a preflight whose value is that it is decidable from the filesystem. This is
-**synthesis**, and it differs on all three axes that refusal turned on.
-
-- It is a **paid call at discovery time**, not a free deterministic preflight. `doctor`, `session
-  verify` and `render_grounding` keep answering exactly what they answer today, and stay decidable.
-- Its output is **shown to the user before it influences anything**. #492's real objection was a
-  verdict that is wrong *silently*; a card the user reads is a verdict that cannot be.
-- It **does not rank installed cards against each other.** Path 1 is "say one line and move on" and
-  path 3 is "write one" — neither is the silent ranking that was refused.
-
-### The ordering, which is the part with invariants on it
-
-**Claim, then judge, then discover.** In that order, and the order is the decision:
-
-- `claim_session(request, cards=...)` runs **first**, on the user-supplied cards, free and
-  deterministic. Invariant 13 is untouched: the revision-0 claim still precedes every paid call, so a
-  repeat discovery is still refused before anything is billed — including before the judgment.
-- The judgment is a **small call of its own**, carrying the request and the installed cards' own
-  descriptions. It does **not** carry `SHARED_PROMPT_HEAD`, so it is a few hundred tokens rather than
-  a share of the ~9k prefix, and it does not disturb the cache breakpoint the discovery turn depends
-  on.
-- The card it produces is in hand **before the first discovery turn**, so that turn — the one that
-  builds the model — is the one it grounds. A card that only applied from turn 2 would miss the turn
-  it exists for.
-
-**A generated card is provenance, not identity.** Invariant 11 says a session's identity is the
-request *and* its card selection, claimed atomically. That stays exactly as written: identity answers
-*is this the same discovery someone already started?*, and that is decided by what the user **asked
-for** — the request and the cards they chose — never by what the engine decided to write. A generated
-card is an *output* of the discovery, like the model itself, and outputs do not belong in identity.
-It is recorded on the revision instead (invariant 6), where a provenance field that is populated is
-the rule.
-
-**Corrected in place, after building it.** The paragraph above is true of a card the engine *writes*
-and says nothing about the outcome where the judgment **selects an installed card** — and that one
-does change the selection, which *is* identity, after the slug has already been claimed. The
-resolution, and it is part of this decision rather than an implementation detail: when the verdict
-narrows, the empty session this call just made is **deleted and re-claimed** under the narrowed
-identity. Four preconditions authorise the delete, and all four are required — the verdict narrows,
-the caller named no cards, `create_session_report` says *this call created it*, and it is **still**
-at revision 0 when re-read under the lock, because the judgment takes real time and an
-authorisation held across a paid call is a stale one (invariant 9). What is destroyed is a claim
-this call made moments ago with nothing applied to it; a crash between the delete and the create
-loses that claim and no work. `DiscoveryService.claim_and_ground` owns the whole sequence, because a
-destructive step on the discovery path does not get two implementations (invariant 14).
-
-### The trust boundary this widens, and what holds it
-
-Today every context card is a file an operator installed. A generated one is authored from an
-**untrusted client request** and then lands in the **system** block. That is a real widening and is
-named here rather than discovered later. Three things hold it, and #593 owes all three:
-
-- the card is rendered to the user before it influences a subsequent turn;
-- its shape is the template's sections, not free prose — a reply that does not parse as the template
-  is **refused, not trimmed** (invariant 3);
-- it is neutralised at every interpretation site the way a question already is (`display_text`), and
-  its name never reaches a filesystem call unvalidated (invariant 14, `normalize_tokens`).
+**The trust boundary widens**: a card authored from an untrusted request lands in the system block.
+#593 owes three holds: rendered to the user before a later turn; the template's shape or **refused,
+not trimmed** (invariant 3); neutralised at every interpretation site, its name validated
+(`normalize_tokens`).
 
 ## What breaking it cost
 
-**No incident is on record for the synthesis half, and inventing one would be dishonest.** What is on
-record is the cost of the state this replaces, which is why the decision is worth a file:
-
-- The dilution measurement above — a card from an unrelated domain displacing another request's
-  sharpest question, 3/3 to 1/3 — is the concrete form of "impact scored against the wrong product".
-- The repo has written down twice, in two surfaces (#492, #489), that a session can be grounded on
-  the wrong product, reach `ready`, and say nothing about it — and left the gap open both times,
-  appointing a human detector who does not exist yet at a first run.
-
-If this decision is wrong, the shape of the failure is predictable and should be named here when it
-happens: a generated card that is confidently wrong about a domain, read past by a user who has no
-way to tell, sharpening the questions in the wrong direction more effectively than no card at all.
-That is the risk the "shown before it influences anything" rule is spending its complexity on, and it
-is the one to watch.
+No incident for synthesis. The cost of the state it replaces is the dilution measurement and a gap
+written down twice (#492, #489) and left open. The failure to watch: a confidently wrong card, read
+past by a user who cannot tell, sharpening questions in the wrong direction.
 
 ## Alternatives rejected
 
-- **Keep the human as the detector (the status quo).** Correct where it was decided — a free,
-  deterministic readout — and it fails at the only moment that matters, because at a first run the
-  appointed detector does not yet know cards exist. The status quo is not neutral: the default loads
-  every card, so doing nothing actively scores the request against four unrelated domains.
-- **A keyword heuristic in the free deterministic preflight.** #492's own words, and still right:
-  right often enough to be trusted, wrong silently. It also puts a fallible verdict on the one path
-  whose entire value is that it is decidable from the filesystem.
-- **A `context.status: mismatched` value.** Same objection one field along, and worse: every other
-  value of that vocabulary is decidable from disk, so adding one that is not makes the whole
-  vocabulary untrustworthy rather than just the new member.
-- **Rank the installed cards and pick the best.** This is the thing #492 actually refused, and it is
-  also the behaviour the request that prompted this record was most specific about not wanting: an
-  unrelated card must not be offered merely because one exists. Path 2 above selects a card only when
-  the judgment says it *covers* the domain, which is a different question from which of four is
-  least bad.
-- **Write the card straight into `user_context_dir()`.** A run would write outside the workspace, and
-  `_card_paths()` lets a user card win a stem clash silently — so a generated `financial-reporting.md`
-  would shadow the bundled one for every later session, invisibly. Promotion stays an explicit second
-  act for exactly that reason.
-- **Never persist the synthesised context — hold it in the turn's prompt only.** Cheapest, and it
-  removes the one property that makes this admissible at all: there would be nothing for the user to
-  read, correct or disagree with, which is precisely the silent-verdict failure #492 refused.
-- **Judge inside the first discovery call, to save a call.** Circular: the card would arrive in the
-  same reply as the model it was supposed to inform, so the first turn — the one that builds the
-  model — would be the one turn it could not ground. The saving is also smaller than it looks, since
-  the judgment call carries no shared prefix.
-- **Judge before `claim_session`, so a selection can join identity first time.** Rejected on
-  invariant 13, which is the more expensive of the two to bend: #133's lesson was nine paid calls
-  thrown away by a correct refusal in the wrong place, and this ordering would make a repeat
-  discovery pay for a judgment before being refused. The delete-and-re-claim above buys the same
-  outcome without moving the free gate.
-- **Report the narrowing and let the user re-run with `--context`.** Considered seriously, and it is
-  what the first working version did — it touches no invariant at all. Rejected because the re-run
-  throws away a session the user has already claimed and leaves it behind at revision 0, and because
-  a product that knows the right answer and asks the user to retype it has not finished the job.
+- **The human as detector** — fails at the one moment that matters; the default loads every card.
+- **A keyword heuristic or `context.status: mismatched`** — right often enough to be trusted, wrong
+  silently, on the one path whose value is being decidable.
+- **Rank installed cards and pick the best** — what #492 refused; an unrelated card must not be
+  offered merely because it exists.
+- **Write into `user_context_dir()`** — a user card wins a stem clash silently, for every session.
+- **Hold the card in the prompt only** — nothing for the user to read or correct.
+- **Judge inside the first discovery call** — the card would arrive with the model it should inform.
+- **Judge before `claim_session`** — a repeat discovery would pay before being refused (#133).
+- **Report the narrowing and ask for a re-run with `--context`** — the first working version; it
+  strands a claimed session at revision 0 and makes the user retype what the engine knew.

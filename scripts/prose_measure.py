@@ -1,36 +1,12 @@
-"""Measures how much of this tree is prose, so a claim about its size is something a test can read
-back rather than a number typed into an issue (#553).
+"""Measures how much of this tree is prose, so a size claim is re-derived by a test, not typed (#553).
 
-**Why this exists rather than `wc -l` and a claim.** Four numbers were written in good faith during
-the lean pass (#548) and believed weeks later: the meta-guard estate was said to be 10,500 lines
-(#551, it was 6,432); the test suite was targeted at 1.2x the product's code (#555, it measured
-2.74x); a duplication pass promised >=600 `src/` lines removed (#556, it delivered +47); and this
-repository's own `CLAUDE.md` cited a `tests/lean_budget.toml` that did not exist. A number in a file
-this script re-derives and a test reads cannot go stale in that way -- it is recomputed every run.
+Every physical line of a `.py` file is exactly one of: *blank*; *docstring* (spanned by a module,
+class or function docstring, found via `ast`, blank lines inside included); *comment* (a
+`tokenize.COMMENT` that is the only token on its line, so a trailing `# note` stays code); *code*.
+Prose share is `(docstring + comment) / total`. `ast` and `tokenize` rather than a regex: a `#` line
+inside a triple-quoted string is not a comment, and a string constant is not a docstring.
 
-**What "prose" means here.** Every physical line of a `.py` file falls into exactly one of four
-buckets: *blank* (whitespace only), *docstring* (spanned by a module-, class- or function-level
-docstring, found via `ast` -- the first statement of a module/class/function body being a bare
-string constant, the ordinary meaning of "docstring"), *comment* (a `tokenize.COMMENT` token that is
-the only non-trivial token on its line -- a trailing `# note` on a code line does not count, so a
-one-line `def f():  # noop` is not double-counted as both), and *code* (everything else). A blank
-line inside a triple-quoted docstring counts as docstring, not blank, because it is part of the prose
-block a docstring-length ceiling is measuring. Prose share is `(docstring + comment) / total`.
-
-**Why `ast` and `tokenize` rather than a regex.** A regex that treats a line starting with `#` as a
-comment is wrong the moment a triple-quoted string contains a line that happens to start with `#`
-(this repository's own prompts and context-card excerpts do), and a regex that treats a triple-quoted
-line as a docstring cannot tell a docstring from an ordinary string constant assigned to a variable.
-`ast` resolves the first case correctly because it parses the language rather than pattern-matching
-its text; `tokenize` resolves the second because a `COMMENT` token cannot appear inside a string.
-
-**Python 3.9, stdlib only.** This runs on a clean checkout with nothing installed beyond what ships
-with the interpreter (`ast`, `tokenize`, `pathlib`) -- CI's "did the tool even import" is a
-`python3.9 -c "import scripts.prose_measure"` away from every dependency the rest of the suite needs.
-PEP 604 `X | Y` runtime expressions (3.10+) are avoided on purpose in favour of
-`Optional`, kept from `typing` even though `X | None` reads the same once
-parsed -- see #553's own note about checking rather than assuming a version boundary.
-"""
+Python 3.9, stdlib only, so it imports on a clean checkout (hence `Optional`, not `X | None`)."""
 
 from __future__ import annotations
 
@@ -43,8 +19,7 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The three source trees this script measures by default; `docs/compatibility.md` is measured
-# separately below since it is one file, not a tree of `.py` modules.
+# The source trees measured by default; `docs/compatibility.md` is one file, measured separately.
 GROUPS = {
     "src": REPO_ROOT / "src" / "requivo",
     "tests": REPO_ROOT / "tests",
@@ -54,8 +29,7 @@ COMPATIBILITY_DOC = REPO_ROOT / "docs" / "compatibility.md"
 
 
 def _relative(path: Path) -> str:
-    """`path` relative to the repo root, for a report meant to be pasted somewhere else -- an
-    absolute path is only ever meaningful on the machine that produced it."""
+    """`path` relative to the repo root, for a report pasted elsewhere."""
     try:
         return str(path.relative_to(REPO_ROOT))
     except ValueError:
@@ -64,9 +38,7 @@ def _relative(path: Path) -> str:
 
 @dataclass
 class FileMeasurement:
-    """One `.py` file's line counts. `docstrings` records each module/class/function docstring found
-    in this file, as `(kind, lineno, length)`, for the caller that wants the fattest one rather than
-    the file total."""
+    """One `.py` file's line counts; `docstrings` holds each `(kind, lineno, length)` found."""
 
     path: Path
     total: int = 0
@@ -79,7 +51,7 @@ class FileMeasurement:
 
 @dataclass
 class GroupMeasurement:
-    """A tree's totals plus its fattest file -- the two figures #553 asks a ceiling for."""
+    """A tree's totals plus its fattest file."""
 
     files: list[FileMeasurement] = field(default_factory=list)
 
@@ -113,9 +85,8 @@ class GroupMeasurement:
         return max(self.files, key=lambda f: f.total, default=None)
 
     def docstring_max(self, kind: str) -> tuple[int, Optional[str]]:
-        """The longest docstring of `kind` ("module" or "function" -- "function" also covers class
-        and method bodies, since a test suite's own docstring budget does not distinguish them) across
-        every file, as `(length, "path:lineno")`, or `(0, None)` if this group has none."""
+        """The longest docstring of `kind` ("module", or "function" for any def or class) as
+                `(length, "path:lineno")`, or `(0, None)`."""
         best_len, best_where = 0, None
         for f in self.files:
             for k, lineno, length in f.docstrings:
@@ -126,12 +97,7 @@ class GroupMeasurement:
 
 
 def _docstring_spans(tree: ast.Module) -> list[tuple[str, int, int, int]]:
-    """Every module/class/function docstring in `tree`, as `(kind, first_line, last_line, length)`.
-
-    A docstring is the first statement of a module/class/function body when that statement is a bare
-    string-constant expression -- the language's own definition (what `ast.get_docstring` finds), not
-    "any triple-quoted string", which would also catch a string constant used as ordinary data.
-    """
+    """Every module/class/function docstring in `tree`, as `(kind, first_line, last_line, length)`."""
     spans: list[tuple[str, int, int, int]] = []
 
     def _body_docstring(kind: str, body: list[ast.stmt]) -> None:
@@ -156,9 +122,7 @@ def _docstring_spans(tree: ast.Module) -> list[tuple[str, int, int, int]]:
 
 
 def measure_file(path: Path) -> FileMeasurement:
-    """One file's line breakdown. Raises rather than skipping on a decode or a syntax error -- a file
-    this script cannot parse is "could not look", the same refusal `tests/_scan.py` applies to an
-    empty scan root, not a silent zero folded into a total nobody can then trust."""
+    """One file's line breakdown; a decode or syntax error raises rather than folding a zero into a total."""
     source = path.read_text(encoding="utf-8")
     lines = source.splitlines()
     total = len(lines)
@@ -199,8 +163,7 @@ def measure_file(path: Path) -> FileMeasurement:
 
 
 def measure_group(root: Path) -> GroupMeasurement:
-    """Every `.py` file under `root`, recursively, skipping `__pycache__` the way `tests/_scan.py`
-    does for the same reason: bytecode is not source and has nothing to say about prose share."""
+    """Every `.py` file under `root`, recursively, skipping `__pycache__`."""
     group = GroupMeasurement()
     for path in sorted(root.rglob("*.py")):
         if "__pycache__" in path.parts:
@@ -210,15 +173,12 @@ def measure_group(root: Path) -> GroupMeasurement:
 
 
 def line_count(path: Path) -> int:
-    """A plain line count for a non-Python file (`docs/compatibility.md`) or for a caller (a test
-    naming the meta-guard estate's own file list) that wants totals without the code/prose split."""
+    """A plain line count, for a non-Python file or a caller that wants totals only."""
     return len(path.read_text(encoding="utf-8").splitlines())
 
 
 def code_ratio(tests: GroupMeasurement, src: GroupMeasurement) -> float:
-    """Test *code* lines per line of product *code* -- `code`, not `total`, on both sides, matching
-    how #555 stated it (21,999 test code lines against 8,042): a docstring-heavy test file should not
-    inflate the ratio a prose-reduction pass is trying to bring down."""
+    """Test *code* lines per line of product *code*, so a docstring-heavy test file does not inflate it (#555)."""
     return tests.code / src.code if src.code else 0.0
 
 
@@ -240,8 +200,7 @@ def _format_group(name: str, group: GroupMeasurement) -> str:
 
 
 def render_report() -> str:
-    """The human-readable report `main()` prints -- stable enough to paste into a release audit or a
-    pull request body, which is why every field is labelled rather than left as a bare number."""
+    """The labelled report `main()` prints, stable enough to paste into an audit or a PR body."""
     groups = {name: measure_group(root) for name, root in GROUPS.items()}
     sections = [_format_group(name, groups[name]) for name in ("src", "tests", "scripts")]
 
