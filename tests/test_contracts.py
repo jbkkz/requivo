@@ -1,4 +1,6 @@
 """The boundary contracts, the driver `uncertainty × impact` feeds, and readiness as one boolean (#72, #165)."""
+from __future__ import annotations
+
 import re
 
 import pytest
