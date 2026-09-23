@@ -1,39 +1,20 @@
 """Re-shoot the four screenshots under `docs/images/` from a scripted session (#329).
 
-Two of the four went stale in content and nothing noticed: `web-home.webp` predated the recent-first
-listing and human-formatted timestamps (#237), and `web-brief.webp` predated the rendered brief that
-replaced the `<pre>` block (#235). They were not broken -- a broken image is loud -- they were a
-claim about the product that had quietly stopped being true, and no guard could see that they lie.
-
-This script is the half that stops it recurring. The shots were taken by hand once, which means the
-next surface change had to be followed by somebody remembering how the last set was framed; now they
-are one command, from a session this script builds itself.
+Two went stale in content unnoticed (#235, #237): a screenshot is a claim about the product, and a
+hand-taken set is re-framed only by memory. Now it is one command:
 
     python scripts/shoot_doc_images.py            # re-shoot all four
     python scripts/shoot_doc_images.py web-home   # re-shoot one
     python scripts/shoot_doc_images.py --check    # is the surface newer than the shots?
 
-**Nothing here is reasoned and nothing is paid.** The session is the bundled example, seeded through
-`web.example.seed_example` -- the same validated `create_session` + `update_model` path the product's
-own keyless activation uses (#226), so what is photographed is a real session and not a fixture
-posed to look like one. No key, no network, no provider.
-
-**Two dependencies this repository deliberately does not declare.** `playwright` (with its chromium
-download) and `pillow` are maintainer tooling, not project dependencies: putting them in `[dev]`
-would make every CI leg install a browser to run tests that never open one. They are imported lazily
-below and the failure names the install command. That is the same trade `docs/` already makes for
-anything only a maintainer runs.
+Nothing is reasoned or paid: the session is the bundled example seeded through
+`web.example.seed_example` (#226). `playwright` and `pillow` are maintainer tooling, imported lazily
+and deliberately undeclared (every CI leg would otherwise install a browser):
 
     pip install playwright pillow && python -m playwright install chromium
 
-**The freshness guard.** `--check` compares a digest of the web surface -- every template, the CSS,
-`app.js`, and the two view-model modules that own the user-facing vocabulary -- against the digest
-recorded in `docs/images/manifest.json` when the shots were taken. It is deliberately one digest for
-all four rather than a per-image dependency list: a hand-kept list of which template feeds which
-screenshot is itself a thing that drifts, and it would drift silently, which is the exact defect
-this file exists to answer. Coarse and correct beats precise and unmaintained. Re-shooting is one
-command, so the cost of a false positive is that command.
-"""
+`--check` compares one digest of the whole web surface against `docs/images/manifest.json`: coarse and
+correct beats a hand-kept per-image dependency list that would drift silently."""
 from __future__ import annotations
 
 import argparse
@@ -56,18 +37,9 @@ sys.path.insert(0, str(REPO / "src"))
 IMAGES = REPO / "docs" / "images"
 MANIFEST = IMAGES / "manifest.json"
 
-# Every file whose content can change what the four images show. Directories are walked; a file is
-# named directly. `viewmodels/` is in here because CLAUDE.md's "two vocabularies" section makes it
-# the owner of the words on screen -- a relabelling there is invisible to the templates and fully
-# visible in a screenshot.
-#
-# **The whole directory, not the two modules whose names sounded like vocabulary.** This named
-# `labels.py` and `status.py` and left out `sessions.py`, which decides the title and the ordering of
-# every session row in `web-home.webp`: changing its `TITLE_CHARS` from 110 to 25 left the digest
-# identical while the rendered titles moved, and the session-ordering class of drift sat outside the
-# guard entirely. Enumerating the members of a directory whose argument for being here applies to the
-# directory is how a watch set silently stops watching -- the same shape as the `SURFACE` entry that
-# no longer exists, which `surface_digest` refuses rather than quietly hashing less.
+# Every file whose content can change what the four images show; directories are walked. All of
+# `viewmodels/`, which owns the on-screen words and the session ordering: naming only two of its modules
+# once let a `TITLE_CHARS` change move the titles with the digest unchanged.
 SURFACE = (
     "src/requivo/web/templates",
     "src/requivo/web/static/css",
@@ -75,26 +47,17 @@ SURFACE = (
     "src/requivo/web/viewmodels",
 )
 
-# 1280 CSS px at deviceScaleFactor 2 is what the shipped set was framed at: every file in
-# `docs/images/` is 2560 wide. Height follows content, which is why these are full-page or
-# element shots rather than a fixed viewport.
+# 1280 CSS px at deviceScaleFactor 2: every shipped image is 2560 wide; height follows content.
 VIEWPORT = {"width": 1280, "height": 900}
 SCALE = 2
 
 
 @dataclass(frozen=True)
 class Shot:
-    """One image, framed by what it must show rather than by a pixel height.
+    """One image, framed between two elements rather than at a pixel height.
 
-    The shipped set was framed by hand at a fixed viewport height each (2560x1800, x2360, x2760,
-    x2200 -- 1280 CSS px wide at `deviceScaleFactor` 2). Reproducing those numbers would reproduce
-    the defect: the pages have grown since, so the same crop now cuts a sentence in half, and the
-    next person would have to re-guess the numbers anyway. `top`/`bottom` name the elements the
-    frame runs between instead, so content that grows stays inside the picture and the alt text in
-    `docs/web.md` keeps describing what the reader can see.
-
-    A selector that stops matching is a hard failure, not a silent re-frame: it means the template
-    moved, which is precisely when a human should look at these images.
+        A fixed height re-cuts a grown page mid-sentence; `top`/`bottom` keep the content the alt text in
+        `docs/web.md` describes inside the frame. A selector that stops matching is a hard failure.
     """
 
     name: str
@@ -121,41 +84,11 @@ SHOTS = (
 def surface_digest(root: Path = REPO) -> str:
     """One digest over every file that can change what the shots show.
 
-    Sorted by repo-relative POSIX path and hashing the path alongside the content, so a rename is a
-    change: a template moved to a new name renders the same page and is exactly the kind of edit
-    that should send someone back to look at the screenshots.
-
-    **Line endings are normalised before hashing, and that is not tidiness.** Every file in `SURFACE`
-    is text, none of it lives under a `static/vendor/` directory, and `.gitattributes` (#504) covers
-    only those -- the byte-exact third-party bundles that must never be normalized -- so every file
-    here is still subject to git's ordinary default, and a Windows checkout therefore holds CRLF
-    where macOS and Linux hold LF. Hashing raw bytes made the digest a fact about the checkout rather
-    than about the surface, so the guard went red on `Test (py3.13, windows-latest)` alone while
-    twelve other legs were green -- the same shape as #257's `card_byte_size`, which measured
-    `st_size` for content the loader reads in text mode. A file that is not valid UTF-8 falls back to
-    its bytes rather than raising: `SURFACE` names only text today, and a guard is not the place to
-    discover otherwise.
-
-    **A `.py` file is hashed by its parsed structure, not its text (#530).** `viewmodels/` is the one
-    directory in `SURFACE` that holds Python, and English prose in a `.py` file -- a comment or a
-    docstring -- cannot change a single pixel of a screenshot. Hashing it as text disagreed: a
-    comment-only compression pass in four viewmodel modules (#529) moved this digest exactly as a
-    real code change would, sent an operator through a Playwright + Chromium install, and produced a
-    re-shoot whose only effect was four new digests over four byte-identical images. `ast.parse` a
-    `.py` file's text, strip the leading docstring of the module and of every class/function
-    (`_strip_docstrings`), and hash `_stable_dump()` of what is left -- comments are never part of the
-    tree to begin with, and a docstring is the one remaining node that carries prose rather than
-    structure. `_stable_dump` is a hand-rolled `ast.dump()`, not the real one: the real one is not
-    stable across the Python versions this project's own CI matrix runs (3.9 through 3.14), which the
-    first version of this fix shipped straight into and self-review caught -- see `_stable_dump`'s own
-    docstring for the two confirmed disagreements. Templates, CSS and JS keep hashing as normalised
-    text below: every byte in them can render, so there is no prose/structure line to draw. A `.py`
-    file that fails to decode or to parse falls back to the same normalised-text hash as everything
-    else, for the same reason the UTF-8 fallback above exists -- a guard is not the place to discover
-    a syntax error.
-
-    `root` is a parameter so a control can build a tree of its own; nothing in this script
-    passes anything but the default.
+        Sorted by repo-relative POSIX path, hashing path and content, so a rename is a change. Line endings
+        are normalised, or a Windows checkout's CRLF moves it (as #257 did for card sizes); a file that is
+        not UTF-8 falls back to its bytes. A `.py` file is hashed by its docstring-stripped structure
+        (`_normalised_python`), so a prose-only edit cannot demand a re-shoot (#530). `root` exists for
+        a control tree.
     """
     h = hashlib.sha256()
     files: list[Path] = []
@@ -175,12 +108,7 @@ def surface_digest(root: Path = REPO) -> str:
 
 
 def _normalised_bytes(raw: bytes) -> bytes:
-    """The content of a text file with its line endings flattened to LF.
-
-    Deliberately not `read_text(..., newline="")`: that keyword reached `Path.read_text` in 3.13 and
-    `requires-python` is `>=3.9`, where it is a `TypeError` the Types leg cannot see -- #469 shipped
-    exactly that mistake on `write_text` and #470 records why the checker is blind to it.
-    """
+    """The content of a text file with line endings flattened to LF (not `newline=`: 3.13-only, #469, #470)."""
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -192,11 +120,9 @@ _DOCSTRING_HOLDERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFuncti
 
 
 def _strip_docstrings(tree: ast.AST) -> ast.AST:
-    """Remove the leading string-literal statement from the module and from every class/function
-    body, in place -- `ast.walk` reaches every nested one, not only top-level definitions.
+    """Remove the leading string statement from the module and every class/function body, in place.
 
-    A body left empty by the removal is not re-padded with a `pass`: this tree is only ever handed
-    to `_stable_dump`, never `compile`, so it does not need to stay syntactically valid.
+        Not re-padded with `pass`: the tree only goes to `_stable_dump`, never `compile`.
     """
     for node in ast.walk(tree):
         if isinstance(node, _DOCSTRING_HOLDERS) and node.body:
@@ -208,25 +134,11 @@ def _strip_docstrings(tree: ast.AST) -> ast.AST:
 
 
 def _stable_dump(node: object) -> str:
-    """`ast.dump()`, reimplemented, because the real one is not stable across the Python versions
-    this project supports and tests in CI (#530, found in self-review).
+    """`ast.dump()`, reimplemented, because the real one differs across the Pythons CI runs (#530).
 
-    Two disagreements, both confirmed against the installed interpreters rather than assumed: 3.13
-    added `ast.dump`'s `show_empty` keyword, defaulting to `False`, which *omits* a field holding its
-    empty/`None` default -- so the same tree dumps shorter on 3.13 than on 3.9-3.12. Separately, 3.12
-    added a `type_params` field (PEP 695) to `FunctionDef`/`AsyncFunctionDef`/`ClassDef` that 3.9-3.11
-    do not have at all -- always `[]` for any file this project can ship, since `type_params` syntax
-    itself does not parse below 3.12 and `requires-python` is `>=3.9`. Both are the same shape: a
-    field whose value carries no information beyond "absent", represented differently release to
-    release. Dropped uniformly here rather than named one field at a time, so a future Python version
-    adding another such field does not reopen this exact defect: an empty list is skipped outright,
-    and a bare `None` is skipped unless the node is `ast.Constant`, because that node's own `value`
-    (and `kind`) can legitimately *be* `None` as literal source content (`x = None`) -- collapsing
-    that into "absent" would make `x = None` indistinguishable from `x = True` after stripping.
-    Verified stable across 3.9.6, 3.12.13 and 3.13.14 on this repository's own `viewmodels/*.py`
-    (identical digest all three) and against a synthetic module exercising docstrings, annotated and
-    defaulted/varargs/kwargs parameters, async def/with/for, comprehensions, the walrus operator,
-    f-strings, nested decorators and try/except/finally (identical digest all three there too).
+        3.13's `show_empty` omits empty fields, and 3.12 added `type_params`; both are "absent" spelled
+        differently. So an empty list is skipped, and `None` too except on `ast.Constant`, where it can be
+        the literal value. Verified identical on 3.9, 3.12 and 3.13.
     """
     if isinstance(node, ast.AST):
         parts = []
@@ -243,27 +155,11 @@ def _stable_dump(node: object) -> str:
 
 
 def _normalised_python(raw: bytes) -> bytes:
-    """The structure of a `.py` file: `_stable_dump()` of its parsed tree with every docstring
-    stripped.
-
-    Parsing already discards comments (they are never part of the tree) and `_stable_dump` never
-    carries line/column numbers -- so the only English prose left to strip is a docstring, sitting in
-    the tree as an ordinary string constant. Stripping that is what makes a comment-only or
-    docstring-only edit to a viewmodel leave `surface_digest` unchanged (#530) while a change to what
-    the module does still moves it -- two programs whose docstring-stripped, version-normalised trees
-    agree are the same program.
-
-    Falls back to `_normalised_bytes` on anything that does not decode as UTF-8 or does not parse:
-    this function exists to ignore prose, not to turn a real syntax error into a script crash.
-    """
+    """`_stable_dump()` of a `.py` file's docstring-stripped tree, or `_normalised_bytes` if it will not parse (#530)."""
     try:
         tree = ast.parse(raw.decode("utf-8"))
     except (UnicodeDecodeError, SyntaxError, ValueError):
-        # `ValueError`, not just `SyntaxError`: `ast.parse` raises `ValueError` rather than
-        # `SyntaxError` for a source string containing a NUL byte on this project's floor
-        # interpreter (3.9), while 3.12/3.13 raise `SyntaxError` for the identical input -- caught
-        # in self-review (#530). Narrow the same way `_normalised_bytes` is: a real parse failure
-        # falls back to text, it does not fall through the guard.
+        # `ValueError` too: 3.9's `ast.parse` raises it for a NUL byte where 3.12+ raise `SyntaxError` (#530).
         return _normalised_bytes(raw)
     return _stable_dump(_strip_docstrings(tree)).encode("utf-8")
 
@@ -313,10 +209,8 @@ def _serve(port: int):
 def _edge(page, shot: Shot, selector: str | None, url: str, default: int) -> int:
     """The y coordinate a frame starts or stops at: the top edge of `selector`, or `default`.
 
-    Deliberately not tolerant of a miss. A selector that matches nothing means the heading it names
-    was renamed or removed, and re-framing silently around that would produce an image showing
-    something other than what `docs/web.md` says it shows -- this file exists because that happened
-    twice without anyone noticing (#235, #237).
+        A miss raises: re-framing around a renamed heading would show something `docs/web.md` does not
+        describe (#235, #237).
     """
     if selector is None:
         return default
@@ -334,14 +228,10 @@ def _edge(page, shot: Shot, selector: str | None, url: str, default: int) -> int
 
 
 def _to_lossless_webp(png: bytes, destination: Path) -> tuple[int, int]:
-    """Playwright hands back PNG; `docs/images/` is lossless WebP, as the shipped set already was.
+    """Playwright hands back PNG; `docs/images/` is lossless WebP.
 
-    `Image.open` is bound to a name before it is called, deliberately. `tests/test_source_form.py`
-    scans this tree for `.open()` calls whose mode it cannot read and asks them to declare an
-    encoding (invariant 16) -- correctly, since it cannot tell a text file from an image decoder
-    from the syntax. Binding says *this is not a file read* at the site, which is truer than an
-    exemption entry: the exemption list is for reads that really do use the locale default, and
-    this one reads no file at all.
+        `Image.open` is bound to a name first so the encoding guard (invariant 16) does not read it as a
+        text-file `.open()`: it reads no file at all.
     """
     from io import BytesIO
 
@@ -383,9 +273,7 @@ def shoot(names: list[str]) -> int:
 
         manifest = read_manifest()
         images = dict(manifest.get("images", {}))
-        # Once, before the first shot: every image taken in this run is taken against one tree, and
-        # reading the surface again per shot would record a different answer for each if a file
-        # moved mid-run.
+        # Once, before the first shot, so every image in this run is recorded against one tree.
         digest = surface_digest()
 
         with sync_playwright() as p:
@@ -414,9 +302,7 @@ def shoot(names: list[str]) -> int:
                     "caption": s.caption,
                     "width": width,
                     "height": height,
-                    # Stamped per image, and that is the whole of the partial-reshoot fix: this
-                    # script takes shot names, so blessing every entry with one shared digest let
-                    # `shoot(["web-home"])` mark three screenshots nobody re-took as current.
+                    # Stamped per image: a partial re-shoot must not mark the shots nobody re-took as current.
                     "surface_digest": digest,
                 }
                 print(f"  {s.name}.webp  {width}x{height}  from {url}")
@@ -448,14 +334,7 @@ def shoot(names: list[str]) -> int:
 
 
 def stale_shots(manifest: dict, current: str) -> list[str]:
-    """The images in `manifest` that were not shot against `current`, by name.
-
-    An entry with no `surface_digest` is stale, not current: it was written before this script
-    recorded one per image, and *unknown* has to read as *go and look*. The all-clear is the one
-    answer a freshness guard must never give by default -- the same rule `surface_digest` applies to
-    a `SURFACE` path that has gone missing, and `golden_diff`'s `unknown` baseline state one script
-    along.
-    """
+    """The images in `manifest` not shot against `current`; an entry with no digest is stale, never current."""
     return sorted(name for name, entry in manifest.get("images", {}).items()
                   if entry.get("surface_digest") != current)
 
@@ -496,10 +375,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # Invariant 16: an entry point that prints configures its streams first, so a console that
-    # cannot encode a character substitutes it visibly instead of killing the process. This script
-    # keeps its own output ASCII, but a path, a slug or a selector printed back in an error message
-    # is not this file's to promise anything about.
+    # Invariant 16: configure the streams before printing; a path or slug echoed back may not be ASCII.
     from requivo.streams import configure_streams
     configure_streams()
     raise SystemExit(main())

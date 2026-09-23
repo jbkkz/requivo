@@ -1,47 +1,17 @@
 #!/usr/bin/env python
 """Capture the golden baseline — K runs per request (the regression reference).
 
-Reads the fixed request set in ``fixtures/golden/requests.md`` and runs discovery **K times** per
-request (K=3 by default; override with ``GOLDEN_K``), writing all K models to
-``fixtures/golden/<slug>.runs.json``. Capturing K runs — not one — is what lets ``golden_diff`` tell a
-real prompt/context-card effect apart from run-to-run sampling noise: the model family in use exposes
-no sampling controls, so noise can't be pinned, only measured. See ``golden_lib`` for the reasoning.
+Runs discovery K times (``GOLDEN_K``, default 3) per request in ``fixtures/golden/requests.md`` and
+writes ``fixtures/golden/<slug>.runs.json``: K runs let ``golden_diff`` tell an asset's effect from
+sampling noise, which cannot be pinned on this model family, only measured. The workflow, the lenses
+and the cost are ``docs/evaluations.md``.
 
-Workflow:
-    1. baseline committed (``fixtures/golden/*.runs.json`` in HEAD)
-    2. edit a prompt (``prompts/engine.md``) or add/change a context card
-    3. python scripts/golden_run.py        # re-capture every single-pass baseline
-    4. python scripts/golden_diff.py        # only changes above the noise floor are shown
-    5. commit the new baseline if the change is intended
-
-A bare invocation (step 3 above) captures only **single-pass** requests and skips every
-**interactive** one, naming each skip and the command to capture it alone — an interactive request
-costs K × ``GOLDEN_TURNS`` calls on its own (15 at the defaults) and does not belong folded into a
-full-set run's cost (#276). Name the slug explicitly, or pass ``--all``, to capture it anyway; see
-``select_runs``, guarded by `test_a_bare_invocation_skips_every_interactive_request`.
-
-``--brief`` additionally captures the **assessment** for each run — the deliverable, not just the
-discovery state. It watches the complexity verdict and the challenge headlines (what the engine chose
-to contest), which is what a change to ``prompts/brief.md`` actually moves. It doubles the API calls
-for that request, so it is opt-in -- but check the baselines before reasoning from that: every
-single-pass baseline in ``fixtures/golden/`` currently carries one, and a lens's grading was once
-designed around the description rather than the fixtures (#162). Guarded by
-`test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`
-in `tests/test_golden_harness.py`.
-
-A request carrying an **answer sheet** (``answer.<slot>:`` lines in ``requests.md``) is captured
-differently again: `capture_interactive` drives `DiscoveryService.draft_turn` for up to
-``GOLDEN_TURNS`` turns per run, answering off the sheet -- the only shape that can see what #77
-changed (#137). Guarded by
-`test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list`.
-
-Cost: K API calls per single-pass request, doubled where ``--brief`` is on, and up to
-K × ``GOLDEN_TURNS`` for an interactive one (15 at the defaults) — so capture an interactive request
-on its own rather than as part of a full-set run. No total for the request set is written down here
-or anywhere else: ``planned_calls`` derives it from the requests this invocation actually parsed and
-selected, and ``main`` prints it before the first call (#290). Guarded by
-`test_the_announced_call_count_moves_with_the_request_set`.
-Needs ANTHROPIC_API_KEY in ``.env``.
+A bare invocation captures single-pass requests and skips interactive ones, naming each (#276,
+`test_a_bare_invocation_skips_every_interactive_request`). ``--brief`` also captures the assessment
+(`test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`). A request with
+``answer.<slot>:`` lines is driven through `DiscoveryService.draft_turn` for ``GOLDEN_TURNS`` turns
+(#137). The call ceiling is derived and printed before the first call (#290,
+`test_the_announced_call_count_moves_with_the_request_set`). Needs ANTHROPIC_API_KEY.
 
 Usage:
     python scripts/golden_run.py              # every single-pass request; interactive ones skipped
@@ -49,8 +19,7 @@ Usage:
     python scripts/golden_run.py --all        # every request, interactive ones included
     python scripts/golden_run.py <slug> --brief   # also capture the assessment
     GOLDEN_K=5 python scripts/golden_run.py   # override runs-per-request
-    GOLDEN_TURNS=8 python scripts/golden_run.py <slug>   # override turns-per-run
-"""
+    GOLDEN_TURNS=8 python scripts/golden_run.py <slug>   # override turns-per-run"""
 
 from __future__ import annotations
 
@@ -91,37 +60,24 @@ load_dotenv()
 
 
 def capture_model() -> str:
-    """The model id this invocation will capture on, resolved **once** and then handed to every call.
+    """The model id this invocation captures on, resolved **once** and threaded to every call (#515, #434).
 
-    Read here and threaded down rather than left to each call's own `current_model_name()` fallback,
-    so the value written into the envelope is the value that reasoned, not a second read of the same
-    environment (#515, #434). Two tests, one per leg: that `main()` resolves once and hands the same
-    value to every `capture()` call is
-    `test_main_resolves_the_model_once_and_threads_it_to_every_capture`; that the interactive path
-    writes the model it was handed into the envelope is
-    `test_the_interactive_capture_records_the_model_it_reasoned_on`.
+        Pinned by `test_main_resolves_the_model_once_and_threads_it_to_every_capture` and
+        `test_the_interactive_capture_records_the_model_it_reasoned_on`.
     """
     return current_model_name()
 
 
 def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
-    """K interactive conversations, each driven off this request's answer sheet.
+    """K interactive conversations, each answered off this request's answer sheet.
 
-    Reasoning goes through `DiscoveryService.draft_turn` rather than through `run()` directly, and
-    that is the whole validity of the measurement: `draft_turn` is the production interactive path,
-    and it is the shape #77 changed (#137). Guarded by
-    `test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list`.
-
-    The rest mirrors `converse()` — the turn counter, the answer format, and stopping when nothing
-    could be answered. What it does not mirror is a human, so the answers come from the sheet. There
-    is no session, no revision and no write anywhere in this: `draft_turn` reasons and returns.
+        Through `DiscoveryService.draft_turn`, the production interactive path — the measurement's whole
+        validity (#137, `test_the_capture_reasons_through_the_interactive_seam_and_not_a_message_list`).
+        Mirrors `converse()`'s turn loop; no session, revision or write.
     """
-    # Constructed with the resolved id rather than left to resolve per call (#515, #434). Guarded by
-    # test_the_interactive_capture_records_the_model_it_reasoned_on.
+    # The resolved id, not a per-call resolution (test_the_interactive_capture_records_the_model_it_reasoned_on).
     disco = DiscoveryService(provider=AnthropicProvider(client, model=model))
-    # `.get(..., DEFAULT_PERIMETER)` rather than `req["perimeter"]`: a synthetic request dict built
-    # by a test fixture that predates #621 carries no key at all, and the correct read of that is the
-    # same one `parse_requests` gives a `requests.md` block with no `perimeter:` line.
+    # A pre-#621 request dict has no `perimeter` key; it reads as the default, as in `parse_requests`.
     perimeter = req.get("perimeter", DEFAULT_PERIMETER)
     runs: list[list[Turn]] = []
     for i in range(K):
@@ -132,10 +88,8 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
             out = disco.draft_turn(req["request"], current_model=out, answers=answers, cards=None,
                                    perimeter=perimeter)
             print(f"    run {i + 1}/{K}  turn {index}/{TURNS}", end="\r", flush=True)
-            # `answered` records what was actually sent onward, so the last turn's is empty even
-            # where the sheet still had something to say. Recording an answer the engine never saw
-            # would put a slot in `covered` that the conversation never covered, and the re-ask
-            # count is measured against exactly that set.
+            # `answered` records what was sent onward; an answer the engine never saw would fake coverage
+            # for the re-ask count.
             done = index == TURNS or not out.questions
             block, answered = (None, []) if done else answers_for_turn(out.questions, sheet)
             turns.append(Turn(index=index, answered=answered, model=out))
@@ -160,8 +114,7 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
         detail = ", ".join(f"{lab} ({c}/{lens['n']})" for lab, c in sorted(hits.items())) or "—"
         print(f"    {caption:<38} {detail}")
     if not lens["deep_enough"] and lens.get("unreached_layers"):
-        # #163: right where the 15 API calls were just spent, name which slots the sheet still had
-        # a layer for — the diagnosis that used to require a second, separate golden_diff.py run.
+        # #163: name the sheet layers no run reached, right where the calls were spent.
         detail = ", ".join(f"{lab} ({c})" for lab, c in sorted(lens["unreached_layers"].items()))
         print(f"    {'sheet layers never reached':<38} {detail}")
 
@@ -169,47 +122,37 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
 def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             model: str | None = None) -> None:
     model = model or capture_model()
-    # See `capture_interactive`'s own comment on this default: a synthetic request dict from a test
-    # fixture written before #621 carries no key, and software is the correct read of that, not a
-    # guess (#608's own migration for the same absence).
+    # A pre-#621 request dict has no `perimeter` key: software, as in `capture_interactive`.
     perimeter = req.get("perimeter", DEFAULT_PERIMETER)
     if is_interactive(req):
         if with_brief:
-            # Said rather than silently dropped: --brief doubles the calls, and on a request that
-            # already costs K x TURNS that is a spend nobody asked for. The assessment lens watches a
-            # different thing from the turn lens and neither needs the other.
+            # Said, not silently dropped: --brief would double a K x TURNS spend nobody asked for.
             print(f"  ! {req['slug']:<20} --brief is not captured for an interactive request "
                   f"(it would double a {K * TURNS}-call capture); the turn lens follows",
                   file=sys.stderr)
         return capture_interactive(client, req, model)
 
     if with_brief and perimeter != SOFTWARE:
-        # `advise()` reasons `brief.md` -- software's own assessment prompt -- and is not threaded a
-        # perimeter at all, so it would ground a go-to-market model in the wrong schema rather than
-        # raise. Per #607's cost rule each perimeter ships exactly the one artifact it needs
-        # (go-to-market's is `gtm_plan`, generated elsewhere); the assessment lens simply does not
-        # exist here yet, the same refusal shape as the interactive arm just above.
+        # `advise()` reasons software's `brief.md` with no perimeter, so the assessment lens is software-only
+        # (#607: each perimeter ships its own one artifact).
         print(f"  ! {req['slug']:<20} --brief is not captured for a {perimeter!r} request "
               f"(the assessment lens is software-only)", file=sys.stderr)
         with_brief = False
 
     models, briefs = [], ([] if with_brief else None)
     for i in range(K):
-        # `reuse_system=True` explicitly: this loop sends engine.md's system prompt K times, so the
-        # breakpoint is genuinely re-read here — the same declaration the `advise` call below makes,
-        # now stated rather than left to `run()`'s default (#58).
+        # `reuse_system=True`: engine.md's system prompt is sent K times here (#58).
         out = run(client, [{"role": "user", "content": req["request"]}], reuse_system=True,
                   model=model, perimeter=perimeter)
         models.append(out)
         if with_brief:
-            # `reuse_system=True`: unlike the CLI, this loop sends brief.md's system prompt K times, so
-            # the cache breakpoint is genuinely re-read here and is worth its 1.25x write (#9).
+            # `reuse_system=True`: brief.md's system prompt is sent K times here, worth the 1.25x write (#9).
             briefs.append(advise(client, out, reuse_system=True,
                                  model=model))  # see --brief in the header
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
     dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter)
     st = stability(models, perimeter=perimeter)
-    # Show the noise floor up front: how much of the model was stable across the K runs.
+    # The noise floor up front: how much of the model was stable across the K runs.
     print(f"  ✓ {req['slug']:<20} {st['unanimous']['impact']}/{st['total_slots']} slots "
           f"unanimous on impact · {st['unanimous']['state']}/{st['total_slots']} on confidence "
           f"· stable themes: {', '.join(st['themes']) or '—'}")
@@ -224,33 +167,18 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
 def planned_calls(runs: list[dict], with_brief: bool) -> int:
     """The API-call ceiling for exactly these requests, derived rather than written down (#290).
 
-    An interactive request costs a call per turn, so the total is per-request rather than a single
-    multiplication -- and it is an upper bound, because a conversation that runs out of answers stops
-    early. Stating it as "up to" is the honest form: the number that matters before spending is the
-    ceiling, not the average. ``--brief`` doubles a single-pass request and leaves an interactive
-    one alone, because `capture` refuses `--brief` there and says so -- and, since #621, the ceiling
-    for a non-software single-pass request is an overestimate on the same grounds: `capture` refuses
-    `--brief` there too (the assessment lens is software-only), but this function counts it at 2x
-    regardless, "up to" rather than exact being the honest form either way.
-
-    This exists as a function, and no file states a total, because a total is a count in prose that
-    nothing goes red for: two sites said "18" for a set of six single-pass requests, correct the day
-    they were written and silently wrong the day a seventh landed in ``requests.md``. Pinned by
-    `test_the_announced_call_count_moves_with_the_request_set`. Pure and offline.
+        An upper bound: an interactive request costs up to a call per turn, and ``--brief`` is counted at
+        2x even where `capture` refuses it. Pure and offline; pinned by
+        `test_the_announced_call_count_moves_with_the_request_set`.
     """
     return sum(K * (TURNS if is_interactive(r) else (2 if with_brief else 1)) for r in runs)
 
 
 def select_runs(runs: list[dict], wanted: set[str], capture_all: bool) -> tuple[list[dict], list[dict]]:
-    """Which of the parsed requests to actually capture, and which interactive ones were skipped.
+    """`(selected, skipped)`: a bare invocation skips every interactive request (#276).
 
-    A bare invocation -- no slugs named, no ``--all`` -- captures every single-pass request and
-    skips every interactive one, so a bare run honours CLAUDE.md's own cost guidance (an interactive
-    request belongs in a capture of its own) rather than contradicting it (#276). Naming a slug
-    explicitly, or passing ``--all``, captures interactive requests exactly as before. Guarded by
-    `test_a_bare_invocation_skips_every_interactive_request`.
-
-    Pure and offline: no client, no network, no write. Returns ``(selected, skipped)``.
+        Naming a slug or passing ``--all`` includes them. Pure and offline;
+        `test_a_bare_invocation_skips_every_interactive_request`.
     """
     if wanted:
         return [r for r in runs if r["slug"] in wanted], []
@@ -262,9 +190,7 @@ def select_runs(runs: list[dict], wanted: set[str], capture_all: bool) -> tuple[
 
 
 def main(argv: list[str]) -> int:
-    # First, before anything can print: this script spends real API calls and writes each request's
-    # baseline before it reports on it, so a glyph the console cannot encode must not be able to kill
-    # it over work already paid for (invariant 16, #164).
+    # First: a glyph the console cannot encode must not kill a run that already paid (invariant 16, #164).
     configure_output()
     if not REQUESTS.exists():
         print(f"Missing request set: {REQUESTS}", file=sys.stderr)
@@ -289,12 +215,10 @@ def main(argv: list[str]) -> int:
 
     GOLDEN.mkdir(parents=True, exist_ok=True)
     client = Anthropic()
-    # Resolved once for the whole invocation, so every envelope this run writes records the same id
-    # and records the one the calls were given (#515). Printed with the call budget because it is the
-    # other thing a reader is committing to before the first paid call: re-capturing a baseline on a
-    # different model is a decision, and it should not be one made by an inherited environment.
+    # Resolved once, so every envelope records the id the calls were given (#515); printed with the
+    # budget because re-capturing on a different model is a decision, not an inherited environment.
     model = capture_model()
-    # Computed for the set actually selected, never quoted from prose — see `planned_calls`.
+    # Computed for the set actually selected — see `planned_calls`.
     calls = planned_calls(runs, with_brief)
     print(f"Capturing {len(runs)} request(s) × {K} runs → {GOLDEN.relative_to(REPO)}/  "
           f"(up to {calls} API calls{', assessment included' if with_brief else ''}) "
