@@ -1,21 +1,16 @@
 # Integrations — driving Requivo from an automation
 
-How to drive Requivo from something that is not a person at a terminal: an n8n flow, a CI job, a
-script. This page covers the contract the CLI already keeps for machines, the epic export envelope
-and its tracker plans field by field, a worked email-to-issue flow, how to watch a session for
-change, and — explicitly — what is not built and why (webhook delivery, authenticated push).
-
-n8n is the worked example throughout because it is the consumer the tracker adapters were built for:
-the authenticated push to GitHub/GitLab is deliberately out of this repo, and an n8n flow is what
-consumes the plan (see [architecture.md](architecture.md)). Everything here applies equally to any
-orchestrator that can run a command or an HTTP request.
+How to drive Requivo from an n8n flow, a CI job or a script: the contract the CLI keeps for machines,
+the epic export envelope and its tracker plans, a worked email-to-issue flow, polling for change, and
+what is deliberately not built. n8n is the worked example because the tracker adapters were built for
+it — the authenticated push stays out of this repo and a flow consumes the plan — but everything here
+applies to any orchestrator that can run a command.
 
 ## The automation contract
 
-Today the automation surface is the **CLI**. The web app is a browser product — its writes are
-CSRF-locked by design and its HTML bodies are explicitly not a contract
-([compatibility.md](compatibility.md)). An HTTP API is on the roadmap (see *Tomorrow: the HTTP API*
-below); until it lands, a machine drives the same services the way a person does, through `requivo`.
+The stable automation surface is the **CLI**. The web app's writes are CSRF-locked and its HTML
+bodies are not a contract ([compatibility.md](compatibility.md)); the HTTP API is experimental (see
+[The HTTP API](#the-http-api-experimental) below).
 
 ### The workspace is the state directory
 
@@ -52,8 +47,8 @@ Two rules make this a contract rather than a habit:
 
 1. **On a `--json` verb, stdout is always parseable JSON** — the success payload on exit 0, the
    structured error envelope `{code, message, path?, details?}` on exit 1. Branch on the exit code,
-   then on `code`. Codes are stable identifiers; message text is not — never match on it. All
-   fifteen `--json` outputs are public and pinned (see
+   then on `code`. Codes are stable identifiers; message text is not — never match on it. Every
+   `--json` output is public and pinned (see
    [compatibility.md](compatibility.md#the---json-outputs-are-public)).
 2. **On a human verb (`discover`, `answer`, `epic`, …), stdout is not a contract.** Parse nothing
    from it. The machine-readable results are the exit code, `status --json` afterwards, and files at
@@ -71,9 +66,6 @@ From [cli.md](cli.md#exit-codes-and-what-3-and-4-mean), with the automation read
 | 3 | **The work finished; the output could not be encoded.** The message says whether a call was billed | treat as success with unreadable rendering — do **not** blindly re-run a paid verb; read state via `status --json` |
 | 4 | **The work was done and part of the answer was unreachable**; stdout carries everything produced, in full | consume stdout, flag the run degraded |
 | 130 | Operator interrupt | not a refusal; safe to re-run |
-
-3 and 4 exist precisely for automation: 3 stops a flow from paying twice for work that landed, and 4
-stops a partial listing from reading as either success or failure.
 
 ### Deterministic slugs, and what a failed call leaves behind
 
@@ -179,23 +171,15 @@ consumer wires after creation using its ref→iid map.
 
 ### Freshness and provenance — version 2 (#274)
 
-Version 1 carries no provenance: nothing in `epic.json` says which model revision it was rendered
-from, and the exports are deliberately outside artifact tracking (extra views of one generated
-artifact — no status row, no stale flag of their own). For the one consumer that cannot exercise
-judgment, that is a real gap, and closing it is the one code change this integration story needs
-first.
-
-**Version 2** stamps provenance into the envelope and both plans:
+The exports sit outside artifact tracking (no status row or stale flag of their own), so **version 2**
+stamps provenance into the envelope and both plans:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `source_revision` | int | the model revision this export was rendered from — the same revision the paired `epic.md` save recorded |
 | `slug` | string | the session it belongs to (already implicit in the plans' idempotency label; explicit here so the neutral envelope is self-identifying) |
 
-`version` becomes `2`; the bump is announced in [compatibility.md](compatibility.md) and the v2
-skeleton is pinned beside v1.
-
-How a consumer uses it — and the rule that keeps it honest:
+The v2 skeleton is pinned beside v1 ([compatibility.md](compatibility.md)). How a consumer uses it:
 
 - **`source_revision` identifies; it never judges.** Comparing it against the session's current
   revision and concluding "stale" is exactly the inference the staleness model exists to replace —
@@ -369,29 +353,14 @@ Recorded now so the envelope above survives delivery unchanged:
 7. **Versioned like `requivo-epic`**: `format` + `version`, skeleton pinned per version, bumps
    announced.
 
-## Tomorrow: the HTTP API
+## The HTTP API (experimental)
 
-The API's design lands separately (`decision: the-http-api-facade`, built as #425 — a local REST facade over the same services; bearer token when
-bound to a non-loopback interface; synchronous v1). What an n8n flow needs from it is small, and the
-governing rule is: **the bodies are the existing `--json` payloads and the
-`{code, message, details}` error envelope, verbatim** — one contract, not a second vocabulary. The
-flow above migrates by swapping Execute Command nodes for HTTP Request nodes; the parsing does not
-change.
-
-| Endpoint | Replaces | Notes |
-|---|---|---|
-| `POST /api/sessions` | `discover --once` / `session init` | body: `request`, `context_cards?`, `slug?`, `discover?: bool`; 201 `{slug, revision}`; 409 on the revision-zero refusal |
-| `GET /api/sessions/{slug}/status` | `status --json` | payload verbatim |
-| `POST /api/sessions/{slug}/answers` | `answer` | body: `answers`, `expected_revision?`; returns the apply result; 409 `revision_conflict` |
-| `POST /api/sessions/{slug}/artifacts/{type}` | `brief`/`prd`/`epic`/… | returns `{type, revision, stale, files}` |
-| `GET /api/sessions/{slug}/artifacts/epic/export?format=neutral\|github\|gitlab` | reading the export files | serves the saved envelope; plans derivable on read (pure transforms) — no paid call |
-| `GET /sessions/{slug}/export` | `session export` | already a stable data route |
-| `GET /health` | — | already stable |
-
-Later, behind the demonstrated-need gate: `GET /api/sessions/{slug}/events?since_revision=N`.
-
-Error codes map to HTTP statuses as [compatibility.md](compatibility.md) already records for the
-web routes; assert on `code`, not on the status alone.
+`requivo api serve` (the `[api]` extra; see [cli.md](cli.md#local-http-api-experimental)) is a local
+REST facade over the same services, under `/api/v1`, with the OpenAPI document at `/docs`. Its bodies
+are the existing `--json` payloads and the `{code, message, details}` error envelope, so a flow
+migrates by swapping Execute Command nodes for HTTP Request nodes without changing its parsing. It is
+not frozen: the design and the freeze conditions are `decision: the-http-api-facade`. An events
+read (`--since-revision N`) stays behind the demonstrated-need gate above.
 
 ## Distribution sequence for n8n users
 

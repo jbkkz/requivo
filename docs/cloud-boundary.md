@@ -7,8 +7,7 @@
 [open-source-strategy.md](open-source-strategy.md) draws the *distribution* boundary — what is
 Apache-2.0 and what stays private — and accepts, in its own words, that third parties may host
 Requivo as a service. This page is the *consumption* boundary: the contract any hosted product,
-first-party or not, builds against. It is written against a real first-party deployment scaffold, and every gap it names was
-observed rather than predicted.
+first-party or not, builds against, written against a real first-party deployment scaffold.
 
 Two rules govern everything below, and each is the other's mirror:
 
@@ -21,13 +20,9 @@ Two rules govern everything below, and each is the other's mirror:
 - **The hosted product never reimplements an apply, a generation, or a staleness rule.** CLAUDE.md
   already says it for the three local surfaces — *"there is never a second implementation of an
   apply, a generation, or a staleness rule"* — and a hosted deployment is the fourth surface, not
-  an exception. The standing counterexample is instructive: an adapter written before the facade existed
-  calls the provider layer's free functions plus `SessionService` directly — the exact shape this
-  repo's own CLI had before #77 — so its refinement turn applies with **no** `expected_revision`,
-  its generations persist **no** artifact and track **no** staleness, and nothing stamps what a
-  call spent into provenance. None of that is
-  a cloud feature gap; all of it is orchestration `DiscoveryService` already owns. The fix is the
-  same as #77's: consume the service, delete the second implementation.
+  an exception. An adapter calling the provider's free functions plus `SessionService` directly —
+  the CLI's shape before #77 — applies with no `expected_revision`, persists no artifact, tracks no
+  staleness and stamps no spend: orchestration `DiscoveryService` already owns. Consume the service.
 
 ```mermaid
 flowchart TB
@@ -64,7 +59,7 @@ deployment, it is cloud-only.
 |---|---|---|
 | Engine & model | slots, validation, readiness, the dependency DAG, diff/impact | — |
 | Services | `SessionService` / `DiscoveryService` / `ArtifactService` — the only apply, generate and staleness implementations | — |
-| Persistence contracts | `SessionRepository` protocol, the session format + `migrate_session`, locks | the Postgres *implementation* of the protocol (see open questions), the managed database, backups |
+| Persistence contracts | `SessionRepository` protocol, the session format + `migrate_session`, locks | the Postgres *implementation* of the protocol, the managed database, backups |
 | Providers | `ReasoningProvider` protocol, the Anthropic implementation, the dated rate tables | per-tenant key custody, quotas, spend enforcement |
 | Interfaces | CLI, local Web, a future local API (same shape: local, single-user, no auth), the Claude Code plugin | the hosted HTTP API, the product UI, admin |
 | Integrations & adapters | epic export, the pure `to_github()`/`to_gitlab()` transforms | the authenticated pushes those plans feed (deliberately out of this repo already), webhooks, inbound email |
@@ -75,149 +70,44 @@ deployment, it is cloud-only.
 
 ## 2. The consumption contract
 
-**Today there is none, and [compatibility.md](compatibility.md) says so on purpose**: *"Python
-internals … are importable and documented, but they are the engine's own structure, not a published
-API."* That sentence was right while the only consumers were this repository's own surfaces. The
-moment an external deployment pins the package, it consumes undeclared internals — which is why the
-first-party scaffold routes every import through one adapter module, and why an early pin could
-sit majors stale without anything going red.
-
-The contract this page proposes, in three parts:
-
-- **A declared seam, kept deliberately small.** The services (`SessionService`,
-  `DiscoveryService`, `ArtifactService`, their result types), the two protocols
-  (`SessionRepository`, `ReasoningProvider`), the contracts a consumer holds in its hands
-  (`EngineOutput`, `SessionMeta`, `ArtifactStatus`, the artifact contracts `generate` returns), the
-  failure vocabulary (`requivo.core.errors`, `requivo.providers.errors` — the *codes* are already
-  promised; this adds the classes), and the ledger (`requivo.usage`). Everything else stays
-  explicitly unstable. The declaration is a section of compatibility.md, priced like everything
-  else on that page: moving a declared name costs a major.
-- **`py.typed`.** The package ships no PEP 561 marker, so a typed consumer cannot even check its
-  own adapter against the seam. One empty file plus a packaging line; it turns the declared surface
-  from prose into something a type checker holds.
-- **The pin: exact, not a range.** Three majors shipped in thirteen days (v1.0.0 on 2026-08-20,
-  v2.0.0 on 2026-08-31, v3.0.0 on 2026-09-01), because a major here prices a break to *anything* on
-  the compatibility page — usually the CLI, the `--json` envelopes or an HTTP status, and almost
-  never the Python seam. Under that cadence a range ceiling reads as prudence and works as
-  starvation: an observed early range ceiling quietly aged majors behind. So: `requivo==X.Y.Z`,
-  bumped as a routine chore whose gate is the conformance suite below plus the consumer's own
-  tests. A compatible-release range is worth revisiting only after the declared seam has survived
-  several majors untouched — a decision then, not a default now.
-- **The repository conformance suite.** `tests/test_sessions.py` already proves the services are
-  backing-agnostic with an in-memory `SessionRepository`
-  (`test_session_service_runs_unchanged_on_a_non_file_repository`). That proof is the seed of a
-  suite a *consumer's* backing must pass: extracted into the wheel (a test base class parametrised
-  over a repository factory), covering what the services actually assume — lock mutual exclusion
-  and per-thread re-entrancy (invariant 9), `save_revision`'s `expected_revision` refusal
-  (invariant 2), the three-state listing (`list_slugs` / `list_unexaminable` — invariant 15's third
-  answer), `load_artifact`'s *None means absent, raise on refusal* rule, and unknown-key
-  preservation through a meta round-trip (invariant 8). A Postgres implementation that passes it
-  inherits the services verbatim; one that does not has found its bug before production did.
+- **The declared seam**, priced like everything else in
+  [compatibility.md](compatibility.md#the-python-import-surface--the-declared-seam-423): the
+  services and their result types, the two protocols (`SessionRepository`, `ReasoningProvider`), the
+  contracts a consumer holds, the failure vocabulary and `requivo.usage`. Everything else is
+  explicitly unstable; moving a declared name costs a major. The package ships `py.typed`, so a
+  consumer's adapter type-checks against it.
+- **The pin: exact, not a range** — `requivo==X.Y.Z`, bumped as a routine chore gated by the
+  conformance suite and the consumer's own tests. A major prices a break to *anything* on the
+  compatibility page, usually the CLI or a `--json` payload rather than the Python seam, so a range
+  ceiling reads as prudence and works as starvation
+  (`decision: a-release-is-justified-by-its-contents`).
+- **The repository conformance suite** (`requivo.testing.repository_conformance`, #424): what the
+  services assume of a backing — lock exclusion and per-thread re-entrancy (invariant 9),
+  `expected_revision` refusal (invariant 2), the three-state listing (invariant 15), `load_artifact`
+  returning `None` for absent and raising on refusal, unknown-key preservation (invariant 8). A
+  Postgres implementation that passes it inherits the services verbatim.
 
 ## 3. The upstream change set
 
-Ordered; each entry says why a hosted consumer needs it and what it does until the change lands.
+Each landed; what a hosted consumer relies on:
 
-### 3.1 #272 — the workspace becomes constructor state
-
-Every `core/persistence` function resolves `session_root()` from `REQUIVO_WORKSPACE`/cwd per call,
-so `FileSessionRepository` — the seam documented as Postgres-swappable — has an identity that lives
-in process globals. The recorded consequence for any hosted consumer: pointing the engine at a chosen
-directory means mutating `os.environ`, and doing that safely means a process-wide mutex that
-serialises *every* engine call — and an engine call runs minutes, so one tenant's discovery parks every other
-tenant's request behind a lock for its whole duration. Concurrency ceiling: exactly one.
-
-**Constructor state, not a ContextVar — and the threadpool fact cuts the way you might not
-expect.** A task-scoped `ContextVar` root would survive the async boundary: verified against the
-installed anyio 4.12.1, `to_thread.run_sync` copies the caller's context at submission
-(`copy_context()`) and the worker thread runs inside the copy, and FastAPI's sync-def handlers go
-through exactly that path. What disqualifies it is everything else: a job-queue worker is another
-*process*, which no context crosses, and an unbound root var falls back to cwd — a silent
-data-placement hazard, this repo's least favourite kind of correct-looking behaviour; one context
-cannot address two roots at once, and `DiscoveryService`'s constructor comment — *"one repository
-per service, chosen once, is the only shape that cannot split"* — is a statement about instance
-state; and the audit's finding was that the repository's identity leaks out of its constructor —
-a ContextVar improves the leak's isolation, not its invisibility. The repo's own precedent already
-draws the line: the usage ledger is a ContextVar because "no ledger" is a safe no-op; "no root" is
-not.
-
-Shape (the issue's own proposal, with the second of its two options recommended):
-`FileSessionRepository(root=None)` defaulting to `paths.workspace_root()` — CLI and env behaviour
-byte-identical — with the store's operations addressed through an object holding the roots rather
-than a parameter threaded through ~40 module functions, so the change has one construction site and
-the module-level functions survive as the ambient-default wrappers the CLI keeps calling.
-
-**Meanwhile:** the env-mutating workaround is correct, just serial. Its honest interim upgrade is a
-process-based job queue whose workers run one job at a time: `REQUIVO_WORKSPACE` set at job start
-in a single-flight process is race-free, so N worker processes lift the ceiling from 1 to N before
-any upstream change lands.
-
-*Flagged, out of this set:* `user_context_dir()` (`REQUIVO_CONTEXT_DIR`) is a second ambient root
-with the same disease. It stays untouched until per-tenant context cards are a real feature —
-open-source-strategy.md already marks company-specific cards private, so they will eventually need
-a per-workspace or injected card source rather than a process-global directory.
-
-### 3.2 The declared seam + `py.typed` (#423)
-
-Why: §2 — until the seam exists, every hosted import is a bet on internals two refactors have
-already moved (#73, #74/#167). **Meanwhile:** the single-adapter-module rule (exactly one module
-imports the engine) plus the exact pin bound the blast
-radius of any move to one file and one deliberate bump.
-
-### 3.3 The error-to-status table leaves the `[web]` extra (#422)
-
-`_STATUS_BY_CODE` — every published error code's HTTP status, with the 4xx/5xx reasoning and a
-guard (`test_every_error_code_has_an_explicit_http_status`) — lives in `web/app.py`, behind the
-optional `[web]` extra and an import chain that needs Jinja2. So the hosted API cannot reach the
-one table that answers "whose fault was this?", and the observed result is a blanket translation:
-every `RequivoError` becomes a 502. `revision_conflict` — a 409 with a precise remedy (reload,
-re-answer) — reads as an upstream outage; `session_not_found` reads as a gateway fault. That is #34's
-misattribution bug, reintroduced wholesale one repository over, and it is #167's playbook in
-reverse: the fix is to move the neutral concept out (a sibling of
-`usage.py`/`streams.py`, exporting the table and `http_status_for(error)` — the module name is
-#422's implementation call), never to have the
-consumer keep a copy. `requivo.web` imports it; the guard test keeps walking the subclasses.
-**Meanwhile:** special-case `session_not_found` → 404 and `revision_conflict` → 409 in the cloud
-handler and accept the drift, dated.
-
-### 3.4 The repository conformance suite is extracted (#424)
-
-Why: §2's last bullet — the Postgres backing must honour what the services assume, and today the
-assumptions are proven only by an in-memory class inside this repo's own tests. **Meanwhile:** the
-consumer vendors a copy of those assertions against its implementation, accepting drift the same
-way as 3.3, dated.
-
-### 3.5 #238 — delete on the protocol, as erasure
-
-The issue is filed as product UX (every experiment lives on the home page forever); the hosted
-consumer needs its store half for a harder reason: tenant offboarding and erasure requests must
-reach the store through the same seam as every other mutation, or they bypass the service layer —
-invariant 14's exact warning, made legal. The protocol grows `delete(slug)`; the file
-implementation takes the session lock, removes the directory, and unlinks the lock file last —
-possible in that order precisely because #113 moved the lock outside the directory it guards — so a
-concurrent writer conflicts cleanly instead of writing into a half-removed tree. Erasure semantics:
-the directory *is* the session — model, revisions, artifacts, request text — so removal retains
-nothing. The CLI verb and the web affordance are the same issue's other slices; the hosted product
-needs only the protocol + store half first. **Meanwhile:** a per-session workspace layout (§4)
-makes retiring the whole workspace directory an acceptable stand-in — acceptable
-*only* under that layout; on a shared per-tenant workspace it would be exactly the lock-skipping
-`rm -rf` the issue warns against.
-
-### 3.6 Optional model-id injection on the provider (#434) — landed
-
-The per-tenant *credential* needed no upstream change: `AnthropicProvider(client=…)` already accepted
-a constructed SDK client and `DiscoveryService(client=…)` threads it through. The model id was the
-missing half: `_complete()` resolved it from `REQUIVO_MODEL`/`MODEL` per call, so per-tenant or
-per-plan model selection meant process-env mutation, which races across concurrent calls in one
-process. `AnthropicProvider(client=…, model=…)` now takes an optional fixed model id, threaded into
-every completion call, `model_name()` and `provenance()`; the default (`model=None`) is the
-pre-existing `REQUIVO_MODEL`/`MODEL` env-chain resolution, byte-identical, with no env read at all on
-the explicit-id path. Two `AnthropicProvider` instances in one process, each constructed with its own
-id, now call, price and record independently — the shape a per-tenant or per-plan model deployment
-needs, and the deferred Fable A/B evaluation this issue names as a consumer. `DiscoveryService` itself
-is not wired to accept or forward a model id yet; a hosted consumer reaching for this constructs its
-own `AnthropicProvider(client=…, model=…)` and passes it to `DiscoveryService(provider=…)` until that
-wiring is a separate, deliberate change.
+- **#272 — the workspace is constructor state** (#446). `FileSessionRepository(root=...)`, defaulting
+  to `paths.workspace_root()`, so one process addresses many workspaces without mutating
+  `os.environ` under a process-wide mutex. Constructor state rather than a `ContextVar`: a queue
+  worker is another process no context crosses, and an unbound root falling back to cwd is a silent
+  data-placement hazard (the usage ledger is a `ContextVar` because "no ledger" is a safe no-op; "no
+  root" is not). *Flagged remainder:* `user_context_dir()` (`REQUIVO_CONTEXT_DIR`) is still ambient,
+  until per-tenant cards are a real feature.
+- **The declared seam + `py.typed`** (#423), §2.
+- **The error-to-status table leaves `[web]`** (#422): `requivo/http.py`'s `http_status_for`, so a
+  hosted API maps `revision_conflict` to 409 and `session_not_found` to 404 instead of a blanket 502.
+- **The conformance suite ships in the wheel** (#424), §2.
+- **Delete on the protocol, as erasure** (#238, #469): the store takes the session lock, removes the
+  directory and unlinks the lock file last, so offboarding goes through the same seam as every other
+  mutation and retains nothing — never an `rm -rf` around the lock.
+- **Optional model id on the provider** (#434): `AnthropicProvider(client=…, model=…)` calls, prices
+  and records independently of `REQUIVO_MODEL`. `DiscoveryService` does not forward a model id
+  itself; pass it a constructed provider (`DiscoveryService(provider=…)`).
 
 ## 4. Identity and tenancy
 
@@ -245,7 +135,7 @@ wiring is a separate, deliberate change.
      front the store with a distributed lock the deployment owns. The engine will not grow one:
      that is a cloud noun (rule 1).
   2. **Locks are advisory, so bypass is always possible** — which is why erasure belongs on the
-     protocol (§3.5) rather than in a `shutil.rmtree`.
+     protocol (§3) rather than in a `shutil.rmtree`.
   3. **Never two engine versions writing one workspace concurrently.** compatibility.md's
      mixed-version promises are about tolerance across *time*, and its own note records that an
      older Requivo locks a different file than a newer one. A deployment controls its image, so
@@ -261,14 +151,11 @@ synchronous Python throughout — and at this seam that is a feature: sync code 
 under a threadpool and in a queue worker, so the deployment chooses the execution model and the
 engine's guarantees hold under both.
 
-**Request-held threadpool** (sync-def routes → Starlette `run_in_threadpool` →
-`anyio.to_thread.run_sync`). What the engine guarantees: ContextVars *do* cross into the worker
-thread — verified against anyio 4.12.1, which copies the caller's context at submission and runs
-the function inside the copy — so a `track_usage()` scope opened in the handler is the ledger the
-provider's `record_call` files into, and two concurrent requests keep separate ledgers by
-construction. What it does not fix: the request holds a threadpool slot for the whole reasoning,
-and a client timeout, an LB idle limit, or a redeploy lands mid-call — tokens spent, apply never
-landed.
+**Request-held threadpool** (sync-def routes → `anyio.to_thread.run_sync`): ContextVars cross into
+the worker thread (anyio copies the caller's context), so a `track_usage()` scope opened in the
+handler is the one the provider files into. What it does not fix: the request holds a slot for the
+whole reasoning, and a client timeout, LB idle limit or redeploy lands mid-call — tokens spent,
+apply never landed.
 
 **Job queue** (recommended once real users exist): enqueue `{session_id, operation,
 expected_revision}`, worker executes the `DiscoveryService` operation, client polls or streams the
@@ -281,7 +168,7 @@ row. A queue worker is a CLI-shaped caller, which is the caller this engine is h
   one coherent `SessionSnapshot` under the session lock (invariant 12), releases the lock before
   the paid call, and carries the snapshot's revision as `expected_revision` into the apply and as
   `source_revision` onto the artifact — so interleaved writes become a clean `revision_conflict`
-  (409, §3.3) or an honestly-stale artifact, never a silent overwrite. `generate("brief")` even
+  (409, §3) or an honestly-stale artifact, never a silent overwrite. `generate("brief")` even
   survives losing the race: the paid assessment is still saved against its true source revision,
   flagged stale, with the conflict named (#208).
 - **Crash story = the CLI's ctrl-C story.** Both flocks are kernel-held and die with the process;
@@ -292,17 +179,9 @@ row. A queue worker is a CLI-shaped caller, which is the caller this engine is h
 
 ## 6. Eventing and observability
 
-Landed (#435). Before this, the engine's layers emitted **zero** log records (the one logging
-configuration in the tree belonged to the local web surface — `web/logging_setup.py`), and
-invariant 7 already blessed `logging` as the library-correct way of not printing. What shipped is
-minimal and stdlib-only, and — one thing the original proposal for this section did not name —
-required a second mechanism beyond simply not calling a handler-configuring function: with nothing
-configured *anywhere in the process*, a WARNING+ record from any of these loggers reaches Python's
-own `logging.lastResort`, which prints straight to stderr regardless of what this package does.
-`requivo/__init__.py` attaches a `NullHandler` to the top-level `requivo` logger at import — the
-stdlib-documented way a *library* stays silent — which absorbs that fallback for every descendant
-logger through ordinary propagation, without adding any handler an embedding application would
-have to notice or displace.
+Landed (#435), stdlib-only and silent by default: `requivo/__init__.py` attaches a `NullHandler` to
+the top-level `requivo` logger, so a WARNING+ record never reaches `logging.lastResort` on stderr
+when nothing else in the process configured logging.
 
 - **Named loggers at the service seams** — `requivo.services.discovery`, `.sessions`,
   `.artifacts` — emitting the handful of events an operator acts on: a session created, a model
@@ -322,8 +201,7 @@ have to notice or displace.
   additive dataclass field, stamped at every `_complete()` call site in `providers/anthropic/
   generators.py` with the same vocabulary `_OP_PROMPTS`/`cli.py`'s subcommands already use
   (`analyze`, `brief`, `stories`, `prd`, `criteria`, `epic`, `release`, `estimate`). Nothing in this
-  package reads it back yet — no renderer, no `--json` envelope — so today its only consumer is
-  whatever an embedding operator builds against the ledger themselves.
+  package reads it back; it is for an embedding operator's own metering.
 
 Everything else attaches on the deployment's side: handlers, OTel, request-id correlation, metrics,
 billing pipelines reading the ledger per job, alerting. And deliberately **no more than this** — no
@@ -342,9 +220,8 @@ A hosted deployment never touches that path. It constructs the SDK client itself
 `DiscoveryService(client=…)` — so per-tenant credentials involve no environment writes and no new
 upstream surface. Custody, rotation and encryption-at-rest of tenant keys are cloud-only concerns,
 and the engine holds no key anywhere: provenance records provider, model, prompt hash, surface and
-spend — never a credential. The model id is the one vendor fact still ambient after client
-injection, and §3.6 is its fix. After #272, no `REQUIVO_*` variable remains on the hosted hot path;
-`REQUIVO_CONTEXT_DIR` is the flagged remainder (§3.1).
+spend — never a credential. The model id is injectable too (#434, §3). No `REQUIVO_*` variable
+remains on the hosted hot path except the flagged `REQUIVO_CONTEXT_DIR` (§3).
 
 ## 8. Migrations: `format_version` is the auto-upgrade contract
 
@@ -369,7 +246,7 @@ The deployment's obligations in return:
   content as authoritative; it may cache for display, keyed by revision and invalidated by
   revision, because the revision is the one fact the engine promises about change.
 - **The refusal travels to any backing.** When a Postgres repository stores sessions as rows, the
-  same frontier applies under the same rule, and the conformance suite (§3.4) is where that gets
+  same frontier applies under the same rule, and the conformance suite (§2) is where that gets
   pinned — a database backing must refuse a newer format the way the files do, not half-understand
   it.
 
