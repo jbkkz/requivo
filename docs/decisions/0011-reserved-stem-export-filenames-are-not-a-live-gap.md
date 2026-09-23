@@ -4,25 +4,22 @@
 
 ## Context
 
-`session export`'s default destination is `<slug>.requivo.zip`. A slug that is a reserved Windows
-device name (`con`, `nul`, ...) produces a filename whose *stem* is exactly the shape `validate_slug`
-(#372) refuses at session creation. Raised as a concern in review of #372: does the export path
-re-open that refusal on write, for a filename stem rather than a directory name?
+`session export` defaults to `<slug>.requivo.zip`. A slug that is a reserved Windows device name
+(`con`, `nul`, …) gives a filename stem `validate_slug` refuses at creation (#372). Raised in review:
+does export reopen that refusal for a filename stem?
 
 ## Decision
 
-No fix needed. A reserved slug can only reach `session export` by already occupying a session
-directory on disk, and Windows refuses to *materialize* a directory under that name in the first
-place (#372) -- so on the one platform where `con.requivo.zip` would also collide with the reserved
-shape, there is no `con` session to export from. A caller who genuinely needs a portable archive name
-unaffected by this has `--output`.
+No fix. A reserved slug reaches `session export` only by occupying a session directory, and Windows
+refuses to create a directory under that name (#372) — so on the one platform where
+`con.requivo.zip` would collide, there is no `con` session to export. `--output` names any other
+destination.
 
 ## What breaking it cost
 
-Nothing: the concern was raised and closed in review before it shipped, not found afterward.
+Nothing: raised and closed in review before shipping.
 
 ## Alternatives rejected
 
-- **Validate the destination filename's stem against the reserved-name list before writing it.**
-  Rejected: the check would never fire, since the session it would be exporting cannot exist on the
-  one platform the check would matter for.
+- **Validate the destination stem before writing.** It would never fire: the session it would
+  export cannot exist on the one platform where the check matters.

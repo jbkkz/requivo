@@ -4,43 +4,28 @@
 
 ## Context
 
-`_save_failed_reply` (`providers/anthropic/completion.py`) writes the raw reply that never validated
-under `.requivo/debug/` so a bug report has something to attach. #272 turned the workspace root from
-an ambient, process-wide default into constructor state on `Store`/`FileSessionRepository`, precisely
-so that two callers in one process can address two different workspaces without racing each other's
-environment.
-
-`_save_failed_reply` is called from deep inside `_complete()`'s retry-give-up path, which knows the
-contract that failed to parse and nothing about which session, or which repository's root, triggered
-the call. Threading an explicit root down to it would mean either constructing the Anthropic provider
-per-workspace (the provider is built once per process/client and reused across whatever session it is
-next asked to reason about — it has no single workspace of its own to carry as constructor state), or
-widening `_complete()`'s signature with a root parameter that every call site — discovery, every
-generator, the golden harness — would have to thread through for the sake of one failure path nothing
-else on the success path needs.
+`_save_failed_reply` (`providers/anthropic/completion.py`) writes a reply that never validated under
+`.requivo/debug/` for a bug report. #272 made the workspace root constructor state on
+`Store`/`FileSessionRepository` so two callers in one process can address two workspaces. But
+`_save_failed_reply` sits deep in `_complete()`'s give-up path, which knows the failed contract and
+nothing about the session or repository behind the call; the provider is built once per process and
+has no workspace of its own.
 
 ## Decision
 
-`_save_failed_reply` calls `debug_root()`, the ambient-default wrapper #272 kept for exactly this
-kind of caller: one that legitimately has no explicitly-rooted repository to ask. `.requivo/debug/` is
-a human-read diagnostic aid, not part of any session's data, so addressing the *process's* ambient
-workspace rather than whichever session's repository triggered the call is accepted as a known,
-documented limitation rather than fixed or silently left unstated.
+`_save_failed_reply` calls `debug_root()`, the ambient-default wrapper #272 kept for callers with no
+rooted repository to ask. `.requivo/debug/` is a human-read diagnostic, not session data, so using
+the process's ambient workspace is an accepted, documented limitation.
 
 ## What breaking it cost
 
-Nothing observed yet. The accepted cost is stated so it can be recognised if it ever is hit: on a
-process serving more than one workspace at once — the exact shape #272 exists to unblock — a failed
-reply's debug dump lands under the *ambient* root, which may not be the root the triggering session
-used. A user attaching `.requivo/debug/<file>` to a bug report from the wrong workspace would see a
-directory that exists but does not contain the file they were told to attach.
+Nothing observed. The accepted cost: in a process serving several workspaces — the shape #272
+unblocks — a dump lands under the ambient root, which may not be the triggering session's, and a
+user told to attach `.requivo/debug/<file>` finds it missing.
 
 ## Alternatives rejected
 
-- **Thread an explicit root through `_complete()` and every generator that calls it.** Rejected as
-  disproportionate: it widens the signature of the one function every provider call funnels through,
-  for the sake of a diagnostic side channel that only fires when a reply fails to parse at all.
-- **Construct `AnthropicProvider` per workspace.** Rejected for the same reason #272's scope amendment
-  rejected it elsewhere: the provider is process-scoped by design, reused across whatever session it
-  is asked to reason about next, and re-constructing it per call is a wider change than a debug-only
-  side channel justifies.
+- **Thread a root through `_complete()` and every generator** — widens the one function every call
+  funnels through, for a side channel that fires only when a reply fails to parse.
+- **An `AnthropicProvider` per workspace** — the provider is process-scoped by design; rebuilding it
+  per call is a wider change than a debug path justifies.
