@@ -14,6 +14,8 @@ _JOB_SCOPED = {
 
 # Every `write` scope granted anywhere, with why.
 _WRITE_GRANTS = {
+    ("codeql.yml", "security-events"): "uploads the analysis to code scanning, which is what the "
+                                       "required `CodeQL` check reads",
     ("publish.yml", "id-token"): "mints the short-lived OIDC token PyPI Trusted Publishing "
                                  "verifies; it is what replaces a stored API token",
     ("secret-scan.yml", "pull-requests"): "gitleaks-action's only use of GITHUB_TOKEN is "
