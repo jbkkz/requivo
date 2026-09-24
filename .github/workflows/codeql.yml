@@ -1,0 +1,42 @@
+name: CodeQL
+
+# The explicit form of what GitHub's default setup ran, because default setup never analysed a
+# pull request from a fork: #631 and #632 sat BLOCKED on the required `CodeQL` check with every other
+# leg green, and only merged after their commits were re-pushed to an internal branch. A workflow
+# triggered by `pull_request` runs for a fork like every other leg here. Default setup must stay
+# off while this file exists: GitHub refuses an advanced analysis when default setup is enabled.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "27 4 * * 1"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# `security-events: write` is how the analysis is uploaded to code scanning; see
+# tests/test_workflow_permissions.py, whose allowlist carries the same reason.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
