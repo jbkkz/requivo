@@ -11,6 +11,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from stat import S_ISDIR, S_ISREG
 from typing import cast
 
 from requivo.core import persistence as store
@@ -39,6 +40,7 @@ from requivo.core.errors import (
 )
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
+from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
 from requivo.paths import workspace_root
@@ -188,20 +190,24 @@ class SessionService:
                 )
             return ref
         if p.name in ("model.json", "session.json"):
-            # `Path.is_file()` re-raises `PermissionError`; that is the third state, not a traceback.
+            # A metadata read preserves the third state that `is_file()` hides on Python 3.14.
             # `test_an_unreadable_model_json_path_refuses_cleanly_instead_of_crashing`.
             try:
-                is_real_file = p.is_file()
+                is_real_file = S_ISREG(p.stat().st_mode)
+            except (FileNotFoundError, NotADirectoryError):
+                is_real_file = False
             except OSError as e:
                 raise SessionNotFoundError(
                     f"could not tell whether {display_token(ref)} is a saved model.json: {e}",
                     details={"ref": ref},
                 ) from e
             return p.parent.name if is_real_file else ref
-        # A directory is mined only when it carries a session marker (#414); both probes re-raise
-        # on a denied ancestor (`test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too`).
+        # A directory is mined only when it carries a session marker (#414); metadata reads retain
+        # the denied-ancestor error on Python 3.14 (#636).
         try:
-            is_dir = p.exists() and p.is_dir()
+            is_dir = S_ISDIR(p.stat().st_mode)
+        except (FileNotFoundError, NotADirectoryError):
+            is_dir = False
         except OSError as e:
             raise SessionNotFoundError(
                 f"could not tell whether {display_token(ref)} is a session directory: {e}",
@@ -209,7 +215,7 @@ class SessionService:
             ) from e
         if is_dir:
             try:
-                looks_like_a_session = (p / "session.json").exists() or (p / "model.json").exists()
+                looks_like_a_session = _stat_exists(p / "session.json") or _stat_exists(p / "model.json")
             except OSError as e:
                 raise SessionNotFoundError(
                     f"could not tell whether {display_token(ref)} is a session directory: {e}",

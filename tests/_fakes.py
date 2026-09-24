@@ -239,19 +239,20 @@ def run_cli_stdin(argv, text, monkeypatch, client=None) -> str:
 
 
 def blind_to_session(monkeypatch, slug: str) -> None:
-    """`Path.exists` raises EACCES on this session's `session.json` alone: existence undeterminable (#589)."""
-    marker, original = store.canonical_dir(slug) / "session.json", Path.exists
+    """Metadata access fails on this session's `session.json` alone: existence undeterminable (#589, #636)."""
+    marker, original = store.canonical_dir(slug) / "session.json", Path.stat
 
-    def exists(path):
+    def stat(path, *args, **kwargs):
         if path == marker:
             raise PermissionError(13, "permission denied", str(path))
-        return original(path)
+        return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "exists", exists)
+    monkeypatch.setattr(Path, "stat", stat)
 
 
 def tree_bytes(root: Path) -> dict:
-    return {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    # Bypass the patched Path.stat in blind_to_session while still comparing every file's bytes.
+    return {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if os.path.isfile(p)}
 
 
 def forge_meta(slug: str, fields: dict) -> None:
@@ -288,6 +289,38 @@ def replace_fails(monkeypatch, denials: int | None) -> dict:
     return attempts
 
 
+def simulate_py314_denied_path(monkeypatch, denied: Path) -> None:
+    """Model 3.14's false-returning pathlib queries while metadata still raises."""
+    original_stat = Path.stat
+    original_exists = Path.exists
+    original_is_file = Path.is_file
+    original_is_dir = Path.is_dir
+    original_is_symlink = Path.is_symlink
+
+    def stat(self, *args, **kwargs):
+        if self == denied:
+            raise PermissionError(13, "Permission denied", str(denied))
+        return original_stat(self, *args, **kwargs)
+
+    def exists(self, *args, **kwargs):
+        return False if self == denied else original_exists(self, *args, **kwargs)
+
+    def is_file(self, *args, **kwargs):
+        return False if self == denied else original_is_file(self, *args, **kwargs)
+
+    def is_dir(self, *args, **kwargs):
+        return False if self == denied else original_is_dir(self, *args, **kwargs)
+
+    def is_symlink(self, *args, **kwargs):
+        return False if self == denied else original_is_symlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    monkeypatch.setattr(Path, "exists", exists)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    monkeypatch.setattr(Path, "is_symlink", is_symlink)
+
+
 def deny_access(d: Path, request, untested: str) -> Path:
     """`chmod 000` a directory so a probe into it raises, or skip naming what went untested."""
     request.addfinalizer(lambda: d.chmod(0o755))
@@ -295,7 +328,7 @@ def deny_access(d: Path, request, untested: str) -> Path:
         pytest.skip(f"POSIX mode bits do not deny traversal on Windows. UNTESTED HERE: {untested}")
     d.chmod(0o000)
     try:
-        (d / "session.json").exists()
+        (d / "session.json").stat()
     except PermissionError:
         return d
     pytest.skip(f"chmod 000 did not deny the probe on this run (running as root?). UNTESTED HERE: {untested}")

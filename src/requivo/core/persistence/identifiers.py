@@ -198,12 +198,21 @@ def validate_filename(filename: str) -> str:
 
 
 
-def _probe(marker: Path, slug: str) -> bool:
-    """Is `marker` there, with the third answer routed out through the error channel: `Path.exists()`
-    swallows `ENOENT` into `False` and re-raises everything else, which becomes `SessionUnreadableError`
-    rather than widening a bool (#80, #97). `test_session_exists_answers_could_not_tell_through_the_error_channel`."""
+def _stat_exists(path: Path) -> bool:
+    """A missing path is false; any other failed metadata read is not an absence (#636)."""
     try:
-        return marker.exists()
+        path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return True
+
+
+def _probe(marker: Path, slug: str) -> bool:
+    """Is `marker` there, with an unreadable path routed through the error channel (#80, #97,
+    #636)? `Path.exists()` hides access errors on Python 3.14.
+    `test_session_exists_answers_could_not_tell_through_the_error_channel`."""
+    try:
+        return _stat_exists(marker)
     except OSError as e:
         raise SessionUnreadableError(
             f"could not determine whether session '{slug}' exists: {e}",

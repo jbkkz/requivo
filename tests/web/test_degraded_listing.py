@@ -146,7 +146,7 @@ def test_an_entry_that_could_not_be_examined_is_a_row_and_not_a_broken_page(clie
                     "survives an entry whose examination raises; tests/test_persistence_scan.py skips the same.")
     d.chmod(0o000)
     try:
-        (d / "session.json").exists()
+        (d / "session.json").stat()
     except PermissionError:
         pass
     else:

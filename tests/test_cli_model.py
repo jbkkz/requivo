@@ -10,7 +10,16 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
-from _fakes import forge_meta, full_model, run_cli, run_cli_exit, run_cli_json, run_cli_stdin, slot
+from _fakes import (
+    forge_meta,
+    full_model,
+    run_cli,
+    run_cli_exit,
+    run_cli_json,
+    run_cli_stdin,
+    simulate_py314_denied_path,
+    slot,
+)
 
 from requivo import cli, deterministic
 from requivo.cli import _build_parser, app
@@ -328,7 +337,7 @@ def test_an_unreadable_model_json_path_refuses_cleanly_instead_of_crashing(tmp_p
     d.chmod(0o000)
     ref = str(d / "model.json") if branch == "model.json" else str(d)
     try:
-        (Path(ref).is_file() if branch == "model.json" else (d / "session.json").exists())
+        (Path(ref) if branch == "model.json" else d / "session.json").stat()
     except PermissionError:
         pass
     else:
@@ -350,14 +359,28 @@ def test_a_directory_reference_under_a_blocked_ancestor_refuses_cleanly_too(tmp_
     parent.chmod(0o000)
     ref = str(target)
     try:
-        Path(ref).exists()
+        Path(ref).stat()
     except PermissionError:
         pass
     else:
-        pytest.skip("chmod 000 on the parent did not deny the exists() probe (running as root?). UNTESTED HERE: the ancestor-blocked arm.")
+        pytest.skip("chmod 000 on the parent did not deny the stat() probe (running as root?). UNTESTED HERE: the ancestor-blocked arm.")
     with pytest.raises(SessionNotFoundError) as exc:
         SessionService().resolve_slug(ref)
     assert exc.value.details["ref"] == ref
+
+
+@pytest.mark.parametrize("branch", ["file", "directory", "marker"])
+def test_resolve_slug_does_not_read_an_inaccessible_path_as_absent_on_py314(tmp_path, monkeypatch, branch):
+    """#636: all three path-shaped reference probes retain the could-not-tell result."""
+    d = tmp_path / "session-slug"
+    d.mkdir()
+    denied = d if branch == "directory" else d / ("model.json" if branch == "file" else "session.json")
+    simulate_py314_denied_path(monkeypatch, denied)
+    ref = str(denied if branch == "file" else d)
+    with pytest.raises(SessionNotFoundError) as exc:
+        SessionService().resolve_slug(ref)
+    assert exc.value.details["ref"] == ref
+    assert isinstance(exc.value.__cause__, PermissionError)
 
 
 @pytest.mark.parametrize("tail", _WRITE_VERB_ARGV, ids=lambda a: a[0])

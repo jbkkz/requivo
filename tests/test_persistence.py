@@ -11,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from _fakes import deny_access, full_model, printed, seed_session, slot
+from _fakes import deny_access, full_model, printed, seed_session, simulate_py314_denied_path, slot
 from test_source_form import _force_default_encoding  # the one control that can move the ambient encoding
 
 from requivo.cli import _build_parser, _wrote
@@ -29,6 +29,7 @@ from requivo.core.persistence import derive_slug, load_model, validate_filename,
 from requivo.core.persistence import store as store_module
 from requivo.deterministic._shared import EXIT_DEGRADED
 from requivo.deterministic.sessions import _cmd_session_migrate
+from requivo.deterministic.sessions.lifecycle import _legacy_request_text
 from requivo.services.artifacts import ArtifactService
 from requivo.services.repository import FileSessionRepository
 from requivo.services.sessions import SessionService
@@ -184,6 +185,26 @@ def test_migrating_a_free_slug_still_works():
     assert check_session("free") == [] and (legacy / "model.json").exists()
     assert (meta.created_at, meta.provider, meta.model_name) == ("2026-01-02T03:04:05Z", "anthropic", "claude-x")
     assert meta.session_id == store.read_meta("free").session_id
+
+
+@pytest.mark.parametrize("kind", ["model", "request", "artifact"])
+def test_migration_does_not_drop_an_unreadable_legacy_file_on_py314(monkeypatch, kind):
+    """#636: an inaccessible source file cannot be silently omitted from migration."""
+    legacy = _legacy("denied-legacy", "LEGACY", request_text="Existing request.")
+    if kind == "artifact":
+        (legacy / "prd.md").write_text("# Existing PRD\n", encoding="utf-8")
+    denied = legacy / {"model": "model.json", "request": "request.md", "artifact": "prd.md"}[kind]
+    simulate_py314_denied_path(monkeypatch, denied)
+    with pytest.raises(PermissionError):
+        store.migrate_legacy("denied-legacy")
+
+
+def test_interrupted_migration_check_cannot_call_a_denied_request_empty_on_py314(monkeypatch):
+    """#636: interrupted-migration detection must not compare against an invented empty request."""
+    legacy = _legacy("denied-request", "LEGACY", request_text="Existing request.")
+    simulate_py314_denied_path(monkeypatch, legacy / "request.md")
+    with pytest.raises(PermissionError):
+        _legacy_request_text(legacy)
 
 
 def test_the_bulk_migrate_command_skips_a_slug_that_is_already_taken():
@@ -580,3 +601,27 @@ def test_a_missing_model_is_not_reported_as_a_corrupt_one():
     SessionService().create_session("A leave approval system.", slug="no-model-yet")
     with pytest.raises(SessionNotFoundError):
         store.load_session_model("no-model-yet")   # revision 0: no model.json has been written
+
+
+@pytest.mark.parametrize("kind", ["session-model", "revision-model", "request"])
+def test_a_denied_session_file_is_not_called_missing_on_py314(monkeypatch, kind):
+    """#636: metadata denial must not turn an existing session file into a missing one."""
+    slug = "blocked-file"
+    store.create_session(slug, "An existing request.")
+    d = store.canonical_dir(slug)
+    if kind == "session-model":
+        denied = d / "model.json"
+        denied.write_text("{}", encoding="utf-8")
+    elif kind == "revision-model":
+        denied = d / "revisions" / "0001-model.json"
+        denied.write_text("{}", encoding="utf-8")
+    else:
+        denied = d / "request.md"
+    simulate_py314_denied_path(monkeypatch, denied)
+    with pytest.raises(PermissionError):
+        if kind == "session-model":
+            store.load_session_model(slug)
+        elif kind == "revision-model":
+            store.load_revision_model(slug, 1)
+        else:
+            store.session_request(slug)

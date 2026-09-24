@@ -8,6 +8,7 @@ from pathlib import Path
 from requivo.core import persistence as store
 from requivo.core.errors import InvalidModelError, RequivoError, SessionExistsError, SessionUnreadableError
 from requivo.core.persistence import UnexaminableEntry
+from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import _NO_DETAIL, EXIT_DEGRADED, _read_source, _resolve_cards, print_json
 from requivo.paths import session_root
@@ -133,7 +134,7 @@ def _legacy_request_text(legacy_dir: Path) -> str:
     unrelated session on the same slug (#262). Takes the directory, not the slug (#76)."""
     for name in ("request.md", "request.txt"):
         p = legacy_dir / name
-        if p.exists():
+        if _stat_exists(p):
             return p.read_text(encoding="utf-8")
     return ""
 
@@ -146,20 +147,23 @@ def _scan_legacy_root(root: Path) -> tuple[list[str], list[UnexaminableEntry]]:
     root is two empty lists; a root that cannot be listed still raises.
     `test_the_bulk_migrate_command_degrades_an_unreadable_legacy_directory_rather_than_crashing`,
     `test_a_totally_unlistable_legacy_root_refuses_cleanly_instead_of_crashing`."""
-    if not root.exists():
+    try:
+        root.stat()
+    except (FileNotFoundError, NotADirectoryError):
         return [], []
     slugs: list[str] = []
     unreadable: list[UnexaminableEntry] = []
     for p in sorted(root.iterdir(), key=lambda p: p.name):
         try:
-            is_legacy = (p / "model.json").exists()
+            (p / "model.json").stat()
+        except (FileNotFoundError, NotADirectoryError):
+            continue
         except Exception as e:  # noqa: BLE001 - the third outcome, not a failure of the listing.
             # `Exception`, not `OSError`: the ways a probe can fail are open-ended. `BaseException` is not caught.
             unexaminable_entry = UnexaminableEntry(p.name, str(e))
             unreadable.append(unexaminable_entry)
             continue
-        if is_legacy:
-            slugs.append(p.name)
+        slugs.append(p.name)
     return slugs, unreadable
 
 

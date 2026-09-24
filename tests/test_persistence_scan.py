@@ -6,13 +6,14 @@ import re
 from pathlib import Path
 
 import pytest
-from _fakes import run_cli_exit, seed_session
+from _fakes import run_cli_exit, seed_session, simulate_py314_denied_path
 from test_persistence import deny_access
 
 from requivo.core import persistence as store
 from requivo.core.errors import SessionNotFoundError, SessionUnreadableError
 from requivo.deterministic import EXIT_DEGRADED
 from requivo.deterministic.doctor import _non_session_detail
+from requivo.deterministic.sessions.lifecycle import _scan_legacy_root
 from requivo.services.repository import FileSessionRepository
 
 pytestmark = pytest.mark.usefixtures("workspace")
@@ -149,6 +150,78 @@ def test_session_exists_answers_could_not_tell_through_the_error_channel(blocked
     assert store.session_exists(HEALTHY) is True
     assert store.session_exists("no-such-session-anywhere") is False
     assert store.legacy_exists("no-such-session-anywhere") is False
+
+
+def test_session_exists_preserves_access_denial_when_exists_would_answer_false(monkeypatch):
+    """#636: Python 3.14's `Path.exists` can say absent for a path whose metadata is denied."""
+    marker = store.session_root() / "denied-on-314" / "session.json"
+    simulate_py314_denied_path(monkeypatch, marker)
+    with pytest.raises(SessionUnreadableError) as caught:
+        store.session_exists("denied-on-314")
+    assert caught.value.details == {"slug": "denied-on-314"}
+    assert isinstance(caught.value.__cause__, PermissionError)
+
+
+def test_session_scan_keeps_denied_entry_in_third_bucket_when_exists_says_false(monkeypatch):
+    """#636: a blocked session is not an ordinary non-session on 3.14."""
+    _seed_healthy()
+    d = store.session_root() / BLOCKED
+    d.mkdir()
+    simulate_py314_denied_path(monkeypatch, d / "session.json")
+    slugs, others, unexaminable = store._scan_session_root()
+    assert slugs == [HEALTHY]
+    assert others == []
+    assert [entry.name for entry in unexaminable] == [BLOCKED]
+    assert "Permission denied" in unexaminable[0].error
+
+
+def test_legacy_scan_keeps_denied_entry_in_unreadable_bucket_when_exists_says_false(monkeypatch):
+    """#636: bulk migrate must not skip an inaccessible legacy marker on 3.14."""
+    d = store.output_root() / BLOCKED
+    d.mkdir(parents=True)
+    simulate_py314_denied_path(monkeypatch, d / "model.json")
+    slugs, unreadable = _scan_legacy_root(store.output_root())
+    assert slugs == []
+    assert [entry.name for entry in unreadable] == [BLOCKED]
+    assert "Permission denied" in unreadable[0].error
+
+
+def test_session_root_denial_is_not_reported_as_an_empty_workspace(monkeypatch):
+    """#636: the whole-root error remains distinct from an empty root on 3.14."""
+    _seed_healthy()
+    simulate_py314_denied_path(monkeypatch, store.session_root())
+    with pytest.raises(PermissionError):
+        store._scan_session_root()
+
+
+def test_legacy_root_denial_is_not_reported_as_no_legacy_sessions(monkeypatch):
+    """#636: the bulk-migrate root must not silently disappear on 3.14."""
+    root = store.output_root()
+    root.mkdir(parents=True)
+    simulate_py314_denied_path(monkeypatch, root)
+    with pytest.raises(PermissionError):
+        _scan_legacy_root(root)
+
+
+def test_lock_root_denial_is_not_reported_as_no_locks(monkeypatch):
+    """#636: doctor must not read a denied lock root as empty on 3.14."""
+    root = store.lock_root()
+    root.mkdir(parents=True)
+    simulate_py314_denied_path(monkeypatch, root)
+    with pytest.raises(PermissionError):
+        store.scan_lock_root()
+
+
+def test_lock_scan_reports_a_denied_entry_in_the_third_bucket(monkeypatch):
+    """#636: a denied lock file is neither an ordinary lock nor an unexpected file."""
+    root = store.lock_root()
+    root.mkdir(parents=True)
+    denied = root / "denied.lock"
+    denied.touch()
+    simulate_py314_denied_path(monkeypatch, denied)
+    locks, unexpected, unexaminable = store.scan_lock_root()
+    assert locks == [] and unexpected == []
+    assert [entry.name for entry in unexaminable] == ["denied.lock"]
 
 
 def test_read_meta_answers_could_not_tell_through_the_error_channel(blocked):
