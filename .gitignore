@@ -52,6 +52,8 @@ supertool
 # tests/test_agent_layer.py holds it to that (#2). Only this state directory is
 # per-session and per-machine.
 .claude/jit-context/.discovery/
+# The oss maintainer loop's tick state: written by whoever runs the loop, on their machine.
+.oss-state.json
 # The Codex CLI's per-checkout config: which model reviews and at what reasoning effort. That is
 # a choice about one developer's account and budget, not about the repository -- the review rubric
 # Codex reads, AGENTS.md, IS tracked, because an untracked rubric is absent from every worktree the

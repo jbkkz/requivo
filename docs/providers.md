@@ -44,10 +44,11 @@ anything. `requivo demo` is free and needs no key at all.
 
 | Step | Calls | Input tokens | Output tokens | Estimated cost |
 |---|---|---|---|---|
-| One provider call | 1 | 8,100–13,700 | 1,300–3,800 | **$0.03–$0.07** |
-| A full interactive discovery (8 turns + the assessment) | 9 | — | — | **$0.26–$0.59** |
-| Every remaining artifact (prd, stories, estimate, criteria, epic, release) | 7 | — | — | **$0.20–$0.46** |
-| A complete session, end to end | 16 | — | — | **$0.47–$1.05** |
+| One provider call | 1 | 8,900–12,400 | 700–2,900 | **$0.03–$0.05** |
+| The two routing judgments before a first discovery (perimeter, context card) | 2 | 800–1,000 | < 100 | **< $0.01** |
+| A full interactive discovery (the two judgments, 8 turns and the assessment) | 11 | — | — | **$0.34–$0.43** |
+| Every remaining artifact (prd, stories, estimate, criteria, epic, release) | 7 | — | — | **$0.18–$0.36** |
+| A complete session, end to end | 18 | — | — | **$0.52–$0.79** |
 
 Priced at **$2.00 / $10.00 per million tokens** (input / output) for `claude-sonnet-5`, rates as of
 **2026-08-29**. An estimate, never a bill. The rate table is `providers/anthropic/pricing.py`; the figures
@@ -57,7 +58,9 @@ Two limits on these figures:
 
 - **Tokens are estimated at four characters per token**, over the real assembled system prompt plus
   the resolved model each call attaches (every generator and every discovery turn after the first
-  sends the model), measured from the replies captured in `fixtures/golden/`. They are not API counts.
+  sends the model). Replies are measured from `fixtures/golden/` for discovery and the assessment,
+  from the artifacts in `examples/` for the other generators, and from each judgment prompt's Output
+  format example for the two routing calls. They are not API counts. Re-derived 2026-09-24.
 - **Every call is charged at full price.** Prompt caching (below) makes a sitting cheaper than the
   table says; the retry path makes a rare call dearer. The exact figure for *your* request is printed
   by the verb that spent it.
