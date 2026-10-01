@@ -15,8 +15,9 @@ actually sends on a Friday night.
 | 4 | [`brief.md`](brief.md) | The same decision brief, as the clean Markdown `ArtifactService.save` actually records and Requivo Web renders — what its keyless "Explore a worked example" button seeds alongside the model, so the click delivers the brief too, with no key and no call (#429). |
 | 5 | [`epic.md`](epic.md) | A delivery epic — the work broken into trackable issues with dependencies, from the *same* model. |
 | 6 | [`acceptance-criteria.md`](acceptance-criteria.md) | Given/When/Then recette checklist, from the *same* model. |
+| 7 | [`estimate.md`](estimate.md) | An uncertainty-aware estimate — a day range per task, a low–high total, and the unresolved slots that drive the spread — as the text-fenced terminal capture of `requivo estimate`. |
 
-Steps 3 through 6 are all views of step 2 — the model is the product, everything else is a render of it.
+Steps 3 through 7 are all views of step 2 — the model is the product, everything else is a render of it.
 
 ## What to look at
 
@@ -66,3 +67,6 @@ directory you ran from — the files you are reading here are never written to.
 
 The `model.json` here was produced by a single discovery pass from `request.md`. The engine is
 non-deterministic, so a fresh run phrases things differently — the shape of the pushback is what's stable.
+The same holds for `estimate.md`, one captured run of `requivo estimate` against this model: a fresh run
+splits the work and sizes the ranges differently — a range per task, a low–high total and the slots that
+spread it are what's stable.

@@ -58,6 +58,8 @@
       <div class="toolbar">
         <button class="btn" type="submit">{{ "Regenerate " if s.primary_artifact
           else "Generate " }}{{ primary_label|lower }}</button>
+        {# The measured wait, as on the create form in `home.html` (#236). #}
+        <span class="muted">Usually under two minutes.</span>
         <span class="spinner" role="status">Writing the {{ primary_label|lower }}…</span>
       </div>
     </form>
@@ -76,7 +78,8 @@
       {% endif %}
       {% if provider is defined and provider.available %}
       <p class="hint">Each is generated from the current understanding and recorded against it. Generate
-        the decision brief first — it settles the decisions the others are written from.</p>
+        the decision brief first — it settles the decisions the others are written from. Each one
+        usually takes under two minutes.</p>
       <div class="toolbar">
         {% for g in s.more_generatable %}
         {# The indicator is the toolbar, not the form: the "Generating…" text is a sibling of

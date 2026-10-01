@@ -42,28 +42,36 @@ The exact model a session ran against is recorded in its revision provenance (se
 You pay Anthropic directly, on your own key, and these are the numbers to expect before you spend
 anything. `requivo demo` is free and needs no key at all.
 
-| Step | Calls | Input tokens | Output tokens | Estimated cost |
-|---|---|---|---|---|
-| One provider call | 1 | 8,900–12,400 | 700–2,900 | **$0.03–$0.05** |
-| The two routing judgments before a first discovery (perimeter, context card) | 2 | 800–1,000 | < 100 | **< $0.01** |
-| A full interactive discovery (the two judgments, 8 turns and the assessment) | 11 | — | — | **$0.34–$0.43** |
-| Every remaining artifact (prd, stories, estimate, criteria, epic, release) | 7 | — | — | **$0.18–$0.36** |
-| A complete session, end to end | 18 | — | — | **$0.52–$0.79** |
+Each row is one real command, measured on **2026-10-01**: the figures are the `API USAGE` block that
+command printed, copied from the terminal into [`fixtures/ledger/2026-10-01.md`](../fixtures/ledger/2026-10-01.md)
+with the command, the commit and the conditions it ran under. Input counts every token the call sent,
+cached or not.
 
-Priced at **$2.00 / $10.00 per million tokens** (input / output) for `claude-sonnet-5`, rates as of
-**2026-08-29**. An estimate, never a bill. The rate table is `providers/anthropic/pricing.py`; the figures
-here are arithmetic over it at the date shown, and a price change is the cue to redo them.
+| Command | Calls | Input tokens | of which from cache | Output tokens | Est. cost |
+|---|---|---|---|---|---|
+| First `discover`, the event check-in request | 3 | 22,459 | 5,483 | 10,046 | $0.138 |
+| First `discover`, a one-line leave request | 3 | 7,744 | — | 4,556 | $0.063 |
+| First `discover`, a one-line invoice export | 3 | 7,765 | 3,205 | 6,933 | $0.079 |
+| `estimate` (writes the user stories too) | 2 | 42,158 | 18,834 | 7,607 | $0.131 |
+| `brief` | 1 | 18,197 | 9,417 | 6,200 | $0.081 |
+| `prd` | 1 | 17,377 | 9,417 | 10,638 | $0.124 |
+| `criteria` | 1 | 35,824 | 18,834 | 7,515 | $0.113 |
+| `epic` | 1 | 16,879 | 9,417 | 4,627 | $0.063 |
+| `release` | 1 | 15,745 | 9,417 | 1,354 | $0.028 |
 
-Two limits on these figures:
+So a first discovery — its turn plus the two routing judgments before it (perimeter, context card) —
+came to **$0.06–$0.14**, and all seven documents written from one model to **$0.54**. An `answer` turn
+is one more call; this run did not measure one, and the verb prints its own figure.
 
-- **Tokens are estimated at four characters per token**, over the real assembled system prompt plus
-  the resolved model each call attaches (every generator and every discovery turn after the first
-  sends the model). Replies are measured from `fixtures/golden/` for discovery and the assessment,
-  from the artifacts in `examples/` for the other generators, and from each judgment prompt's Output
-  format example for the two routing calls. They are not API counts. Re-derived 2026-09-24.
-- **Every call is charged at full price.** Prompt caching (below) makes a sitting cheaper than the
-  table says; the retry path makes a rare call dearer. The exact figure for *your* request is printed
-  by the verb that spent it.
+Priced by the ledger at **$2.00 / $10.00 per million tokens** (input / output) for `claude-sonnet-5`,
+rates as of **2026-08-29** (`providers/anthropic/pricing.py`), cache reads at a tenth of the input rate.
+An estimate, never a bill. Two limits on these figures:
+
+- **One run of each, on one machine.** The engine is non-deterministic, so output length moves from
+  run to run, and these ran against all four bundled context cards; `--context` sends fewer.
+- **They are only as current as the capture.** `test_documented_costs_and_durations_are_the_measured_ones`
+  fails if a dollar figure here or in the README is not one the capture supports, or if the rate table
+  moves past the date the capture was priced at. A new capture is how these numbers change.
 
 ## The usage footprint
 

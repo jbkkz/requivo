@@ -34,17 +34,16 @@ still be saved, and you can analyse it from Claude Code or the CLI: they share t
 
   <div class="toolbar">
     <button class="btn" type="submit">{{ "Analyse request" if provider.available else "Save request" }}</button>
-    {# The duration a reader is told to expect has to be one this repo can stand behind: invariant 2
-       says provider calls take "seconds to minutes" and invariant 12 says "the call (which takes
-       minutes)". The copy this replaces promised a handful of seconds; it expired at second twenty
-       on a page that blocks, and what a reader does when a promise expires is resubmit — a second
-       session and a second paid call (#236). This is also the whole signal with JavaScript off,
-       which is why it says what the wait is *for* rather than only how long it is.
+    {# The duration a reader is told to expect is the one the committed ledger capture measured
+       (`fixtures/ledger/`), never a reasoned guess: a promise that expires on a page that blocks gets
+       a resubmit — a second session and a second paid call (#236). This is also the whole signal with
+       JavaScript off, which is why it says what the wait is *for* rather than only how long it is.
        `test_no_provider_backed_button_still_promises_a_few_seconds` scans these files as raw text,
        so it cannot tell a comment from the copy and this note deliberately does not quote the old
        wording — the same care `test_no_template_carries_a_clipping_attribute` asks for above.
-       Pinned by that test and by `test_the_no_js_path_still_states_how_long_it_will_take`. #}
-    {% if provider.available %}<span class="muted">Usually under a minute — reading the request and
+       Pinned by that test, by `test_the_no_js_path_still_states_how_long_it_will_take`, and against
+       the capture by `test_documented_costs_and_durations_are_the_measured_ones`. #}
+    {% if provider.available %}<span class="muted">Usually one to two minutes — reading the request and
       building a first understanding.</span>{% endif %}
     <span class="spinner" role="status">Reading the request…</span>
   </div>

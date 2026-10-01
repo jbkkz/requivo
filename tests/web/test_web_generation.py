@@ -104,9 +104,9 @@ def test_no_provider_backed_button_still_promises_a_few_seconds():
 def test_the_no_js_path_still_states_how_long_it_will_take(client, monkeypatch):
     """The elapsed counter is an enhancement; the honest static copy is the floor (#236)."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    assert "Usually under a minute" in client.get("/").text, "the create form states no duration at all"
+    assert "Usually one to two minutes" in client.get("/").text, "the create form states no duration at all"
     create_via_post(client, slug="later", provider="create_only")
-    assert "Usually under a minute" in client.get("/sessions/later").text, "the deferred page makes the same promise"
+    assert "Usually one to two minutes" in client.get("/sessions/later").text, "the deferred page makes the same promise"
 
 
 # ── error responses reach the page (#203, #320) ──────────────────────────────

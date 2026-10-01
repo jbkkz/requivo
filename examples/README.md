@@ -1,7 +1,7 @@
 # Examples
 
 These examples show Requivo end to end: a request → a saved `model.json` → the artifacts generated
-from it (assessment, PRD, acceptance criteria, epic, exports, release notes). They double as
+from it (assessment, PRD, acceptance criteria, epic, estimate, exports, release notes). They double as
 documentation and as inputs the tests and golden harness rely on.
 
 ## What's here

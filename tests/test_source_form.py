@@ -11,7 +11,9 @@ import re
 import subprocess
 import sys
 import textwrap
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
+from statistics import median
 
 import pytest
 from _scan import list_files, list_python_files, parse_utf8, write_tree
@@ -1147,6 +1149,77 @@ def test_the_reference_guard_sees_a_dangling_name_and_a_dangling_slug(tmp_path):
                    f"`decision: {dangling_slug}`.\n", encoding="utf-8")
     found = dangling_references([doc], declared_test_names((tests,)), declared_slugs(records))
     assert found == [f"note.md -> {dangling_name}", f"note.md -> decision: {dangling_slug}"], found
+
+# ---- a measured figure in prose is one the committed ledger capture supports (#252, #236) ----
+
+LEDGER = REPO_ROOT / "fixtures" / "ledger" / "2026-10-01.md"
+_LEDGER_RUN = re.compile(r"^### (discover|generate) — .*?wall time \*\*([\d.]+) s\*\*.*?```text\n(API USAGE.*?)```", re.MULTILINE | re.DOTALL)
+_DOLLARS = re.compile(r"\$(\d+\.\d+)")
+DISCOVERY_COPY, GENERATION_COPY = "Usually one to two minutes", "Usually under two minutes"
+
+
+def measured_runs(text: str) -> list[dict]:
+    """One dict per verbatim `API USAGE` block in a ledger capture, with the command's wall time."""
+    runs = []
+    for kind, wall, block in _LEDGER_RUN.findall(text):
+        field = dict(re.findall(r"^  (Calls|Input|Output|Est\. cost)\s+~?\$?([\d,.]+)", block, re.MULTILINE))
+        cached = re.search(r"\(([\d,]+) served from cache\)", block)
+        priced = re.search(r"\((\S+) — estimate, rates as of ([\d-]+)\)", block)
+        runs.append({"kind": kind, "wall": float(wall), "calls": field["Calls"], "input": field["Input"],
+                     "cached": cached.group(1) if cached else "—", "output": field["Output"],
+                     "cost": field["Est. cost"], "model": priced.group(1), "as_of": priced.group(2)})
+    return runs
+
+
+def measured_claim_breaches(runs: list[dict], readme: str, costs: str, rates: tuple[float, float]) -> list[str]:
+    """Every dollar figure the README or providers.md's cost section states that `runs` do not, every
+    measured row the table lost, and every duration the copy claims that the walls contradict."""
+    cent = Decimal("0.01")
+    found = [Decimal(r["cost"]) for r in runs if r["kind"] == "discover"]
+    span = f"${min(found).quantize(cent, ROUND_FLOOR)}–${max(found).quantize(cent, ROUND_CEILING)}"
+    total = f"${sum(Decimal(r['cost']) for r in runs if r['kind'] == 'generate').quantize(cent)}"
+    allowed = {r["cost"] for r in runs} | set(_DOLLARS.findall(span + total)) | {f"{rate:.2f}" for rate in rates}
+    breaches = []
+    for name, text in (("README.md", readme), ("docs/providers.md", costs)):
+        breaches += [f"{name} does not state {claim}" for claim in (span, total) if claim not in text]
+        breaches += [f"{name} states ${d}, which the capture does not" for d in sorted(set(_DOLLARS.findall(text)) - allowed)]
+    rows = (f"| {r['calls']} | {r['input']} | {r['cached']} | {r['output']} | ${r['cost']} |" for r in runs)
+    breaches += [f"docs/providers.md lost the measured row {row!r}" for row in rows if row not in costs]
+    discover = sorted(r["wall"] for r in runs if r["kind"] == "discover")
+    if median(discover) < 60 or discover[-1] > 120:
+        breaches.append(f"{DISCOVERY_COPY!r} is not what discoveries took: {discover}")
+    if max(r["wall"] for r in runs if r["kind"] == "generate") > 120:
+        breaches.append(f"{GENERATION_COPY!r} is not what generations took")
+    return breaches
+
+
+def _cost_claims() -> tuple[list[dict], str, str, tuple[float, float]]:
+    from requivo.providers.anthropic.pricing import PRICING_AS_OF, price_per_mtok
+    runs = measured_runs(LEDGER.read_text(encoding="utf-8"))
+    assert len(runs) == 9 and {(r["model"], r["as_of"]) for r in runs} == {("claude-sonnet-5", PRICING_AS_OF)}, (
+        "the capture is unreadable, or priced at a rate the table no longer holds: re-measure")
+    providers = (REPO_ROOT / "docs" / "providers.md").read_text(encoding="utf-8")
+    costs = providers.split("## What a run costs", 1)[1].split("\n## ", 1)[0]
+    return runs, (REPO_ROOT / "README.md").read_text(encoding="utf-8"), costs, price_per_mtok("claude-sonnet-5")
+
+
+def test_documented_costs_and_durations_are_the_measured_ones():
+    """#252: the dollar figures were estimates nobody measured; #236: the wait copy was reasoned, not timed."""
+    breaches = measured_claim_breaches(*_cost_claims())
+    web = SRC / "web" / "templates"
+    for copy, pages in ((DISCOVERY_COPY, ("home.html", "sessions/detail.html")), (GENERATION_COPY, ("artifacts/list.html",))):
+        breaches += [f"{page} does not say {copy!r}" for page in pages if copy not in (web / page).read_text(encoding="utf-8")]
+    assert not breaches, "documented figures the ledger capture does not support:\n  " + "\n  ".join(breaches)
+
+
+def test_the_measured_claim_guard_sees_a_stale_figure_a_lost_row_and_a_slow_run():
+    """MUST-FIRE: each way the docs can drift from the capture is reported."""
+    runs, readme, costs, rates = _cost_claims()
+    row = f"| {runs[0]['calls']} | {runs[0]['input']} |"
+    assert row in costs and measured_claim_breaches(runs, readme, costs, rates) == []
+    stale = measured_claim_breaches([{**r, "wall": 150.0} for r in runs], readme + " $0.52–$0.79", costs.replace(row, "|"), rates)
+    expected = ("$0.52", "$0.79", "lost the measured row", DISCOVERY_COPY, GENERATION_COPY)
+    assert all(any(s in b for b in stale) for s in expected), stale
 
 # ---- SECTION 4: the lean ratchet (#553). `tests/lean_budget.toml` holds ceilings that only go down; ----
 # ---- every breach is reported at once. ----

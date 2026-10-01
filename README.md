@@ -29,9 +29,9 @@ agency leads — on complex, configurable B2B products. Run it locally, then han
 
 Opens `http://127.0.0.1:8765`. No key? It still opens and offers **Explore a worked example** — the
 same client email `requivo demo` replays, materialised as a real session ([demo video][demo-video]).
-Analysing your own request costs roughly **$0.03–$0.05 per call**, **$0.52–$0.79** for a complete
-session end to end — derived, not typed: the per-step table and its method are in
-[`docs/providers.md`][providers]. Other install routes and the full platform list:
+Analysing your own request costs cents: a first discovery measured **$0.06–$0.14**, and all seven
+documents from one model **$0.54** — a real run's own usage ledger, not a calculation; the per-command
+table is in [`docs/providers.md`][providers]. Other install routes and the full platform list:
 [`docs/getting-started.md`][getting-started].
 
 [![The Requivo Web session page: the objective, the request, and what Requivo understood, split into what is confirmed and what is being assumed.][shot-session]][web]
