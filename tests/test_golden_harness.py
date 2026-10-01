@@ -528,6 +528,12 @@ def test_a_second_failure_keeps_the_earlier_runs_under_a_partial_marker(flaky, t
     assert "unavailable" in saved["partial"]["reason"] and not (tmp_path / "s.runs.json").exists()
 
 
+def test_a_failure_with_an_empty_message_still_keeps_the_partial(flaky, tmp_path):
+    """An exception whose message is empty names its type, not an IndexError (3.4.0 release audit)."""
+    flaky(dict([(2, ProviderOutputError(""))]))
+    assert _partial(tmp_path)["partial"]["reason"] == "ProviderOutputError"
+
+
 def test_a_failed_capture_keeps_its_completed_runs_beside_the_baseline_not_over_it(flaky, tmp_path):
     flaky(dict([(2, _cut()), (3, _cut())]), existing=_80)
     assert (tmp_path / "s.runs.json").read_text(encoding="utf-8") == _80 and _partial(tmp_path)["partial"]

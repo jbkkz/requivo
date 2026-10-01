@@ -346,12 +346,10 @@ exactly like the CLI and the `--json` envelopes above.
 Everything **not** listed above — `requivo.providers.anthropic` most pointedly — stays internal and
 moves freely (`decision: deferring-the-neutral-provider-layer`).
 
-**`DiscoveryService.claim_and_ground`'s return shape — breaking in 4.0.0** (#601, priced into this
-major per #607): it returned three positional values, then four, then a `ClaimAndGround`
-NamedTuple (`meta`, `grounding`, `cards`, `routing`) — unpacking is unchanged from the four-value
-shape, but a caller still doing the original `meta, grounding, cards = ...` now raises `ValueError:
-too many values to unpack`. Read it by **attribute**, not by position: a fact added later is then a
-new field on the NamedTuple, not another break for every caller that unpacks.
+**`DiscoveryService.claim_and_ground`'s return shape** (#601): a `ClaimAndGround` NamedTuple (`meta`,
+`grounding`, `cards`, `routing`) since it first shipped in 3.4.0. Read it by **attribute**, not by
+position: a fact added later is then a new field on the NamedTuple, not a break for every caller
+that unpacks.
 
 | Promise | Since | Test |
 |---|---|---|

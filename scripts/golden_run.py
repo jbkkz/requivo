@@ -97,7 +97,7 @@ def with_retry(call, *args, **kwargs):
 
 def keep_partial(slug: str, envelope: str, where: dict, exc: Exception) -> None:
     """Persist the completed runs beside the baseline with the marker, say so, and let the failure propagate."""
-    path = dump_partial(slug, envelope, {**where, "reason": str(exc).splitlines()[0]})
+    path = dump_partial(slug, envelope, {**where, "reason": (str(exc).splitlines() or [type(exc).__name__])[0]})
     print(f"  ! {slug}: kept the completed runs in {path.name} (partial — "
           f"not a baseline; golden_diff reports it as not re-captured)", file=sys.stderr)
 

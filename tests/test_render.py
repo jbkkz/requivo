@@ -14,13 +14,22 @@ from requivo.core.contracts import (
     DesignDecision,
     Epic,
     Exclusion,
+    GoToMarketPlan,
     Leverage,
     Opportunity,
     ReleaseNotes,
+    Summary,
     Threshold,
 )
 from requivo.render.html import _BULLET, _INLINE_MARKUP, _INLINE_TAGS, _ORDERED, _inline, _list_items, markdown_to_html
-from requivo.render.markdown import brief_markdown, criteria_markdown, epic_markdown, prd_markdown, release_markdown
+from requivo.render.markdown import (
+    brief_markdown,
+    criteria_markdown,
+    epic_markdown,
+    gtm_plan_markdown,
+    prd_markdown,
+    release_markdown,
+)
 from requivo.render.terminal import render_brief
 
 _MODEL = {"problem": slot(80, "explicit", "high")}
@@ -113,17 +122,20 @@ def test_render_brief_titles_decision_brief_and_shows_challenges_decisions_and_o
 
 
 def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief():
-    """Self-review finding on #599."""
+    """Self-review finding on #599; the free-text fields of both briefs, from the 3.4.0 release audit."""
+    i = "x\n# INJECTED"
     model = out(_MODEL)
-    model.exclusions = [Exclusion(option="X\n# INJECTED", reason="r\n# INJECTED")]
-    model.thresholds = [Threshold(condition="C\n# INJECTED", measure="m", action="a\n# INJECTED", rests_on=["problem"])]
-    brief = Brief(problem="P", solution="S", complexity="low", decisions=[DesignDecision(decision="D\n# INJECTED")],
-                  challenges=[Challenge(headline="H\n# INJECTED", premise="p", alternative="a", consequence="c", recommendation="r")],
-                  opportunities=[Opportunity(text="O\n# INJECTED", leverage="high")])
+    model.summary = Summary(objective=i, scope=i, assumptions=[i], blind_spot=i)
+    model.exclusions = [Exclusion(option=i, reason=i)]
+    model.thresholds = [Threshold(condition=i, measure="m", action=i, rests_on=["problem"])]
+    brief = Brief(problem=i, solution=i, complexity="low", complexity_reasons=[i], cost_driver=i, introduces=[i],
+                  risks=[i], open_decisions=[i], next_steps=[i], decisions=[DesignDecision(decision=i)],
+                  challenges=[Challenge(headline=i, premise="p", alternative="a", consequence="c", recommendation="r")],
+                  opportunities=[Opportunity(text=i, leverage="high")])
     md = brief_markdown(model, brief)
-    assert "\n# INJECTED" not in md
-    # 7, not 5: the exclusion and the threshold each carry it in two fields, the other three once each.
-    assert md.count("INJECTED") == 7
+    assert "\n# INJECTED" not in md and md.count("INJECTED") == 19
+    gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=[i], open_decisions=[i]))
+    assert "\n# INJECTED" not in gtm and gtm.count("INJECTED") == 10
 
 
 @pytest.mark.parametrize("field, item, heading, line", [

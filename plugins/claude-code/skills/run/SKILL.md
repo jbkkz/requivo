@@ -40,9 +40,9 @@ shape the `empty` case is warned about above, one level up, and it is currently 
 cards back to the user when you present the understanding, below, so a human can be the one to
 notice (#489).
 
-That "currently" has an end in view and has not reached one:
-`decision: the-engine-writes-the-missing-card` decides that a first discovery should judge the
-domain and write the missing card itself, and #593 builds it. Until that lands, naming the cards
+`decision: the-engine-writes-the-missing-card` has the engine's own first discovery judge the
+domain and write the missing card itself (#593), but that judgment runs inside `requivo discover`,
+not on this path: `session init` and in-session reasoning never make it. Here, naming the cards
 back is the whole of the protection — do it.
 
 ## 2. What are you being asked to do?

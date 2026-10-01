@@ -215,15 +215,32 @@ def test_every_refusal_on_the_import_path_names_what_it_is_about(tmp_path, monke
     assert _import(_zip(tmp_path / "good.zip", _good_entries("ok-one")))["slug"] == "ok-one"
 
 
-def test_import_refuses_an_archive_whose_member_data_is_corrupt(tmp_path):
-    """#647: an intact central directory over altered member bytes failed at extraction, as a traceback."""
+def _corrupt_data(raw: bytes) -> bytes:
+    assert b"A request." in raw
+    return raw.replace(b"A request.", b"A reQuest.")
+
+
+def _central_field(offset: int, value: bytes):
+    """Overwrite one field of every central-directory entry: the flags (encrypted) or the method."""
+    def patch(raw: bytes) -> bytes:
+        out, start = bytearray(raw), 0
+        while (at := raw.find(b"PK\x01\x02", start)) != -1:
+            out[at + offset:at + offset + len(value)] = value
+            start = at + 4
+        return bytes(out)
+    return patch
+
+
+@pytest.mark.parametrize("damage", [_corrupt_data, _central_field(8, b"\x01\x00"), _central_field(10, b"\x63\x00")],
+                         ids=["corrupt-data", "encrypted", "unsupported-method"])
+def test_import_refuses_an_archive_whose_member_data_is_corrupt(tmp_path, damage):
+    """#647: member data it cannot read failed at extraction, as a traceback; encrypted and unsupported-method
+    members too (3.4.0 release audit)."""
     archive = tmp_path / "bad.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
         for name, content in _good_entries("bad-data").items():
             z.writestr(name, content)
-    raw = archive.read_bytes()
-    assert b"A request." in raw
-    archive.write_bytes(raw.replace(b"A request.", b"A reQuest."))
+    archive.write_bytes(damage(archive.read_bytes()))
     err = io.StringIO()
     with redirect_stderr(err), pytest.raises(SystemExit):
         app(["session", "import", str(archive)], client=None)

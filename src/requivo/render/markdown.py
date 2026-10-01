@@ -86,23 +86,23 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     summary = []
     if out.summary.objective:
-        summary.append(f"**Objective:** {out.summary.objective}")
+        summary.append(f"**Objective:** {_line(out.summary.objective)}")
     if brief.problem:
-        summary.append(f"**Problem:** {brief.problem}")
+        summary.append(f"**Problem:** {_line(brief.problem)}")
     if brief.solution:
-        summary.append(f"**Solution:** {brief.solution}")
+        summary.append(f"**Solution:** {_line(brief.solution)}")
     summary.append(f"**Complexity:** {brief.complexity.value}"
-                   + (f" — {'; '.join(brief.complexity_reasons)}" if brief.complexity_reasons else ""))
+                   + (f" — {'; '.join(_line(r) for r in brief.complexity_reasons)}" if brief.complexity_reasons else ""))
     if brief.cost_driver:
-        summary.append(f"**Main cost driver:** {brief.cost_driver}")
+        summary.append(f"**Main cost driver:** {_line(brief.cost_driver)}")
     section("Request and objective", summary)
 
-    section("Current understanding", [out.summary.scope] if out.summary.scope else [])
+    section("Current understanding", [_line(out.summary.scope)] if out.summary.scope else [])
     section("What is confirmed", _stated(out, Confidence.explicit))
 
     assumed = _stated(out, Confidence.inferred)
     if out.summary.assumptions:
-        assumed += [f"- {a}" for a in out.summary.assumptions]
+        assumed += [f"- {_line(a)}" for a in out.summary.assumptions]
     if assumed:
         assumed = [*assumed, "",
                    "_Each of these was inferred, not stated. Confirm the ones that would change the "
@@ -122,7 +122,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
             decisions.append(f"  - _Trade-off accepted:_ {_line(d.tradeoff)}")
     section("Decisions made", decisions)
 
-    section("Scope implications", [f"- {i}" for i in brief.introduces])
+    section("Scope implications", [f"- {_line(i)}" for i in brief.introduces])
 
     section("Out of scope", _excluded(out))
 
@@ -137,13 +137,13 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
                        f"- **Recommendation:** {_line(c.recommendation)}", ""]
     section("Assumptions worth contesting", challenges)
 
-    section("Main risks", [f"- {r}" for r in brief.risks])
+    section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
-    open_items = [f"- {d}" for d in brief.open_decisions]
+    open_items = [f"- {_line(d)}" for d in brief.open_decisions]
     if blockers:
         open_items.append(f"- Unresolved and blocking: {' · '.join(blockers)}")
     if out.summary.blind_spot:
-        open_items.append(f"- Least explored: {out.summary.blind_spot}")
+        open_items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
     section("Unresolved questions", open_items)
 
     section("Opportunities", [
@@ -156,7 +156,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
             [f"**Not ready.** This brief is a draft: these topics are still unconfirmed and can move "
              f"the solution — {' · '.join(blockers)}." if blockers
              else "**Ready.** No high-impact topic is still unresolved."])
-    section("Recommended next steps", [f"- {s}" for s in brief.next_steps])
+    section("Recommended next steps", [f"- {_line(s)}" for s in brief.next_steps])
 
     return "\n".join(md).rstrip() + "\n"
 
@@ -175,15 +175,15 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
 
     summary = []
     if out.summary.objective:
-        summary.append(f"**Objective:** {out.summary.objective}")
+        summary.append(f"**Objective:** {_line(out.summary.objective)}")
     section("Objective", summary)
 
-    section("Current understanding", [out.summary.scope] if out.summary.scope else [])
+    section("Current understanding", [_line(out.summary.scope)] if out.summary.scope else [])
     section("What is confirmed", _stated(out, Confidence.explicit, GO_TO_MARKET))
 
     assumed = _stated(out, Confidence.inferred, GO_TO_MARKET)
     if out.summary.assumptions:
-        assumed += [f"- {a}" for a in out.summary.assumptions]
+        assumed += [f"- {_line(a)}" for a in out.summary.assumptions]
     if assumed:
         assumed = [*assumed, "",
                    "_Each of these was inferred, not stated. Confirm the ones that would change the "
@@ -199,13 +199,13 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
 
     section("Out of scope", _excluded(out, GO_TO_MARKET))
     section("Decision thresholds", _thresholds(out, GO_TO_MARKET))
-    section("Main risks", [f"- {r}" for r in brief.risks])
+    section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
-    open_items = [f"- {d}" for d in brief.open_decisions]
+    open_items = [f"- {_line(d)}" for d in brief.open_decisions]
     if blockers:
         open_items.append(f"- Unresolved and blocking: {' · '.join(blockers)}")
     if out.summary.blind_spot:
-        open_items.append(f"- Least explored: {out.summary.blind_spot}")
+        open_items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
     section("Unresolved questions", open_items)
 
     # Not a second readiness question, as in `brief_markdown`.

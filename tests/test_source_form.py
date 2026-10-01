@@ -1079,7 +1079,7 @@ def test_the_cli_reads_its_assets_with_an_explicit_encoding(verb, tmp_path):
 # ---- `decision: the-tree-records-the-rule` lets a citation name a test file as well as a function). ----
 
 TESTS = REPO_ROOT / "tests"
-REFERENCE_ROOTS = (SRC, REPO_ROOT / "scripts", REPO_ROOT / "docs", TESTS)
+REFERENCE_ROOTS = (SRC, REPO_ROOT / "scripts", REPO_ROOT / "docs", REPO_ROOT / "plugins", TESTS)
 REFERENCE_EXTRA = (REPO_ROOT / "CLAUDE.md", REPO_ROOT / "CONTRIBUTING.md")
 REFERENCE_SUFFIXES = (".py", ".md", ".html", ".js")
 DECISIONS = REPO_ROOT / "docs" / "decisions"

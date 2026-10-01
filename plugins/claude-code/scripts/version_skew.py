@@ -17,7 +17,7 @@ it already has -- no new permission, no new failure mode if a script does not ex
 PATH.
 
 This module is the tested, unambiguous specification of that comparison (so REASONING.md's prose
-has a ground truth to be checked against in `tests/test_plugin_version_skew.py`, including the
+has a ground truth to be checked against in `tests/test_plugin.py`, including the
 could-not-read arm, which is the part that is easy to get wrong in prose and hard to verify by
 reading English), and a standalone diagnostic: `python3 plugins/claude-code/scripts/version_skew.py`
 runs `requivo doctor --json` itself and prints the same verdict, for a human or a CI job to run
@@ -79,7 +79,7 @@ class SkewResult:
 # The first component must be a real digit run -- "1", "2026" -- or this is not a version at all
 # ("unreleased", "unknown", "dev"), and treating it as one is exactly the collapse this module's
 # own docstring forbids (found in self-review, see the two tests this fixes in
-# tests/test_plugin_version_skew.py). Everything AFTER the first component stays tolerant of a
+# tests/test_plugin.py). Everything AFTER the first component stays tolerant of a
 # non-numeric trailing chunk (`.dev0`, `-rc1`), which is a real version parsing as far as it can
 # rather than raising over a suffix nobody asked this advisory check to understand.
 _VERSION_SHAPE_RE = re.compile(r"^\d+")
@@ -213,7 +213,7 @@ def main(argv=None) -> int:
     """Standalone diagnostic: run `requivo doctor --json` and print the verdict. Not part of any
     skill's runtime Bash grant -- see the module docstring.
 
-    `tests/test_plugin_version_skew.py` exercises this function's exception handling directly, by
+    `tests/test_plugin.py` exercises this function's exception handling directly, by
     monkeypatching `subprocess.run` -- so the three `except` arms below, and the exit code each
     produces, are unit-tested, even though none of them spawns a real process. What stays untested
     by any suite is a *real* spawn against an actual `requivo` binary; no CI leg runs
