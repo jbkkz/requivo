@@ -145,8 +145,8 @@ Each landed; what a hosted consumer relies on:
 
 ## 5. Statelessness and jobs
 
-A provider call is synchronous, non-streaming, and runs seconds to minutes by design
-(`MAX_OUTPUT_TOKENS` is 16k because the SDK risks HTTP timeouts above it). The engine is
+A provider call is synchronous and runs seconds to minutes by design; it streams from the vendor so
+an idle-cutting network path cannot drop it (#638), but returns only the whole reply. The engine is
 synchronous Python throughout — and at this seam that is a feature: sync code runs identically
 under a threadpool and in a queue worker, so the deployment chooses the execution model and the
 engine's guarantees hold under both.

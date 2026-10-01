@@ -70,29 +70,58 @@ class Spend:
         self.cache_creation_input_tokens = cache_creation_input_tokens
 
 
+class _FakeStream:
+    """What `messages.stream(...)` returns: the request is sent on `__enter__`, as the SDK sends it, and the
+    reply is read through `get_final_message()`."""
+
+    def __init__(self, send):
+        self._send, self._final = send, None
+
+    def __enter__(self):
+        self._final = self._send()
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+    def get_final_message(self):
+        return self._final
+
+
+class FakeMessages:
+    """`client.messages` with `stream()` alone, so a call regressed to the unstreamed `create()` fails every
+    fake (#638). `reply(**kwargs)` is the server's answer, or raises its failure."""
+
+    def __init__(self, reply):
+        self._reply = reply
+
+    def stream(self, **kwargs):
+        return _FakeStream(lambda: self._reply(**kwargs))
+
+
 class FakeClient:
-    """Returns canned JSON replies in order; records each create() call's kwargs."""
+    """Returns canned JSON replies in order; records each request's kwargs."""
 
     def __init__(self, *replies, spend=None, stop_reason="end_turn"):
         self._replies = list(replies)
         self._spend, self._stop_reason = spend, stop_reason
         self.calls = []
-        self.messages = self  # so client.messages.create resolves to self.create
+        self.messages = FakeMessages(self.reply)
 
-    def create(self, **kwargs):
+    def reply(self, **kwargs):
         self.calls.append(kwargs)
         return _FakeResponse(self._replies.pop(0), self._spend, self._stop_reason)
 
 
 class RaisingClient:
-    """`create()` always raises `exc` (a transport error by default) and counts how often it was reached."""
+    """Every request raises `exc` (a transport error by default) and counts how often it was reached."""
 
     def __init__(self, exc=None):
         self._exc = exc
-        self.messages = self
+        self.messages = FakeMessages(self.reply)
         self.calls = 0
 
-    def create(self, **kwargs):
+    def reply(self, **kwargs):
         self.calls += 1
         if self._exc is None:
             import anthropic

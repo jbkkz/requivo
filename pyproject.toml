@@ -54,7 +54,7 @@ dependencies = [
 # populated, which is the same question #294 asks about the ledger's `getattr` defaults.
 #
 # The v1 break is the move to the `httpx2` fork plus removals; the SDK surface this provider uses is
-# `Anthropic()`, `messages.create`, `.content`/`.stop_reason`/`.usage` and five exception classes,
+# `Anthropic()`, `messages.stream`, `.content`/`.stop_reason`/`.usage` and five exception classes,
 # and none of it appears in that list. We construct no `httpx` object and pass none in, which is the
 # migration's one real edit.
 #

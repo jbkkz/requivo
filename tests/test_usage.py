@@ -45,8 +45,8 @@ def _rendered(ledger) -> str:
 class _MaxTokensClient(FakeClient):
     """`FakeClient`, every reply flagged as cut off at the token ceiling."""
 
-    def create(self, **kwargs):
-        reply = super().create(**kwargs)
+    def reply(self, **kwargs):
+        reply = super().reply(**kwargs)
         reply.stop_reason = "max_tokens"
         return reply
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from typing import TYPE_CHECKING, cast
 
@@ -29,6 +30,21 @@ except ImportError as _e:  # pragma: no cover - exercised only in a no-SDK insta
     _IMPORT_ERROR = _e
 else:
     _IMPORT_ERROR = None
+
+
+def _http_transport_errors() -> tuple[type[Exception], ...]:
+    """The HTTP library's own transport failures: once a stream has started, the SDK raises them unwrapped
+    rather than as its `APIConnectionError` (#638). `httpx2` under anthropic 1.x, `httpx` under 0.x."""
+    found: list[type[Exception]] = []
+    for name in ("httpx2", "httpx"):
+        try:
+            found.append(importlib.import_module(name).TransportError)
+        except (ImportError, AttributeError):
+            pass
+    return tuple(found)
+
+
+STREAM_TRANSPORT_ERRORS = _http_transport_errors() if Anthropic is not None else ()
 
 MODEL_DEFAULT = "claude-sonnet-5"
 

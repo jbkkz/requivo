@@ -23,6 +23,7 @@ from requivo.core.persistence import _atomic_write, ensure_store_dir
 from requivo.paths import debug_root
 from requivo.providers.anthropic.client import (
     _NO_KEY_MESSAGE,
+    STREAM_TRANSPORT_ERRORS,
     APIError,
     AuthenticationError,
     PermissionDeniedError,
@@ -67,8 +68,8 @@ def _prune_debug_dir(root: Path) -> None:
         stale.unlink(missing_ok=True)
 
 
-# Output-token ceiling per call: a rich discovery exceeds 8k, and this non-streaming call risks HTTP
-# timeouts above ~16k. Going higher needs streaming.
+# Output-token ceiling per call: a rich discovery exceeds 8k. The call streams (#638), so HTTP timeouts no
+# longer bound it; raising it is a cost and latency decision of its own (#256).
 MAX_OUTPUT_TOKENS = 16000
 
 
@@ -184,15 +185,22 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     for _ in range(retries + 1):
         rec.attempts += 1
         try:
-            resp = client.messages.create(
+            # Streamed: a silent connection is cut by idle-timing VPNs and proxies, so a reply slower than
+            # their limit never arrived (#638). `test_a_reply_slower_than_an_idle_cut_still_arrives`.
+            with client.messages.stream(
                 model=model,
                 max_tokens=MAX_OUTPUT_TOKENS,
                 system=_system_blocks(system, reuse_system),
                 messages=attempt,
-            )
+            ) as stream:
+                resp = stream.get_final_message()
         except APIError as e:
             # Transport failures become a clean message, branched: a rejected key must not be told to
             # retry (#201). `test_an_auth_failure_names_the_key_and_does_not_advise_retry`.
+            raise _stop(_transport_message(e)) from e
+        except STREAM_TRANSPORT_ERRORS as e:
+            # A connection lost mid-stream reaches here unwrapped by the SDK, and is the same clean failure.
+            # `test_a_connection_cut_mid_stream_is_a_clean_recorded_failure`.
             raise _stop(_transport_message(e)) from e
         except TypeError as e:
             # The belt: the SDK once raised a bare builtin out of its own auth resolution (#201), and

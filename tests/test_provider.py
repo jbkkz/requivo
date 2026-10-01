@@ -1,5 +1,6 @@
 """The Anthropic provider call: JSON extraction, retry classification, the debug capture on give-up, the
-context-card threading and which model id a call uses (#72, #201, #268, #283, #434)."""
+context-card threading, which model id a call uses, and the streamed call (#72, #201, #268, #283, #434, #638)."""
+import importlib
 import io
 import json
 from contextlib import redirect_stdout
@@ -38,8 +39,8 @@ _INCOMPLETE_REPLY = json.dumps({"model": {"problem": slot(80, "explicit", "high"
 class _MaxTokensClient(FakeClient):
     """`FakeClient`, every reply flagged as cut off at the token ceiling."""
 
-    def create(self, **kwargs):
-        reply = super().create(**kwargs)
+    def reply(self, **kwargs):
+        reply = super().reply(**kwargs)
         reply.stop_reason = "max_tokens"
         return reply
 
@@ -172,6 +173,75 @@ def test_a_typeerror_out_of_the_sdk_is_not_a_traceback():
     """The belt against the SDK's own `TypeError` on an unresolvable auth method (#201)."""
     msg = _complete_failing_with(TypeError("Could not resolve authentication method."))
     assert "TypeError" in msg and "ANTHROPIC_API_KEY" in msg and "not modified" in msg
+
+
+# ── #638: a reply slower than an idle-cutting proxy, through the real SDK over a fake network path ──
+
+_IDLE_CUT_S, _GENERATION_S, _EVENT_EVERY_S = 60, 90, 5
+_SERVER_USAGE = {"input_tokens": 1000, "output_tokens": 1, "cache_read_input_tokens": 500,
+                 "cache_creation_input_tokens": 200}
+
+
+def _sse(kind: str, data: dict) -> bytes:
+    return f"event: {kind}\ndata: {json.dumps(data)}\n\n".encode()
+
+
+def _idle_cutting_client(reply: str, *, cut_after_events=None):
+    """A real `Anthropic` client whose path drops a connection silent for over `_IDLE_CUT_S`, in simulated time:
+    unstreamed, nothing crosses until the `_GENERATION_S` reply is written; streamed, headers go at once and an
+    event every `_EVENT_EVERY_S`. `cut_after_events` drops the connection mid-stream instead."""
+    http = importlib.import_module(anthropic.DefaultHttpxClient.__mro__[1].__module__.split(".")[0])
+    step = len(reply) // (_GENERATION_S // _EVENT_EVERY_S) + 1
+    events = [
+        _sse("message_start", {"type": "message_start", "message": {
+            "id": "msg_638", "type": "message", "role": "assistant", "model": "claude-sonnet-5", "content": [],
+            "stop_reason": None, "stop_sequence": None, "usage": _SERVER_USAGE}}),
+        _sse("content_block_start", {"type": "content_block_start", "index": 0,
+                                     "content_block": {"type": "text", "text": ""}}),
+        *(_sse("content_block_delta", {"type": "content_block_delta", "index": 0,
+                                       "delta": {"type": "text_delta", "text": reply[i:i + step]}})
+          for i in range(0, len(reply), step)),
+        _sse("ping", {"type": "ping"}),
+        _sse("content_block_stop", {"type": "content_block_stop", "index": 0}),
+        _sse("message_delta", {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                               "usage": {"output_tokens": 4200}}),
+        _sse("message_stop", {"type": "message_stop"}),
+    ]
+
+    def body():
+        for n, event in enumerate(events):
+            if n == cut_after_events:
+                raise http.RemoteProtocolError("peer closed connection without sending complete message body")
+            yield event
+
+    def handle(request):
+        streamed = json.loads(request.content).get("stream") is True
+        if (_EVENT_EVERY_S if streamed else _GENERATION_S) > _IDLE_CUT_S:
+            raise http.RemoteProtocolError("Server disconnected without sending a response.")
+        return http.Response(200, headers={"content-type": "text/event-stream"}, content=body())
+
+    return anthropic.Anthropic(api_key="sk-test-638", base_url="https://api.anthropic.test", max_retries=0,
+                               http_client=anthropic.DefaultHttpxClient(transport=http.MockTransport(handle)))
+
+
+def test_a_reply_slower_than_an_idle_cut_still_arrives():
+    """Streamed, the reply arrives and its usage is filed as the server reported it (#638)."""
+    client = _idle_cutting_client(_ENGINE_REPLY)
+    with pytest.raises(anthropic.APIConnectionError):  # MUST FIRE: the same path cuts an unstreamed call
+        client.messages.create(model="claude-sonnet-5", max_tokens=16, messages=_USER)
+    with track_usage() as ledger:
+        result = _complete(client, "sys", _USER, EngineOutput, model="claude-sonnet-5")
+    assert result.model["problem"].completeness == 80
+    assert (ledger.input_tokens, ledger.output_tokens, ledger.cache_read_tokens, ledger.cache_write_tokens) == (
+        1000, 4200, 500, 200)
+
+
+def test_a_connection_cut_mid_stream_is_a_clean_recorded_failure():
+    """The SDK does not wrap a transport error raised once a stream has started (#638)."""
+    with track_usage() as ledger, pytest.raises(EngineError) as ei:
+        _complete(_idle_cutting_client(_ENGINE_REPLY, cut_after_events=3), "sys", _USER, EngineOutput)
+    assert "Anthropic API unavailable" in str(ei.value) and "RemoteProtocolError" in str(ei.value)
+    assert len(ledger.calls) == 1 and ledger.calls[0].attempts == 1
 
 
 def test_complete_rejects_a_truncated_reply_that_fails_to_parse():

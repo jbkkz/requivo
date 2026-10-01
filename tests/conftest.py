@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 from _credentials import _CREDENTIAL_ENV, SINKHOLE_BASE_URL
-from _fakes import StubProvider, _FakeResponse, full_model, slot  # noqa: F401  (re-exported for the suites)
+from _fakes import (  # noqa: F401  (re-exported for the suites)
+    FakeMessages,
+    StubProvider,
+    _FakeResponse,
+    full_model,
+    slot,
+)
 
 from requivo.core import persistence as _persistence_store
 from requivo.core.contracts import EngineOutput
@@ -29,9 +35,9 @@ class RacingClient:
 
     def __init__(self, reply: str, on_call):
         self._reply, self._on_call = reply, on_call
-        self.messages = self
+        self.messages = FakeMessages(self.reply)
 
-    def create(self, **kwargs):
+    def reply(self, **kwargs):
         self._on_call()          # the concurrent write lands while "reasoning" is in flight
         return _FakeResponse(self._reply)
 

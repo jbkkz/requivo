@@ -12,6 +12,7 @@ from pathlib import Path
 import anthropic
 import httpx
 import pytest
+from _fakes import FakeMessages
 
 from requivo.cli import _build_parser, app
 from requivo.core import persistence as store
@@ -28,12 +29,12 @@ def _workspace(tmp_path, monkeypatch):
 
 
 class _RaisingClient:
-    """`create()` always raises the same transport error, so every export flag sees one identical failure."""
+    """Every request raises the same transport error, so every export flag sees one identical failure."""
 
     def __init__(self):
-        self.messages = self
+        self.messages = FakeMessages(self.reply)
 
-    def create(self, **kwargs):
+    def reply(self, **kwargs):
         raise anthropic.APIConnectionError(message="boom", request=httpx.Request("POST", "https://api.anthropic.com"))
 
 
@@ -54,9 +55,9 @@ class _CannedClient:
 
     def __init__(self, *replies):
         self._replies = list(replies)
-        self.messages = self
+        self.messages = FakeMessages(self.reply)
 
-    def create(self, **kwargs):
+    def reply(self, **kwargs):
         return _CannedClient._Response(self._replies.pop(0))
 
 
