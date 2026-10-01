@@ -75,7 +75,7 @@ def get_impact(slots: str = Query(...), slug: str = Depends(safe_slug),
     return sessions.impact(slug, tokens).to_dict()
 
 
-@router.post("/sessions")
+@router.post("/sessions", status_code=201, responses={200: {"description": "An idempotent repeat"}})
 def create_session(body: CreateSessionRequest,
                    sessions: SessionService = Depends(get_sessions)) -> JSONResponse:
     """Create a session from a request, no provider call: 201 fresh, 200 for an idempotent repeat

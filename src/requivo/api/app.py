@@ -8,7 +8,7 @@ on unsafe methods, and the bearer-token bind discipline (`api/auth.py`,
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from requivo import __version__
 from requivo.api.auth import UnauthorizedError, check_bearer, require_token_for_bind, resolve_token
@@ -52,6 +52,16 @@ def _apply_security_headers(response, path: str):
 
 # Every unsafe method, `DELETE` included though nothing routes it yet, so the set does not widen silently.
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+# Every `/api/v1` operation's failure answer, so the document states the shared envelope rather than FastAPI's
+# default 422, which `_validation_error` turns into a 400. `test_the_openapi_skeleton_is_pinned_route_by_route`.
+_ENVELOPE: dict[str, Any] = {
+    "description": "The shared error envelope, `RequivoError.to_dict()` verbatim; the status follows its `code`.",
+    "content": {"application/json": {"schema": {
+        "type": "object", "required": ["code", "message"],
+        "properties": {"code": {"type": "string"}, "message": {"type": "string"},
+                       "path": {"type": "string"}, "details": {"type": "object"}}}}}}
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {"4XX": _ENVELOPE, "5XX": _ENVELOPE}
 
 # A fixed, short hint on 503 `session_locked`: the remedy is "resubmit unchanged shortly".
 _SESSION_LOCKED_RETRY_AFTER_SECONDS = 1
@@ -203,8 +213,6 @@ def create_api(*, bind_host: Optional[str] = None, token: Optional[str] = None):
             request.url.path)
 
     app.include_router(docs.router)
-    app.include_router(health.router, prefix="/api/v1")
-    app.include_router(sessions.router, prefix="/api/v1")
-    app.include_router(discovery.router, prefix="/api/v1")
-    app.include_router(artifacts.router, prefix="/api/v1")
+    for router in (health.router, sessions.router, discovery.router, artifacts.router):
+        app.include_router(router, prefix="/api/v1", responses=_ERROR_RESPONSES)
     return app

@@ -9,6 +9,7 @@ depth — each has one clear responsibility; the README links to them rather tha
 - [Web](web.md) — the primary interface: the local, single-user browser workspace
 - [Claude Code plugin](../plugins/claude-code/) — the integration: skills, workflow, install (no extra API key)
 - [CLI reference](cli.md) — every command and flag
+- [HTTP API](api.md) — the experimental local REST facade: serving it, the token, the routes, recovery
 - [Integrations](integrations.md) — driving Requivo from an automation: the CLI contract, the
   `requivo-epic` envelope, a worked n8n flow, and what deliberately is not built
 

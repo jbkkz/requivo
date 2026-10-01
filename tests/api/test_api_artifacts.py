@@ -12,6 +12,9 @@ from requivo.services.artifacts import ArtifactService
 from tests.api.conftest import SESSIONS, Spend, refused, seed_session
 
 PRD_REPLY = json.dumps({"title": "Leave approval -- PRD", "problem": "Approvals are lost in email."})
+STORIES_REPLY = json.dumps({"stories": [{"id": "S1", "title": "Submit a leave request"}]})
+ESTIMATE_REPLY = json.dumps({"items": [{"story_id": "S1", "title": "Submit a leave request", "complexity": "S",
+                                        "days_low": 1, "days_high": 2}]})
 SAVED_PRD = "# PRD\n\nExternally reasoned."
 BRIEF = "# Brief\n\ncontent"
 
@@ -61,6 +64,23 @@ def test_generate_an_artifact_saves_it_and_reports_usage(client, with_provider, 
     else:
         assert (usage["calls"], usage["tokens"], usage["cached"]) == (1, 12400, 400)
         assert (usage["cost"] is None) != (usage["unpriced_reason"] is None)   # priced or unpriced, never both
+
+
+def test_generate_estimate_returns_the_stories_saved_beside_it_not_a_500(client, with_provider):
+    """The CLI's own composition through the generic route (#519): two paid calls from one snapshot, both
+    documents saved against one revision; the `SavedEstimate` dataclass once answered a 500 after both landed."""
+    slug = seed_session()
+    with_provider(STORIES_REPLY, ESTIMATE_REPLY, spend=Spend(input_tokens=100, output_tokens=10))
+    resp = client.post(f"{SESSIONS}/{slug}/artifacts/estimate")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    estimate, stories_status = body["artifact"], body["artifact"]["stories_status"]
+    assert (body["status"]["filename"], stories_status["filename"]) == ("estimate.md", "stories.md")
+    assert body["status"]["revision"] == stories_status["revision"] == 1
+    assert estimate["draft"]["items"][0]["story_id"] == estimate["stories"]["stories"][0]["id"] == "S1"
+    assert body["usage"]["calls"] == 2
+    listed = client.get(f"{SESSIONS}/{slug}/artifacts").json()
+    assert (listed["stories"]["revision"], listed["estimate"]["revision"]) == (1, 1)
 
 
 def test_generate_an_unknown_artifact_type_is_refused(client, with_provider):
