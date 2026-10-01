@@ -24,7 +24,7 @@ from version_skew import BEHIND, COULD_NOT_LOOK, IN_STEP, check, compare  # noqa
 from version_skew import tested_against_version as read_tested_against_version  # noqa: E402
 
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`.
-EXPECTED_SKILLS = {"run", "status", "docs", "brief", "prd", "stories", "estimate", "criteria", "epic", "release"}
+EXPECTED_SKILLS = {"demo", "run", "status", "docs", "brief", "prd", "stories", "estimate", "criteria", "epic", "release"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills (#138).
 PREFERRED_INSTALL = "uv tool install requivo"
 # The generators the CLI's own optional API mode can produce (#542), and what each skill mirrors.
@@ -137,6 +137,15 @@ def test_every_skill_meets_the_static_rules(name):
     assert not re.search(r"\b(PowerShell|Shell)\b", tools), f"{name}: declares a second route to the CLI beside Bash"
     others = {re.sub(r"[^a-z]", "", m) for m in re.findall(r"/requivo:([a-z]+)", body)} - {name}
     assert others, f"{name}: body names no other skill; its own `# /requivo:{name}` heading does not count"
+
+
+def test_demo_replays_offline_ends_on_the_change_impact_beat_and_the_readme_leads_with_it():
+    """#602: the keyless first minute; it must reach the real `demo` verb and the README must put it before `run`."""
+    text = SKILLS["demo"]
+    assert "demo" in _cli_commands() and re.search(r"^requivo demo$", text, re.MULTILINE), "demo: must run the `requivo demo` verb"
+    assert not re.search(r"requivo (discover|run|session|model|artifact)", text), "demo: creates no session and writes nothing"
+    assert "End on beat 4" in text and "go stale" in text, "demo: must end on the change-impact beat, not the brief"
+    assert README.index("/requivo:demo") < README.index("/requivo:run"), "README: demo must be named before run"
 
 
 def test_the_preflight_names_its_probe_and_one_install_command():

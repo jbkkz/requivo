@@ -8,8 +8,8 @@ Requivo asks a question only when the answer would materially change the solutio
 and marks as an assumption to confirm, so you can see what a plan is resting on before you commit to
 the scope.
 
-The plugin adds three journey skills — `/requivo:run`, `/requivo:status` and the documents — plus the
-generator skills listed under *The generators* below. `/requivo:run` is the whole conversation in one
+The plugin adds `/requivo:demo`, three journey skills — `/requivo:run`, `/requivo:status` and the
+documents — plus the generator skills listed under *The generators* below. `/requivo:run` is the whole conversation in one
 skill: give it a request, a path or a slug (or nothing, to resume), and it discovers, asks, waits for
 your prose answers and folds each one in, stopping when the session is ready, converged, or you say
 so. `/requivo:status` is where things stand, a local read. The rest turn the model into a document.
@@ -92,6 +92,12 @@ To run the plugin from a checkout instead, for development:
 
 ## The arc
 
+**Try `/requivo:demo` first.** It replays a real run from output saved in the package: no API key, no
+network, no session created and nothing written to your workspace. It ends on the moment the product
+exists for: one answer changes, and Requivo names the decisions to re-validate and the documents that
+went stale, computed from the dependency graph rather than generated. It costs nothing, so it is also
+the safest place to meet the CLI install prompt.
+
 **The direct path is `/requivo:run [request | path | slug]`.** Give it the request the first time —
 or nothing, to resume the session you left off on (it lists more than one to choose from) — or a slug
 to jump straight to a session. It discovers, asks the questions, waits for your prose answers, folds
@@ -99,8 +105,10 @@ each one in as a new revision, and tells you when it stops: ready, no high-value
 because you said so. It ends with one pointer, `/requivo:docs`, which shows what the model can
 produce and its freshness and generates whichever documents you pick.
 
-The commands, in the order they are usually reached. Every one after the first takes the session
-slug, which `/requivo:run` reports when it creates the session.
+The commands, in the order they are usually reached. `/requivo:demo` takes nothing; every one after
+`run` takes the session slug, which `/requivo:run` reports when it creates the session.
+
+0. **`/requivo:demo`**. The offline replay above. Read it before you spend a request on `run`.
 
 1. **`/requivo:run [request | path | slug]`**. Paste the client or stakeholder request in whatever
    shape it arrived. You get the first structured read of it — what the request states outright, what
@@ -124,6 +132,7 @@ it, so any of them can be regenerated later from the saved model without redoing
 
 | Skill | What you get | Where the thinking happens |
 |---|---|---|
+| `/requivo:demo` | A saved real run, ending on what a changed answer makes stale | local replay, no reasoning |
 | `/requivo:run` | The whole conversation: discovery, questions, answers, revisions, and what a revised answer reaches, in one loop | this Claude session |
 | `/requivo:status` | Readiness, open questions, which documents need updating | local read, no reasoning |
 | `/requivo:docs` | A menu of every document the model can produce, each with its freshness — pick one or several | this Claude session |
