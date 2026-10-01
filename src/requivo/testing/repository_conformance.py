@@ -22,7 +22,7 @@ import pytest
 from requivo.core.contracts import schema_slot_ids, schema_slots
 from requivo.core.errors import RevisionConflictError, SessionExistsError
 from requivo.core.persistence import PersistedEngineOutput
-from requivo.services.repository import SessionRepository
+from requivo.services.repository import SessionRepository, accepts_stale
 
 __all__ = ["SessionRepositoryConformance", "full_model"]
 
@@ -76,6 +76,18 @@ class SessionRepositoryConformance:
         rev, meta = repo.save_revision("s", full_model(), expected_revision=0)
         assert rev == 1
         assert meta.current_revision == 1
+
+    def test_save_revision_lands_the_stale_flags_it_is_given(self, repo: SessionRepository):
+        """Optional since #648: a backing whose `save_revision` takes no `stale=` is skipped here, and the
+        services flag its artifacts in a second write instead."""
+        if not accepts_stale(repo):
+            pytest.skip("save_revision takes no stale= (#648): the services fall back to a second write")
+        repo.create("s", "req")
+        repo.save_revision("s", full_model(), expected_revision=0)
+        repo.save_artifact("s", "prd", "prd.md", "# P", source_revision=1)
+        rev, meta = repo.save_revision("s", full_model(), expected_revision=1, stale=["prd"])
+        assert rev == 2 and meta.artifact_status["prd"].stale is True
+        assert repo.read_meta("s").artifact_status["prd"].stale is True
 
     # -- invariant 9: the lock is mutually exclusive and re-entrant --------------------------------
 

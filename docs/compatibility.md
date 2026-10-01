@@ -358,6 +358,7 @@ new field on the NamedTuple, not another break for every caller that unpacks.
 | The declared names above resolve | #423 | `test_every_declared_seam_name_actually_resolves` |
 | `src/requivo/py.typed` ships and is declared as package data | #423 | `test_the_package_ships_a_py_typed_marker`, `test_py_typed_is_shipped_as_package_data` |
 | Pin exactly (`requivo==X.Y.Z`) is the stated consumption pattern | #423 | `test_the_recommended_consumption_pattern_is_stated` |
+| `SessionRepository.save_revision`'s `stale=` is optional: a backing that takes it lands an apply's revision and stale flags in one write; one without it still works, flagged in a second write | #648 | `test_save_revision_lands_the_stale_flags_it_is_given`, `test_session_service_runs_unchanged_on_a_non_file_repository` |
 
 ## What the sdist and wheel contain (#431)
 

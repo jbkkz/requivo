@@ -44,7 +44,7 @@ from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
 from requivo.paths import workspace_root
-from requivo.services.repository import SessionRepository, default_repository
+from requivo.services.repository import SessionRepository, accepts_stale, default_repository
 
 logger = logging.getLogger(__name__)
 
@@ -569,11 +569,11 @@ class SessionService:
             new = validate_proposal(proposal, require_complete=require_complete, current=current,
                                     perimeter=perimeter)
             return self._plan(slug, current, new, apply=True, perimeter=perimeter,
-                              expected_revision=expected_revision, provenance=provenance)
+                              expected_revision=expected_revision, provenance=provenance, before=meta)
 
     def _plan(self, slug: str, current: EngineOutput | None, new: EngineOutput, *, apply: bool,
-              perimeter: str = DEFAULT_PERIMETER,
-              expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
+              perimeter: str = DEFAULT_PERIMETER, expected_revision: int | None = None,
+              provenance: dict | None = None, before: SessionMeta | None = None) -> UpdateResult:
         # A first model counts every present slot as changed.
         changed = diff_models(current, new) if current is not None else list(new.model.keys())
         # The reasoning layer invalidates on its own; on a first apply there is nothing to compare against.
@@ -601,15 +601,20 @@ class SessionService:
             return [t for t in ARTIFACT_FILENAMES if t in hit and t in generated]
 
         if apply:
+            # Decided before the save and landed with the revision in one write, or a crash between
+            # two writes leaves revision N with its invalidated artifacts fresh (#648):
+            # `test_an_apply_lands_its_revision_and_its_stale_flags_together`.
+            stale = _resolve_stale(set((before or self.repo.read_meta(slug)).artifact_status))
+            one_write = bool(stale) and accepts_stale(self.repo)
             try:
                 revision, meta = self.repo.save_revision(
-                    slug, new, expected_revision=expected_revision, provenance=provenance)
+                    slug, new, expected_revision=expected_revision, provenance=provenance,
+                    **({"stale": stale} if one_write else {}))
             except RevisionConflictError:
                 logger.warning("model apply refused: slug=%s expected_revision=%s (conflict)",
                               slug, expected_revision)
                 raise
-            stale = _resolve_stale(set(meta.artifact_status))
-            if stale:
+            if stale and not one_write:  # a backing predating #648's `stale=`
                 for t in stale:
                     meta.artifact_status[t].stale = True
                 self.repo.write_meta(slug, meta)

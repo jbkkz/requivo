@@ -8,7 +8,7 @@ import json
 import os
 import shutil
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Optional
@@ -242,9 +242,10 @@ class Store(_ScanMixin, _LockMixin):
 
 
     def save_revision(self, slug: str, model: EngineOutput, *, expected_revision: int | None = None,
-                      provenance: dict | None = None) -> tuple[int, SessionMeta]:
+                      provenance: dict | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
         """Persist a new model revision: freeze `revisions/NNNN-model.json`, replace `model.json`,
-        record provenance, bump `current_revision` and `updated_at`. Returns `(new_revision, meta)`.
+        record provenance, bump `current_revision` and `updated_at`, and flag the recorded artifacts
+        named in `stale` in that same `session.json` write (#648). Returns `(new_revision, meta)`.
         `expected_revision` is the optimistic-locking precondition, raising `RevisionConflictError`,
         and it is held across the writes it authorises under `session_lock` (invariant 9)."""
         with self.session_lock(slug):
@@ -255,6 +256,9 @@ class Store(_ScanMixin, _LockMixin):
                     f"{expected_revision} — reload the current model and re-apply",
                     details={"slug": slug, "expected": expected_revision,
                              "actual": meta.current_revision})
+            unrecorded = [t for t in stale if t not in meta.artifact_status]
+            if unrecorded:  # refused before any write, not filtered (invariant 3)
+                raise ValueError(f"cannot flag {unrecorded} stale: session '{slug}' records no such artifact")
             d = self.canonical_dir(slug)
             self.ensure_store_dir(d / "revisions")
             rev = meta.current_revision + 1
@@ -282,6 +286,8 @@ class Store(_ScanMixin, _LockMixin):
             ))
             meta.current_revision = rev
             meta.updated_at = _now()
+            for t in stale:
+                meta.artifact_status[t].stale = True
             self.write_meta(slug, meta)
             return rev, meta
 
@@ -546,10 +552,10 @@ def delete_session(slug: str) -> None:
 
 
 def save_revision(slug: str, model: EngineOutput, *, expected_revision: int | None = None,
-                  provenance: dict | None = None) -> tuple[int, SessionMeta]:
+                  provenance: dict | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
     """Ambient-default wrapper (#272) -- see `Store.save_revision`."""
     return _default_store().save_revision(
-        slug, model, expected_revision=expected_revision, provenance=provenance)
+        slug, model, expected_revision=expected_revision, provenance=provenance, stale=stale)
 
 
 def load_session_model(slug: str) -> EngineOutput:

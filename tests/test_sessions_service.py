@@ -2,6 +2,7 @@
 (#168), the pre-flight discovery guards (#152, #421, #133), the read paths, and artifact provenance (#6)."""
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 
@@ -144,6 +145,36 @@ def test_apply_flags_assessment_stale_when_reasoning_is_unseated(art):
     assert "brief" in result.stale_artifacts and art.list("s")["brief"]["stale"] is True
     assert result.invalidated_decisions == []             # the decision rests on `permissions`, untouched
     assert "invalidated_challenges" in result.to_dict()
+
+
+class _Crash(BaseException):
+    """The process dying mid-apply: not an `Exception`, so no handler on the way out absorbs it."""
+
+
+def test_an_apply_lands_its_revision_and_its_stale_flags_together(art, monkeypatch):
+    """A crash after an apply's first `session.json` write must not leave the new revision with the
+    artifacts it invalidated still fresh: both land, or neither does (#648)."""
+    svc = _session(full_model())
+    art.save("s", "prd", "# doc\n", source_revision=1)
+    real, writes = store.Store.write_meta, []
+
+    def crash_after_the_first_write(self, slug, meta):
+        if writes:
+            raise _Crash
+        writes.append(real(self, slug, meta))
+
+    monkeypatch.setattr(store.Store, "write_meta", crash_after_the_first_write)
+    with contextlib.suppress(_Crash):
+        svc.update_model("s", MOVED)
+    meta = store.read_meta("s")
+    assert (meta.current_revision, meta.artifact_status["prd"].stale) in {(1, False), (2, True)}
+
+
+def test_save_revision_refuses_to_flag_an_artifact_it_does_not_record():
+    _session(full_model())
+    with pytest.raises(ValueError, match="prd"):
+        store.save_revision("s", EngineOutput.model_validate(full_model()), stale=["prd"])
+    assert store.read_meta("s").current_revision == 1 and not _revision_file("s", 2).exists()
 
 
 @pytest.mark.parametrize("revision, history_lies, code", [

@@ -6,7 +6,8 @@ retired `out/` layout is explicit (`requivo session migrate`); only detection re
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import inspect
+from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Optional, Protocol, runtime_checkable
@@ -78,8 +79,10 @@ class SessionRepository(Protocol):
         ...
 
     def save_revision(self, slug: str, model: EngineOutput, *, expected_revision: Optional[int] = None,
-                      provenance: Optional[dict] = None) -> tuple[int, SessionMeta]:
-        """Persist a new model revision (optimistic-lock precondition, provenance); returns `(new_revision, updated_meta)`."""
+                      provenance: Optional[dict] = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
+        """Persist a new model revision (optimistic-lock precondition, provenance); returns `(new_revision, updated_meta)`.
+        `stale` (optional, #648) names recorded artifacts to flag in the same write as the revision; a
+        backing without it still works (`accepts_stale`), the services flagging in a second write."""
         ...
 
     def request_text(self, slug: str) -> str:
@@ -178,9 +181,9 @@ class FileSessionRepository:
         return self._resolve_store().load_revision_model(slug, revision)
 
     def save_revision(self, slug: str, model: EngineOutput, *, expected_revision: Optional[int] = None,
-                      provenance: Optional[dict] = None) -> tuple[int, SessionMeta]:
+                      provenance: Optional[dict] = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
         return self._resolve_store().save_revision(
-            slug, model, expected_revision=expected_revision, provenance=provenance)
+            slug, model, expected_revision=expected_revision, provenance=provenance, stale=stale)
 
     def request_text(self, slug: str) -> str:
         resolved = self._resolve_store()
@@ -198,6 +201,15 @@ class FileSessionRepository:
     def load_artifact(self, slug: str, filename: str) -> Optional[str]:
         # Delegated, so the read side goes through `artifact_path` like the write side.
         return self._resolve_store().read_artifact_file(slug, filename)
+
+
+def accepts_stale(repo: SessionRepository) -> bool:
+    """Whether `repo.save_revision` takes `stale=` (#648): a backing written before it keeps working."""
+    try:
+        params = inspect.signature(repo.save_revision).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(p.name == "stale" or p.kind is p.VAR_KEYWORD for p in params)
 
 
 def default_repository() -> SessionRepository:

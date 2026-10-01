@@ -13,7 +13,7 @@ from _fakes import out, slot
 from requivo.core.errors import RevisionConflictError, SessionExistsError, SessionNotFoundError
 from requivo.core.persistence import ArtifactStatus, RevisionRecord, SessionMeta
 from requivo.services.artifacts import ArtifactService
-from requivo.services.repository import FileSessionRepository, SessionRepository
+from requivo.services.repository import FileSessionRepository, SessionRepository, accepts_stale
 from requivo.services.sessions import SessionService
 from requivo.testing.repository_conformance import SessionRepositoryConformance
 
@@ -135,6 +135,7 @@ class TestFileRepositoryConformance(SessionRepositoryConformance):
 def test_session_service_runs_unchanged_on_a_non_file_repository():
     repo = InMemorySessionRepository()
     assert isinstance(repo, SessionRepository)          # satisfies the protocol (runtime-checkable)
+    assert not accepts_stale(repo)                      # predates #648: staleness below is the fallback write
     svc = SessionService(repo)
 
     svc.create_session("a leave request", slug="leave-mem")
