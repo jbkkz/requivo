@@ -195,7 +195,7 @@ def test_the_four_grounding_outcomes_read_as_four_different_answers():
 
 
 # ── #331: a static sweep whose scan set is a file tree, not a list of modules ─────
-# Does any code under `src/requivo/` outside core/providers/services read a `Question`'s `q` or `why`
+# Does any code under `src/requivo/` outside core/providers/services/assets/testing read a `Question`'s `q` or `why`
 # other than as the direct argument of `display_text`/`display_token`? Every read, not only one inside print().
 
 
@@ -245,11 +245,13 @@ def _question_prose_leaks(root: Path) -> list:
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "requivo"
-_TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web")
+_TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web", "api")
+_NOT_A_TERMINAL_SURFACE = {  # #590: guarded elsewhere (core, providers, services) or no model text (assets, testing)
+    "core", "providers", "services", "assets", "testing"}
 
 
 def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_surface_tree():
-    """The real scan: three packages plus every top-level module, derived rather than listed (#550)."""
+    """The real scan: four packages (api/ is an HTTP surface, #590) plus every top-level module, derived rather than listed (#550)."""
     modules = sorted(p.name for p in SRC_ROOT.glob("*.py"))
     assert modules, f"scan of {SRC_ROOT} found no top-level modules -- 'could not look'"
     violations: list = []
@@ -257,6 +259,15 @@ def test_no_question_field_reaches_a_terminal_call_unescaped_anywhere_in_the_sur
         target = SRC_ROOT / entry
         violations += _question_prose_leaks(target) if target.is_dir() else _question_prose_leaks_in_file(target)
     assert not violations, "\n".join(violations)
+
+
+def test_every_subpackage_is_scanned_or_named_exempt_and_the_scan_set_names_api():
+    """#590: a new `src/requivo/` subtree must be scanned or exempt; `api/app.py` proves the set is read."""
+    subtrees = {p.name for p in SRC_ROOT.iterdir() if p.is_dir() and p.name != "__pycache__"}
+    unplaced = subtrees - set(_TERMINAL_SURFACE_PACKAGES) - _NOT_A_TERMINAL_SURFACE
+    assert not unplaced, f"neither scanned nor exempt: {sorted(unplaced)}"
+    scanned = {p for pkg in _TERMINAL_SURFACE_PACKAGES for p in (SRC_ROOT / pkg).rglob("*.py")}
+    assert SRC_ROOT / "api" / "app.py" in scanned
 
 
 @pytest.mark.parametrize("tui_body, expect_violation", [
