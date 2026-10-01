@@ -128,6 +128,8 @@ class ArtifactService:
         filename = self._filename(artifact_type)
         content = self.repo.load_artifact(slug, filename)
         if content is None:
+            # Missing sessions keep their own diagnostic (#666): test_artifact_read_for_missing_session_uses_session_error.
+            self.repo.read_meta(slug)
             raise SessionNotFoundError(
                 f"session '{slug}' has no saved {artifact_type!r} artifact",
                 details={"slug": slug, "type": artifact_type})
@@ -141,6 +143,8 @@ class ArtifactService:
         with self.repo.lock(slug):
             content = self.repo.load_artifact(slug, filename)
             if content is None:
+                # Missing sessions keep their own diagnostic (#666): test_artifact_read_for_missing_session_uses_session_error.
+                self.repo.read_meta(slug)
                 raise SessionNotFoundError(
                     f"session '{slug}' has no saved {artifact_type!r} artifact",
                     details={"slug": slug, "type": artifact_type})

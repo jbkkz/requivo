@@ -330,6 +330,29 @@ def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal():
     assert _session(full_model()).impact("s", []).empty
 
 
+@pytest.mark.parametrize("read", ["show", "show_with_status"])
+def test_artifact_read_for_missing_session_uses_session_error(read, art, monkeypatch):
+    """A missing session is not reported as a missing artifact (#666)."""
+    # Keep this proof independent of the file repository's lock precheck.
+    monkeypatch.setattr(art.repo, "lock", lambda slug: contextlib.nullcontext())
+    with pytest.raises(E.SessionNotFoundError) as e:
+        getattr(art, read)("missing", "brief")
+    assert e.value.code == "session_not_found"
+    assert str(e.value).startswith("no session named missing under ")
+    assert e.value.details == {"slug": "missing"}
+
+
+@pytest.mark.parametrize("read", ["show", "show_with_status"])
+def test_artifact_read_without_saved_artifact_keeps_existing_error(read, art):
+    """A real session without this artifact keeps the established error (#666)."""
+    _session(full_model())
+    with pytest.raises(E.SessionNotFoundError) as e:
+        getattr(art, read)("s", "brief")
+    assert e.value.code == "session_not_found"
+    assert str(e.value) == "session 's' has no saved 'brief' artifact"
+    assert e.value.details == {"slug": "s", "type": "brief"}
+
+
 def test_show_with_status_is_not_interleaved_by_a_concurrent_save(art):
     """The must-fire proof behind `show_with_status`'s own docstring (#425); the plain read is its control."""
     _session(full_model())
