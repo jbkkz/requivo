@@ -20,6 +20,7 @@ from requivo.core.errors import (
     ProviderOutputError,
     RevisionConflictError,
     SessionExistsError,
+    SessionLockedError,
     UnknownPerimeterError,
     UnknownSlotError,
 )
@@ -477,6 +478,32 @@ def test_a_failed_routing_call_does_not_lock_the_retry_into_the_default_perimete
     meta, _grounding, _cards, routing = disco.claim_and_ground("a request", cards=None, slug=None)
     assert router.attempts == 2 and meta.perimeter == GO_TO_MARKET
     assert routing.judgment is not None and routing.judgment.decision.value == "fits"
+
+
+@pytest.mark.parametrize("door", ["claim_and_ground", "run_discovery"])
+def test_a_discovery_racing_a_claim_still_being_routed_is_refused_not_settled(door):
+    """#626: a second discovery read an in-flight claim as a settled perimeter and committed a software model
+    before the first caller's go-to-market verdict could land. It is refused before it pays, through either door."""
+    second, refused = StubProvider(), []
+
+    class _RacedMidRouting(_Router):
+        def judge_perimeter(self, request, *, perimeters):
+            disco = DiscoveryService(second)
+            try:
+                if door == "claim_and_ground":
+                    meta = disco.claim_and_ground(request, cards=None, slug=None).meta
+                    disco.start(request, slug=meta.slug, perimeter=meta.perimeter)
+                else:
+                    disco.run_discovery(disco.claim_session(request, cards=None, slug=None).slug, surface="test")
+            except SessionLockedError as e:
+                refused.append(e)
+            return super().judge_perimeter(request, perimeters=perimeters)
+
+    meta, _grounding, _cards, routing = _claim(_RacedMidRouting(_FITS_GTM), "help us launch this")
+    assert second.calls == 0, "the racing discovery reasoned under a perimeter nobody chose"
+    assert refused and refused[0].code == "session_locked"
+    assert meta.perimeter == GO_TO_MARKET and routing.judgment is not None
+    assert [(s.perimeter, s.current_revision) for s in SessionService().list_sessions()] == [(GO_TO_MARKET, 0)]
 
 
 # ── the CLI, end to end, with a fake client (#601) ─────────────────────────────

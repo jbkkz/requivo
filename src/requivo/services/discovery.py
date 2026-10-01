@@ -239,7 +239,8 @@ def _discovery_guard_path(slug: str, store: Store) -> Path:
 @contextmanager
 def _discovery_guard(slug: str, store: Store) -> Iterator[None]:
     """Refuse a second, concurrent first-discovery on `slug` before it can pay. Non-blocking, not
-    re-entrant, held for one paid call plus its write; addresses the repository's own root (#272).
+    re-entrant, held for one paid call plus its write, or across `claim_and_ground`'s judgments (#626);
+    addresses the repository's own root (#272).
     `test_a_concurrent_first_discovery_is_refused_before_any_provider_call`,
     `test_the_discovery_guard_addresses_an_explicitly_rooted_repositorys_own_workspace`."""
     p = _discovery_guard_path(slug, store)
@@ -474,14 +475,21 @@ class DiscoveryService:
         """Claim the session, route it to its perimeter (#601), judge its grounding (#593), and act
         on each verdict when acting is safe: one implementation of the destructive step (invariant 14).
 
-        Order: resolve an existing session under every installed perimeter first, free; claim under
-        the resolved perimeter (invariant 13's gate ahead of every paid call); route, re-claiming only
-        on a `fits` verdict, refusing an `ambiguous` one before any model is reasoned; then judge
-        grounding and re-claim under narrowed cards. Returns a `ClaimAndGround`. Pinned by
+        Order: take the first-discovery guard on the slug a claim lands on, so a claim still being
+        judged is refused to a concurrent discovery rather than read as settled (#626:
+        `test_a_discovery_racing_a_claim_still_being_routed_is_refused_not_settled`); resolve an
+        existing session under every perimeter, free; claim (invariant 13); route, re-claiming on
+        `fits`, refusing `ambiguous`; judge grounding, re-claiming under narrowed cards. Pinned by
         `test_a_fitting_perimeter_verdict_reroutes_and_reclaims`,
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
         `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
         `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`."""
+        with _discovery_guard(slug or self.sessions.slug_hint(request), self._store_for_repo()):
+            return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter)
+
+    def _claim_and_ground_held(self, request: str, *, cards: list[str] | None, slug: str | None,
+                               perimeter: str | None) -> ClaimAndGround:
+        """`claim_and_ground`'s body, run under the guard it takes."""
         provider = self._need_provider()
         if perimeter is None:
             for pid in known_perimeter_ids():
