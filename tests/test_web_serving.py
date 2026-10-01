@@ -9,6 +9,7 @@ import sys
 import types
 
 import pytest
+from _fakes import run_cli_fails
 from _surfaces import SURFACES
 
 from requivo.api.auth import API_TOKEN_ENV, ApiTokenRequiredError
@@ -234,3 +235,19 @@ def test_a_genuinely_absent_sdk_still_says_so_and_still_names_the_install(monkey
     monkeypatch.setattr("requivo.providers.anthropic.Anthropic", None)
     status = provider_status()
     assert status.sdk_installed is False and status.available is False and "pip install" in status.reason
+
+
+@pytest.mark.parametrize("argv", [["web", "--no-open"], ["api", "serve"]])
+@pytest.mark.parametrize("bad", ["99999", "65536", "-1"])
+def test_port_out_of_range_is_a_usage_error(argv, bad):
+    """`--port` outside 0-65535 is an argparse usage error (exit 2), not an OverflowError out of bind() (#665)."""
+    code, err = run_cli_fails([*argv, "--port", bad])
+    assert code == 2
+    assert "port must be between 0 and 65535" in err
+
+
+@pytest.mark.parametrize("argv", [["web"], ["api", "serve"]])
+@pytest.mark.parametrize("good", ["0", "8765", "65535"])
+def test_port_in_range_is_accepted(argv, good):
+    """A valid `--port` still parses to an int; the parse never reaches the command, so no socket is bound (#665)."""
+    assert _build_parser().parse_args([*argv, "--port", good]).port == int(good)

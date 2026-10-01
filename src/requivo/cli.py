@@ -1016,6 +1016,17 @@ class _JourneyHelpFormatter(argparse.RawDescriptionHelpFormatter):
         return f"{' ' * self._current_indent}{title}\n{body}"
 
 
+def _port(value: str) -> int:
+    """argparse `type=` for `--port`: an int in 0-65535, so a bad port is a usage error, not a bind traceback (#665)."""
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: {value!r}") from None
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 0 and 65535")
+    return port
+
+
 def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFormatter,
                    ) -> argparse.ArgumentParser:
     # `formatter_class` is a parameter so `test_every_verb_help_is_byte_identical_regardless_of_the_root_formatter`
@@ -1143,7 +1154,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     # `web` is a surface, not a step: beside the plumbing.
     web = sub.add_parser("web", help="launch the local single-user web interface (needs the [web] extra)")
     web.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1, localhost only)")
-    web.add_argument("--port", type=int, default=8765, help="port (default: 8765)")
+    web.add_argument("--port", type=_port, default=8765, help="port (default: 8765)")
     # SUPPRESS so an absent `web --workspace` does not overwrite a global one; reads `_WORKSPACE_HELP`
     # like every copy (#249): `test_every_workspace_copy_carries_the_same_help_text`.
     web.add_argument("--workspace", metavar="DIR", default=argparse.SUPPRESS, help=_WORKSPACE_HELP)
@@ -1159,7 +1170,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     serve.add_argument("--host", default="127.0.0.1",
                        help="bind address (default: 127.0.0.1, localhost only; anything else "
                             "requires REQUIVO_API_TOKEN)")
-    serve.add_argument("--port", type=int, default=8767, help="port (default: 8767)")
+    serve.add_argument("--port", type=_port, default=8767, help="port (default: 8767)")
     serve.add_argument("--workspace", metavar="DIR", default=argparse.SUPPRESS, help=_WORKSPACE_HELP)
     serve.set_defaults(func=_cmd_api_serve)
 
