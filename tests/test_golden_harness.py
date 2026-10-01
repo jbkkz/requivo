@@ -1,11 +1,14 @@
 """The golden harness end to end, offline: capture, run selection, the readout, the baselines (#137, #275, #276)."""
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import sys
 from pathlib import Path
 
+import anthropic
+import httpx
 import pytest
 from _fakes import printed
 
@@ -20,7 +23,9 @@ from golden_run import planned_calls, select_runs  # noqa: E402
 
 from requivo.core.analysis import slot_label  # noqa: E402
 from requivo.core.contracts import Brief, Challenge, EngineOutput, Impact, Level, Question, Slot, Summary  # noqa: E402
+from requivo.core.errors import ProviderOutputError  # noqa: E402
 from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
+from requivo.providers.errors import EngineError  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
 
 K = 3  # runs per captured baseline, matching the harness default
@@ -464,3 +469,103 @@ def test_a_hostile_freshness_reason_cannot_forge_a_line(diff):
     _, lines = diff(_80, _70, freshness={"state": "unknown", "reason": "git log failed: fatal: bad object\rFORGED continuation"})
     assert _line(lines, "could not tell", "\\r", "FORGED continuation"), lines
     assert not any("FORGED continuation" in ln and "could not tell" not in ln for ln in lines), lines
+
+
+# ── a transport failure costs one call, not the request (#557) ─────────────────────────────────────
+
+def _cut(cls=None):
+    """An EngineError caused by cls (default: a dropped connection), raised the way _complete raises it."""
+    req = httpx.Request("POST", "http://localhost")
+    cause = (cls(message="x", response=httpx.Response(401, request=req), body=None) if cls
+             else anthropic.APIConnectionError(message="Connection error.", request=req))
+    err = EngineError("Anthropic API unavailable")
+    err.__cause__ = cause
+    return err
+
+
+@pytest.fixture
+def flaky(tmp_path, monkeypatch):
+    """capture over a fake run raising failures[n] on call n (1-based); returns go(failures, existing=None) -> calls."""
+    monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
+    monkeypatch.setattr(golden_run, "K", 3)
+    monkeypatch.setattr(golden_run, "RETRY_PAUSE", 0)
+    calls: list[int] = []
+
+    def go(failures: dict[int, Exception], *, existing: str | None = None):
+        calls.clear()
+        if existing is not None:
+            golden_lib.runs_path("s").write_text(existing, encoding="utf-8")
+
+        def fake_run(*_a, **_k):
+            calls.append(1)
+            if len(calls) in failures:
+                raise failures[len(calls)]
+            return _asking()
+
+        monkeypatch.setattr(golden_run, "run", fake_run)
+        req = dict(slug="s", request="r", answers=dict())
+        with contextlib.suppress(EngineError, ProviderOutputError):
+            golden_run.capture(object(), req, model="m")
+        return calls
+
+    return go
+
+
+def _partial(tmp_path, slug="s") -> dict:
+    return json.loads((tmp_path / f"{slug}.partial.json").read_text(encoding="utf-8"))
+
+
+def test_one_transport_failure_is_retried_once_and_the_capture_stays_complete(flaky, tmp_path):
+    assert len(flaky(dict([(2, _cut())]))) == 4
+    assert len(json.loads((tmp_path / "s.runs.json").read_text(encoding="utf-8"))["runs"]) == 3
+    assert not (tmp_path / "s.partial.json").exists()
+
+
+def test_a_second_failure_keeps_the_earlier_runs_under_a_partial_marker(flaky, tmp_path):
+    assert len(flaky(dict([(3, _cut()), (4, _cut())]))) == 4, "exactly one extra attempt"
+    saved = _partial(tmp_path)
+    assert len(saved["runs"]) == 2 and saved["partial"]["run"] == 3
+    assert "unavailable" in saved["partial"]["reason"] and not (tmp_path / "s.runs.json").exists()
+
+
+def test_a_failed_capture_keeps_its_completed_runs_beside_the_baseline_not_over_it(flaky, tmp_path):
+    flaky(dict([(2, _cut()), (3, _cut())]), existing=_80)
+    assert (tmp_path / "s.runs.json").read_text(encoding="utf-8") == _80 and _partial(tmp_path)["partial"]
+    flaky(dict())  # a later complete capture supersedes the failed one
+    assert not (tmp_path / "s.partial.json").exists()
+
+
+@pytest.mark.parametrize("failure", [_cut(anthropic.AuthenticationError), ProviderOutputError("the reply was not JSON")],
+                         ids=["auth", "malformed-output"])
+def test_an_auth_failure_is_not_retried_and_a_malformed_reply_neither(flaky, tmp_path, failure):
+    assert len(flaky(dict([(2, failure)]))) == 2 and len(_partial(tmp_path)["runs"]) == 1
+
+
+def test_an_interactive_failure_keeps_the_finished_turns_of_the_run_in_flight(tmp_path, monkeypatch):
+    monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
+    monkeypatch.setattr(golden_run, "RETRY_PAUSE", 0)
+    n: list[int] = []
+
+    def turn(self, *_a, **_k):
+        n.append(1)
+        if len(n) in (2, 3):
+            raise _cut()
+        return _asking("problem")
+
+    monkeypatch.setattr(DiscoveryService, "draft_turn", turn)
+    req = dict(slug="i", request="r", answers=dict(problem=["p", "q"]))
+    with pytest.raises(EngineError):
+        golden_run.capture_interactive(object(), req, "m")
+    saved = _partial(tmp_path, "i")
+    assert saved["partial"]["run"] == 1 and saved["partial"]["turn"] == 2 and len(saved["turns"][0]) == 1
+
+
+def test_golden_diff_reports_a_partial_capture_as_not_re_captured(tmp_path, monkeypatch):
+    monkeypatch.setattr(golden_lib, "GOLDEN", tmp_path)
+    (tmp_path / "forged.runs.json").write_text(_80, encoding="utf-8")
+    marker = dict(partial=dict(run=3, reason="cut"))
+    (tmp_path / "forged.partial.json").write_text(json.dumps(marker), encoding="utf-8")
+    monkeypatch.setattr(golden_diff, "_head_version", lambda _rel: _70)
+    verdict: list[str] = []
+    out = printed(lambda: verdict.append(golden_diff.diff_one("forged")))
+    assert verdict == ["stale"] and "partial capture" in out and "not re-captured" in out and "run 3" in out

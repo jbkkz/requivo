@@ -24,8 +24,9 @@ Usage:
 from __future__ import annotations
 
 import sys
+import time
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIConnectionError
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
@@ -41,22 +42,64 @@ from golden_lib import (  # noqa: E402
     answers_for_turn,
     brief_consensus,
     configure_output,
+    dump_partial,
     dump_runs,
     dump_turn_runs,
     is_interactive,
     parse_requests,
+    runs_envelope,
     stability,
+    turn_envelope,
     turn_lens,
 )
 
 sys.path.insert(0, str(REPO / "src"))
 from requivo.core.perimeters import DEFAULT_PERIMETER, SOFTWARE  # noqa: E402
 from requivo.providers.anthropic import advise, run  # noqa: E402
-from requivo.providers.anthropic.client import current_model_name  # noqa: E402
+from requivo.providers.anthropic.client import (
+    STREAM_TRANSPORT_ERRORS,  # noqa: E402
+    current_model_name,  # noqa: E402
+)
 from requivo.providers.anthropic.provider import AnthropicProvider  # noqa: E402
+from requivo.providers.errors import EngineError  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
 
 load_dotenv()
+
+RETRY_PAUSE = 20.0  # seconds before the one harness-level retry; tests set it to 0
+
+
+def is_transport_failure(exc: BaseException) -> bool:
+    """An `EngineError` the connection caused: the one failure worth a second paid attempt (#557).
+
+        The cause, not the message: `_complete` raises every provider failure as `EngineError ... from e`,
+        so a credential, rate-limit or malformed-output failure carries a different cause and is not retried
+        (`test_an_auth_failure_is_not_retried_and_a_malformed_reply_neither`).
+    """
+    return isinstance(exc, EngineError) and isinstance(exc.__cause__, (APIConnectionError, *STREAM_TRANSPORT_ERRORS))
+
+
+def with_retry(call, *args, **kwargs):
+    """``call(*args, **kwargs)``, once more after `RETRY_PAUSE` if a transport failure ended it (#557).
+
+        One extra attempt on top of the SDK's own, so a call costs at most twice; `main` announces that.
+    """
+    try:
+        return call(*args, **kwargs)
+    except EngineError as exc:
+        if not is_transport_failure(exc):
+            raise
+        print(f"    ! transport failure ({exc.__cause__.__class__.__name__}); retrying once "
+              f"in {RETRY_PAUSE:g}s", file=sys.stderr)
+        time.sleep(RETRY_PAUSE)
+        return call(*args, **kwargs)
+
+
+def keep_partial(slug: str, envelope: str, where: dict, exc: Exception) -> None:
+    """Persist the completed runs beside the baseline with the marker, say so, and let the failure propagate."""
+    path = dump_partial(slug, envelope, {**where, "reason": str(exc).splitlines()[0]})
+    print(f"  ! {slug}: kept the completed runs in {path.name} (partial — "
+          f"not a baseline; golden_diff reports it as not re-captured)", file=sys.stderr)
 
 
 def capture_model() -> str:
@@ -85,8 +128,16 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
         turns: list[Turn] = []
         out, answers = None, None
         for index in range(1, TURNS + 1):
-            out = disco.draft_turn(req["request"], current_model=out, answers=answers, cards=None,
-                                   perimeter=perimeter)
+            try:
+                out = with_retry(disco.draft_turn, req["request"], current_model=out, answers=answers,
+                                 cards=None, perimeter=perimeter)
+            except Exception as exc:
+                # The in-flight run keeps the turns it finished (#557).
+                keep_partial(req["slug"], turn_envelope(req["request"], req["answers"],
+                                                        runs + ([turns] if turns else []), model=model,
+                                                        perimeter=perimeter),
+                             {"run": i + 1, "turn": index}, exc)
+                raise
             print(f"    run {i + 1}/{K}  turn {index}/{TURNS}", end="\r", flush=True)
             # `answered` records what was sent onward; an answer the engine never saw would fake coverage
             # for the re-ask count.
@@ -141,14 +192,19 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
 
     models, briefs = [], ([] if with_brief else None)
     for i in range(K):
-        # `reuse_system=True`: engine.md's system prompt is sent K times here (#58).
-        out = run(client, [{"role": "user", "content": req["request"]}], reuse_system=True,
-                  model=model, perimeter=perimeter)
+        try:
+            # reuse_system=True: engine.md's system prompt is sent K times here (#58); brief.md's too (#9).
+            out = with_retry(run, client, [{"role": "user", "content": req["request"]}], reuse_system=True,
+                             model=model, perimeter=perimeter)
+            brief = with_retry(advise, client, out, reuse_system=True, model=model) if with_brief else None
+        except Exception as exc:
+            # A run counts only once its assessment (if asked for) landed too (#557).
+            keep_partial(req["slug"], runs_envelope(req["request"], models, briefs, model=model,
+                                                    perimeter=perimeter), {"run": i + 1}, exc)
+            raise
         models.append(out)
         if with_brief:
-            # `reuse_system=True`: brief.md's system prompt is sent K times here, worth the 1.25x write (#9).
-            briefs.append(advise(client, out, reuse_system=True,
-                                 model=model))  # see --brief in the header
+            briefs.append(brief)
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
     dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter)
     st = stability(models, perimeter=perimeter)
@@ -221,7 +277,8 @@ def main(argv: list[str]) -> int:
     # Computed for the set actually selected — see `planned_calls`.
     calls = planned_calls(runs, with_brief)
     print(f"Capturing {len(runs)} request(s) × {K} runs → {GOLDEN.relative_to(REPO)}/  "
-          f"(up to {calls} API calls{', assessment included' if with_brief else ''}) "
+          f"(up to {calls} API calls{', assessment included' if with_brief else ''}; "
+          f"a transport failure retries its call once, so up to {2 * calls}) "
           f"on {model}")
     for req in runs:
         try:

@@ -33,6 +33,7 @@ from golden_lib import (  # noqa: E402
     configure_output,
     load_answers,
     load_briefs,
+    load_partial,
     load_runs,
     load_turns,
     movements,
@@ -137,6 +138,13 @@ def diff_one(slug: str) -> str:
     old_text = _head_version(rel_path)
 
     print(f"\n{slug}")
+    partial = load_partial(slug)
+    if partial is not None:
+        # The last capture failed part-way: whatever .runs.json holds is not that capture (#557).
+        where = ", ".join(f"{k} {v}" for k, v in partial.items() if k != "reason")
+        print(f"  ! partial capture ({where}): {display_token(str(partial.get('reason', '')))} — "
+              f"not re-captured (re-run golden_run.py)")
+        return "stale"
     if old_text is not None:
         # Freshness is about the committed baseline; the NEW branch below names its absence.
         _show_freshness(rel_path)
@@ -362,8 +370,9 @@ def main(argv: list[str]) -> int:
     configure_output()
     show_questions = "--questions" in argv
     argv = [a for a in argv if a != "--questions"]
-    slugs = argv or sorted(p.name[: -len(".runs.json")]
-                           for p in GOLDEN.glob("*.runs.json"))
+    # A request whose only capture failed part-way has a .partial.json and no baseline yet (#557).
+    slugs = argv or sorted({p.name.split(".")[0] for pat in ("*.runs.json", "*.partial.json")
+                            for p in GOLDEN.glob(pat)})
     if not slugs:
         print("No golden baselines found. Run golden_run.py first.", file=sys.stderr)
         return 1

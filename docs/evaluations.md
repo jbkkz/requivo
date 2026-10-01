@@ -43,6 +43,12 @@ the one go-to-market request, with no committed baseline yet.
   strong, watch weak only in aggregate.
 - **A capture identical to HEAD is "not re-captured", never "no change"** — a false all-clear is the
   one failure a regression lens must not have.
+- **A transport failure costs one call, not the request** (#557). `golden_run` retries a call once when
+  its `EngineError` was caused by a connection error (not a credential, rate-limit or malformed-reply
+  failure), after `RETRY_PAUSE`, so the announced ceiling is up to twice the calls. A second failure writes
+  the completed runs to `<slug>.partial.json` with a `partial` marker (failed run/turn, reason), never over
+  `<slug>.runs.json`; `golden_diff` reports that request as "not re-captured", and a later complete capture
+  removes the file.
 - **Challenges are grouped by the slots they contest**, never by wording.
 - **The assessment lens** (`--brief`) watches the deliverable: the complexity verdict and which
   premises the engine chose to contest.
