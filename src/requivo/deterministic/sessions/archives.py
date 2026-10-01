@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
@@ -279,8 +280,14 @@ def _cmd_session_import(a, client) -> None:
         scratch = Path(tempfile.mkdtemp(prefix=".import-", dir=root.parent))
         try:
             # Exactly the entry list `_inspect_archive` validated, never a fresh `infolist()` (#219).
-            for info in entries:
-                z.extract(info, scratch)
+            try:
+                for info in entries:
+                    z.extract(info, scratch)
+            except (zipfile.BadZipFile, zlib.error, EOFError) as e:
+                # Intact directory, corrupt member data: nothing has landed yet (#647,
+                # `test_import_refuses_an_archive_whose_member_data_is_corrupt`).
+                raise UnreadableArchiveError(f"{display_token(str(archive))} has a corrupt member: {e}",
+                                             details={"archive": str(archive)}) from e
             extracted = scratch / slug
             _validate_extracted(extracted, slug)
             # Direct: the import moves a directory into place, so the destination *is* a path.

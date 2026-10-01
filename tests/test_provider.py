@@ -65,6 +65,18 @@ def test_extract_json_strips_a_fence_slices_prose_and_refuses_garbage(raw, expec
         assert _extract_json(raw) == expected
 
 
+_F = "`" * 3
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ('{"a": "see:\\n' + _F + 'sql\\nselect 1;\\n' + _F + '\\n"}', {"a": f"see:\n{_F}sql\nselect 1;\n{_F}\n"}),
+    (_F + 'json\n{"a": "x ' + _F + 'py\\nprint(1)\\n' + _F + ' y"}\n' + _F, {"a": f"x {_F}py\nprint(1)\n{_F} y"}),
+])
+def test_extract_json_keeps_a_code_fence_inside_a_string_value(raw, expected):
+    """#646: a fence inside a JSON string is content, not the reply's own fence."""
+    assert _extract_json(raw) == expected
+
+
 def test_response_text_concatenates_text_blocks_and_skips_others():
     class _Block:
         def __init__(self, type_, text=""):

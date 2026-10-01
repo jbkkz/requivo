@@ -215,6 +215,25 @@ def test_every_refusal_on_the_import_path_names_what_it_is_about(tmp_path, monke
     assert _import(_zip(tmp_path / "good.zip", _good_entries("ok-one")))["slug"] == "ok-one"
 
 
+def test_import_refuses_an_archive_whose_member_data_is_corrupt(tmp_path):
+    """#647: an intact central directory over altered member bytes failed at extraction, as a traceback."""
+    archive = tmp_path / "bad.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
+        for name, content in _good_entries("bad-data").items():
+            z.writestr(name, content)
+    raw = archive.read_bytes()
+    assert b"A request." in raw
+    archive.write_bytes(raw.replace(b"A request.", b"A reQuest."))
+    err = io.StringIO()
+    with redirect_stderr(err), pytest.raises(SystemExit):
+        app(["session", "import", str(archive)], client=None)
+    assert "bad.zip" in err.getvalue() and "Traceback" not in err.getvalue()
+    envelope = _import_error(archive)
+    assert envelope["code"] == "unreadable_archive" and envelope["details"]["archive"] == str(archive)
+    assert not store.canonical_dir("bad-data").exists()
+    assert not list(store.canonical_dir("bad-data").parent.parent.glob(".import-*"))
+
+
 _FORGED_SLUG = "ok-session\nAll clear, nothing to see.\n  ✅ sessions        0 in this workspace"
 
 

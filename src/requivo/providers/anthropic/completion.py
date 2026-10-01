@@ -97,17 +97,21 @@ def _response_text(resp) -> str:
 
 
 def _extract_json(text: str) -> dict:
-    """Best-effort JSON extraction: strip a ```json fence, else slice { … }."""
+    """The JSON object in a reply: as given, else inside an outer fence, else the first `{` onward."""
     text = text.strip()
-    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
-    if fence:
-        text = fence.group(1).strip()
-    if not text.startswith("{"):
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end == -1:
-            raise ValueError("no JSON object found in the reply")
-        text = text[start : end + 1]
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    # Bare JSON first, then an *outer* fence only: a fence inside a string value is content (#646,
+    # `test_extract_json_keeps_a_code_fence_inside_a_string_value`).
+    outer = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if outer:
+        text = outer.group(1)
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("no JSON object found in the reply")
+    return json.JSONDecoder().raw_decode(text[start:])[0]
 
 
 _EPHEMERAL = {"type": "ephemeral"}
