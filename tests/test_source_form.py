@@ -1084,6 +1084,7 @@ REFERENCE_EXTRA = (REPO_ROOT / "CLAUDE.md", REPO_ROOT / "CONTRIBUTING.md")
 REFERENCE_SUFFIXES = (".py", ".md", ".html", ".js")
 DECISIONS = REPO_ROOT / "docs" / "decisions"
 _REFERENCE = re.compile(r"\btest_[a-z0-9_]{10,}\b")  # the floor keeps `test_x` in a snippet from reading as a claim
+_FILE_REFERENCE = re.compile(r"\b(test_[a-z0-9_]+)\.py\b")  # a `.py` suffix is what makes a short name a citation (#581)
 _DECISION_REF = re.compile(r"`decision:\s*([a-z0-9-]+)`")
 
 
@@ -1123,6 +1124,7 @@ def dangling_references(subjects: list[Path], names: set[str], slugs: set[str]) 
     for path in subjects:
         text = path.read_text(encoding="utf-8")
         out.extend(f"{path.name} -> {n}" for n in sorted(set(_REFERENCE.findall(text)) - names))
+        out.extend(f"{path.name} -> {n}.py" for n in sorted(set(_FILE_REFERENCE.findall(text)) - names - set(_REFERENCE.findall(text))))
         out.extend(f"{path.name} -> decision: {s}" for s in sorted(set(_DECISION_REF.findall(text)) - slugs))
     return out
 
@@ -1149,6 +1151,17 @@ def test_the_reference_guard_sees_a_dangling_name_and_a_dangling_slug(tmp_path):
                    f"`decision: {dangling_slug}`.\n", encoding="utf-8")
     found = dangling_references([doc], declared_test_names((tests,)), declared_slugs(records))
     assert found == [f"note.md -> {dangling_name}", f"note.md -> decision: {dangling_slug}"], found
+
+
+def test_the_reference_guard_sees_a_dangling_short_named_test_file(tmp_path):
+    """MUST-FIRE (#581): a `.py` citation under the ten-character floor is reported; a declared one resolves."""
+    short_missing, short_declared = "test_" + "gone", "test_" + "kept"
+    tests = tmp_path / "tests"
+    _write_tree(tests, {f"{short_declared}.py": "def " + "test_" + "something_long_enough():\n    pass\n"})
+    doc = tmp_path / "note.md"
+    doc.write_text(f"See `tests/{short_declared}.py` and `tests/{short_missing}.py`.\n", encoding="utf-8")
+    found = dangling_references([doc], declared_test_names((tests,)), set())
+    assert found == [f"note.md -> {short_missing}.py"], found
 
 # ---- a measured figure in prose is one the committed ledger capture supports (#252, #236) ----
 
