@@ -78,6 +78,12 @@ def _wrote_file(slug: str, status, label: str) -> None:
     print(f"\nWrote {label} → {store.artifact_path(slug, status.filename)}")
 
 
+def _display_url(host: str, port: int) -> str:
+    """Bracket IPv6 literals for display without changing the server's bind address (#684)."""
+    authority = f"[{host}]" if ":" in host else host
+    return f"http://{authority}:{port}"
+
+
 def _is_wildcard_bind_address(host: str) -> bool:
     """Does `host` name every interface, the IPv6 unspecified address in every spelling included?
     `ipaddress.ip_address(...).is_unspecified` sees `::0` where a literal check saw only `::`; a
