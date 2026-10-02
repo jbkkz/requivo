@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from requivo.core import persistence as store
 from requivo.core.selectors import display_document, display_token
-from requivo.deterministic._shared import _read_document, print_json
+from requivo.deterministic._shared import JSON_HELP, _read_document, print_json
 from requivo.services.artifacts import ARTIFACT_FILENAMES, ArtifactService
 from requivo.services.sessions import SessionService
 
@@ -71,15 +71,16 @@ def register_artifacts(sub) -> None:
                      help="required: the model revision this content was reasoned from. There is no "
                           "default — the session's current revision is a different fact, and only you "
                           "know what you read")
-    asv.add_argument("--json", action="store_true")
+    asv.add_argument("--json", action="store_true", help=JSON_HELP)
     asv.set_defaults(func=_cmd_artifact_save)
 
     al = aps.add_parser("list", help="list a session's artifacts + freshness")
     al.add_argument("session", help="session slug or path")
-    al.add_argument("--json", action="store_true")
+    al.add_argument("--json", action="store_true", help=JSON_HELP)
     al.set_defaults(func=_cmd_artifact_list)
 
     ash = aps.add_parser("show", help="print a saved artifact's content")
     ash.add_argument("session", help="session slug or path")
-    ash.add_argument("--type", required=True, choices=sorted(ARTIFACT_FILENAMES))
+    ash.add_argument("--type", required=True, choices=sorted(ARTIFACT_FILENAMES),
+                     help="artifact type")
     ash.set_defaults(func=_cmd_artifact_show)

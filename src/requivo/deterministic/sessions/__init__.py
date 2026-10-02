@@ -5,6 +5,7 @@ through `display_token` (invariant 14). Split into `lifecycle.py`, `archives.py`
 """
 from __future__ import annotations
 
+from requivo.deterministic._shared import JSON_HELP
 from requivo.deterministic.sessions.archives import _cmd_session_export, _cmd_session_import, _cmd_session_restore
 from requivo.deterministic.sessions.lifecycle import (
     _cmd_session_delete,
@@ -31,31 +32,31 @@ def register_sessions(sub) -> None:
     si.add_argument("--context", "--cards", metavar="CARDS", dest="context",
                     help="comma-separated context cards to record. Alias: --cards.")
     si.add_argument("--provider", default=None, help="informational provider tag (e.g. claude-code)")
-    si.add_argument("--json", action="store_true")
+    si.add_argument("--json", action="store_true", help=JSON_HELP)
     si.set_defaults(func=_cmd_session_init)
 
     sl = ss.add_parser("list", help="list canonical sessions")
-    sl.add_argument("--json", action="store_true")
+    sl.add_argument("--json", action="store_true", help=JSON_HELP)
     sl.set_defaults(func=_cmd_session_list)
 
     sh = ss.add_parser("show", help="show a session's metadata + artifacts")
     sh.add_argument("session", help="session slug or path")
-    sh.add_argument("--json", action="store_true")
+    sh.add_argument("--json", action="store_true", help=JSON_HELP)
     sh.set_defaults(func=_cmd_session_show)
 
     sm = ss.add_parser("migrate", help="migrate ALL legacy out/ sessions into .requivo/sessions/")
-    sm.add_argument("--json", action="store_true")
+    sm.add_argument("--json", action="store_true", help=JSON_HELP)
     sm.set_defaults(func=_cmd_session_migrate)
 
     se = ss.add_parser("export", help="export a session as a .zip archive")
     se.add_argument("session", help="session slug or path")
     se.add_argument("-o", "--output", help="destination archive path")
-    se.add_argument("--json", action="store_true")
+    se.add_argument("--json", action="store_true", help=JSON_HELP)
     se.set_defaults(func=_cmd_session_export)
 
     sv = ss.add_parser("verify", help="check that a session's files agree with each other")
     sv.add_argument("session", help="session slug or path")
-    sv.add_argument("--json", action="store_true")
+    sv.add_argument("--json", action="store_true", help=JSON_HELP)
     sv.set_defaults(func=_cmd_session_verify)
 
     srt = ss.add_parser("restore", help="copy a readable revision over model.json — the recovery "
@@ -70,18 +71,18 @@ def register_sessions(sub) -> None:
     sr.add_argument("--context", "--cards", metavar="CARDS", dest="context", required=True,
                     help="comma-separated context cards to switch to, or '' for every card. "
                          "Alias: --cards. Required — unlike `init`, omitting it is not a default.")
-    sr.add_argument("--json", action="store_true")
+    sr.add_argument("--json", action="store_true", help=JSON_HELP)
     sr.set_defaults(func=_cmd_session_rescope)
 
     sig = ss.add_parser("import", help="import a session archive into the workspace")
     sig.add_argument("archive", help="path to a .zip produced by `session export`")
     sig.add_argument("--force", action="store_true",
                      help="replace a session of the same slug that already exists here")
-    sig.add_argument("--json", action="store_true")
+    sig.add_argument("--json", action="store_true", help=JSON_HELP)
     sig.set_defaults(func=_cmd_session_import)
 
     sd = ss.add_parser("delete", help="irreversibly remove a session -- `session export` first is "
                        "the undo story; there is no trash")
     sd.add_argument("session", help="session slug or path")
-    sd.add_argument("--json", action="store_true")
+    sd.add_argument("--json", action="store_true", help=JSON_HELP)
     sd.set_defaults(func=_cmd_session_delete)

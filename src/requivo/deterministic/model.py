@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.validation import validate_proposal
-from requivo.deterministic._shared import _read_document, print_json
+from requivo.deterministic._shared import JSON_HELP, _read_document, print_json
 from requivo.services.sessions import SessionService
 
 
@@ -101,7 +101,7 @@ def register_model(sub) -> None:
     mv.add_argument("--allow-partial", action="store_true",
                     help="check a partial projection for well-formedness only — `apply` and `diff` "
                          "always require the full slot set, because applying replaces the model")
-    mv.add_argument("--json", action="store_true")
+    mv.add_argument("--json", action="store_true", help=JSON_HELP)
     mv.set_defaults(func=_cmd_model_validate)
 
     ma = ms.add_parser("apply", help="validate a proposal and apply it as a new revision")
@@ -109,11 +109,11 @@ def register_model(sub) -> None:
     ma.add_argument("proposal", help="path to a proposed model JSON, or '-' to read it from stdin")
     ma.add_argument("--expected-revision", type=int, default=None,
                     help="only apply if the session is still at this revision (optimistic lock)")
-    ma.add_argument("--json", action="store_true")
+    ma.add_argument("--json", action="store_true", help=JSON_HELP)
     ma.set_defaults(func=_cmd_model_apply)
 
     md = ms.add_parser("diff", help="show what a proposal would change (no write)")
     md.add_argument("session", help="session slug or path")
     md.add_argument("proposal", help="path to a proposed model JSON, or '-' to read it from stdin")
-    md.add_argument("--json", action="store_true")
+    md.add_argument("--json", action="store_true", help=JSON_HELP)
     md.set_defaults(func=_cmd_model_diff)

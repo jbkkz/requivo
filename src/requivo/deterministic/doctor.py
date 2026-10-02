@@ -14,7 +14,7 @@ from requivo.core.errors import InvalidModelError, SessionLockedError
 from requivo.core.integrity import SEVERITY_NOTE, IntegrityProblem, blocking, inspect_session
 from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.core.selectors import display_token
-from requivo.deterministic._shared import _NO_DETAIL, _resolve_cards, print_json
+from requivo.deterministic._shared import _NO_DETAIL, JSON_HELP, _resolve_cards, print_json
 from requivo.deterministic.remedies import _REPAIR_HINT, _RESTORABLE_CARD_CODES, _RESTORE_HINT, _card_health
 from requivo.paths import ASSETS, CONTEXT, lock_root, session_root, user_context_dir, workspace_root
 from requivo.providers.anthropic import credential_diagnosis, current_model_name
@@ -467,7 +467,7 @@ def register_doctor(sub) -> None:
     """Attach `doctor`, `schema` and `context` to the main `requivo` subparser."""
     # doctor
     dr = sub.add_parser("doctor", help="diagnose the install (no API key needed)")
-    dr.add_argument("--json", action="store_true", help="emit the report as JSON")
+    dr.add_argument("--json", action="store_true", help=JSON_HELP)
     dr.set_defaults(func=_cmd_doctor)
 
     # schema / context — read-only knowledge for a reasoning caller (Claude Code)

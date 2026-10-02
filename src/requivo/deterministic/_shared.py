@@ -17,6 +17,7 @@ from requivo.core.selectors import display_token
 # answer), and stdout is complete (invariant 15). A shape of answer, not a verb (#86). 3 is
 # `cli.EXIT_RENDER_FAILED`, which cannot be imported from here: `test_the_degraded_code_collides_with_nothing`.
 EXIT_DEGRADED = 4
+JSON_HELP = "emit the report as JSON"
 
 
 def print_json(obj) -> None:

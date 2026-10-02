@@ -33,6 +33,7 @@ from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
+from requivo.deterministic._shared import JSON_HELP
 from requivo.paths import DEMO
 
 # The only provider names this surface may take, each a surface concern (#77, #167); the list is
@@ -1096,7 +1097,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     model_cmd("answer", "fold the client's answers in and report what moved (API)",
               _cmd_answer, lambda sp: sp.add_argument("answers", help="the client's answers, as free text"))
     model_cmd("status", "show the understanding, open questions and readiness", _cmd_status,
-              lambda sp: sp.add_argument("--json", action="store_true", help="emit a machine status snapshot"),
+              lambda sp: sp.add_argument("--json", action="store_true", help=JSON_HELP),
               accepts_path=True, session_required=False)
     model_cmd("impact", "show what a change to given topics would reach; no topics = full map",
               _cmd_impact, lambda sp: sp.add_argument("slots", nargs="*",

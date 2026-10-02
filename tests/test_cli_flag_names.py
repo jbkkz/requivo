@@ -386,6 +386,18 @@ def test_every_workspace_copy_carries_the_same_help_text():
     assert "before or after the command" in helps.pop()
 
 
+def test_every_option_carries_help_text():
+    """#662: session show --json and artifact show --type had no description."""
+    missing = [(verb, a.option_strings) for verb, a in _walk_actions(_build_parser())
+               if a.option_strings and not (a.help or "").strip()]
+    assert not missing, f"options without help text: {missing}"
+
+
+def test_every_json_option_carries_the_same_help_text():
+    helps = {a.help for _verb, a in _walk_actions(_build_parser()) if "--json" in a.option_strings}
+    assert helps == {"emit the report as JSON"}
+
+
 def test_the_only_flags_the_root_parser_binds_are_the_two_global_ones():
     """What bounds the exemption: a third root flag fails here."""
     bound = {opt for a in _build_parser()._actions for opt in a.option_strings} - {"-h", "--help"}
