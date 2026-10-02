@@ -138,6 +138,22 @@ def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief
     assert "\n# INJECTED" not in gtm and gtm.count("INJECTED") == 10
 
 
+def test_a_newline_in_a_slot_value_or_an_opportunity_module_cannot_open_a_forged_heading():
+    """#660: `_stated` and the opportunity modules were the two free-text sites #655's `_line()` missed;
+    the positive control is that each injected value still reaches the output, flattened."""
+    forged = "x\n# FORGED"
+    model = out({"problem": slot(80, "explicit", "high", forged), "actors": slot(60, "inferred", "high", forged)})
+    brief = Brief(problem="P", solution="S", complexity="low",
+                  opportunities=[Opportunity(text="o", leverage="high", modules=[forged])])
+    md = brief_markdown(model, brief)
+    assert "\n# FORGED" not in md and md.count("FORGED") == 3
+    # the go-to-market brief reads its own slot ids, which the default-schema `out()` refuses
+    model.model["objective"] = model.model["problem"].model_copy()
+    model.model["icp"] = model.model["actors"].model_copy()
+    gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"]))
+    assert "\n# FORGED" not in gtm and gtm.count("FORGED") == 2
+
+
 @pytest.mark.parametrize("field, item, heading, line", [
     ("exclusions", Exclusion(option="Bulk import", reason="Out of scope for v1", rests_on=["problem"]),
      "## Out of scope", "**Bulk import** — Out of scope for v1"),

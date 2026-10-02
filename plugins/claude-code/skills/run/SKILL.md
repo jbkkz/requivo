@@ -41,8 +41,9 @@ cards back to the user when you present the understanding, below, so a human can
 notice (#489).
 
 `decision: the-engine-writes-the-missing-card` has the engine's own first discovery judge the
-domain and write the missing card itself (#593), but that judgment runs inside `requivo discover`,
-not on this path: `session init` and in-session reasoning never make it. Here, naming the cards
+domain and report an uncovered one (#593); writing the missing card is not built yet (#598). That
+judgment runs inside `requivo discover`, not on this path: `session init` and in-session reasoning
+never make it. Here, naming the cards
 back is the whole of the protection — do it.
 
 ## 2. What are you being asked to do?

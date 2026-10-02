@@ -366,7 +366,7 @@ read (`--since-revision N`) stays behind the demonstrated-need gate above.
 
 1. **Now — no Requivo code**: this page, plus an importable example workflow (the three flows
    above) in [`examples/n8n/`](../examples/n8n/README.md) (#437). Works with n8n's stock Execute Command / HTTP Request / GitHub nodes.
-2. **Next — the MCP façade** (#438), before any n8n community node (the recorded distribution
+2. **Now built — the MCP façade** (`requivo mcp serve`, #438; [mcp.md](mcp.md)), before any n8n community node (the recorded distribution
    decision — `decision: the-http-api-facade`).
    One façade serves Claude Code, agent frameworks, and n8n's own MCP client support.
 3. **Then — a community node** (`n8n-nodes-requivo`: declarative; resources `session`,

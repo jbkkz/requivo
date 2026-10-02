@@ -32,7 +32,7 @@ parser binds cannot ship undocumented. Why a check exists is on the issue it cit
 - **For scripts and integrations** — `discover`, `answer`, `brief`, `prd`, `stories`, `estimate`,
   `criteria`, `epic`, `release`, `impact` — the automation contract this page documents, listed by
   name only; `requivo <verb> --help` still shows each one's own usage.
-- **Plumbing** — `doctor`, `schema`, `context`, `session`, `model`, `artifact`, `api` — session/
+- **Plumbing** — `doctor`, `schema`, `context`, `session`, `model`, `artifact`, `api`, `mcp` — session/
   model/artifact CRUD and install diagnostics, also by name only.
 
 `(API)` marks a verb that spends money on your own key; everything without it is offline and free,
@@ -174,6 +174,7 @@ the n8n contract in [integrations.md](integrations.md).
 
 | Command | Does |
 |---|---|
+| `requivo mcp serve [--workspace]` | Serve the same resource operations as MCP tools over stdio, in-process (no port, no token, no extra). Experimental; paid tools need `ANTHROPIC_API_KEY`. The tool list is in [mcp.md](mcp.md) |
 | `requivo api serve [--host --port --workspace]` | Serve the local REST API (needs the `[api]` extra; `pip install 'requivo[api]'`). Binds to `127.0.0.1:8767` by default, with the OpenAPI docs at `/docs`. **Bound to anything but loopback it refuses to start unless `REQUIVO_API_TOKEN` is set**; with that variable set, every route under `/api/v1` except `/api/v1/health` requires `Authorization: Bearer <token>` (401 `unauthorized` otherwise), whatever the bind. The surface is experimental -- paths and shapes may still change; the routes, the token and the recovery semantics are in [api.md](api.md); the design and the freeze conditions are `decision: the-http-api-facade` |
 
 ## Offline / deterministic verbs (no LLM, no key)

@@ -10,6 +10,7 @@ depth — each has one clear responsibility; the README links to them rather tha
 - [Claude Code plugin](../plugins/claude-code/) — the integration: skills, workflow, install (no extra API key)
 - [CLI reference](cli.md) — every command and flag
 - [HTTP API](api.md) — the experimental local REST facade: serving it, the token, the routes, recovery
+- [MCP server](mcp.md) — the stdio tools, one per API route: what they are, keys and gates, why no SDK
 - [Integrations](integrations.md) — driving Requivo from an automation: the CLI contract, the
   `requivo-epic` envelope, a worked n8n flow, and what deliberately is not built
 

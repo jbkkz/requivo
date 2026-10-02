@@ -942,6 +942,13 @@ def _cmd_api_serve(a, client) -> None:
     uvicorn.run(app, host=host, port=port)
 
 
+def _cmd_mcp_serve(a, client) -> None:
+    """Serve the MCP tools over stdio (#438): in-process on the same services, so no port, no token
+    and no extra. Protocol on stdout, nothing else; the banner would corrupt it, so there is none."""
+    from requivo.mcp.server import serve
+    serve()
+
+
 # The closing paragraph of `requivo --help` (#244): the first command to run, and what `(API)` means.
 # `requivo run`, not `discover` (#546): `decision: three-journey-verbs`.
 EPILOG = (
@@ -964,7 +971,7 @@ _HELP_GROUP_START = ("demo", "run", "docs", "status", "web")
 _HELP_GROUP_SCRIPTS = (
     "discover", "answer", "brief", "gtm_plan", "prd", "stories", "estimate", "criteria", "epic", "release", "impact",
 )
-_HELP_GROUP_PLUMBING = ("doctor", "schema", "context", "session", "model", "artifact", "api")
+_HELP_GROUP_PLUMBING = ("doctor", "schema", "context", "session", "model", "artifact", "api", "mcp")
 
 
 class _JourneyHelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -1162,6 +1169,14 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     serve.add_argument("--port", type=int, default=8767, help="port (default: 8767)")
     serve.add_argument("--workspace", metavar="DIR", default=argparse.SUPPRESS, help=_WORKSPACE_HELP)
     serve.set_defaults(func=_cmd_api_serve)
+
+    # The same resource operations as `api`, over stdio for an MCP client (#438); a group, like `api`.
+    mcp = sub.add_parser("mcp", help="the local MCP server (stdio; no extra needed)")
+    mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True, metavar="<command>")
+    mcp_serve = mcp_sub.add_parser(
+        "serve", help="serve the Requivo tools over stdio -- experimental; paid tools need ANTHROPIC_API_KEY")
+    mcp_serve.add_argument("--workspace", metavar="DIR", default=argparse.SUPPRESS, help=_WORKSPACE_HELP)
+    mcp_serve.set_defaults(func=_cmd_mcp_serve)
 
     # Last, after every verb group has registered: a global flag is global wherever it is written.
     _accept_workspace_after_the_command(p)

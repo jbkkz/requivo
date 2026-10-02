@@ -42,7 +42,7 @@ def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_
     value`: read off the model, never restated by the provider (Voice rule). `perimeter` (#609)
     selects the labels."""
     order = slot_meta(perimeter)[1]
-    return [f"- **{slot_label(sid, perimeter)}** — {out.model[sid].value.strip()}"
+    return [f"- **{slot_label(sid, perimeter)}** — {_line(out.model[sid].value)}"
             for sid in order
             if sid in out.model and out.model[sid].confidence is confidence
             and out.model[sid].value.strip()]
@@ -148,7 +148,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     section("Opportunities", [
         f"- **{_line(o.text)}** (leverage: {o.leverage.value})"
-        + (f" — reaches {', '.join(o.modules)}" if o.modules else "")
+        + (f" — reaches {', '.join(_line(m) for m in o.modules)}" if o.modules else "")
         for o in brief.opportunities])
 
     # Not a second readiness question (#165): `test_every_surface_asks_the_same_readiness_question`.

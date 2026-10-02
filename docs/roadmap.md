@@ -34,7 +34,7 @@ and get expert review for any legal/tax/compliance flag it raises.
 
 ## Next
 
-- An HTTP API / MCP façade — another thin layer over the same Core (for automation and integrations)
+- Hardening the HTTP API and the MCP server (both shipped, experimental) toward a freeze
 - A Jira adapter, alongside GitHub and GitLab
 - Delivery integrations — authenticated push (via n8n), Notion and Confluence
 - Context tooling — validation and assisted generation of context cards
