@@ -21,6 +21,9 @@ documentation and as inputs the tests and golden harness rely on.
 **Additional request prompts** (just the input — run them yourself):
 
 - `case1_leave.md` … `case6_freelancer_payment.md` — short standalone requests to try.
+  Run one with `requivo run examples/case1_leave.md`: it makes a paid call and needs an
+  `ANTHROPIC_API_KEY` ([getting started](../docs/getting-started.md)). No key? `requivo demo` replays
+  a saved run.
 
 **For automation:**
 
