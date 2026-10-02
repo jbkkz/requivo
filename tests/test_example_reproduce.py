@@ -123,3 +123,20 @@ def test_no_n8n_workflow_parses_a_human_verb_stdout():
             else:
                 assert ">/dev/null" in command, f"{name}: {node['name']} keeps a human verb's stdout"
     assert seen == {"discover", "answer", "status", "epic"}, seen
+
+
+def test_n8n_reply_preserves_dash_prefixed_answers():
+    """The option terminator keeps answer text such as `- no` out of CLI parsing (#690)."""
+    flow = _n8n_workflows()["b-reply-answer.json"]
+    commands = [
+        node["parameters"]["command"]
+        for node in flow["nodes"]
+        if node["type"] == "n8n-nodes-base.executeCommand"
+    ]
+    answer_commands = [
+        command
+        for command in commands
+        if command.split("--workspace ", 1)[1].split()[1] == "answer"
+    ]
+    assert len(answer_commands) == 1
+    assert "answer {{ $json.slug }} -- {{ $json.answerArg }}" in answer_commands[0]

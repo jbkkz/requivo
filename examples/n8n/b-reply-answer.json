@@ -29,7 +29,7 @@
     },
     {
       "parameters": {
-        "command": "=requivo --workspace /data/requivo answer {{ $json.slug }} {{ $json.answerArg }} >/dev/null; echo $?"
+        "command": "=requivo --workspace /data/requivo answer {{ $json.slug }} -- {{ $json.answerArg }} >/dev/null; echo $?"
       },
       "name": "answer",
       "type": "n8n-nodes-base.executeCommand",
