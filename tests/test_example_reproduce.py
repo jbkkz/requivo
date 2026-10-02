@@ -80,3 +80,46 @@ def test_no_example_still_promises_the_retired_output_root():
     for example in EXAMPLES:
         text = (REPO / "examples" / example / "README.md").read_text(encoding="utf-8")
         assert "out/" not in text, f"{example}/README.md names the retired out/ root"
+
+
+def _n8n_workflows() -> dict[str, dict]:
+    import json
+
+    root = REPO / "examples" / "n8n"
+    return {p.name: json.loads(p.read_text(encoding="utf-8")) for p in sorted(root.glob("*.json"))}
+
+
+def test_the_n8n_examples_are_wired_and_carry_no_credential():
+    """Three importable flows (#437): every connection lands on a node, and no secret is in the JSON."""
+    flows = _n8n_workflows()
+    assert len(flows) == 3, sorted(flows)
+    for name, flow in flows.items():
+        names = {n["name"] for n in flow["nodes"]}
+        assert len(names) == len(flow["nodes"]), f"{name}: duplicate node names"
+        for source, outputs in flow["connections"].items():
+            assert source in names, f"{name}: connection from unknown node {source!r}"
+            for branch in outputs["main"]:
+                assert all(c["node"] in names for c in branch), f"{name}: {source!r} wires to a missing node"
+        assert all("credentials" not in n for n in flow["nodes"]), f"{name}: a credential is exported"
+        raw = (REPO / "examples" / "n8n" / name).read_text(encoding="utf-8")
+        assert not any(t in raw for t in ("sk-ant-", "ghp_", "github_pat_", "hooks.slack.com")), name
+
+
+def test_no_n8n_workflow_parses_a_human_verb_stdout():
+    """The machine reads only (#437): `status` is read with --json, every other verb's stdout is discarded.
+
+    The positive control is the verb set: a parser that saw no command would pass the loop vacuously.
+    """
+    seen = set()
+    for name, flow in _n8n_workflows().items():
+        for node in flow["nodes"]:
+            if node["type"] != "n8n-nodes-base.executeCommand":
+                continue
+            command = node["parameters"]["command"]
+            verb = command.split("--workspace ", 1)[1].split()[1]
+            seen.add(verb)
+            if verb == "status":
+                assert command.rstrip().endswith("--json"), f"{name}: {node['name']} reads status without --json"
+            else:
+                assert ">/dev/null" in command, f"{name}: {node['name']} keeps a human verb's stdout"
+    assert seen == {"discover", "answer", "status", "epic"}, seen

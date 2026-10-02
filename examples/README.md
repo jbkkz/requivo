@@ -22,6 +22,11 @@ documentation and as inputs the tests and golden harness rely on.
 
 - `case1_leave.md` … `case6_freelancer_payment.md` — short standalone requests to try.
 
+**For automation:**
+
+- **`n8n/`** — three importable n8n workflows (intake, reply, epic to GitHub issues) over the CLI's
+  machine reads. See [n8n/README.md](n8n/README.md).
+
 **Not examples:** the golden-harness fixtures under `fixtures/golden/` are internal test inputs, not a
 getting-started path — see [../docs/evaluations.md](../docs/evaluations.md).
 

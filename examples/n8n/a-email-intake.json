@@ -1,0 +1,315 @@
+{
+  "name": "Requivo A: email intake to discovery",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "simple"
+      },
+      "name": "Email Trigger (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const m = /(?:req|ticket)[-\\s#]*(\\d+)/i.exec(String(items[0].json.subject || ''));\nif (!m) throw new Error('No ticket number in the subject; no slug can be derived');\nconst slug = 'req-' + m[1];  // slug-shaped: [a-z0-9-] only, which is also what keeps it safe in a shell command\nconst from = items[0].json.replyTo || items[0].json.from;\nreturn [{ json: { slug, from, body: String(items[0].json.text || '') } }];"
+      },
+      "name": "Derive slug",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "body",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "name": "Body to text file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/data/requivo/inbox/{{ $('Derive slug').first().json.slug }}.txt",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "name": "Write inbox file",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=requivo --workspace /data/requivo discover /data/requivo/inbox/{{ $('Derive slug').first().json.slug }}.txt --once >/dev/null; echo $?"
+      },
+      "name": "discover --once",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.stdout.trim() }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "name": "discover exit 0?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=discover exited {{ $json.stdout.trim() }}. The request is captured at revision 0 and nothing is double-billed: re-running the same command is safe, a duplicate is refused free."
+      },
+      "name": "Discovery failed",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=requivo --workspace /data/requivo status {{ $('Derive slug').first().json.slug }} --json"
+      },
+      "name": "status --json",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const slug = $('Derive slug').first().json.slug;\nconst status = JSON.parse($input.first().json.stdout);\nconst lines = (status.questions || []).map((q, i) => (i + 1) + '. ' + (q.q || q.question || JSON.stringify(q)));\nreturn [{ json: { slug, status, questionsText: lines.join('\\n') } }];"
+      },
+      "name": "Parse status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "rdy",
+              "leftValue": "={{ $json.status.readiness.ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.REQUIVO_REPLY_FROM }}",
+        "toEmail": "={{ $('Derive slug').first().json.from }}",
+        "subject": "=Re: [{{ $json.slug }}] a few questions before we can scope this",
+        "emailFormat": "text",
+        "text": "={{ $json.questionsText }}\n\nReply to this email keeping [{{ $json.slug }}] in the subject."
+      },
+      "name": "Email the questions back",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2160,
+        80
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Hand over to flow C",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        -160
+      ],
+      "notes": "Readiness reached: run flow C (c-epic-to-github) for this slug.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Derive slug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Derive slug": {
+      "main": [
+        [
+          {
+            "node": "Body to text file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body to text file": {
+      "main": [
+        [
+          {
+            "node": "Write inbox file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write inbox file": {
+      "main": [
+        [
+          {
+            "node": "discover --once",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "discover --once": {
+      "main": [
+        [
+          {
+            "node": "discover exit 0?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "discover exit 0?": {
+      "main": [
+        [
+          {
+            "node": "status --json",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Discovery failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "status --json": {
+      "main": [
+        [
+          {
+            "node": "Parse status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse status": {
+      "main": [
+        [
+          {
+            "node": "Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready?": {
+      "main": [
+        [
+          {
+            "node": "Hand over to flow C",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email the questions back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

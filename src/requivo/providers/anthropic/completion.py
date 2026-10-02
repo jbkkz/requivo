@@ -68,9 +68,10 @@ def _prune_debug_dir(root: Path) -> None:
         stale.unlink(missing_ok=True)
 
 
-# Output-token ceiling per call: a rich discovery exceeds 8k. The call streams (#638), so HTTP timeouts no
-# longer bound it; raising it is a cost and latency decision of its own (#256).
-MAX_OUTPUT_TOKENS = 16000
+# Output-token ceiling per call, and the worst case one call can bill. The call streams (#638), so HTTP
+# timeouts do not bound it; what does is spend and wait: a reply cut at the ceiling is refused whole and
+# paid for (#256), so the ceiling sits above what a rich multi-feature discovery writes.
+MAX_OUTPUT_TOKENS = 32000
 
 
 def _record(rec: CallRecord) -> None:

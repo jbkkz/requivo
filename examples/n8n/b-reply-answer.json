@@ -1,0 +1,263 @@
+{
+  "name": "Requivo B: reply to answer",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "simple"
+      },
+      "name": "Reply Trigger (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const shq = (s) => \"'\" + String(s).replace(/'/g, \"'\\\\''\") + \"'\";\nconst m = /\\[(req-\\d+)\\]/.exec(String(items[0].json.subject || ''));\nif (!m) throw new Error('No [req-N] slug in the subject; not a reply to a requivo thread');\nconst text = String(items[0].json.text || '').split('\\n').filter((l) => !l.startsWith('>')).join('\\n').trim();\nif (!text) throw new Error('The reply has no text of its own');\nconst from = items[0].json.replyTo || items[0].json.from;\n// The answer is client text: it reaches the shell only as one single-quoted word.\nreturn [{ json: { slug: m[1], from, answerArg: shq(text) } }];"
+      },
+      "name": "Slug and answer from the reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=requivo --workspace /data/requivo answer {{ $json.slug }} {{ $json.answerArg }} >/dev/null; echo $?"
+      },
+      "name": "answer",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.stdout.trim() }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "name": "answer exit 0?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=answer exited {{ $json.stdout.trim() }}. Nothing was applied that the session does not report: read status --json before re-running."
+      },
+      "name": "Answer failed",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=requivo --workspace /data/requivo status {{ $('Slug and answer from the reply').first().json.slug }} --json"
+      },
+      "name": "status --json",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const slug = $('Slug and answer from the reply').first().json.slug;\nconst status = JSON.parse($input.first().json.stdout);\nconst lines = (status.questions || []).map((q, i) => (i + 1) + '. ' + (q.q || q.question || JSON.stringify(q)));\nreturn [{ json: { slug, status, questionsText: lines.join('\\n') } }];"
+      },
+      "name": "Parse status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "rdy",
+              "leftValue": "={{ $json.status.readiness.ready }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "name": "Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.REQUIVO_REPLY_FROM }}",
+        "toEmail": "={{ $('Slug and answer from the reply').first().json.from }}",
+        "subject": "=Re: [{{ $json.slug }}] a few questions before we can scope this",
+        "emailFormat": "text",
+        "text": "={{ $json.questionsText }}\n\nReply to this email keeping [{{ $json.slug }}] in the subject."
+      },
+      "name": "Email the questions back",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1680,
+        80
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Hand over to flow C",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        -160
+      ],
+      "notes": "Readiness reached: run flow C (c-epic-to-github) for this slug.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Reply Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Slug and answer from the reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slug and answer from the reply": {
+      "main": [
+        [
+          {
+            "node": "answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "answer": {
+      "main": [
+        [
+          {
+            "node": "answer exit 0?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "answer exit 0?": {
+      "main": [
+        [
+          {
+            "node": "status --json",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Answer failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "status --json": {
+      "main": [
+        [
+          {
+            "node": "Parse status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse status": {
+      "main": [
+        [
+          {
+            "node": "Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready?": {
+      "main": [
+        [
+          {
+            "node": "Hand over to flow C",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email the questions back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
