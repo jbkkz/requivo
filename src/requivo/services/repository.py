@@ -130,7 +130,7 @@ class FileSessionRepository:
                 "with `requivo session migrate`, which converts every out/ session in one pass and "
                 "leaves the originals in place.",
                 details={"slug": slug, "legacy": True})
-        return SessionNotFoundError(f"no session '{slug}'", details={"slug": slug})
+        return SessionNotFoundError(self._resolve_store().no_session_message(slug), details={"slug": slug})
 
     @contextmanager
     def lock(self, slug: str) -> Iterator[None]:

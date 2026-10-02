@@ -251,6 +251,21 @@ def test_every_cli_route_to_a_missing_session_names_the_root_and_the_listing_com
     assert "canonical" not in err.lower()
 
 
+@pytest.mark.parametrize("verb", ["model-apply", "model-diff", "artifact-save", "session-rescope"])
+def test_mutating_routes_to_a_missing_session_give_the_standard_sentence(verb, tmp_path, capsys):
+    """Dry run, apply, artifact save and rescope all say what `status` says (#678, #679, #680)."""
+    proposal = tmp_path / "p.json"
+    proposal.write_text(json.dumps({}), encoding="utf-8")
+    argv = {"model-apply": ["model", "apply", "no-such-session", str(proposal)],
+            "model-diff": ["model", "diff", "no-such-session", str(proposal)],
+            "artifact-save": ["artifact", "save", "no-such-session", "--type", "prd", "--file",
+                              str(proposal), "--revision", "1"],
+            "session-rescope": ["session", "rescope", "no-such-session", "--context", ""]}[verb]
+    err = _fails(argv, capsys)
+    assert str(store.session_root()) in err and "requivo session list" in err, err
+    assert "canonical" not in err.lower()
+
+
 def test_the_structured_envelope_still_carries_the_published_code_and_slug(capsys):
     """Message text is not the contract; `code` and `details` are (`docs/compatibility.md`)."""
     with pytest.raises(SystemExit):

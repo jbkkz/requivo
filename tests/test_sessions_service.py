@@ -239,10 +239,19 @@ def test_rescope_does_not_mark_existing_artifacts_stale(art):
 
 @pytest.mark.parametrize("call", [
     lambda svc: svc.rescope("ghost", context_cards=["event-ops"]), lambda svc: svc.update_model("ghost", full_model()),
-], ids=["rescope", "update_model"])
+    lambda svc: svc.diff("ghost", full_model()),
+], ids=["rescope", "update_model", "diff"])
 def test_a_missing_session_is_refused_by_name(call):
     with pytest.raises(E.SessionNotFoundError):
         call(SessionService())
+
+
+def test_diff_of_a_revision_zero_session_still_plans_revision_one():
+    """The dry run refuses a missing session like the apply does, never as a fresh one (#678)."""
+    svc = SessionService()
+    svc.create_session("Build a leave approval system.", slug="leave", provider="claude-code")
+    plan = svc.diff("leave", full_model())
+    assert (plan.status, plan.revision) == ("planned", 1)
 
 
 def test_the_same_request_under_different_cards_is_a_different_session():
