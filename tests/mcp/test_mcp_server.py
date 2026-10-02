@@ -72,6 +72,7 @@ def test_initialize_list_ping_and_the_refusals():
     assert handle({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "nope"}})["error"]["code"] == -32602
     assert handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     assert handle([1])["error"]["code"] == -32600
+    assert handle({"jsonrpc": "2.0", "id": {}, "method": "ping"})["error"]["code"] == -32600
 
 
 def test_stdio_answers_one_line_per_request_and_survives_garbage():
@@ -82,6 +83,16 @@ def test_stdio_answers_one_line_per_request_and_survives_garbage():
     replies = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [r.get("id") for r in replies] == [1, None, None, 2]
     assert [r.get("error", {}).get("code") for r in replies] == [None, -32700, -32700, None]
+
+
+def test_a_well_formed_message_with_a_wrong_typed_field_does_not_end_the_session():
+    """A name that is a list used to raise before the handler's try and take the loop down (self-review)."""
+    bad = b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":["x"]}}\n'
+    deep = b"[" * 100000 + b"\n"
+    out = io.BytesIO()
+    server.serve(io.BytesIO(bad + deep + b'{"jsonrpc":"2.0","id":2,"method":"ping"}\n'), out)
+    replies = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32602 and replies[-1] == {"jsonrpc": "2.0", "id": 2, "result": {}}
 
 
 def test_the_cli_verb_serves_over_a_real_pipe_with_only_protocol_on_stdout(tmp_path):
@@ -114,6 +125,10 @@ def test_a_service_refusal_is_a_tool_error_carrying_the_structured_envelope():
     err, failed = call("submit_answers", slug="x", answers="a", expected_revision=True)
     assert failed and err["code"] == "invalid_request"
     err, failed = call("get_status")
+    assert failed and err["code"] == "invalid_request"
+    err, failed = call("create_session", request="x", context_cards=[1])
+    assert failed and err["code"] == "invalid_request"
+    err, failed = call("get_status", slug="leave", surprise=1)
     assert failed and err["code"] == "invalid_request"
 
 

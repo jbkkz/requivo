@@ -44,6 +44,8 @@ def _arg(a: dict, key: str, kind: type, *, required: bool = True, nullable: bool
         return None
     if not isinstance(v, kind) or (kind is int and isinstance(v, bool)):
         raise InvalidArguments(f"argument {key!r} must be {kind.__name__}", details={"argument": key})
+    if kind is list and not all(isinstance(x, str) for x in v):
+        raise InvalidArguments(f"argument {key!r} must be a list of strings", details={"argument": key})
     return v
 
 
@@ -262,13 +264,17 @@ def _error(id_: Any, code: int, message: str) -> dict:
 
 
 def _call(params: dict) -> dict:
-    tool = _BY_NAME.get(params.get("name"))
+    name = params.get("name")
+    tool = _BY_NAME.get(name) if isinstance(name, str) else None
     if tool is None:
-        return {"error": (-32602, f"unknown tool {params.get('name')!r}")}
+        return {"error": (-32602, f"unknown tool {name!r}"[:200])}
     args = params.get("arguments") or {}
     try:
         if not isinstance(args, dict):
             raise InvalidArguments("arguments must be an object")
+        unknown = sorted(set(args) - set(tool.properties))
+        if unknown:  # the listing says additionalProperties: false, so this enforces it
+            raise InvalidArguments(f"unknown argument(s): {', '.join(unknown)}"[:200], details={"unknown": unknown})
         result, failed = _json(tool.run(args)), False
     except RequivoError as e:
         result, failed = e.to_dict(), True
@@ -289,6 +295,8 @@ def handle(message: Any) -> dict | None:
     params = message.get("params") or {}
     if "id" not in message:
         return None
+    if isinstance(id_, bool) or not isinstance(id_, (str, int, float)):
+        return _error(None, -32600, "id must be a string or a number")
     if not isinstance(method, str) or not isinstance(params, dict):
         return _error(id_, -32600, "invalid request")
     if method == "initialize":
@@ -317,9 +325,16 @@ def serve(stdin: BinaryIO | None = None, stdout: BinaryIO | None = None) -> None
         if not raw.strip():
             continue
         try:
-            reply = handle(json.loads(raw.decode("utf-8")))
-        except (ValueError, UnicodeDecodeError):  # JSONDecodeError is a ValueError
+            message = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):  # JSONDecodeError is a ValueError
             reply = _error(None, -32700, "parse error")
+        else:
+            try:
+                reply = handle(message)
+            except Exception:  # one bad message must never end the session: the client would see EOF
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                reply = _error(message.get("id") if isinstance(message, dict) else None, -32603, "internal error")
         if reply is not None:
             stdout.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
             stdout.flush()
