@@ -855,15 +855,16 @@ def _cmd_docs(a, client) -> None:
     if not svc.exists(slug):
         raise svc.no_session(slug)
     meta = svc.meta(slug)
+    owned_types = tuple(t for t in DOC_TYPES if t in get_perimeter(resolve_perimeter(meta.perimeter)).artifact_types)
+    # Validated before the revision-0 hint and the `--all` branch, or a typo is swallowed or generates
+    # everything against the default session (invariant 3, #683).
+    # `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session`.
+    if type_tokens:
+        type_tokens = _resolve_doc_types(type_tokens, owned_types)
     if meta.current_revision < 1:
         print(f"Session '{display_token(slug)}' has no model yet -- run `requivo run {slug}` to "
               "start the conversation before generating a document.")
         return
-    owned_types = tuple(t for t in DOC_TYPES if t in get_perimeter(resolve_perimeter(meta.perimeter)).artifact_types)
-    # Validated before the `--all` branch too, or a typo generates everything against the default
-    # session (invariant 3). `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session`.
-    if type_tokens:
-        type_tokens = _resolve_doc_types(type_tokens, owned_types)
     if a.all:
         if type_tokens:
             # `--all` with explicit types is ambiguous, so refused: `test_docs_all_refuses_a_token_that_names_neither_a_type_nor_a_session`.

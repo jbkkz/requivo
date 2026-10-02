@@ -424,14 +424,16 @@ def test_a_loose_model_file_never_borrows_a_session_sharing_its_directory_name(w
     store.save_revision("real", EngineOutput.model_validate(full_model()))
     control = run_cli_json(["status", "--json", "real"])
     assert control["slug"] == "real"
-    for key in ("revision", "artifacts", "perimeter"):
+    for key in ("revision", "artifacts", "perimeter", "context_cards"):
         assert key in control, f"the positive control must carry {key}"
+    # The human view's next step is a session-only line too; it must fire for the real session.
+    assert "→ requivo brief real" in run_cli(["status", "real"])
 
     # `elsewhere/real/model.json` is a loose file whose parent directory shares the session's name.
     loose = workspace / "elsewhere" / "real" / "model.json"
     loose.parent.mkdir(parents=True)
     loose.write_text(EngineOutput.model_validate(full_model()).model_dump_json(), encoding="utf-8")
     payload = run_cli_json(["status", "--json", str(loose)])
-    for key in ("revision", "artifacts", "perimeter"):
+    for key in ("revision", "artifacts", "perimeter", "context_cards"):
         assert key not in payload, f"a loose model file borrowed {key} from session 'real'"
-    assert "requivo answer real" not in run_cli(["status", str(loose)])
+    assert "requivo brief real" not in run_cli(["status", str(loose)])

@@ -222,7 +222,10 @@ def _cmd_context(a, client) -> None:
             raise InvalidModelError(
                 "--session and --cards/--context are alternatives; pass only one")
         svc = SessionService()
-        cards = svc.cards(svc.resolve_slug(a.session))   # None == the session uses every card
+        slug = svc.resolve_slug(a.session)
+        if not svc.exists(slug):   # `cards()` is None for a missing session too (#677)
+            raise svc.no_session(slug)
+        cards = svc.cards(slug)   # None == the session uses every card
     else:
         cards = _resolve_cards(a.cards) if a.cards else None
     print(load_context(cards))

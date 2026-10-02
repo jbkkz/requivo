@@ -360,6 +360,15 @@ def test_docs_revision_zero_has_no_menu_and_points_at_run(monkeypatch):
     assert len([ln for ln in lines if "not generated" in ln]) == 6
 
 
+def test_docs_revision_zero_still_refuses_a_token_that_is_not_a_type():
+    """#683: the revision-0 hint must not swallow a typo; the valid invocation keeps the hint and exit 0."""
+    store.create_session("clitest-docs-empty-typo", "A request.")
+    assert "requivo run clitest-docs-empty-typo" in run_cli(["docs", "clitest-docs-empty-typo"])   # positive control
+    assert "requivo run clitest-docs-empty-typo" in run_cli(["docs", "clitest-docs-empty-typo", "prd"])
+    code, err = run_cli_fails(["docs", "clitest-docs-empty-typo", "bogus"], client=FakeClient())
+    assert code == 1 and "neither a document type nor a session" in err
+
+
 def test_docs_menu_rows_state_reads_artifact_status_not_revision_arithmetic():
     """A rev-1 artifact on a rev-2 session whose change touched none of its slots still reads *up to date*."""
     slug = seed_session("clitest-docs-menu-rows", "A request.", **_PROBLEM)

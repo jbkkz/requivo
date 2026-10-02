@@ -643,3 +643,11 @@ def test_context_can_be_asked_for_by_session():
     assert narrow == run_cli(["context", "--cards", "b2b-platform"])
     with pytest.raises(SystemExit):
         run_cli(["context", "--session", "narrow", "--cards", "b2b-platform"])
+
+
+def test_context_session_refuses_a_session_that_does_not_exist():
+    """#677: `cards()` is None for a missing session as for one using every card; the verb must not widen."""
+    run_cli(["session", "init", "Something.", "--slug", "wide", "--json"])
+    assert "## " in run_cli(["context", "--session", "wide"])   # positive control
+    code, error = run_cli_fails(["context", "--session", "no-such-session"])
+    assert code == 1 and "no session named no-such-session" in error
