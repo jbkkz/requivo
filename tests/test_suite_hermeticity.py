@@ -48,23 +48,43 @@ def test_importing_the_cli_leaves_the_environment_alone(tmp_path):
     )
 
 
-def test_a_verb_still_reads_the_dotenv_file(tmp_path):
-    """The contract's other half, unchanged for every CLI user."""
-    (tmp_path / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
-    script = (
+def _canary_script(argv: list[str]) -> str:
+    return (
         "import io, os, sys\n"
         "from contextlib import redirect_stdout\n"
         "import requivo.cli\n"
         "buf = io.StringIO()\n"
         "with redirect_stdout(buf):\n"
-        "    requivo.cli.app(['schema'])\n"
+        f"    requivo.cli.app({argv!r})\n"
         "sys.exit(0 if os.environ.get('REQUIVO_HERMETICITY_CANARY') == 'from-dotenv' else 1)\n"
     )
-    proc = _run_in(tmp_path, script)
+
+
+def _run_file_in(cwd, script):
+    """From a script *file*, as a console script runs: under `python -c` python-dotenv falls back to the cwd,
+    which hid #687 (a bare `load_dotenv()` searches from the installed `cli.py`, never the user's directory)."""
+    probe = cwd / "probe.py"
+    probe.write_text(script, encoding="utf-8")
+    return _child(cwd, [sys.executable, str(probe)])
+
+
+def test_a_verb_still_reads_the_dotenv_file(tmp_path):
+    """The contract's other half: the `.env` of the directory the user runs from (#419, #687)."""
+    (tmp_path / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
+    proc = _run_file_in(tmp_path, _canary_script(["schema"]))
     assert proc.returncode == 0, (
-        "app() no longer reads the cwd's .env — the move out of import time went too far:\n"
-        + proc.stdout + proc.stderr
+        "app() does not read the .env of the directory it runs from:\n" + proc.stdout + proc.stderr
     )
+
+
+def test_a_workspace_flag_reads_that_workspaces_dotenv(tmp_path):
+    """`--workspace DIR` also reads `DIR/.env`, as docs/mcp.md tells an MCP host to rely on (#687)."""
+    workspace, elsewhere = tmp_path / "ws", tmp_path / "elsewhere"
+    workspace.mkdir()
+    elsewhere.mkdir()
+    (workspace / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
+    proc = _run_file_in(elsewhere, _canary_script(["--workspace", str(workspace), "schema"]))
+    assert proc.returncode == 0, "--workspace did not read the workspace's .env:\n" + proc.stdout + proc.stderr
 
 
 _PYTEST = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]

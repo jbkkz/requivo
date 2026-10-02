@@ -8,7 +8,7 @@ import textwrap
 from pathlib import Path
 from typing import Callable, NamedTuple
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 from requivo import __version__
 from requivo.cli_support import (
@@ -1230,12 +1230,15 @@ def app(argv: list[str] | None = None, client=None) -> None:
     """Entry point for the `requivo` command (and `python -m requivo`)."""
     # Before anything prints (#29), and never at import: importing `requivo` must not reconfigure streams.
     configure_streams()
-    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`).
-    load_dotenv()
+    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`), searched
+    # from the user's directory: a bare `load_dotenv()` searches from this installed file and never found it (#687).
+    load_dotenv(find_dotenv(usecwd=True))
     args = _build_parser().parse_args(argv)
-    # A global --workspace redirects where sessions are read/written, for the duration of this run.
+    # A global --workspace redirects where sessions are read/written, for the duration of this run, and
+    # its own `.env` fills what is still unset: `test_a_workspace_flag_reads_that_workspaces_dotenv`.
     if getattr(args, "workspace", None):
         os.environ["REQUIVO_WORKSPACE"] = args.workspace
+        load_dotenv(Path(args.workspace) / ".env")
     want_json = getattr(args, "json", False)
     # The run's API footprint, printed after the command; offline verbs leave the ledger empty.
     with track_usage() as ledger:

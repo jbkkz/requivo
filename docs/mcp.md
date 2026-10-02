@@ -9,9 +9,9 @@ sessions as tools. **Experimental**, like the [HTTP API](api.md) it mirrors.
   "args": ["mcp", "serve", "--workspace", "/path/to/project"] } } }
 ```
 
-Name the workspace: an MCP host does not necessarily start the server in your project, and the
-workspace decides both where sessions are written and which `.env` the paid tools read their key
-from.
+Name the workspace: an MCP host does not necessarily start the server in your project. The
+workspace decides where sessions are written, and its `.env` supplies whatever the server's
+environment does not already set — the paid tools' `ANTHROPIC_API_KEY` included.
 
 ## What the tools are
 
