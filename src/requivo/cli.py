@@ -34,7 +34,7 @@ from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
 from requivo.deterministic._shared import JSON_HELP
-from requivo.paths import DEMO
+from requivo.paths import DEMO, workspace_root
 
 # The only provider names this surface may take, each a surface concern (#77, #167); the list is
 # guarded both ways by `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`.
@@ -1230,16 +1230,16 @@ def app(argv: list[str] | None = None, client=None) -> None:
     """Entry point for the `requivo` command (and `python -m requivo`)."""
     # Before anything prints (#29), and never at import: importing `requivo` must not reconfigure streams.
     configure_streams()
-    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`): the cwd's own,
-    # never a parent's, which could set ANTHROPIC_BASE_URL and send the key elsewhere (#687;
-    # `test_a_dotenv_above_the_directory_the_user_runs_from_is_never_read`).
-    load_dotenv(Path.cwd() / ".env")
     args = _build_parser().parse_args(argv)
-    # A global --workspace redirects where sessions are read/written, for the duration of this run, and
-    # its own `.env` fills what is still unset: `test_a_workspace_flag_reads_that_workspaces_dotenv`.
+    # A global --workspace redirects where sessions are read/written, for the duration of this run.
     if getattr(args, "workspace", None):
         os.environ["REQUIVO_WORKSPACE"] = args.workspace
-        load_dotenv(Path(args.workspace) / ".env")
+    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`), and exactly
+    # one: the workspace's, however it was named, which is the cwd when none was. Never a parent's, never the
+    # launch directory's over a named workspace: either could set ANTHROPIC_BASE_URL and send the key elsewhere
+    # (#687; `test_a_dotenv_above_the_directory_the_user_runs_from_is_never_read`,
+    # `test_a_named_workspace_reads_only_its_own_dotenv`).
+    load_dotenv(workspace_root() / ".env")
     want_json = getattr(args, "json", False)
     # The run's API footprint, printed after the command; offline verbs leave the ledger empty.
     with track_usage() as ledger:

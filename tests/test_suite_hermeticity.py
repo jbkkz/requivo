@@ -60,12 +60,12 @@ def _canary_script(argv: list[str]) -> str:
     )
 
 
-def _run_file_in(cwd, script):
+def _run_file_in(cwd, script, **env_extra):
     """From a script *file*, as a console script runs: under `python -c` python-dotenv falls back to the cwd,
     which hid #687 (a bare `load_dotenv()` searches from the installed `cli.py`, never the user's directory)."""
     probe = cwd / "probe.py"
     probe.write_text(script, encoding="utf-8")
-    return _child(cwd, [sys.executable, str(probe)])
+    return _child(cwd, [sys.executable, str(probe)], **env_extra)
 
 
 def test_a_verb_still_reads_the_dotenv_file(tmp_path):
@@ -86,14 +86,20 @@ def test_a_dotenv_above_the_directory_the_user_runs_from_is_never_read(tmp_path)
     assert proc.returncode == 1, "app() read a .env from a directory above the one it runs from"
 
 
-def test_a_workspace_flag_reads_that_workspaces_dotenv(tmp_path):
-    """`--workspace DIR` also reads `DIR/.env`, as docs/mcp.md tells an MCP host to rely on (#687)."""
+@pytest.mark.parametrize("named_by", ["flag", "environment"])
+def test_a_named_workspace_reads_only_its_own_dotenv(tmp_path, named_by):
+    """A workspace named by `--workspace` or `REQUIVO_WORKSPACE` reads its own `.env` and only it: the directory
+    an MCP host launched from is not the user's project, and its `.env` must not win (#687, release audit)."""
     workspace, elsewhere = tmp_path / "ws", tmp_path / "elsewhere"
     workspace.mkdir()
     elsewhere.mkdir()
     (workspace / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
-    proc = _run_file_in(elsewhere, _canary_script(["--workspace", str(workspace), "schema"]))
-    assert proc.returncode == 0, "--workspace did not read the workspace's .env:\n" + proc.stdout + proc.stderr
+    (elsewhere / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-the-launch-directory\n", encoding="utf-8")
+    if named_by == "flag":
+        proc = _run_file_in(elsewhere, _canary_script(["--workspace", str(workspace), "schema"]))
+    else:
+        proc = _run_file_in(elsewhere, _canary_script(["schema"]), REQUIVO_WORKSPACE=str(workspace))
+    assert proc.returncode == 0, "the workspace's .env was not the one read:\n" + proc.stdout + proc.stderr
 
 
 _PYTEST = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
