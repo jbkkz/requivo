@@ -12,7 +12,7 @@ import json
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, TypeVar
 
 from pydantic import BaseModel
 
@@ -24,6 +24,7 @@ from requivo.services.artifacts import ArtifactService, UnknownArtifactTypeError
 from requivo.services.discovery import GENERATABLE, DiscoveryService
 from requivo.services.sessions import SessionService
 
+_T = TypeVar("_T")
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 
@@ -33,24 +34,42 @@ class InvalidArguments(RequivoError):
     code = "invalid_request"
 
 
-def _arg(a: dict, key: str, kind: type, *, required: bool = True, nullable: bool = False):
-    """One argument, type-checked and never coerced: a bool is not an integer, a number is not a string."""
-    if key not in a or (a[key] is None and not required):
-        if required:
-            raise InvalidArguments(f"missing argument {key!r}", details={"argument": key})
-        return None
+def _check(a: dict, key: str, kind: type, nullable: bool = False) -> bool:
+    """Type-check one present argument, never coercing: a bool is not an integer, a number is not a
+    string, a list holds strings. True when it is `None` and allowed to be."""
     v = a[key]
     if v is None and nullable:
-        return None
+        return True
     if not isinstance(v, kind) or (kind is int and isinstance(v, bool)):
         raise InvalidArguments(f"argument {key!r} must be {kind.__name__}", details={"argument": key})
-    if kind is list and not all(isinstance(x, str) for x in v):
+    if isinstance(v, list) and not all(isinstance(x, str) for x in v):
         raise InvalidArguments(f"argument {key!r} must be a list of strings", details={"argument": key})
-    return v
+    return False
+
+
+def _req(a: dict, key: str, kind: type[_T]) -> _T:
+    if key not in a:
+        raise InvalidArguments(f"missing argument {key!r}", details={"argument": key})
+    _check(a, key, kind)
+    return a[key]
+
+
+def _opt(a: dict, key: str, kind: type[_T]) -> _T | None:
+    if a.get(key) is None:
+        return None
+    _check(a, key, kind)
+    return a[key]
+
+
+def _req_or_null(a: dict, key: str, kind: type[_T]) -> _T | None:
+    """A required argument whose value may be an explicit null (`rescope_context_cards`)."""
+    if key not in a:
+        raise InvalidArguments(f"missing argument {key!r}", details={"argument": key})
+    return None if _check(a, key, kind, nullable=True) else a[key]
 
 
 def _slug(a: dict) -> str:
-    return safe_slug(_arg(a, "slug", str))
+    return safe_slug(_req(a, "slug", str))
 
 
 def _json(value: Any) -> Any:
@@ -83,8 +102,8 @@ def _list_sessions(a: dict):
 
 def _create_session(a: dict):
     meta, created = SessionService().create_session_report(
-        _arg(a, "request", str), context_cards=_arg(a, "context_cards", list, required=False),
-        slug=_arg(a, "slug", str, required=False), strict_slug=True)
+        _req(a, "request", str), context_cards=_opt(a, "context_cards", list),
+        slug=_opt(a, "slug", str), strict_slug=True)
     return {**meta.model_dump(), "created": created}
 
 
@@ -102,16 +121,16 @@ def _list_revisions(a: dict):
 
 def _apply_revision(a: dict):
     return SessionService().update_model(
-        _slug(a), _arg(a, "proposal", dict), expected_revision=_arg(a, "expected_revision", int, required=False),
+        _slug(a), _req(a, "proposal", dict), expected_revision=_opt(a, "expected_revision", int),
         provenance={"surface": "mcp-apply"}).to_dict()
 
 
 def _get_revision(a: dict):
-    return SessionService().load_revision(_slug(a), _arg(a, "revision", int)).model_dump()
+    return SessionService().load_revision(_slug(a), _req(a, "revision", int)).model_dump()
 
 
 def _preview_revision(a: dict):
-    return SessionService().diff(_slug(a), _arg(a, "proposal", dict)).to_dict()
+    return SessionService().diff(_slug(a), _req(a, "proposal", dict)).to_dict()
 
 
 def _get_status(a: dict):
@@ -119,12 +138,12 @@ def _get_status(a: dict):
 
 
 def _get_impact(a: dict):
-    slots = _arg(a, "slots", str)
+    slots = _req(a, "slots", str)
     return SessionService().impact(_slug(a), [] if not slots.strip() else slots.split(",")).to_dict()
 
 
 def _rescope(a: dict):
-    return SessionService().rescope(_slug(a), _arg(a, "context_cards", list, nullable=True)).to_dict()
+    return SessionService().rescope(_slug(a), _req_or_null(a, "context_cards", list)).to_dict()
 
 
 def _run_discovery(a: dict):
@@ -136,7 +155,7 @@ def _run_discovery(a: dict):
 
 
 def _submit_answers(a: dict):
-    slug, answers, rev = _slug(a), _arg(a, "answers", str), _arg(a, "expected_revision", int)
+    slug, answers, rev = _slug(a), _req(a, "answers", str), _req(a, "expected_revision", int)
     with track_api_usage("mcp-answer") as ledger:
         result = DiscoveryService().answer(slug, answers, expected_revision=rev, surface="mcp-answer")
         usage = usage_view(ledger)
@@ -148,14 +167,14 @@ def _list_artifacts(a: dict):
 
 
 def _show_artifact(a: dict):
-    kind = _arg(a, "artifact_type", str)
+    kind = _req(a, "artifact_type", str)
     content, row = ArtifactService().show_with_status(_slug(a), kind)
     return {"type": kind, "filename": row.get("filename"), "source_revision": row.get("revision"),
             "updated_at": row.get("updated_at"), "stale": row.get("stale"), "content": content}
 
 
 def _generate_artifact(a: dict):
-    slug, kind = _slug(a), _arg(a, "artifact_type", str)
+    slug, kind = _slug(a), _req(a, "artifact_type", str)
     if kind not in GENERATABLE:
         raise UnknownArtifactTypeError(
             f"{kind!r} is not a generated artifact; supported: {', '.join(GENERATABLE)}",
@@ -167,8 +186,8 @@ def _generate_artifact(a: dict):
 
 
 def _save_artifact(a: dict):
-    return ArtifactService().save(_slug(a), _arg(a, "artifact_type", str), _arg(a, "content", str),
-                                  source_revision=_arg(a, "source_revision", int, required=False)).model_dump()
+    return ArtifactService().save(_slug(a), _req(a, "artifact_type", str), _req(a, "content", str),
+                                  source_revision=_opt(a, "source_revision", int)).model_dump()
 
 
 # -- the projection ---------------------------------------------------------------------------------
@@ -319,9 +338,9 @@ def handle(message: Any) -> dict | None:
 def serve(stdin: BinaryIO | None = None, stdout: BinaryIO | None = None) -> None:
     """Read one JSON message per line until EOF, answer each on one line. Bytes, UTF-8 both ways
     (invariant 16): stdout carries protocol and nothing else, diagnostics go to stderr."""
-    stdin = stdin or sys.stdin.buffer
-    stdout = stdout or sys.stdout.buffer
-    for raw in stdin:
+    src: BinaryIO = stdin if stdin is not None else sys.stdin.buffer
+    dst: BinaryIO = stdout if stdout is not None else sys.stdout.buffer
+    for raw in src:
         if not raw.strip():
             continue
         try:
@@ -336,5 +355,5 @@ def serve(stdin: BinaryIO | None = None, stdout: BinaryIO | None = None) -> None
                 traceback.print_exc(file=sys.stderr)
                 reply = _error(message.get("id") if isinstance(message, dict) else None, -32603, "internal error")
         if reply is not None:
-            stdout.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
-            stdout.flush()
+            dst.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
+            dst.flush()

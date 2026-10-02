@@ -13,6 +13,7 @@ from requivo.providers.errors import EngineError
 STATUS_BY_CODE = {
     "session_not_found": 404,
     "invalid_slug": 400,
+    "invalid_request": 400,
     "invalid_model": 400,
     "unknown_slot": 400,
     "unknown_context_card": 400,

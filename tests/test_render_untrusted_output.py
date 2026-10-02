@@ -245,7 +245,7 @@ def _question_prose_leaks(root: Path) -> list:
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "requivo"
-_TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web", "api")
+_TERMINAL_SURFACE_PACKAGES = ("render", "deterministic", "web", "api", "mcp")
 _NOT_A_TERMINAL_SURFACE = {  # #590: guarded elsewhere (core, providers, services) or no model text (assets, testing)
     "core", "providers", "services", "assets", "testing"}
 
