@@ -546,12 +546,15 @@ def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
     context and artifact freshness when the reference is a canonical session."""
     out, slug = _resolve_ref(ref)
     svc = SessionService()
+    # A loose model.json borrows no session sharing its directory name (#681):
+    # `test_a_loose_model_file_never_borrows_a_session_sharing_its_directory_name`.
+    is_session = not Path(ref).is_file() and svc.exists(slug)
     perimeter = DEFAULT_PERIMETER
-    if svc.exists(slug):
+    if is_session:
         meta = svc.meta(slug)
         perimeter = resolve_perimeter(meta.perimeter)
     payload: dict = {"slug": slug, **model_status(out, perimeter)}
-    if svc.exists(slug):
+    if is_session:
         payload["revision"] = meta.current_revision
         payload["context_cards"] = meta.context_cards
         payload["perimeter"] = perimeter
@@ -576,10 +579,11 @@ def _cmd_status(a, client) -> None:
     # The grounding after the model (#492): evidence about the readout, not a preamble to it.
     render_grounding(payload.get("context_cards"))
     # Cumulative cost from the provenance on provider-backed revisions (#292); silent when there is none.
+    # A loose file has no revisions to price, so it never borrows a same-named session's (#681).
     slug = payload.get("slug")
     if slug:
         svc = SessionService()
-        if svc.exists(slug):
+        if not Path(ref).is_file() and svc.exists(slug):
             render_session_cost(svc.meta(slug).revisions)
     render_next_command(payload)
 

@@ -415,3 +415,23 @@ def test_a_directory_reference_does_not_silently_use_an_unrelated_real_session(w
     assert "no session named loose" not in err.lower() and str(ref_dir) in err
     out = run_cli(["session", "show", "loose"])
     assert "no session named" not in out.lower() and "loose" in out
+
+
+def test_a_loose_model_file_never_borrows_a_session_sharing_its_directory_name(workspace):
+    """A model.json under a directory named like a real session has no revision to report (#681)."""
+    # The must-fire control first: `real` is a canonical session, so it keeps every session-only key.
+    store.create_session("real", "an unrelated real session")
+    store.save_revision("real", EngineOutput.model_validate(full_model()))
+    control = run_cli_json(["status", "--json", "real"])
+    assert control["slug"] == "real"
+    for key in ("revision", "artifacts", "perimeter"):
+        assert key in control, f"the positive control must carry {key}"
+
+    # `elsewhere/real/model.json` is a loose file whose parent directory shares the session's name.
+    loose = workspace / "elsewhere" / "real" / "model.json"
+    loose.parent.mkdir(parents=True)
+    loose.write_text(EngineOutput.model_validate(full_model()).model_dump_json(), encoding="utf-8")
+    payload = run_cli_json(["status", "--json", str(loose)])
+    for key in ("revision", "artifacts", "perimeter"):
+        assert key not in payload, f"a loose model file borrowed {key} from session 'real'"
+    assert "requivo answer real" not in run_cli(["status", str(loose)])
