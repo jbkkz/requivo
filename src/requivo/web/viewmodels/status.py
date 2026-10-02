@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from requivo.core.analysis import slot_labels
+from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.web.viewmodels.labels import artifact_labels
 
 # The four understanding states the Core emits (evidence, not coverage), each with its tag and dot colour.
@@ -83,11 +84,11 @@ def understanding_view(status: dict) -> list[dict]:
     return rows
 
 
-def impact_view(result: Any) -> dict:
+def impact_view(result: Any, perimeter: str = DEFAULT_PERIMETER) -> dict:
     """'What changed': an `UpdateResult` read as a scope statement. Everything is decided by the Core;
     this translates and groups, and never asks the provider. `invalidated_*` rather than `changed_*`,
     since the invalidated ones carry the text a reader re-examines."""
-    changed = slot_labels(result.changed_slots)
+    changed = slot_labels(result.changed_slots, perimeter)
     decisions = list(result.invalidated_decisions)
     assumptions = list(result.invalidated_challenges)
     exclusions = list(result.invalidated_exclusions)

@@ -122,6 +122,20 @@ def is_contained(child: Path, parent: Path) -> bool:
     return resolved.is_relative_to(root)
 
 
+def require_lock_file_contained(p: Path, root: Path, slug: str) -> None:
+    """Refuse a lock file outside `root`; an unreadable root is `SessionUnreadableError`, not a bad
+    slug: `test_an_unreadable_lock_root_refuses_discover_naming_the_root_not_the_slug` (#657)."""
+    try:
+        _stat_exists(p)
+    except OSError as e:
+        raise SessionUnreadableError(
+            f"the lock root {root} could not be examined ({e}); the slug {slug!r} is not the problem",
+            details={"slug": slug}) from e
+    if not is_contained(p, root):
+        raise InvalidSlugError(f"slug {slug!r} does not resolve to a lock file inside {root}",
+                               details={"slug": slug})
+
+
 
 
 class _LockMixin:
@@ -151,9 +165,7 @@ class _LockMixin:
         # `test_a_reserved_lock_stems_classification_survives_the_session_being_deleted`.
         _refuse_new_reserved_slug(slug, self.session_root() / slug)
         p = root / (slug + ".lock")
-        if not is_contained(p, root):
-            raise InvalidSlugError(f"slug {slug!r} does not resolve to a lock file inside {root}",
-                                   details={"slug": slug})
+        require_lock_file_contained(p, root, slug)
         return p
 
 

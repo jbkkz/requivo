@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
@@ -36,29 +36,15 @@ from requivo.core.contracts import (
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
     AmbiguousPerimeterError,
-    ArtifactTypeNotOwnedError,
     ArtifactWriteFailedError,
-    InvalidSlugError,
     RequivoError,
     RevisionConflictError,
     SessionLockedError,
     SessionUnreadableError,
 )
-from requivo.core.perimeters import (
-    DEFAULT_PERIMETER,
-    get_perimeter,
-    known_perimeter_ids,
-    perimeter_summaries,
-    resolve_perimeter,
-)
-from requivo.core.persistence import (
-    ArtifactStatus,
-    Store,
-    _refuse_new_reserved_slug,
-    _slug_shape,
-    artifact_path,
-    is_contained,
-)
+from requivo.core.perimeters import DEFAULT_PERIMETER, known_perimeter_ids, perimeter_summaries, resolve_perimeter
+from requivo.core.persistence import ArtifactStatus, Store, _refuse_new_reserved_slug, _slug_shape, artifact_path
+from requivo.core.persistence.lock import require_lock_file_contained
 from requivo.core.selectors import display_text
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
@@ -74,6 +60,7 @@ from requivo.render.markdown import (
     stories_markdown,
 )
 from requivo.services.artifacts import ArtifactService
+from requivo.services.artifacts import require_owned_artifact_type as _require_owned_artifact_type
 from requivo.services.sessions import SessionService, SessionSnapshot, UpdateResult
 from requivo.usage import SpendPolicy, current_ledger
 
@@ -159,17 +146,6 @@ def _require_no_conflict_yet(slug: str, expected_revision: int | None, snap: Ses
             details={"slug": slug, "expected": expected_revision, "actual": snap.revision})
 
 
-def _require_owned_artifact_type(perimeter: str, artifact_type: str) -> None:
-    """Refuse an artifact type the session's perimeter does not produce (#608), as a structured
-    `ArtifactTypeNotOwnedError` (409) rather than a bare `ValueError` no handler catches."""
-    owned = get_perimeter(perimeter).artifact_types
-    if artifact_type not in owned:
-        raise ArtifactTypeNotOwnedError(
-            f"{artifact_type!r} is not produced by the {perimeter!r} perimeter this session runs "
-            f"under -- it can produce: {sorted(owned) or '(none yet)'}",
-            details={"artifact_type": artifact_type, "perimeter": perimeter, "owned": sorted(owned)})
-
-
 def _require_a_model(slug: str, snap: SessionSnapshot) -> EngineOutput:
     """Generation needs a model; returns it so the narrowing is in the type too.
     `test_generating_from_a_session_with_no_model_is_refused_before_the_provider`."""
@@ -230,9 +206,7 @@ def _discovery_guard_path(slug: str, store: Store) -> Path:
     # already claims this name (#221).
     _refuse_new_reserved_slug(slug, store.session_root() / slug)
     p = root / (slug + ".discovering")
-    if not is_contained(p, root):
-        raise InvalidSlugError(f"slug {slug!r} does not resolve to a lock file inside {root}",
-                               details={"slug": slug})
+    require_lock_file_contained(p, root, slug)
     return p
 
 
@@ -484,12 +458,28 @@ class DiscoveryService:
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
         `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
         `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`."""
-        with _discovery_guard(slug or self.sessions.slug_hint(request), self._store_for_repo()):
-            return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter)
+        base = slug or self.sessions.slug_hint(request)
+        with ExitStack() as held:
+            held.enter_context(_discovery_guard(base, self._store_for_repo()))
+            return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
+                                               held=held, held_slugs={base})
+
+    def _guard_claim(self, meta, *, created: bool, held: ExitStack, held_slugs: set[str]) -> None:
+        """Hold the guard on the slug the claim *landed* on, not only the base name it was asked for
+        (#656): `test_a_discovery_racing_a_claim_on_a_suffixed_slug_is_refused_not_settled`."""
+        if meta.slug in held_slugs:
+            return
+        try:
+            held.enter_context(_discovery_guard(meta.slug, self._store_for_repo()))
+        except (RequivoError, KeyboardInterrupt):
+            self._delete_if_safe(meta, created=created)
+            raise
+        held_slugs.add(meta.slug)
 
     def _claim_and_ground_held(self, request: str, *, cards: list[str] | None, slug: str | None,
-                               perimeter: str | None) -> ClaimAndGround:
-        """`claim_and_ground`'s body, run under the guard it takes."""
+                               perimeter: str | None, held: ExitStack, held_slugs: set[str]
+                               ) -> ClaimAndGround:
+        """`claim_and_ground`'s body, run under the guards it takes."""
         provider = self._need_provider()
         if perimeter is None:
             for pid in known_perimeter_ids():
@@ -503,6 +493,7 @@ class DiscoveryService:
             request, context_cards=cards, slug=slug,
             provider=provider.name, model_name=provider.model_name(), perimeter=claim_perimeter)
         _require_revision_zero(meta.slug, meta.current_revision)
+        self._guard_claim(meta, created=created, held=held, held_slugs=held_slugs)
 
         try:
             routing = self.route_perimeter(request, perimeter=perimeter)
@@ -532,6 +523,7 @@ class DiscoveryService:
                 # Read off `reclaim.meta` in both arms: it is where the claim is now, landed or not;
                 # `created`, never `landed`, is the ownership fact the next reclaim reads (#601).
                 meta, created = reclaim.meta, reclaim.created
+                self._guard_claim(meta, created=created, held=held, held_slugs=held_slugs)
                 claim_perimeter = resolve_perimeter(meta.perimeter)
                 if not reclaim.landed:
                     # The route could not land; the verdict must say so rather than announce it.
@@ -555,6 +547,7 @@ class DiscoveryService:
             created=created, provider=provider)
         # `reclaim.meta.context_cards` is what the session records, landed or not; inferring the cards
         # from `created` mis-reported an idempotent re-entry (#601).
+        self._guard_claim(reclaim.meta, created=reclaim.created, held=held, held_slugs=held_slugs)
         return ClaimAndGround(reclaim.meta, grounding, reclaim.meta.context_cards, routing)
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,

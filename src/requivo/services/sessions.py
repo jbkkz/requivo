@@ -150,8 +150,8 @@ class UpdateResult:
         }
 
 
-def _readiness(model: EngineOutput) -> Readiness:
-    blockers = readiness_blockers(model)
+def _readiness(model: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> Readiness:
+    blockers = readiness_blockers(model, perimeter)
     return Readiness(ready=not blockers, blocking_slots=blockers)
 
 
@@ -634,7 +634,7 @@ class SessionService:
             invalidated_exclusions=invalidated_exclusions,
             invalidated_thresholds=invalidated_thresholds,
             stale_artifacts=stale,
-            readiness=_readiness(new),
+            readiness=_readiness(new, perimeter),
             changed_decisions=reasoning.decisions,
             changed_challenges=reasoning.challenges,
             changed_opportunities=reasoning.opportunities,

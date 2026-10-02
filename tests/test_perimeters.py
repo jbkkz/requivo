@@ -8,7 +8,16 @@ import json
 import sys
 
 import pytest
-from _fakes import _ENGINE_REPLY, _JUDGMENT_REPLY, _ROUTING_REPLY, FakeClient, StubProvider, full_model, run_cli
+from _fakes import (
+    _ENGINE_REPLY,
+    _JUDGMENT_REPLY,
+    _ROUTING_REPLY,
+    FakeClient,
+    StubProvider,
+    deny_access,
+    full_model,
+    run_cli,
+)
 
 from conftest import FakeProvider
 from requivo.cli import app
@@ -21,6 +30,7 @@ from requivo.core.errors import (
     RevisionConflictError,
     SessionExistsError,
     SessionLockedError,
+    SessionUnreadableError,
     UnknownPerimeterError,
     UnknownSlotError,
 )
@@ -38,6 +48,7 @@ from requivo.deterministic.doctor import doctor_report
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, judge_perimeter, prompt_version, run
 from requivo.providers.anthropic.provider import AnthropicProvider
 from requivo.providers.errors import EngineError
+from requivo.services.artifacts import ArtifactService
 from requivo.services.discovery import _WRITERS, GENERATABLE, DiscoveryService
 from requivo.services.sessions import SessionService
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
@@ -263,6 +274,39 @@ def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
     updated = applied.model_copy(update={"model": {**applied.model, "capacity": changed}})
     svc.update_model(meta.slug, updated.model_dump_json(), expected_revision=svc.meta(meta.slug).current_revision)
     assert svc.meta(meta.slug).artifact_status["gtm_plan"].stale is True
+
+
+def _gtm_session_at_revision_one(slug="gtm-659"):
+    svc = SessionService()
+    svc.create_session("grow the funnel", slug=slug, perimeter=GO_TO_MARKET)
+    result = svc.update_model(slug, _gtm_out().model_dump_json(), expected_revision=0)
+    return svc, result
+
+
+def test_an_apply_over_a_confirmed_go_to_market_model_reports_ready():
+    """#659: readiness was read through the software perimeter's slots."""
+    _svc, result = _gtm_session_at_revision_one()
+    assert result.readiness.blocking_slots == [] and result.readiness.ready is True
+
+
+def test_a_go_to_market_artifact_from_a_superseded_revision_is_born_stale():
+    """#659 (invariant 2): a slot-only revision on a go-to-market session must flag a late `gtm_plan` save."""
+    svc, _ = _gtm_session_at_revision_one()
+    out = _gtm_out()
+    moved = out.model_copy(update={"model": {**out.model, "icp": out.model["icp"].model_copy(update={"value": "moved"})}})
+    svc.update_model("gtm-659", moved.model_dump_json(), expected_revision=1)
+    status = ArtifactService().save("gtm-659", "gtm_plan", "# plan", source_revision=1)
+    assert status.stale is True
+    assert ArtifactService().mark_stale("gtm-659", ["icp"]) == ["gtm_plan"]
+
+
+def test_save_refuses_an_artifact_type_the_sessions_perimeter_does_not_own():
+    """#659: `save` skipped the ownership check `generate` makes; a software document on a go-to-market session."""
+    _gtm_session_at_revision_one()
+    with pytest.raises(ArtifactTypeNotOwnedError) as exc_info:
+        ArtifactService().save("gtm-659", "prd", "# prd", source_revision=1)
+    assert exc_info.value.code == "artifact_type_not_owned"
+    assert ArtifactService().list("gtm-659") == {}, "a refused save left a status row"
 
 
 # ── the router's contract (#601) ───────────────────────────────────────────────
@@ -504,6 +548,35 @@ def test_a_discovery_racing_a_claim_still_being_routed_is_refused_not_settled(do
     assert refused and refused[0].code == "session_locked"
     assert meta.perimeter == GO_TO_MARKET and routing.judgment is not None
     assert [(s.perimeter, s.current_revision) for s in SessionService().list_sessions()] == [(GO_TO_MARKET, 0)]
+
+
+def test_a_discovery_racing_a_claim_on_a_suffixed_slug_is_refused_not_settled():
+    """#656: the claim landed on `<base>-<hash>` (the base held by another request), the guard sat on `<base>`."""
+    request, second, refused = "help us launch this", StubProvider(), []
+    SessionService().create_session("someone else's request", slug=SessionService().slug_hint(request))
+
+    class _RacedMidRouting(_Router):
+        def judge_perimeter(self, request, *, perimeters):
+            claimed = next(s.slug for s in SessionService().list_sessions() if s.slug != SessionService().slug_hint(request))
+            try:
+                DiscoveryService(second).run_discovery(claimed, surface="test")
+            except SessionLockedError as e:
+                refused.append(e)
+            return super().judge_perimeter(request, perimeters=perimeters)
+
+    meta, *_ = _claim(_RacedMidRouting(_FITS_GTM), request)
+    assert meta.slug != SessionService().slug_hint(request), "the fixture did not force a suffixed claim"
+    assert second.calls == 0 and refused and refused[0].code == "session_locked"
+
+
+def test_an_unreadable_lock_root_refuses_discover_naming_the_root_not_the_slug(request):
+    """#657: `is_contained` is False on a denied stat, which read as an invalid slug."""
+    lock_root = SessionService().repo.store().lock_root()
+    lock_root.mkdir(parents=True, exist_ok=True)
+    deny_access(lock_root, request, "the lock root being unreadable")
+    with pytest.raises(SessionUnreadableError, match="lock root") as exc_info:
+        DiscoveryService(_Router()).claim_and_ground("a request", cards=None, slug=None)
+    assert "does not resolve" not in str(exc_info.value)
 
 
 # ── the CLI, end to end, with a fake client (#601) ─────────────────────────────

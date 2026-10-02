@@ -7,7 +7,8 @@ from __future__ import annotations
 import logging
 
 from requivo.core.dependencies import ARTIFACT_FILENAMES, REASONING_CONSUMERS, diff_models, diff_reasoning, propagate
-from requivo.core.errors import InvalidSessionError, RequivoError, SessionNotFoundError
+from requivo.core.errors import ArtifactTypeNotOwnedError, InvalidSessionError, RequivoError, SessionNotFoundError
+from requivo.core.perimeters import get_perimeter, resolve_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.services.repository import SessionRepository, default_repository
 
@@ -37,6 +38,18 @@ class UnreadableSourceRevisionError(InvalidSessionError):
     code = "unreadable_source_revision"
 
 
+def require_owned_artifact_type(perimeter: str, artifact_type: str) -> None:
+    """Refuse an artifact type the session's perimeter does not produce (#608), as a structured
+    `ArtifactTypeNotOwnedError` (409) rather than a bare `ValueError` no handler catches; `save`
+    asks it too (#659): `test_save_refuses_an_artifact_type_the_sessions_perimeter_does_not_own`."""
+    owned = get_perimeter(perimeter).artifact_types
+    if artifact_type not in owned:
+        raise ArtifactTypeNotOwnedError(
+            f"{artifact_type!r} is not produced by the {perimeter!r} perimeter this session runs "
+            f"under -- it can produce: {sorted(owned) or '(none yet)'}",
+            details={"artifact_type": artifact_type, "perimeter": perimeter, "owned": sorted(owned)})
+
+
 class ArtifactService:
     def __init__(self, repo: SessionRepository | None = None):
         self.repo: SessionRepository = repo or default_repository()
@@ -62,6 +75,8 @@ class ArtifactService:
                 f"session '{slug}' is not in the canonical store; apply a model first", details={"slug": slug})
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
+            perimeter = resolve_perimeter(meta.perimeter)
+            require_owned_artifact_type(perimeter, artifact_type)
             if source_revision is None:
                 # Before any write: a refused save leaves neither a file nor a status row.
                 raise UnstatedSourceRevisionError(
@@ -75,7 +90,8 @@ class ArtifactService:
                              "current_revision": meta.current_revision,
                              # `cause` present and null: the shared `details` shape (#57, #35).
                              "cause": None})
-            stale = self._stale_since(slug, artifact_type, source_revision, meta.current_revision)
+            stale = self._stale_since(slug, artifact_type, source_revision, meta.current_revision,
+                                      perimeter)
             result = self.repo.save_artifact(slug, artifact_type, filename, content,
                                              source_revision=source_revision, stale=stale)
             logger.info("artifact saved: slug=%s type=%s source_revision=%d stale=%s",
@@ -83,7 +99,7 @@ class ArtifactService:
             return result
 
     def _stale_since(self, slug: str, artifact_type: str, source_revision: int,
-                     current_revision: int) -> bool:
+                     current_revision: int, perimeter: str) -> bool:
         """Whether an artifact from `source_revision` is already out of date at `current_revision`:
         the dependency-graph question, asked after the fact. An unreadable history is refused rather
         than answered `False`, and the guard catches the whole failure set (pydantic's `ValueError`,
@@ -111,7 +127,7 @@ class ArtifactService:
             ) from e
         if diff_reasoning(was, now).changed and artifact_type in REASONING_CONSUMERS:
             return True
-        return artifact_type in set(propagate(now, diff_models(was, now)).artifacts)
+        return artifact_type in set(propagate(now, diff_models(was, now), perimeter).artifacts)
 
     def list(self, slug: str) -> dict[str, dict]:
         """Every recorded artifact with its freshness relative to the current model revision."""
@@ -156,7 +172,8 @@ class ArtifactService:
         with self.repo.lock(slug):
             model = self.repo.load_model(slug)
             meta = self.repo.read_meta(slug)
-            hit = set(propagate(model, changed_slots).artifacts) & set(meta.artifact_status)
+            perimeter = resolve_perimeter(meta.perimeter)
+            hit = set(propagate(model, changed_slots, perimeter).artifacts) & set(meta.artifact_status)
             for t in hit:
                 meta.artifact_status[t].stale = True
             if hit:

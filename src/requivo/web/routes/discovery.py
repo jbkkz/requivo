@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
 from requivo.core.errors import InputTooLargeError
+from requivo.core.perimeters import resolve_perimeter
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionService
 from requivo.web.config import MAX_ANSWERS_CHARS, provider_status
@@ -82,7 +83,7 @@ def submit_answers(
         return RedirectResponse(url=f"/sessions/{slug}", status_code=303)
     return templates.TemplateResponse(request, "sessions/_session.html", {
         "s": session_detail(sessions, slug),
-        "update": impact_view(result),
+        "update": impact_view(result, resolve_perimeter(sessions.meta(slug).perimeter)),
         "provider": provider_status(),
         "usage": usage,
     })
