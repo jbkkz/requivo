@@ -59,7 +59,8 @@ _NO_KEY_MESSAGE = (
     "No Anthropic credential found: the SDK resolved none from the environment, from a profile, or "
     "from workload identity federation. The usual fix is to set ANTHROPIC_API_KEY (or "
     "ANTHROPIC_AUTH_TOKEN for a bearer-token setup) in your environment, or to put it in a `.env` "
-    "file in the directory you run from (see .env.example). `requivo doctor` reports whether a "
+    "file in your workspace -- the directory you run from, or --workspace (see .env.example). "
+    "`requivo doctor` reports whether a "
     "credential is visible. You do NOT need one for `requivo demo`, for the offline verbs (status, "
     "impact, session, model, artifact), or for Requivo inside Claude Code."
 )

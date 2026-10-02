@@ -960,8 +960,9 @@ EPILOG = (
     "  requivo run \"We need a leave approval system\"   (API)\n"
     "\n"
     "Verbs marked (API) call the Anthropic API and spend money on your own key; every other verb\n"
-    "is offline and free. Set ANTHROPIC_API_KEY, or put it in a .env file in the directory you run\n"
-    "from. `requivo doctor` reports whether this install can make a call, and which model it uses.\n"
+    "is offline and free. Set ANTHROPIC_API_KEY, or put it in a .env file in your workspace (the\n"
+    "directory you run from, or --workspace). `requivo doctor` reports whether this install can make a\n"
+    "call, and which model it uses.\n"
 )
 
 # The three `--help` tiers (#546), presentational only: registration order stays the axis
@@ -1197,7 +1198,8 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
 
 # One string bound to every copy of the flag (#249).
 _WORKSPACE_HELP = ("workspace root for sessions (default: cwd). Sessions live in "
-                   "<workspace>/.requivo/sessions/. Accepted before or after the command.")
+                   "<workspace>/.requivo/sessions/, and <workspace>/.env is the one .env read. "
+                   "Accepted before or after the command.")
 
 
 def _accept_workspace_after_the_command(parser: argparse.ArgumentParser) -> None:
