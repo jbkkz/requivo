@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -40,11 +41,21 @@ logger = logging.getLogger(__name__)
 _DEBUG_RETENTION = 20
 
 
+_DUMPS_OFF = frozenset({"0", "false", "off", "no"})
+
+
+def _dumps_enabled() -> bool:
+    """`REQUIVO_DEBUG_DUMPS=0|false|off|no` turns the failed-reply dump off; anything else keeps it (#693)."""
+    return os.environ.get("REQUIVO_DEBUG_DUMPS", "").strip().lower() not in _DUMPS_OFF
+
+
 def _save_failed_reply(raw: str, contract: str) -> Path | None:
     """Write the final raw reply that never validated, so a bug report has something to attach
     (#283). Best-effort: every failure returns `None` rather than shadowing the `ProviderOutputError`.
     The retention bound is a soft cap, not lock-guarded, and a prune failure must not discard the
     path of a reply just saved: `test_a_prune_failure_does_not_discard_an_already_saved_reply`."""
+    if not _dumps_enabled():
+        return None  # no file, so `_complete()` adds neither `raw_reply_path` nor the "saved to" note
     try:
         # Ambient on purpose, not the triggering session's repository (#272). `decision: debug-dump-ambient-root`
         root = debug_root()

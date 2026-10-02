@@ -300,6 +300,26 @@ def test_a_prune_failure_does_not_discard_an_already_saved_reply(workspace, monk
     assert path is not None and path.read_text(encoding="utf-8") == "some raw reply text"
 
 
+@pytest.mark.parametrize("off", ["0", "false", "FALSE", "off", "no"])
+def test_failed_reply_dumps_can_be_turned_off_and_leave_no_path(workspace, monkeypatch, off):
+    """#693: an embedder serving several workspaces must be able to keep request text out of any dump."""
+    monkeypatch.setenv("REQUIVO_DEBUG_DUMPS", off)
+    bad_reply = '{"not": "an engine output"}'
+    with pytest.raises(ProviderOutputError) as exc:
+        run(FakeClient(bad_reply, bad_reply, bad_reply), _USER)
+    assert not (workspace / ".requivo" / "debug").exists()
+    assert not list(workspace.rglob("debug"))
+    assert "raw_reply_path" not in exc.value.details
+    assert "saved to" not in str(exc.value)
+
+
+@pytest.mark.parametrize("on", ["", "1", "true", "anything-else"])
+def test_failed_reply_dumps_stay_on_unless_explicitly_turned_off(workspace, monkeypatch, on):
+    """Positive control for the opt-out: only a recognised 'off' value disables the dump (#693)."""
+    monkeypatch.setenv("REQUIVO_DEBUG_DUMPS", on)
+    assert completion_module._save_failed_reply("raw", "EngineOutput") is not None
+
+
 # ── #268: which model id a call uses, and #434: a constructor-level override ─────
 
 

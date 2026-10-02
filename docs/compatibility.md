@@ -256,6 +256,7 @@ would break a deployment for one word.
 |---|---|---|
 | `REQUIVO_WORKSPACE`, `REQUIVO_CONTEXT_DIR`, `REQUIVO_WEB_ALLOWED_HOSTS` are stable knobs | 0.7 | `test_a_constructed_model_makes_no_env_read` |
 | `REQUIVO_MODEL` is read first; bare `MODEL` is a **deprecated** fallback, read only when `REQUIVO_MODEL` is unset, so nothing already working stops working | #268 | `test_current_model_name_prefers_requivo_model_over_the_default`, `test_current_model_name_falls_back_to_bare_model` |
+| `REQUIVO_DEBUG_DUMPS=0` (also `false`, `off`, `no`) writes no failed-reply dump and leaves `raw_reply_path` out of `provider_output_invalid`; any other value keeps the dump | #693 | `test_failed_reply_dumps_can_be_turned_off_and_leave_no_path` |
 | `REQUIVO_OUTPUT_DIR` is **deprecated** — it configures the retired `out/` layout only `session migrate` still reads | #89 | — (removal target only; see the deprecations table) |
 
 ## CLI verbs
