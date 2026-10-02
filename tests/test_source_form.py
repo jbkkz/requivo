@@ -252,6 +252,7 @@ PROVIDER_TREES = (
     (SRC / "web", "requivo.web"),
     (SRC / "deterministic", "requivo.deterministic"),
     (SRC / "api", "requivo.api"),
+    (SRC / "mcp", "requivo.mcp"),  # #438
 )
 # A whole-module import contributes this marker instead of a name: unspellable as an allowlist key.
 _WHOLE_MODULE = "(the whole module)"
@@ -338,6 +339,7 @@ SURFACE_TREES = (
     (SRC / "web", "requivo.web"),
     (SRC / "providers", "requivo.providers"),  # #355
     (SRC / "api", "requivo.api"),  # #425
+    (SRC / "mcp", "requivo.mcp"),  # #438
 )
 PERSISTENCE_MODULE = "requivo.core.persistence"
 

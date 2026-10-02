@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -314,7 +315,8 @@ def handle(message: Any) -> dict | None:
     params = message.get("params") or {}
     if "id" not in message:
         return None
-    if isinstance(id_, bool) or not isinstance(id_, (str, int, float)):
+    if isinstance(id_, bool) or not isinstance(id_, (str, int, float)) or (
+            isinstance(id_, float) and not math.isfinite(id_)):  # NaN parses, but is not JSON on the way out
         return _error(None, -32600, "id must be a string or a number")
     if not isinstance(method, str) or not isinstance(params, dict):
         return _error(id_, -32600, "invalid request")
@@ -355,5 +357,15 @@ def serve(stdin: BinaryIO | None = None, stdout: BinaryIO | None = None) -> None
                 traceback.print_exc(file=sys.stderr)
                 reply = _error(message.get("id") if isinstance(message, dict) else None, -32603, "internal error")
         if reply is not None:
-            dst.write(json.dumps(reply, ensure_ascii=False).encode("utf-8") + b"\n")
+            dst.write(_encode(reply) + b"\n")
             dst.flush()
+
+
+def _encode(reply: dict) -> bytes:
+    """One reply, one ASCII line. `\\ud800` parses to a lone surrogate that UTF-8 cannot encode, and a
+    reply echoing it (a method, an id, a slug) would end the session: escapes are valid JSON, so
+    ASCII cannot fail. A reply JSON cannot carry at all becomes the internal error (#676 review)."""
+    try:
+        return json.dumps(reply, ensure_ascii=True, allow_nan=False).encode("ascii")
+    except ValueError:
+        return json.dumps(_error(None, -32603, "internal error"), ensure_ascii=True).encode("ascii")

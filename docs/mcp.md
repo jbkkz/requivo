@@ -5,8 +5,13 @@ stdio, so an MCP client (Claude Code, an agent framework, n8n's MCP support) can
 sessions as tools. **Experimental**, like the [HTTP API](api.md) it mirrors.
 
 ```json
-{ "mcpServers": { "requivo": { "command": "requivo", "args": ["mcp", "serve"] } } }
+{ "mcpServers": { "requivo": { "command": "requivo",
+  "args": ["mcp", "serve", "--workspace", "/path/to/project"] } } }
 ```
+
+Name the workspace: an MCP host does not necessarily start the server in your project, and the
+workspace decides both where sessions are written and which `.env` the paid tools read their key
+from.
 
 ## What the tools are
 
@@ -37,6 +42,10 @@ no tool.
   with no `ANTHROPIC_API_KEY`. The paid ones read the key from the server's environment and say so
   in their description; they carry the services' own pre-payment gates (a stale
   `expected_revision` is refused before any call, invariant 13, #205) and answer a `usage` object.
+- **A paid tool holds the server for as long as the provider call takes — minutes, not seconds.**
+  The server answers one message at a time and does not honour `notifications/cancelled`, so raise
+  the client's tool timeout. A client that times out and retries `generate_artifact` pays twice;
+  `submit_answers` and `run_discovery` are safe to retry, since the revision gates refuse the second.
 - A refusal is a tool result with `isError: true` whose text is the API's error envelope
   (`{code, message, details?}`): `revision_conflict`, `session_locked`, `invalid_request` and the
   rest keep the meaning [api.md](api.md) gives them. Bad arguments are `invalid_request`.

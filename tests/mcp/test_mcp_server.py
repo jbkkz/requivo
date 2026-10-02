@@ -85,6 +85,25 @@ def test_stdio_answers_one_line_per_request_and_survives_garbage():
     assert [r.get("error", {}).get("code") for r in replies] == [None, -32700, -32700, None]
 
 
+def test_a_lone_surrogate_or_a_nan_echoed_back_does_not_end_the_session():
+    """`\\ud800` parses but cannot be UTF-8 encoded, and NaN is not JSON: either, echoed in a reply,
+    used to kill the loop at the write (#676 review). Every reply must still be one parseable line."""
+    lines = (b'{"jsonrpc":"2.0","id":1,"method":"\\ud800"}\n'
+             b'{"jsonrpc":"2.0","id":"\\ud800","method":"ping"}\n'
+             b'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_status",'
+             b'"arguments":{"slug":"a\\udc80b"}}}\n'
+             b'{"jsonrpc":"2.0","id":NaN,"method":"ping"}\n'
+             b'{"jsonrpc":"2.0","id":5,"method":"ping"}\n')
+    out = io.BytesIO()
+    server.serve(io.BytesIO(lines), out)
+    raw = out.getvalue()
+    assert raw.isascii()
+    replies = [json.loads(line) for line in raw.splitlines()]
+    assert [r.get("id") for r in replies] == [1, "\ud800", 3, None, 5]
+    assert replies[0]["error"]["code"] == -32601 and replies[2]["result"]["isError"] is True
+    assert replies[3]["error"]["code"] == -32600 and replies[-1]["result"] == {}
+
+
 def test_a_well_formed_message_with_a_wrong_typed_field_does_not_end_the_session():
     """A name that is a list used to raise before the handler's try and take the loop down (self-review)."""
     bad = b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":["x"]}}\n'
