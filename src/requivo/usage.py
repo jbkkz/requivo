@@ -8,6 +8,7 @@ unpriced (`rate_per_mtok is None`, `cost_usd()` refuses to guess), and priced wi
 from __future__ import annotations
 
 import contextvars
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
@@ -129,7 +130,7 @@ _LEDGER: contextvars.ContextVar[UsageLedger | None] = contextvars.ContextVar("us
 
 
 @contextmanager
-def track_usage():
+def track_usage() -> Iterator[UsageLedger]:
     """Scope a UsageLedger over a block; with none active, `record_call` is a no-op."""
     ledger = UsageLedger()
     token = _LEDGER.set(ledger)

@@ -40,6 +40,16 @@ def test_every_declared_seam_name_actually_resolves():
     assert unresolved == [], f"declared but does not exist: {unresolved}"
 
 
+def test_track_usage_is_typed_so_a_caller_keeps_the_ledger_type():
+    """#663: `with track_usage() as ledger:` must not lose `UsageLedger` in a caller's type checker."""
+    from collections.abc import Iterator
+    from typing import get_type_hints
+
+    from requivo.usage import UsageLedger, track_usage
+
+    assert get_type_hints(track_usage).get("return") == Iterator[UsageLedger]
+
+
 def test_the_package_ships_a_py_typed_marker():
     marker = PACKAGE_ROOT / "py.typed"
     assert marker.is_file(), "PEP 561 marker src/requivo/py.typed is missing"
