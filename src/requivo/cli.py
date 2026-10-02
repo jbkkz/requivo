@@ -8,11 +8,12 @@ import textwrap
 from pathlib import Path
 from typing import Callable, NamedTuple
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 from requivo import __version__
 from requivo.cli_support import (
     _announce_bind,
+    _display_url,
     _generator_service,
     _missing_extra_message,
     _print_session_candidates,
@@ -899,7 +900,7 @@ def _cmd_web(a, client) -> None:
     # under `--reload` uvicorn's worker re-imports the app and stays on `lastResort`.
     # `test_the_web_verb_configures_the_logger_before_it_serves`.
     configure_web_logging()
-    url = f"http://{host}:{port}"
+    url = _display_url(host, port)
     print(f"\nRequivo Web → {url}")
     print("  Sessions stay local under .requivo/sessions/. An Anthropic key (server env) is needed only")
     print("  for provider actions (discovery, generation); consulting existing sessions needs none.\n")
@@ -935,7 +936,7 @@ def _cmd_api_serve(a, client) -> None:
     # Same placement as `configure_web_logging()` in `_cmd_web` (#291).
     # `test_the_api_serve_verb_configures_the_logger_before_it_serves`.
     configure_surface_logging(API_LOGGER)
-    url = f"http://{host}:{port}"
+    url = _display_url(host, port)
     print(f"\nRequivo API → {url}   (docs: {url}/docs)")
     print("  Sessions stay local under .requivo/sessions/. An Anthropic key (server env) is needed only")
     print("  for provider actions (discovery, generation); reading existing sessions needs none.")
@@ -1230,10 +1231,9 @@ def app(argv: list[str] | None = None, client=None) -> None:
     """Entry point for the `requivo` command (and `python -m requivo`)."""
     # Before anything prints (#29), and never at import: importing `requivo` must not reconfigure streams.
     configure_streams()
-    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`): the cwd's own,
-    # never a parent's, which could set ANTHROPIC_BASE_URL and send the key elsewhere (#687;
-    # `test_a_dotenv_above_the_directory_the_user_runs_from_is_never_read`).
-    load_dotenv(Path.cwd() / ".env")
+    # `.env` per run, never at import (#419, `test_importing_the_cli_leaves_the_environment_alone`), searched
+    # from the user's directory: a bare `load_dotenv()` searches from this installed file and never found it (#687).
+    load_dotenv(find_dotenv(usecwd=True))
     args = _build_parser().parse_args(argv)
     # A global --workspace redirects where sessions are read/written, for the duration of this run, and
     # its own `.env` fills what is still unset: `test_a_workspace_flag_reads_that_workspaces_dotenv`.
