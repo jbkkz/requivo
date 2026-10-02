@@ -77,6 +77,15 @@ def test_a_verb_still_reads_the_dotenv_file(tmp_path):
     )
 
 
+def test_a_dotenv_above_the_directory_the_user_runs_from_is_never_read(tmp_path):
+    """Only the cwd's own `.env`: a parent's could set ANTHROPIC_BASE_URL and send the key elsewhere (#687 audit)."""
+    (tmp_path / ".env").write_text("REQUIVO_HERMETICITY_CANARY=from-dotenv\n", encoding="utf-8")
+    below = tmp_path / "project"
+    below.mkdir()
+    proc = _run_file_in(below, _canary_script(["schema"]))
+    assert proc.returncode == 1, "app() read a .env from a directory above the one it runs from"
+
+
 def test_a_workspace_flag_reads_that_workspaces_dotenv(tmp_path):
     """`--workspace DIR` also reads `DIR/.env`, as docs/mcp.md tells an MCP host to rely on (#687)."""
     workspace, elsewhere = tmp_path / "ws", tmp_path / "elsewhere"
