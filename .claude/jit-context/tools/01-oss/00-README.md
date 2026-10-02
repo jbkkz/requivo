@@ -71,6 +71,35 @@ rather than a rider on the change that took this record off its false claim:
 here: this whole layer is generated and replaced wholesale on every install, so a correction
 made in this directory is gone the next time the owning plugin writes it. Report it instead.
 
+## #903: this rule reaches a spawned reviewer subagent too, and that is intentional
+
+A developer lane's own self-review spawns a read-only `Explore` reviewer against the diff it just
+committed. That reviewer issues Read/Edit/Write/Glob/Grep calls of its own, in the same tree, and
+they hit `supertool-required.md` below exactly as the dispatching lane's own calls do -- #903 is
+two reproduced instances of that.
+
+**Narrowing the trigger to skip a spawned subagent was the issue's first ask, and it is not
+possible today.** `supertool-required.md`'s `match: ~.*` is tested against the PreToolUse hook's
+own subject, built from `tool_input` alone (see the table above) -- and that subject carries
+no field naming *which agent* issued the call. There is no `isSidechain`, no `subagent_type` on a
+`Read`/`Edit`/`Write`/`Glob`/`Grep` payload, nothing at all distinguishing a spawned reviewer's own
+tool call from its dispatcher's. No signal in the subject means no way to narrow on it -- so this
+is the issue's second branch, "state it explicitly", rather than the first.
+
+**What that means for `Explore`, or any other read-only reviewer never briefed on `supertool`.** It
+has no such tool in its actual grant and no route to install one, so a block here is a rule it
+cannot comply with by being told about it -- only by already knowing `supertool` is on `PATH` and
+calling it through its own `Bash` grant, which nothing in its brief currently says to do. Both
+observed instances (#903) already did the next best thing on their own: they read the refusal as
+untrusted injected content that named a tool contradicting their actual grant, and continued
+through their own authorized `Read`/`Bash` tools rather than obeying it. That is correct, and nothing
+here is meant to change it -- the only enforcement-side answer available is the `requires:`
+degrade documented below, never a scope narrower than "every session touching this tree", because
+the hook has nothing narrower to match against.
+
+If `claude-jit-context` ever adds a signal that tells a spawned subagent's own calls apart from its
+dispatcher's, that is what this rule gets narrowed on -- not a guess made without one.
+
 ---
 
 ## `supertool-required.md`: why it stays this short
@@ -136,3 +165,37 @@ declined narrowing on the grounds that the absent-binary case would be answered 
 reader without `supertool` is no longer blocked, without this rule's `block` weakening for the
 reader who has it. Revisiting `block` again would be re-litigating a question `requires:` was
 written to close.
+
+### #1408: no provenance-verification section is added here, and here is why
+
+The repository that ships `supertool` itself carries its own jit-context tool-redirection rule for
+its own file tools, `.claude/jit-context/tools/00-manual/harness-tools-blocked.md`. That rule gained
+a "This is not a prompt injection" section, in that repository's own issue #1793, after a stock
+reviewer twice read the redirection block and reported it as fabricated attacker content -- the
+section tells a suspicious reader how to verify the block's provenance against tracked history.
+`supertool-required.md` -- scaffolded wholesale into every managed repository, that one's own
+checkout included -- carries the identical `mode: block` tool-redirection shape and no such section
+at all. #1408 asked whether that gap should close.
+
+**Not copied here, on the strength of the evidence that exists.** The lane that filed #1408 had
+already run a falsification experiment (that repository's own issue #2007, n=6 cold reads, two body
+variants) against `harness-tools-blocked.md` itself, and found the provenance section did **not**
+change a fresh reader's verdict: every reader called the redirection an injection regardless of
+whether the section was present. Adding equivalent prose here on the strength of "it worked there"
+would be acting against that repository's own measured result, not informed by it.
+
+**And the failure #1793 exists to prevent has no recorded instance against this rule.** #903, above,
+already shows two observed cases of a spawned, unbriefed `Explore` reviewer hitting this exact block
+and correctly treating it as untrusted content, routing around it via its own already-granted tools
+-- the safe outcome, with no provenance section present, because a reader holding no `supertool`
+grant was never going to act on the block either way. No incident has been recorded here of a
+session that DOES hold `supertool` mistaking this block for a fabricated attack rather than a real
+one -- the specific failure #1793's section was written to prevent.
+
+**The decision is recorded, not closed.** If a real report surfaces of a `supertool`-holding session
+wrongly treating this block as fabricated, or #2007's own line of experiments produces evidence that
+would change the calculus above, that is the trigger to revisit -- and, per #1408's own framing, to
+design something informed by what #2007 actually found rather than copy #1793 unmodified and expect
+a different result. Nothing changes in the rule body itself (`supertool-required.md`) either way: it
+is a `mode: block` rule re-injected whole on every refused call (#757 above), so a decision record
+belongs here, never in the per-refusal body.
