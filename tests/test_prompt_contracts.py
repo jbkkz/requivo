@@ -14,7 +14,7 @@ import pytest
 from pydantic import BaseModel, ValidationError, create_model
 
 from requivo.core.context import build_system_prompt
-from requivo.core.contracts import StrictModel, schema_slot_ids
+from requivo.core.contracts import MAX_CLAIMS_PER_SLOT, ClaimSource, Confirmation, StrictModel, schema_slot_ids
 from requivo.core.perimeters import GO_TO_MARKET, SOFTWARE, known_perimeter_ids
 from requivo.paths import PERIMETERS, PROMPTS
 from requivo.providers.anthropic import generators
@@ -237,3 +237,13 @@ def test_every_definition_of_solo_builder_confidence_carries_the_confirmed_as_is
         text = " ".join(raw.replace("`", "").lower().split())
         assert "vouching for what they built" in text and "not confirmed stays inferred" in text, f"{name} lacks the #716 exception"
     assert "vouching for what they built" in build_system_prompt("engine.md", perimeter=GO_TO_MARKET).text  # what is sent
+
+
+def test_the_claim_vocabulary_the_prompts_teach_is_the_contracts():
+    """#751: engine.md and REASONING.md teach claims to the two providers; a value missing from either is a value the
+    host guesses, and a guess the contract refuses costs a paid retry or an apply cycle, as `question` for `q` did (#489)."""
+    plugin = Path(__file__).resolve().parents[1] / "plugins" / "claude-code" / "REASONING.md"
+    for name, text in (("engine.md", (PROMPTS / "engine.md").read_text(encoding="utf-8")), ("REASONING.md", plugin.read_text(encoding="utf-8"))):
+        for value in (*ClaimSource, *Confirmation):
+            assert f"`{value.value}`" in text, f"{name} does not teach {value.value!r}"
+        assert "answered_by" in text and "test_plan" in text and f"at most {MAX_CLAIMS_PER_SLOT}" in text, name

@@ -110,6 +110,28 @@ def test_a_testable_slot_with_no_test_plan_is_refused():
     assert out({"problem": slot(0, "testable", "high", test_plan=plan)}).model["problem"].confidence.value == "testable"
 
 
+_CLAIM = dict(text="5-10 hours a week", source="requester")
+_OVER_CAP = list(dict(_CLAIM, text=f"claim {n}") for n in range(9))
+
+
+@pytest.mark.parametrize("claims", [
+    [dict(_CLAIM, confirmation="to_test")], [dict(_CLAIM, test_plan="ask twice")],
+    [dict(_CLAIM, confirmation="confirmed")], [dict(_CLAIM, impact="high")],
+    [_CLAIM, dict(_CLAIM, id="clm_forged")], _OVER_CAP, [dict(_CLAIM, said_by="cfo")],
+], ids=["to-test-unplanned", "plan-on-open", "confirmed-by-nobody", "above-its-slot", "one-id-twice",
+        "nine-claims", "unknown-field"])
+def test_a_claim_is_refused_rather_than_repaired(claims):
+    """#751, invariants 3-5: each refusal rides the retry loop; eight claims within the rules are kept,
+    each id `clm_` over its text, recomputed, and a decision's `source` moves no decision id."""
+    with pytest.raises(ValidationError):
+        Slot.model_validate(dict(slot(80, "inferred", "medium"), claims=claims))
+    kept = Slot.model_validate(dict(slot(80, "inferred", "medium"), claims=_OVER_CAP[:7] + [
+        dict(_CLAIM, id="clm_forged", confirmation="confirmed", answered_by="requester", impact="low")]))
+    assert len(kept.claims) == 8 and kept.claims[-1].id == Slot.model_validate(dict(slot(), claims=[_CLAIM])).claims[0].id
+    assert kept.claims[-1].id.startswith("clm_") and kept.claims[-1].id != "clm_forged"
+    assert DesignDecision(decision="Approve-first", source="requester").id == DesignDecision(decision="Approve-first").id
+
+
 # ── reasoning items and their ids (invariant 5) ────────────────────────────────
 
 _KINDS = {

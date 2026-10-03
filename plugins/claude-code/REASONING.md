@@ -239,6 +239,17 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   builder vouching for what they built, not a belief about the world: grade it `explicit`. The
   schema's "what a system does is never explicit" is about an unconfirmed belief; an as-is the builder
   has not confirmed stays `inferred`.
+- **Claims label a mixed slot, and are optional** (#751). When one slot holds statements of different
+  provenance — a limit the requester stated plus obligations you assume — add `claims`: one
+  `{ "text", "source", "confirmation" }` per independently confirmable statement, at most 8. `source`
+  is where it came from (`requester`, `artifact` for what you read from their repository, data or
+  documents, `evidence`, `proposed`, `domain`, `assumed`) and never changes. `confirmation` is what
+  moves: `open`, `let_stand` (shown in the defaults list, not overturned), `confirmed` (accepted in
+  words, or by a "yes to all" over a list that showed it) — both with `"answered_by": "requester"` —
+  or `to_test` with `test_plan`. A claim may carry a lower `impact` than its slot's, with the reason
+  in `evidence`. Claims change nothing about readiness yet: grade `confidence` exactly as above, and
+  leave a one-kind slot without them. A CLI older than this plugin refuses `claims`, or a decision's
+  `source`, as an extra input: drop them and apply again.
 - **Evidence names its source, and keeps the sources apart**: `repo: <path>` for a file
   (`repo: pyproject.toml`), `request:` for the client's words, `proposed:` and `domain:` for what you
   brought, each its own clause on a slot resting on several — never blended into one sentence. The
@@ -261,9 +272,10 @@ table is the one mapping: every skill that tags a line takes the tag from it, ne
 | `[domain]` | domain knowledge | `domain:` |
 | `[assumed]` | an inference with none of the above | `inferred`, no such clause |
 
-A slot resting on several sources tags each claim by its own clause. The model keeps one confidence
-per slot (claim-level provenance is #747's design): the tags are a render of it, not a new field, and
-not the confidence labels the voice rules keep out of the prose.
+A slot resting on several sources tags each claim by its own clause; a slot carrying `claims` tags
+each by its `source` (`artifact` is `[repo]`). The model keeps one confidence per slot
+(`decision: claims-carry-provenance`): the tags are a render of it, and not the confidence labels the
+voice rules keep out of the prose.
 
 ## The revision contract (every skill, no exceptions)
 
@@ -309,7 +321,7 @@ files anywhere:
    again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
    `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
    (shape/JSON). On `revision_conflict`, see the revision contract above.
-4. Read back the structured result (revision, changed_slots, changed_decisions,
+4. Read back the structured result (revision, changed_slots, changed_claims, changed_decisions,
    changed_challenges, changed_opportunities, changed_exclusions, changed_thresholds,
    stale_artifacts, readiness) and relay it.
 

@@ -96,6 +96,12 @@ will assume unless you object" list and can be vetoed; documents stay views of t
 each claim by its source. The keyless plugin does this; the API path's generator prompts still carry
 the older rule.
 
+**Claims label a mixed slot** (`decision: claims-carry-provenance`, #751). A slot may list the
+statements it holds, each with where it came from (`requester`, `artifact`, `evidence`, `proposed`,
+`domain`, `assumed`) and what an answer did with it (`open`, `let_stand`, `confirmed`, `to_test`). In
+3.x claims are informational — `status` labels them, `model apply` names the one that moved — and
+readiness still reads the slot as a whole.
+
 ## Decisions, challenges, opportunities
 
 The assessment layer, persisted into the model so every generator inherits it:

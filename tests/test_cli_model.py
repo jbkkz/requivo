@@ -202,6 +202,26 @@ def test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path(tmp
     assert announced in out, f"a change that unseats only {key} said nothing on the text path: {out!r}"
 
 
+def test_status_labels_claims_and_counts_the_downgraded(tmp_path):
+    """#751, decision 6: `status` relabels each slot's claims and counts those rated below their slot,
+    `model apply` names the claim that moved, and readiness still reads the slot alone."""
+    stated = dict(text="5-10 h/week", source="requester")
+    obligation = dict(text="GDPR controller split", source="domain", impact="medium", evidence="an assumption to review")
+    constraints = dict(slot(90, "inferred", "high", "5-10 h/week; GDPR"), claims=[stated, obligation])
+    _init("s", full_model(constraints=constraints), where=tmp_path)
+    before = run_cli_json(["status", "s", "--json"])
+    confirmed = dict(constraints, claims=[dict(stated, confirmation="confirmed", answered_by="requester"), obligation])
+    applied = run_cli(["model", "apply", "s", _write(tmp_path / "p.json", full_model(constraints=confirmed))])
+    assert 'claim confirmation: constraints — 5-10 h/week' in applied
+    after = run_cli_json(["status", "s", "--json"])
+    assert after["readiness"] == before["readiness"] and not after["readiness"]["ready"]   # claims inform, never decide
+    assert after["claims_below_slot_impact"] == 1
+    assert [c["text"] for e in after["understanding"]["inferred"] if e["slot"] == "constraints" for c in e["claims"]] == [
+        "5-10 h/week", "GDPR controller split"]
+    text = run_cli(["status", "s"])
+    assert "1 requester · confirmed, 1 domain (medium)" in text and "1 claim(s) rated below their topic's impact" in text
+
+
 # ── artifact save / list / show ───────────────────────────────────────────────────
 
 

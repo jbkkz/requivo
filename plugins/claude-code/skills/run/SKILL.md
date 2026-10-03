@@ -294,11 +294,12 @@ uncertain and high-impact. Nothing read, nothing to list.
 
 Build the model in your head from the request, the context and what the repository showed: for
 **every** schema slot, decide its `value`, `confidence` (explicit / inferred / empty), `completeness`
-(0–100), and `impact`. Follow the honesty rules — mark inferences as inferred, leave true unknowns
-empty, invent nothing the requester did not say, and bring your proposals and domain facts labelled
-(`proposed:`, `domain:`). Include a `summary` and, where information value is high, 3–6 `questions` —
-each one `{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text field is **`q`**;
-see the apply loop in REASONING.md for why that is worth reading before you emit six of them.
+(0–100), and `impact`, plus `claims` on a slot that mixes provenance. Follow the honesty rules —
+mark inferences as inferred, leave true unknowns empty, invent nothing the requester did not say, and
+bring your proposals and domain facts labelled (`proposed:`, `domain:`). Include a `summary` and,
+where information value is high, 3–6 `questions` — each one
+`{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text field is **`q`**; see the
+apply loop in REASONING.md for why that is worth reading before you emit six of them.
 
 **Acceptance is derived, not asked** (#734). Draft Given/When/Then criteria from the slots the user
 has confirmed (rules, workflow, edge cases, the success measure) into `acceptance`, where the
@@ -456,7 +457,7 @@ current state — never re-apply the stale proposal.
 ### Relay the result
 
 From the `model apply` JSON, tell the user in plain language:
-- which slots changed,
+- which slots changed, and which claims moved inside them (`changed_claims`, #751) where any did,
 - any **decisions to re-validate** (`invalidated_decisions`), **premises to re-examine**
   (`invalidated_challenges`), **excluded options worth reconsidering** (`invalidated_exclusions`,
   #599), or **thresholds worth reconsidering** (`invalidated_thresholds`, #604) that rested on a

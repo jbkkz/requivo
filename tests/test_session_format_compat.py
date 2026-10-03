@@ -10,7 +10,15 @@ from _fakes import FakeClient, full_model, slot
 from pydantic import BaseModel, ValidationError
 
 from requivo.core import persistence as store
-from requivo.core.contracts import EngineOutput, ModelProposal, PersistedEngineOutput, schema_slots
+from requivo.core.contracts import (
+    Answerer,
+    ClaimSource,
+    Confirmation,
+    EngineOutput,
+    ModelProposal,
+    PersistedEngineOutput,
+    schema_slots,
+)
 from requivo.core.errors import RequivoError
 from requivo.core.perimeters import GO_TO_MARKET
 from requivo.providers.anthropic.provider import AnthropicProvider
@@ -196,6 +204,43 @@ def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unre
     assert "workflow" in readiness_blockers(loaded)   # tolerated, never promoted to "confirmed"
 
 
+def test_a_claim_value_this_version_does_not_know_round_trips():
+    """Invariant 8 for #751's enums: a newer source, confirmation, answerer, claim key or decision source loads, is
+    never read as a known value, and is written back."""
+    store.create_session("future-claim", "A leave approval system.")
+    d = store.canonical_dir("future-claim")
+    claim = dict(text="Rated by a panel", source="panel", confirmation="witnessed", answered_by="auditor", weight=3, test_plan="re-rate")
+    known = dict(text="Two approvers", source="requester", confirmation="confirmed", answered_by="requester")
+    m = dict(full_model(workflow=dict(slot(90, "explicit", "high"), claims=[claim, known])))
+    m["decisions"] = [dict(decision="Approve-first", source="committee")]
+    (d / "model.json").write_text(json.dumps(m), encoding="utf-8")
+    loaded = store.load_session_model("future-claim")
+    c, k = loaded.model["workflow"].claims
+    assert (c.source, c.confirmation, c.answered_by) == ("panel", "witnessed", "auditor")
+    assert (k.source, k.confirmation, k.answered_by) == (ClaimSource.requester, Confirmation.confirmed, Answerer.requester)
+    assert type(k.source) is ClaimSource and type(k.confirmation) is Confirmation   # a known value is the member, not a string
+    store.save_revision("future-claim", loaded)
+    written = json.loads((d / "model.json").read_text(encoding="utf-8"))
+    assert written["model"]["workflow"]["claims"][0]["weight"] == 3 and written["decisions"][0]["source"] == "committee"
+
+
+def test_a_claimless_model_is_written_exactly_as_before():
+    """#751: no claims and no decision source stay absent on disk, so a session written without them has the
+    shape an older 3.x wrote; one with them keeps them through a re-save."""
+    svc = SessionService()
+    svc.create_session("A leave approval system.", slug="plain")
+    svc.update_model("plain", dict(full_model(), decisions=[dict(decision="Approve-first")]))
+    written = json.loads((store.canonical_dir("plain") / "model.json").read_text(encoding="utf-8"))
+    assert not [s for s in written["model"].values() if "claims" in s] and "source" not in written["decisions"][0]
+    claimed = dict(slot(60, "inferred", "high"), claims=[dict(text="Two approvers", source="assumed")])
+    svc.update_model("plain", dict(full_model(workflow=claimed), decisions=[dict(decision="Approve-first", source="proposed")]))
+    written = json.loads((store.canonical_dir("plain") / "model.json").read_text(encoding="utf-8"))
+    # An unset claim field is off the wire too: every turn re-sends the model, so each one costs tokens.
+    assert written["model"]["workflow"]["claims"] == [dict(id=written["model"]["workflow"]["claims"][0]["id"],
+                                                          text="Two approvers", source="assumed", confirmation="open")]
+    assert written["decisions"][0]["source"] == "proposed"
+
+
 def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save():
     """The half the first version of the fix got wrong (#14)."""
     store.create_session("refined", "A leave approval system.")
@@ -263,13 +308,13 @@ def test_the_persisted_mirror_copies_every_constraint_it_restates():
     pairs = [(p, p.__mro__[1]) for p in _contracts_reachable_from(PersistedEngineOutput)]
     for permissive, strict in pairs:
         assert issubclass(strict, BaseModel) and strict is not BaseModel, permissive.__name__
-    # Not vacuous: nine twins exist (#604), and the mirror re-points these fields at permissive types.
-    assert len(pairs) == 9
+    # Not vacuous: ten twins exist (#604, #751), and the mirror re-points these fields at permissive types.
+    assert len(pairs) == 10
     redeclared = {name for p, s in pairs for name in p.model_fields
                   if p.model_fields[name].annotation != s.model_fields[name].annotation}
-    # `confidence` joined with #610: `PersistedSlot` widens it to `Confidence | str` (invariant 8).
+    # `confidence` joined with #610, the claim enums and decision `source` with #751: `Enum | str` (invariant 8).
     assert redeclared == {"model", "questions", "summary", "decisions", "challenges", "opportunities",
-                          "exclusions", "thresholds", "confidence"}
+                          "exclusions", "thresholds", "confidence", "claims", "source", "confirmation", "answered_by"}
 
     drift = []
     for permissive, strict in pairs:
