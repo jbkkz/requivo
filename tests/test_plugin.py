@@ -295,8 +295,13 @@ def test_a_session_at_revision_zero_is_routed_by_its_list_row_because_status_ref
         out, code = run_cli_exit(argv)
         assert code == 1 and json.loads(out)["code"] == "session_not_found" and "/requivo:run bare" in json.loads(out)["message"]
     assert [r["revision"] for r in run_cli_json(["session", "list", "--json"])["sessions"]] == [0]
-    assert "perimeter" in run_cli_json(["session", "show", "bare", "--json"])
+    shown, root = run_cli_json(["session", "show", "bare", "--json"]), run_cli_json(["session", "list", "--json"])["session_root"]
+    assert "perimeter" in shown and "A leave approval system." not in json.dumps(shown), "session show carries no request text"
+    assert (Path(root) / "bare" / "request.md").read_text(encoding="utf-8") == "A leave approval system."
     resume = _section(SKILLS["run"], r"^##\s*4\.\s*Resume.*$")
+    read = resume.find("`Read` `<session_root>/<slug>/request.md`")
+    assert -1 < read < resume.index("**5. Reason from scratch**"), "run: the revision-0 branch reasons with no request in hand"
+    assert "except that one session's `request.md`" in _section(SKILLS["run"], r"^##\s*5\..*$"), "run: never-open forbids it"
     assert re.search(r"`revision` is `0`[\s\S]{0,700}\*\*5\. Reason from scratch\*\* with `N` = `0`", resume)
     assert resume.index("`revision` is `0`") < resume.index("requivo model show <slug>") and "session show <slug> --json" in resume
     for name in ("run", "docs", "gtm-plan"):
