@@ -49,8 +49,8 @@ and anything built on top. Its layout is documented in full in
 | `model.json`'s slot ids come from its session's own **perimeter** schema (`assets/perimeters/<id>/model_schema.json`, one perimeter per session, frozen at creation) — the same vocabulary `requivo schema --perimeter <id>` prints | 0.1 (plural since #608) | `test_validate_rejects_unknown_slot`, `test_a_go_to_market_model_validates_and_reaches_readiness_against_its_own_vocabulary` |
 | `session.json` carries `format_version`, currently **1** | 0.1 | `test_store_migrate_session_rejects_a_future_format` |
 | `session.json` carries `perimeter` — `null` for a session written before #608, which reads as the **software** perimeter (a default, never a guess: there was only ever one); a *named* perimeter this install does not have is refused by name (`unknown_perimeter`), by the loader, `doctor` and `session verify` alike — the one place this page's own "adding a field is free" rule is deliberately not enough, because a perimeter is *interpreted* rather than carried through | #608 | `test_a_pre_perimeter_session_still_opens_as_software`, `test_an_unknown_perimeter_is_refused_by_name_by_the_loader`, `test_an_unknown_perimeter_is_refused_by_name_by_session_verify_and_doctor` |
-| `session.json`'s `context_cards`: `null` is every card, a list names cards, and `["none"]` alone is the explicit *no product context*, printed and shown as such and distinct from an accidental empty selection, which stays refused. An **older** Requivo reads `["none"]` as an unknown card: its reasoning turns and `context --session` refuse with `unknown_context_card`, never loading every card instead | #721 | `test_an_explicit_none_selection_reads_no_card_and_says_so`, `test_context_none_is_recorded_and_shown_as_no_product_context` |
-| A session written by an **older** Requivo keeps loading — a retired field is ignored, a field added since takes its default, and a slot its perimeter gained since reads at its baseline impact (a go-to-market session from before #729 blocks on `objections`, high, until a turn fills it, never on `alternatives`, medium) | 0.1, #729 | `test_a_session_written_by_an_older_requivo_still_loads`, `test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_unasked_objection` |
+| `session.json`'s `context_cards`: `null` is every card, a list names cards, and `["none"]` alone is the explicit *no product context*, printed and shown as such and distinct from an accidental empty selection, which stays refused. An **older** Requivo reads `["none"]` as an unknown card: its reasoning turns and `context --session` refuse with `unknown_context_card`, never loading every card instead. `none` is reserved: a card file named `none.md` can no longer be selected, and a 3.4.1 session that stored `["none"]` to select it now reads as no product context | #721 | `test_an_explicit_none_selection_reads_no_card_and_says_so`, `test_context_none_is_recorded_and_shown_as_no_product_context` |
+| A session written by an **older** Requivo keeps loading — a retired field is ignored, a field added since takes its default, and a slot its perimeter gained since reads at its baseline impact (a go-to-market session from before #729 blocks on `objections`, high, until a turn fills it, never on `alternatives`, medium). A new slot moves one observable: a 12-slot go-to-market proposal 3.4.1 accepted is refused by `model apply`/`model diff` as `missing_required_slot` (`objections`, `alternatives`), exit 0 → 1 | 0.1, #729 | `test_a_session_written_by_an_older_requivo_still_loads`, `test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_unasked_objection` |
 | A session written by a **newer** Requivo is refused clearly (`unsupported_format_version`, `{format_version, supported_format_version}`), and a model authored against a newer slot schema is refused independently (`unsupported_schema_version`) | 0.9.5 | `test_a_session_from_a_newer_requivo_is_refused_not_guessed`, `test_a_session_from_a_newer_slot_schema_is_refused_clearly` |
 | An unknown key in `session.json` survives a load-mutate-write cycle by an older reader, rather than being dropped | 0.9.4 | `test_a_field_from_a_future_requivo_survives_a_round_trip` |
 | The same is true of `model.json` and every `revisions/NNNN-model.json`, through a permissive read contract; an *apply* still replaces slots/summary/questions, but the reasoning layer and top-level keys survive a turn that says nothing about them | #14 | `test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip`, `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save`, `test_the_persisted_contract_is_permissive_all_the_way_down` |
@@ -60,7 +60,7 @@ and anything built on top. Its layout is documented in full in
 
 ## The `--json` outputs are public
 
-**Every `--json` output is public — all eighteen — and so is the structured error envelope**
+**Every `--json` output is public, and so is the structured error envelope**
 (`{code, message, path?, details?}`). A populated field does not quietly change meaning, a change of
 shape gets a row below, and adding a field is always free.
 
@@ -92,11 +92,10 @@ of each value, nothing nested — is recorded and pinned per verb by
 `test_every_json_verb_has_a_recorded_payload_shape` and
 `test_every_public_json_payload_keeps_its_recorded_top_level_shape`. **`impact --json` has two
 forms (#717):** named slots give the API's `/impact` report plus `slug`, no slots `{slug, map,
-evidence}`; `stale_artifacts` is the generated subset of `artifacts`, and is `null` with `evidence`
-for a bare `model.json`. `model show --json` is the model document the bare verb prints.
+evidence}`. `model show --json` is the model document the bare verb prints.
 
 **`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`,
-`summary` and `remaining_gaps` are always present; `revision`, `context_cards` and `artifacts` are
+`summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `context_cards` and `artifacts` are
 added only when the reference resolves to a canonical session, because a bare `model.json` has no
 session to read them from. Both forms are public. Pinned by
 `test_status_and_impact_still_open_a_model_json_path_directly`.
@@ -126,6 +125,7 @@ raised as `invalid_model` any more.
 | an archive is not a readable zip, or not shaped like an export (8 sub-conditions, closed `problem` vocabulary: `empty`, `too_many_entries`, `too_many_files`, `too_large`, `unsafe_entry`, `entry_outside_session_directory`, `multiple_sessions`) | `unreadable_archive` / `invalid_archive` | `{archive}` / `{problem, …}` | #101, #219 | `test_import_refuses_an_archive_that_is_not_a_session`, `test_import_refuses_an_archive_bounded_by_files_and_bytes_but_not_by_directory_entries` |
 | the import slug is taken and `--force` was not passed | `session_exists` | `{slug}` | #101 | `test_import_refuses_a_collision_unless_forced` |
 | a non-session directory already occupies the import slug | `import_destination_occupied` | `{slug, path}` | #114 | `test_a_stray_directory_at_the_slug_is_refused_by_name_on_every_platform` |
+| under `--force`, the session to replace was deleted or recreated while the archive was read (409, nothing replaced) | `import_target_changed` | `{slug}` | #753 | `test_a_forced_import_refuses_a_session_recreated_during_the_extraction_window` |
 | `SessionService.export_archive`/`import_archive` over a repository that is not file-backed | `unsupported_repository` | `{repository, operation}` | #702 | `test_a_repository_with_no_session_directory_refuses_the_archive_by_name` |
 | no usable host on a Requivo Web request | `undetermined_host` | `{host_header_present, host_header, hint}` | #52 | `test_a_request_that_states_no_host_at_all_is_refused` |
 | a host this server does not answer to | `host_not_allowed` | `{host, hint}` | #52 | `test_a_request_addressed_to_another_host_is_refused` |
@@ -134,11 +134,9 @@ raised as `invalid_model` any more.
 | the origin is outside the host's trust domain | `origin_mismatch` | `{origin, host}` | #52 | `test_a_write_from_another_origin_is_refused` |
 | the request token was absent or wrong | `missing_request_token` | `{}` | #52 | `test_a_write_without_the_request_token_is_refused` |
 
-`invalid_session` is the family base and nothing raises it directly — `except InvalidSessionError`
-still catches every arm above without enumerating them (`test_nothing_raises_the_malformed_session_family_base`).
-The unstated/unreadable source-revision pair deliberately still shares its five-key `details` shape;
-`test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape` pins that a shared shape is
-a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`origin_mismatch` above.
+`invalid_session` is the family base, raised by nothing, so `except InvalidSessionError` catches every arm above
+(`test_nothing_raises_the_malformed_session_family_base`). The two source-revision codes share one `details` shape by
+choice, as `opaque_origin`/`origin_mismatch` do (`test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape`).
 
 **`--json` field additions** — each additive, each narrows or widens exactly one field, never a shape:
 
@@ -146,6 +144,9 @@ a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`orig
 |---|---|---|---|
 | `doctor`'s `perimeters.schemas` | Per-installed-ID `{ok, slots, error}`; a load failure has `slots: null` and does not hide other rows. Legacy `schema` and perimeter-discovery fields retain their meanings | #623 | `test_doctor_reports_each_perimeters_schema_health`, `test_doctor_isolates_a_broken_perimeter_schema` |
 | `session init`'s `perimeter` | the session's resolved perimeter id, `software` when none was named; `--perimeter` refuses an unknown id as `unknown_perimeter` | #719 | `test_session_init_records_a_perimeter_and_refuses_an_unknown_one` |
+| the impact report's `stale_artifacts` (`impact --json`, `/impact`, MCP `get_impact`) | the generated subset of `artifacts`, which keeps its meaning; `null` for a bare `model.json` | #717 | `test_impact_splits_what_goes_stale_from_what_would_rest_on` |
+| the status payload's `reason` on each `readiness.blocking_slots` and `remaining_gaps` entry | `unconfirmed`, `thin` or `unknown`, nested one level down; readiness decides exactly as before | #722 | `test_the_status_screen_has_one_meaning_of_confirmed` |
+| `model apply`/`model diff`'s `changed_decisions`, `_challenges`, `_opportunities`, `_exclusions`, `_thresholds` | filled on a first apply with what the proposal introduced, as `changed_slots` already was, where they were always empty; the populated meaning moved, so it is named here | #723 | `test_a_first_apply_reports_the_reasoning_it_introduced` |
 | `sessions.total` | `null`, not `0`, when the session root itself could not be read | #34-family | `test_doctor_tells_an_empty_workspace_from_an_unreadable_one` |
 | `sessions.non_sessions[]` | what is under the session root and is not a session; `slug_shaped` asks the read-time reserved-name rule, so a `con` directory now reads `true` | #67, #408 | `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`, `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken` |
 | `sessions.unexaminable[]` | names under the session root whose examination raised; distinct from `non_sessions` and excluded from `total` | #80 | `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick` |
@@ -159,10 +160,8 @@ a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`orig
 | `artifact list`'s payload is `{slug, artifacts}`, not the bare type-keyed map — **breaking** | #107 | `test_every_public_json_payload_keeps_its_recorded_top_level_shape` |
 | `session migrate`'s `interrupted`, `errors`, `unreadable`; exits `4` when any is non-empty rather than always `0` | #262, #411 | `test_session_migrate_survives_one_undecodable_legacy_request_beside_a_healthy_session`, `test_session_migrate_survives_a_reserved_name_legacy_directory_beside_a_healthy_one` |
 
-Terminal (non-`--json`) rendering of `session show`, `session list` and `artifact list` escapes a
-control character read back out of `session.json` rather than echoing it — `--json` is unaffected,
-since `json.dumps` already escapes the full C0/C1 range. Pinned by
-`test_session_show_cannot_be_made_to_print_a_line_a_session_wrote` and
+Terminal `session show`, `session list` and `artifact list` escape a control character read out of `session.json`
+(`--json` already does): `test_session_show_cannot_be_made_to_print_a_line_a_session_wrote`,
 `test_artifact_list_cannot_be_made_to_print_a_row_a_session_wrote`.
 
 ### HTTP statuses in Requivo Web
@@ -274,6 +273,7 @@ reworded between releases without that being a breaking change.
 |---|---|---|
 | `run`, `discover`, `answer`, `status`, `impact`, `docs`, `brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release`, `web`, plus the `deterministic/` verbs, are each a stable name | varies | `test_the_deterministic_package_still_registers_every_verb`, `test_every_registered_verb_appears_in_exactly_one_help_group` |
 | `requivo run [request\|file\|-\|slug]` is additive and moves nothing else — it is a thin layer over `discover`'s loop and `answer`'s apply path, both still directly callable | #540, #541 | `test_no_session_raises_and_names_run` |
+| `model validate --session <slug>` / `--perimeter <id>` (mutually exclusive) check against that perimeter's slots; with neither the default stays `software`, and an unknown id is `unknown_perimeter` | #743 | `test_model_validate_checks_a_proposal_against_the_vocabulary_it_is_told` |
 | `requivo docs [slug] [type...] [--all]` is additive — a thin loop over the seven existing generator verbs, each still directly callable | #543, #544 | `test_docs_all_flag_generates_every_document_skipping_the_menu` |
 | `--help` groups verbs into three tiers ("Start here" / "For scripts and integrations" / "Plumbing"); presentational only, and this change specifically verified every verb's name, behaviour and `--help` text byte-for-byte unchanged (not a standing per-release guarantee — see above) | #546, #547 | `test_start_here_leads_the_rendered_help`, `test_every_verb_help_is_byte_identical_regardless_of_the_root_formatter` |
 | `epic --json` was **removed** in the same change that added `epic --export-json` — it wrote a file under a name every sibling verb's `--json` uses for a stdout payload, so there was no grace version | #83 | `test_epic_no_longer_accepts_the_old_json_spelling` |
@@ -324,13 +324,12 @@ above](#http-statuses-in-requivo-web)); removing or moving a route is breaking. 
 | `criteria` | `acceptance-criteria.md` | 0.1 |
 | `epic` | `epic.md` | 0.1 |
 | `release` | `release-notes.md` | 0.1 |
+| `gtm_plan` | `go-to-market-plan.md` | #609 |
 
-Renaming a filename here needs a `format_version` bump, exactly as renaming a populated key does. The
-type and filename deliberately differ for `brief`; both are stable, as two separate facts. `estimate`
-and `stories` joined this table in #519 (`decision: the-estimate-graduates`) as additive: an older
-Requivo reads a session carrying either row as a note, and format_version stays at 1. Pinned by
-`test_both_analyses_are_registered_everywhere_a_saveable_type_is` and
-`test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_one_snapshot`.
+Renaming a filename here needs a `format_version` bump, as renaming a populated key does. `brief`'s type and
+filename deliberately differ, two stable facts. A row added later (`estimate`, `stories` in #519, `decision:
+the-estimate-graduates`) is additive: an older Requivo reads it as a note, and format_version stays at 1. Pinned by
+`test_both_analyses_are_registered_everywhere_a_saveable_type_is`, `test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_one_snapshot`.
 
 ## The Python import surface — the declared seam (#423)
 

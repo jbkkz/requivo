@@ -5,6 +5,7 @@ The decision is never taken here: `validate_proposal` and `SessionService.update
 from __future__ import annotations
 
 from requivo.core.errors import SessionNotFoundError
+from requivo.core.perimeters import resolve_perimeter
 from requivo.core.validation import validate_proposal
 from requivo.deterministic._shared import JSON_HELP, _read_document, print_json
 from requivo.services.sessions import SessionService
@@ -32,7 +33,14 @@ def _cmd_model_validate(a, client) -> None:
     """Validate a proposal file, the gate Claude Code runs before applying."""
     data = _read_document(a.proposal)
     require = not a.allow_partial
-    out = validate_proposal(data, require_complete=require)
+    perimeter = resolve_perimeter(a.perimeter)   # an unknown id is `unknown_perimeter`, never software
+    if a.session:   # #743: the session's own vocabulary, the one `model apply` holds it to
+        svc = SessionService()
+        slug = svc.resolve_slug(a.session)
+        if not svc.exists(slug):
+            raise svc.no_session(slug)
+        perimeter = resolve_perimeter(svc.meta(slug).perimeter)
+    out = validate_proposal(data, require_complete=require, perimeter=perimeter)
     n_slots = len(out.model)
     if a.json:
         print_json({"status": "valid", "slots": n_slots})
@@ -96,7 +104,12 @@ def register_model(sub) -> None:
 
     mv = ms.add_parser("validate", help="validate a proposal file (no session write)")
     mv.add_argument("proposal", help="path to a proposed model JSON, or '-' to read it from stdin")
-    # A `--session` flag lived here and was read by nothing; `model diff <slug> <proposal>` already means it.
+    # `--session` once lived here read by nothing; since #743 it names the vocabulary, as `--perimeter` does.
+    vocab = mv.add_mutually_exclusive_group()
+    vocab.add_argument("--session", default=None, metavar="SLUG",
+                       help="check against this session's perimeter, the slots `model apply` would hold it to")
+    vocab.add_argument("--perimeter", default=None, metavar="ID",
+                       help="check against this installed perimeter's slots (default: software)")
     mv.add_argument("--allow-partial", action="store_true",
                     help="check a partial projection for well-formedness only — `apply` and `diff` "
                          "always require the full slot set, because applying replaces the model")

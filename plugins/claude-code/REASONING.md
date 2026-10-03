@@ -322,7 +322,9 @@ twice on the way to every revision, which is the largest single block of context
 does not make a bad proposal any safer. Pinned by
 `test_a_refused_apply_writes_nothing_and_answers_like_validate` (#511).
 
-`requivo model validate -` is still the right tool in two places, and only there: `--allow-partial`,
+`requivo model validate --session <slug> -` (the session's perimeter, #743; a CLI older than the flag
+refuses it, and checks only `software` without it) is still the right tool in two places, and only
+there: `--allow-partial`,
 which validates a projection rather than a whole model and has no apply to ride on, and a proposal you
 have already failed to fix once, where checking before committing to a revision number is worth the
 second emission.

@@ -33,9 +33,10 @@ Split it on whitespace and commas. Run `requivo session list --json` once — th
   yet and point at `/requivo:run` instead, and stop. Every token in `$ARGUMENTS` is then a document
   type (or `all`).
 
-With a slug in hand, run `requivo status <slug> --json`. If `revision` is `0`, the session has no
-model yet: say so and point at `/requivo:run <slug>` instead of showing a menu, and stop. Note its
-`perimeter` (absent reads as `software`): it decides which documents the session can produce.
+With a slug in hand, read its row: if `revision` is `0`, the session has no model yet, and `status`
+refuses it rather than reporting `0`. Say so and point at `/requivo:run <slug>` instead of showing a
+menu, and stop. Otherwise run `requivo status <slug> --json` and note its `perimeter` (absent reads
+as `software`): it decides which documents the session can produce.
 
 ## 3. The session's document types, in the order the user meets them
 A perimeter produces its own documents and no other's (#719), the same split the CLI's

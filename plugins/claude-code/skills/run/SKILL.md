@@ -1,7 +1,7 @@
 ---
 name: run
 description: Run a Requivo session end to end, in one conversation. No argument resumes the most recent session (or lists several to choose from); a request or a path starts a new one; a slug resumes that one. Reason with this Claude session (no API key): discover, present questions, fold the user's prose answers into new revisions, and stop on ready, on convergence, or when the user says stop. Use when the user wants to work a Requivo session without typing a slug or choosing a verb themselves.
-allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo session verify:*), Bash(requivo session init:*), Bash(requivo context:*), Bash(requivo schema:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo impact:*), Read, Glob, Grep
+allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo session verify:*), Bash(requivo session show:*), Bash(requivo session init:*), Bash(requivo context:*), Bash(requivo schema:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo impact:*), Read, Glob, Grep
 ---
 
 # /requivo:run
@@ -180,6 +180,14 @@ the `session list --json` rows, sorted by `updated_at` descending so the most re
 and ask the user to pick a number. **Never ask them to type a slug.** If step 2 found exactly one
 readable session, or `$ARGUMENTS` already matched one, that is the slug: no question needed.
 
+**If that row's `revision` is `0`, the session holds only its request** — created, never reasoned.
+`model show` and `status` both refuse it (`session_not_found`, pointing at `/requivo:run <slug>`,
+this skill), so do not run them: that is a loop. Read `requivo session show <slug> --json` for its
+`perimeter` (`null` or absent reads as `software`) and `context_cards`, take its path as below, and
+go to **5. Reason from scratch** with `N` = `0`; wherever step 5 reads a fact from `session init`
+or *session creation*, use these. If `model show` or `status` refuses a slug the same way anyway,
+treat it as revision `0` and do the same.
+
 With one slug in hand, run:
 ```
 requivo model show <slug>          # the current model
@@ -211,7 +219,7 @@ first would re-present a list the user already answered instead of folding their
    already; there is nothing to reason from scratch, and no repository to re-read: what the first run
    read is in its evidence.
 
-## 5. Reason from scratch (new sessions only)
+## 5. Reason from scratch (new sessions, and resumed ones at revision 0)
 
 ### Learn the vocabulary and the product
 
@@ -314,8 +322,10 @@ conversation against the current state instead of overwriting it.
 
 Do not validate first and then apply the same JSON. That emits the whole model twice — the largest
 block of context a turn spends — and `model apply` runs the identical validation before it writes
-(#511). `requivo model validate -` is for `--allow-partial` and for a proposal you have already
-failed to fix once.
+(#511). `requivo model validate --session <slug> -` is for `--allow-partial` and for a proposal you
+have already failed to fix once; `--session` holds it to the session's perimeter (#743). A CLI older
+than that flag refuses it as an unrecognized argument: drop the flag on a `software` session only,
+and on any other perimeter skip the dry run and let the apply's own refusal guide the fix.
 
 ### Present the perimeter recap, then ask
 

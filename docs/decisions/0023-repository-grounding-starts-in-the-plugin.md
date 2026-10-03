@@ -23,7 +23,8 @@ No prompt asset moved.
 questions** on a request whose answers were in the repository — a golden fixture of that shape, not
 an impression. The harness drives the engine rather than a Claude Code session, so that fixture (a
 request paired with a checkout, its questions captured with and without the grounding) is the first
-piece of work the trigger asks for. A CLI recap without the repository half is a separate change.
+piece of work the trigger asks for. The CLI recap without the repository half shipped in the same
+release (#709): a first `requivo run`/`discover` opens with the cards and the restated request.
 
 ## What breaking it cost
 
@@ -34,8 +35,7 @@ origin walkthrough: a first run with no grounding in the code already there.
 
 - **A CLI scanner now** — funds a subsystem on the assumption the trigger exists to test.
 - **A CLI recap renderer in this change** — deferred, not refused: its CLI-side half (the cards, the
-  restated request, the assumptions) needs no repository and would sit beside `render_understanding`
-  in `requivo run`/`discover`, but it is its own change, tracked separately.
+  restated request, the assumptions) needs no repository, and shipped as its own change (#709).
 - **Grade repository facts `explicit`** — the model reaches `ready` on facts nobody confirmed.
 - **Re-read the repository on every turn** — the first run's evidence already carries what was read,
   and a second read is a second view of the user's world beside the session's one snapshot.

@@ -148,11 +148,11 @@ comparing revision numbers directly is the anti-pattern the staleness model exis
 full envelope shape, per-version skeleton and a worked consumer flow live in
 [integrations.md](integrations.md#the-epic-export-envelope-requivo-epic).
 
-## `docs` — a menu over the seven generators (#544)
+## `docs` — a menu over the generators (#544)
 
 | Command | Does |
 |---|---|
-| `requivo docs [slug] [type...] [--all]` | No type: print the seven-row menu (label, one-line purpose, state) and prompt a pick — numbers, names, or `all`. A type (or several): generate them, no prompt — the scriptable form, `requivo docs my-slug prd criteria`. `--all`: every document, skipping the menu |
+| `requivo docs [slug] [type...] [--all]` | No type: print a menu of the documents the session's perimeter produces (label, one-line purpose, state) and prompt a pick — numbers, names, or `all`. A type (or several): generate them, no prompt — the scriptable form, `requivo docs my-slug prd criteria`. `--all`: every document, skipping the menu |
 
 Each row's state — *not generated* / *up to date (rev N, filename)* / *needs updating (from rev N,
 filename)* — comes from `ArtifactStatus.stale`, never from comparing revision numbers (invariant 1).
@@ -211,7 +211,7 @@ these apply.
 | Command | Flags | Does |
 |---|---|---|
 | `requivo model show <session>` | `--json` | Print a session's current model |
-| `requivo model validate <proposal\|->` | `--allow-partial`, `--json` | Validate a proposal file, no session write — `--allow-partial` checks a partial projection instead of requiring the complete slot set |
+| `requivo model validate <proposal\|->` | `--session <slug>` or `--perimeter <id>`, `--allow-partial`, `--json` | Validate a proposal file, no session write — against the session's perimeter, the named one, or `software` by default (#743); `--allow-partial` checks a partial projection instead of requiring the complete slot set |
 | `requivo model apply <session> <proposal\|->` | `--expected-revision N`, `--json` | Validate a proposal and apply it as a new revision — `--expected-revision` is the optimistic-locking check, see [What `model apply` takes](#what-model-apply-takes) |
 | `requivo model diff <session> <proposal\|->` | `--json` | Show what a proposal would change, no write |
 
@@ -378,6 +378,7 @@ model. Assert on the code, never on the message.
 | `inconsistent_archive` | 400 | holds a session that fails the integrity check. `details`: `{slug, problems}` |
 | `session_exists` | 409 | is fine; that slug is taken and `--force` was not passed. `details`: `{slug}` |
 | `import_destination_occupied` | 409 | is fine; something that is **not** a session already sits at the slug's directory. `details`: `{slug, path}` |
+| `import_target_changed` | 409 | is fine; under `--force`, the session it was to replace was deleted or recreated while the archive was read, so nothing was replaced. `details`: `{slug}` |
 
 `invalid_archive` covers eight conditions under one code because they share one remedy — *give me a
 different archive*. `details["problem"]` is present on all eight and says which: `empty`,

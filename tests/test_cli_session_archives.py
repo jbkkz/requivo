@@ -431,6 +431,26 @@ def test_that_window_refusal_names_the_conflict_rather_than_a_move_failure(tmp_p
     assert "--force" in envelope["message"]
 
 
+def test_a_forced_import_refuses_a_session_recreated_during_the_extraction_window(tmp_path, monkeypatch):
+    """`--force` observed one session outside the lock; a delete and a recreate in the unzip window left the
+    swap backing up and deleting the new one. Under the lock it now re-checks identity and refuses."""
+    _seeded("race", "The one --force was told to replace.", monkeypatch)
+    archive, real = _zip(tmp_path / "race.zip", _good_entries("race")), det._validate_extracted
+
+    def _recreate(d, slug):
+        real(d, slug)
+        run_cli(["session", "delete", slug, "--json"])
+        run_cli(["session", "init", "Created in the window.", "--slug", slug, "--json"])
+
+    monkeypatch.setattr(det, "_validate_extracted", _recreate)
+    err = _import_error(archive, "--force")
+    assert err["code"] == "import_target_changed" and err["details"] == {"slug": "race"}
+    assert "Created in the window." in store.session_request("race") and store.read_meta("race").session_id != "abc"
+    assert not [p for p in store.session_root().iterdir() if p.name.startswith(".race.replaced-")]
+    monkeypatch.setattr(det, "_validate_extracted", real)
+    assert _import(archive, "--force")["replaced"] is True, "with nothing moving, the same forced import lands"
+
+
 # ── a stray directory at the slug answers the same on every platform (#114) ─────
 
 

@@ -21,6 +21,7 @@ from _fakes import (
     full_model,
     printed,
     run_cli,
+    run_cli_exit,
     run_cli_fails,
     seed_session,
     slot,
@@ -432,6 +433,16 @@ def test_answer_diffs_its_defaults_against_the_revision_it_refined():
              "questions": [{"q": "Who escalates?", "slot": "permissions", "why": "w"}]}
     text = run_cli(["answer", "defaults", "HR approves."], client=FakeClient(json.dumps(reply)))
     assert "HR approves" in text and "Line managers" not in text and "+ 1 earlier default(s)" in text, text
+
+
+def test_a_saved_answer_survives_an_unreadable_earlier_revision():
+    """The diff basis was read after the paid turn was saved, so an unreadable one turned a success into exit 1."""
+    seed_session("defaults", actors=_ACTORS)
+    (store.canonical_dir("defaults") / "revisions" / "0001-model.json").write_text("{torn", encoding="utf-8")
+    reply = {**full_model(actors=_ACTORS), "questions": [{"q": "Who escalates?", "slot": "permissions", "why": "w"}]}
+    text, code = run_cli_exit(["answer", "defaults", "HR approves."], client=FakeClient(json.dumps(reply)))
+    assert code == 0 and "Line managers" in text and "Who escalates?" in text, text
+    assert store.read_meta("defaults").current_revision == 2
 
 
 @pytest.mark.parametrize("slug", ["leave-approval", "the-leave-approval-system"])

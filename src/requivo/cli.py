@@ -400,7 +400,6 @@ def _cmd_discover(a, client) -> None:
 
 
 def _cmd_answer(a, client) -> None:
-    # DiscoveryService folds the answers in through the validated apply path.
     disco = DiscoveryService(client=client)
     svc = disco.sessions
     # `accept_path=False`: this verb writes a revision back, never opens a file (#402).
@@ -410,16 +409,17 @@ def _cmd_answer(a, client) -> None:
     result = disco.answer(slug, a.answers, surface="cli-answer")
     perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
-    render_turn(out, perimeter, svc.load_revision(slug, result.revision - 1))  # the defaults it moved (#731)
+    try:  # the turn is paid and saved: an unreadable basis costs the diff, never the exit code
+        previous = svc.load_revision(slug, result.revision - 1)
+    except RequivoError:  # test_a_saved_answer_survives_an_unreadable_earlier_revision
+        previous = None
+    render_turn(out, perimeter, previous)  # the defaults it moved (#731)
     if result.stale_artifacts:
-        pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
-        render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
+        render_stale([(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts], [slot_label(sid, perimeter) for sid in result.changed_slots])
     # Every invalidated collection is counted, or an exclusion-only change reports nothing here (invariant 1).
     # test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path.
-    parts = [(result.invalidated_decisions, "decision(s)"),
-             (result.invalidated_challenges, "premise(s)"),
-             (result.invalidated_exclusions, "exclusion(s)"),
-             (result.invalidated_thresholds, "threshold(s)")]
+    parts = [(result.invalidated_decisions, "decision(s)"), (result.invalidated_challenges, "premise(s)"),
+             (result.invalidated_exclusions, "exclusion(s)"), (result.invalidated_thresholds, "threshold(s)")]
     n_reasoning = sum(len(items) for items, _ in parts)
     reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
     if n_reasoning and reasoning_type:

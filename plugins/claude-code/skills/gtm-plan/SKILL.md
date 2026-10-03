@@ -1,7 +1,7 @@
 ---
 name: gtm-plan
 description: Produce the go-to-market plan from a Requivo go-to-market session's model — the few actions the stated hours and budget can carry together, the premises worth contesting, what was cut and why, and the thresholds that trigger a decision — using this Claude session for the judgment, and save it as a tracked document tied to the revision it was written from. Use when a go-to-market session's questions have been worked through and the user needs the plan to review before committing capacity to it.
-allowed-tools: Bash(requivo doctor:*), Bash(requivo status:*), Bash(requivo model show:*), Bash(requivo schema:*), Bash(requivo context:*), Bash(requivo model apply:*), Bash(requivo artifact save:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo status:*), Bash(requivo model show:*), Bash(requivo schema:*), Bash(requivo context:*), Bash(requivo model apply:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:gtm-plan
@@ -23,6 +23,9 @@ is not installed — follow REASONING.md's missing-CLI flow. Nothing has been ap
 point, so there is no half-written plan to find.
 
 ## 1. Check the session, honestly
+Find the slug's row in `requivo session list --json`. No row: there is no such session; say so and
+stop. A row whose `revision` is `0`: there is no model yet, and `status` refuses such a session
+rather than reporting `0`; point at `/requivo:run <slug>` and stop. Otherwise:
 ```
 requivo status <slug> --json
 ```
@@ -31,7 +34,6 @@ Note the `revision` — call it `N` — and the `perimeter`.
 - **`perimeter` is not `go-to-market`** (absent reads as `software`): this plan is not that session's
   document, and the save would be refused as `artifact_type_not_owned`. Say so, point a software
   session at `/requivo:brief <slug>`, and stop.
-- **`revision` is `0`**: there is no model yet. Point at `/requivo:run <slug>` and stop.
 - **`readiness.blocking_slots` is not empty**: say so up front. A plan written on a thin model is a
   draft, and it must flag what it rests on — never present an inferred topic as settled.
 
@@ -124,9 +126,7 @@ established (REASONING.md, *the reasoning layer*). On a refusal, read `code`/`de
 proposal and apply again; a refused apply wrote nothing. A session older than one of the
 perimeter's slots is refused as `missing_required_slot` for a slot its model never had: add that slot
 as unknown (`confidence` `empty`, `completeness` 0, its `impact_default`, no value), never a value
-you guessed, and the plan names it as unresolved. Do not dry-run it with `requivo model
-validate`: that verb takes no session, so it checks the proposal against the software vocabulary and
-refuses a go-to-market model for the wrong reason.
+you guessed, and the plan names it as unresolved.
 
 Note the revision the apply returns — call it `M`.
 

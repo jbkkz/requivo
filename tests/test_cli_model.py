@@ -60,9 +60,28 @@ def test_model_validate_ok_and_invalid_exit(tmp_path):
     assert run_cli_json(["model", "validate", _write(tmp_path / "good.json", full_model()), "--json"])["status"] == "valid"
     bad = _write(tmp_path / "bad.json", {"model": {"nope": slot()}, "summary": {}})
     assert run_cli_exit(["model", "validate", bad, "--json"])[1] == 1
-    with pytest.raises(SystemExit):   # `--session` was declared and read by nothing
-        _build_parser().parse_args(["model", "validate", "p.json", "--session", "s"])
+    with pytest.raises(SystemExit):   # one vocabulary per check
+        _build_parser().parse_args(["model", "validate", "p.json", "--session", "s", "--perimeter", "software"])
     assert _build_parser().parse_args(["model", "diff", "s", "p.json"]).func.__name__ == "_cmd_model_diff"
+
+
+def test_model_validate_checks_a_proposal_against_the_vocabulary_it_is_told(tmp_path):
+    """#743: `model validate` held every proposal to the software slots, refusing a correct go-to-market model."""
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+    gtm = _write(tmp_path / "gtm.json", {"model": dict.fromkeys(schema_slot_ids(GO_TO_MARKET)[1], slot(90, "explicit")),
+                                         "questions": [], "summary": {"objective": "First paying users"}})
+    SessionService().create_session("Launch a paid tier", slug="gtm", perimeter=GO_TO_MARKET)
+    _init("soft")
+
+    def code(*flags):
+        out, rc = run_cli_exit(["model", "validate", gtm, *flags, "--json"])
+        return json.loads(out).get("code", rc)
+
+    assert code() == "unknown_slot", "the default stays software"
+    assert code("--session", "gtm") == code("--perimeter", GO_TO_MARKET) == 0
+    assert code("--session", "soft") == "unknown_slot" and code("--session", "nowhere") == "session_not_found"
+    assert code("--perimeter", "nowhere") == "unknown_perimeter"
 
 
 def test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one(tmp_path):

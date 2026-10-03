@@ -52,6 +52,7 @@ STATUS_BY_CODE = {
     "revision_conflict": 409,
     "session_exists": 409,
     "import_destination_occupied": 409,
+    "import_target_changed": 409,  # a forced import's target was replaced under it; nothing was removed
     "context_unreadable": 500,
     "no_context_cards": 500,
     "provider_output_invalid": 502,

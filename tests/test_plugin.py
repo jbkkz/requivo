@@ -286,6 +286,26 @@ def test_a_document_that_proposes_tags_it_and_writes_it_back_before_it_saves():
         assert not re.search(r"not new invention|never a stated requirement|not added from outside", text), f"{name}: forbids proposing"
 
 
+def test_a_session_at_revision_zero_is_routed_by_its_list_row_because_status_refuses_it(workspace):
+    """#720 points the no-model refusal at `/requivo:run`; the skills read revision 0 off `status`, which refuses
+    such a session with that same pointer, so `run` looped. Each now routes on the `session list` row first."""
+    from _fakes import run_cli, run_cli_exit, run_cli_json
+    run_cli(["session", "init", "A leave approval system.", "--slug", "bare", "--json"])
+    for argv in (["model", "show", "bare", "--json"], ["status", "bare", "--json"]):
+        out, code = run_cli_exit(argv)
+        assert code == 1 and json.loads(out)["code"] == "session_not_found" and "/requivo:run bare" in json.loads(out)["message"]
+    assert [r["revision"] for r in run_cli_json(["session", "list", "--json"])["sessions"]] == [0]
+    assert "perimeter" in run_cli_json(["session", "show", "bare", "--json"])
+    resume = _section(SKILLS["run"], r"^##\s*4\.\s*Resume.*$")
+    assert re.search(r"`revision` is `0`[\s\S]{0,700}\*\*5\. Reason from scratch\*\* with `N` = `0`", resume)
+    assert resume.index("`revision` is `0`") < resume.index("requivo model show <slug>") and "session show <slug> --json" in resume
+    for name in ("run", "docs", "gtm-plan"):
+        text = SKILLS[name]
+        assert "Bash(requivo session list:*)" in _frontmatter(text)["allowed-tools"], name
+        assert text.index("`revision` is `0`") < text.index("requivo status <slug> --json"), f"{name}: revision 0 is read off status"
+    assert "Bash(requivo session show:*)" in _frontmatter(SKILLS["run"])["allowed-tools"]
+
+
 def test_docs_offers_each_perimeter_its_own_documents_through_skills_it_can_run():
     """#719: the docs skill's perimeter table is the registry's split; every type it offers has a skill, the CLI's
     label, and grants docs already holds, since it runs that skill's steps under its own."""

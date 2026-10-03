@@ -228,6 +228,13 @@ class ImportDestinationOccupiedError(RequivoError):
     code = "import_destination_occupied"
 
 
+class ImportTargetChangedError(RequivoError):
+    """`session import --force` found, under the lock, that the session it observed before extracting
+    was deleted or replaced. `details`: `{slug}`. 409, like `session_exists`: nothing was replaced."""
+
+    code = "import_target_changed"
+
+
 class SessionLockedError(RequivoError):
     """The write never got to start, so retrying it unchanged is correct -- unlike `RevisionConflictError`,
     where something did race to a conclusion. Raised by `session_lock` and, for a racing discovery, `_discovery_guard` (#209)."""

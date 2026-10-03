@@ -17,8 +17,10 @@ from typing import BinaryIO, Optional
 from requivo.core.errors import (
     ImportDestinationOccupiedError,
     ImportMoveFailedError,
+    ImportTargetChangedError,
     InconsistentArchiveError,
     InvalidArchiveError,
+    RequivoError,
     SessionExistsError,
     SessionNotFoundError,
     SessionUnreadableError,
@@ -120,13 +122,35 @@ def _inspect_archive(z: zipfile.ZipFile) -> tuple[str, list[zipfile.ZipInfo]]:
     return validate_slug(slug), all_infos
 
 
-def _swap_in(extracted: Path, target: Path, slug: str, repo: SessionRepository) -> None:
+def _identity(target: Path, slug: str, repo: SessionRepository) -> Optional[tuple]:
+    """Which session sits at `target`: its directory's inode and its `session_id`, so neither inode
+    reuse nor an unreadable `session.json` alone can pass one session off as another. None: gone."""
+    try:
+        st = target.stat()
+    except OSError:
+        return None
+    try:
+        sid: Optional[str] = repo.read_meta(slug).session_id
+    except (RequivoError, OSError):
+        sid = None
+    return st.st_dev, st.st_ino, sid
+
+
+def _swap_in(extracted: Path, target: Path, slug: str, repo: SessionRepository,
+             observed: Optional[tuple]) -> None:
     """Replace an existing session directory with a freshly extracted one, reversibly: the old one
     steps aside first and dies only once the new one is in place. Only called under `--force` for a
     session that exists (#111), and under `repo.lock`, which lives outside the session (#113,
     invariant 9), so a concurrent `save_revision` cannot recreate the slug between the two renames.
-    `test_a_forced_import_serialises_against_a_concurrent_writer`."""
+    `test_a_forced_import_serialises_against_a_concurrent_writer`. The session it replaces must be
+    the one `observed` before the unzip, or a recreated one dies unseen:
+    `test_a_forced_import_refuses_a_session_recreated_during_the_extraction_window`."""
     with repo.lock(slug):
+        if _identity(target, slug, repo) != observed:
+            raise ImportTargetChangedError(
+                f"session '{slug}' was deleted or replaced while this archive was being read — nothing "
+                "was imported and nothing was removed. Check which session is there, then import again.",
+                details={"slug": slug})
         backup = target.with_name(f".{target.name}.replaced-{os.getpid()}")
         target.replace(backup)
         try:
@@ -204,6 +228,9 @@ def import_archive(repo: SessionRepository, store: Store, data: bytes | BinaryIO
             raise SessionExistsError(
                 f"session '{slug}' already exists in this workspace — pass --force to replace it",
                 details={"slug": slug})
+        # Direct: the import moves a directory into place, so the destination *is* a path.
+        target = store.canonical_dir(slug)
+        observed = _identity(target, slug, repo) if occupied else None  # what `--force` was told to replace
         # Scratch beside the store, not inside it: same filesystem, never visible to `session list`.
         scratch = Path(tempfile.mkdtemp(prefix=".import-", dir=root.parent))
         try:
@@ -218,8 +245,6 @@ def import_archive(repo: SessionRepository, store: Store, data: bytes | BinaryIO
                                              details={"archive": name}) from e
             extracted = scratch / slug
             _validate_extracted(extracted, slug)
-            # Direct: the import moves a directory into place, so the destination *is* a path.
-            target = store.canonical_dir(slug)
             if not occupied:
                 # The slug was free at the check, so the rename is the claim (invariant 11): `os.replace`
                 # refuses a non-empty destination on both platforms. A destination holding no session is
@@ -241,7 +266,7 @@ def import_archive(repo: SessionRepository, store: Store, data: bytes | BinaryIO
             else:
                 # `--force` against a session that is there: the swap holds the lock (#113). A concurrent
                 # writer's in-flight work is lost cleanly, after it completes.
-                _swap_in(extracted, target, slug, repo)
+                _swap_in(extracted, target, slug, repo, observed)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
     return repo.read_meta(slug), occupied
