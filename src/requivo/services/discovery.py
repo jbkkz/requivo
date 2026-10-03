@@ -170,7 +170,8 @@ def absorb_reasoning(out: EngineOutput, brief) -> None:
 
 
 def absorb_gtm_reasoning(out: EngineOutput, brief: GoToMarketPlan) -> None:
-    """`absorb_reasoning` for the go-to-market plan (#609): only `exclusions` and `thresholds`."""
+    """`absorb_reasoning` for the go-to-market plan (#609): `challenges` (#728), `exclusions`, `thresholds`."""
+    out.challenges = brief.challenges
     out.exclusions = brief.exclusions
     out.thresholds = brief.thresholds
 

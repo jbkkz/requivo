@@ -31,6 +31,7 @@ from requivo.core.contracts import (
     EstimateItem,
     Exclusion,
     Feature,
+    GoToMarketPlan,
     Opportunity,
     Requirement,
     Scenario,
@@ -41,6 +42,7 @@ from requivo.core.contracts import (
     _schema_order,
     schema_slot_ids,
 )
+from requivo.core.perimeters import GO_TO_MARKET
 from requivo.render.markdown import brief_markdown
 from requivo.render.terminal import render_readiness, render_turn
 from requivo.web.viewmodels.status import readiness_view
@@ -83,6 +85,14 @@ def test_output_allows_a_partial_but_known_model_and_six_questions():
     """Completeness is enforced at the discovery boundary, not the contract (invariant 4); six is the cap."""
     ok = EngineOutput.model_validate({**_ONE_SLOT, "questions": [_q("workflow", i) for i in range(6)]})
     assert set(ok.model) == {"workflow"} and len(ok.questions) == 6
+
+
+def test_a_go_to_market_plans_challenge_is_held_to_go_to_markets_vocabulary():
+    """#728: `contests` is a DAG edge, refused off the perimeter's vocabulary like the plan's `rests_on`."""
+    ctx = {"perimeter": GO_TO_MARKET}
+    assert GoToMarketPlan.model_validate({"challenges": [{**_CHALLENGE, "contests": ["offer"]}]}, context=ctx).challenges
+    with pytest.raises(ValidationError, match="business_rules"):
+        GoToMarketPlan.model_validate({"challenges": [{**_CHALLENGE, "contests": ["business_rules"]}]}, context=ctx)
 
 
 def test_contracts_reject_a_field_the_schema_does_not_define():

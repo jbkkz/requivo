@@ -537,12 +537,14 @@ class EnvelopeElement(StrictModel):
 
 class GoToMarketPlan(StrictModel):
     """The go-to-market perimeter's one artifact (#609): `plan`, `rationale`, `risks` and
-    `open_decisions` are judged by the provider; `exclusions`, `thresholds` and `envelope` are typed
-    items projected off the model, as the software brief's are. Its slot vocabulary is go-to-market's."""
+    `open_decisions` are judged by the provider; `challenges` (#728), `exclusions` and `thresholds` are typed
+    items absorbed into the model, as the software brief's are, beside a typed `envelope`. Its slot
+    vocabulary is go-to-market's."""
 
     plan: list[str] = Field(default_factory=list)        # the chosen set -- not a ranking (#600)
     rationale: str = ""                                    # why this set, given the envelope below
     risks: list[str] = Field(default_factory=list)
+    challenges: list[Challenge] = Field(default_factory=list[Challenge])     # #728, the brief's shape
     exclusions: list[Exclusion] = Field(default_factory=list[Exclusion])      # #599
     thresholds: list[Threshold] = Field(default_factory=list[Threshold])      # #604
     envelope: list[EnvelopeElement] = Field(default_factory=list[EnvelopeElement])  # #603
@@ -555,6 +557,7 @@ class GoToMarketPlan(StrictModel):
         allowed, _ = schema_slot_ids(_context_perimeter(info))
         bad = sorted(
             {e.source_slot for e in self.envelope if e.source_slot and e.source_slot not in allowed}
+            | {sid for c in self.challenges for sid in c.contests if sid not in allowed}
             | {sid for e in self.exclusions for sid in e.rests_on if sid not in allowed}
             | {sid for t in self.thresholds for sid in t.rests_on if sid not in allowed}
         )

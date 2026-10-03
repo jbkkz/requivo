@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError, create_model
 
+from requivo.core.context import build_system_prompt
 from requivo.core.contracts import StrictModel, schema_slot_ids
 from requivo.core.perimeters import GO_TO_MARKET, SOFTWARE
 from requivo.paths import PERIMETERS, PROMPTS
@@ -223,3 +224,11 @@ def test_the_confidence_grading_in_the_schema_and_the_prompt_agree():
     for value in ("explicit", "inferred", "empty", "testable", "belief about the world", "test_plan"):
         assert value in schema_confidence, f"{value!r} missing from model_schema.json's confidence grading"
         assert value in engine_md, f"{value!r} missing from engine.md's restatement"
+
+
+def test_a_solo_builders_confirmed_as_is_grades_explicit_on_both_reasoning_surfaces():
+    """#716: the discovery prompt each perimeter sends, and the plugin's REASONING.md (#737), carry one rule."""
+    reasoning = (Path(__file__).resolve().parents[1] / "plugins" / "claude-code" / "REASONING.md").read_text(encoding="utf-8")
+    surfaces = [build_system_prompt("engine.md", perimeter=p).text for p in (SOFTWARE, GO_TO_MARKET)] + [reasoning]
+    for text in (" ".join(s.split()) for s in surfaces):
+        assert "vouching for what they built" in text and "not confirmed stays `inferred`" in text

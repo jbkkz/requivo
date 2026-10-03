@@ -10,8 +10,9 @@ from _fakes import full_model, slot
 from pydantic import BaseModel, ValidationError
 
 from requivo.core import persistence as store
-from requivo.core.contracts import EngineOutput, ModelProposal, PersistedEngineOutput
+from requivo.core.contracts import EngineOutput, ModelProposal, PersistedEngineOutput, schema_slots
 from requivo.core.errors import RequivoError
+from requivo.core.perimeters import GO_TO_MARKET
 from requivo.services.sessions import SessionService
 
 pytestmark = pytest.mark.usefixtures("workspace")
@@ -63,6 +64,21 @@ def test_a_session_written_by_an_older_requivo_still_loads():
     assert not hasattr(meta, "prompt_versions")
     # Fields added since simply take their defaults.
     assert meta.revisions[0].prompt_version is None
+
+
+def test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_unasked_objection():
+    """#729: a model without the two slots it predates loads; each reads at its baseline, so `objections`
+    (high) blocks and `alternatives` (medium) does not. The widened probe asks about the audience's fit."""
+    meta = {s["id"]: s for s in schema_slots(GO_TO_MARKET)}
+    assert [(meta[s]["pillar"], meta[s]["impact_default"]) for s in ("objections", "alternatives")] == [("what", "high"), ("what", "medium")]
+    assert "match the ICP" in meta["existing_distribution"]["probe"]
+    legacy = {s: slot(90, "explicit", "high") for s in meta if s not in ("objections", "alternatives")}
+    svc = SessionService()
+    svc.create_session("grow the funnel", slug="gtm-729", perimeter=GO_TO_MARKET)
+    svc.update_model("gtm-729", {"model": legacy, "questions": [], "summary": {"objective": "o"}}, require_complete=False)
+    status = svc.status("gtm-729")
+    assert [g["slot"] for g in status["readiness"]["blocking_slots"]] == ["objections"]
+    assert {e["slot"] for group in status["understanding"].values() for e in group} == set(legacy)
 
 
 # ── the malformed-session family (#82) ───────────────────────────────────────

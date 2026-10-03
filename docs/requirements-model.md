@@ -79,7 +79,8 @@ Two independent signals, deliberately not collapsed:
 always qualifies; with no client, only the builder's own *intent* (what they want, will build, will
 spend). Their unconfirmed *belief about the world* — will users want or pay for this — is `inferred`
 or `testable`, however plainly stated, just as a fact read out of a repository is `inferred`. Without
-this, readiness would measure how much a solo builder typed.
+this, readiness would measure how much a solo builder typed. One thing a solo builder can vouch for is
+their own system: an as-is read from it, restated to them and confirmed, is `explicit` (#716).
 
 **`testable` is a gap no amount of asking closes** — a go-to-market bet, whether anyone wants the
 feature — where `unknown` is one an answer would close. A `testable` slot must name what would settle
@@ -93,7 +94,8 @@ The assessment layer, persisted into the model so every generator inherits it:
   accepted.
 - **Challenge** — a contested premise: the assumption the request takes for granted, a concrete
   alternative, the consequence, and a recommendation. This is the differentiator — it pushes back on
-  the request rather than organising it.
+  the request rather than organising it. The decision brief proposes them, and so does the
+  go-to-market plan (#728).
 - **Opportunity** — a leverage point, ranked, naming the modules it reaches.
 
 Exclusions (what is deliberately out of scope, #599) and decision thresholds (#604) are reasoning items

@@ -7,6 +7,7 @@ from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    Challenge,
     Confidence,
     EngineOutput,
     EnvelopeElement,
@@ -88,6 +89,18 @@ def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[s
     return lines
 
 
+def _challenges(challenges: list[Challenge]) -> list[str]:
+    """Premises worth contesting, one sub-section each, `_line()`-flattened; the brief's and the plan's (#728)."""
+    lines: list[str] = []
+    for c in challenges:
+        lines += [f"### {_line(c.headline)}",
+                  f"- **Premise:** {_line(c.premise)}",
+                  f"- **Alternative:** {_line(c.alternative)}",
+                  f"- **Consequence:** {_line(c.consequence)}",
+                  f"- **Recommendation:** {_line(c.recommendation)}", ""]
+    return lines
+
+
 def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     """Render the decision brief: what is settled and what is assumed first, then the judgment.
     Half of it is deterministic: the confirmed, assumed, excluded, threshold and blocking sections are
@@ -146,14 +159,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     section("Decision thresholds", _thresholds(out))
 
-    challenges: list[str] = []
-    for c in brief.challenges:
-        challenges += [f"### {_line(c.headline)}",
-                       f"- **Premise:** {_line(c.premise)}",
-                       f"- **Alternative:** {_line(c.alternative)}",
-                       f"- **Consequence:** {_line(c.consequence)}",
-                       f"- **Recommendation:** {_line(c.recommendation)}", ""]
-    section("Assumptions worth contesting", challenges)
+    section("Assumptions worth contesting", _challenges(brief.challenges))
 
     section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
@@ -181,7 +187,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
 def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     """Render the go-to-market perimeter's one artifact (#609): `brief_markdown`'s split, over its own
-    twelve slots, every projection called with `GO_TO_MARKET` explicitly."""
+    slots, every projection called with `GO_TO_MARKET` explicitly."""
     blockers = [slot_label(sid, GO_TO_MARKET) for sid in readiness_blockers(out, GO_TO_MARKET)]
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Go-to-Market Plan{draft}", "",
@@ -217,6 +223,7 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
 
     section("Out of scope", _excluded(out, GO_TO_MARKET))
     section("Decision thresholds", _thresholds(out, GO_TO_MARKET))
+    section("Assumptions worth contesting", _challenges(brief.challenges))
     section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
     open_items = [f"- {_line(d)}" for d in brief.open_decisions]

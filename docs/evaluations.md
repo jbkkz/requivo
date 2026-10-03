@@ -33,7 +33,7 @@ A request block may carry a `perimeter:` line (default `software`); `golden_run.
 discovery call and records it in the `.runs.json` envelope, where a missing key reads as `software`
 (#621). `golden_diff.py` refuses to compare captures from different perimeters — slot ids mean
 different things in each schema — naming both and moving no verdict. `expand-into-new-segment` is
-the one go-to-market request, with no committed baseline yet.
+the one go-to-market request.
 
 ## What it reports, and why
 

@@ -270,6 +270,8 @@ def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
         "exclusions": [{"option": "Paid search", "reason": "No budget for it this quarter.", "rests_on": ["budget", "capacity"]}],
         "thresholds": [{"condition": "CAC exceeds the stated ceiling", "measure": "CAC", "action": "stop the paid channel",
                         "rests_on": ["unit_economics"]}],
+        "challenges": [{"headline": "Paid before first use", "premise": "p", "alternative": "a", "consequence": "c",
+                        "recommendation": "r", "contests": ["offer"]}],
         "envelope": [{"kind": "Capacity", "value": "4h/week", "origin": "slot", "source_slot": "capacity"}]})
     disco = DiscoveryService(provider=AnthropicProvider(client=FakeClient(reply)), sessions=svc)
 
@@ -278,15 +280,19 @@ def test_the_go_to_market_artifact_generates_saves_and_goes_stale_end_to_end():
     applied = svc.load_model(meta.slug)
     assert [e.option for e in applied.exclusions] == ["Paid search"]
     assert [t.condition for t in applied.thresholds] == ["CAC exceeds the stated ceiling"]
+    assert [c.headline for c in applied.challenges] == ["Paid before first use"]  # #728: absorbed, like the brief's
+    saved = svc.repo.store().canonical_dir(meta.slug) / "artifacts" / "go-to-market-plan.md"
+    assert "## Assumptions worth contesting\n\n### Paid before first use" in saved.read_text(encoding="utf-8")
     rec = svc.meta(meta.slug).revisions[-1]
     assert rec.prompt_version == prompt_version("gtm_plan", perimeter=GO_TO_MARKET)
     assert rec.prompt_version != prompt_version("gtm_plan")  # software default -- must differ
 
-    # The full staleness path: change the slot the exclusion rests on.
-    changed = applied.model["capacity"].model_copy(update={"value": "only 2h/week now"})
-    updated = applied.model_copy(update={"model": {**applied.model, "capacity": changed}})
-    svc.update_model(meta.slug, updated.model_dump_json(), expected_revision=svc.meta(meta.slug).current_revision)
+    # The full staleness path: change the slots the exclusion rests on and the challenge contests.
+    moved = {sid: applied.model[sid].model_copy(update={"value": "moved"}) for sid in ("capacity", "offer")}
+    updated = applied.model_copy(update={"model": {**applied.model, **moved}})
+    res = svc.update_model(meta.slug, updated.model_dump_json(), expected_revision=svc.meta(meta.slug).current_revision)
     assert svc.meta(meta.slug).artifact_status["gtm_plan"].stale is True
+    assert res.invalidated_challenges == ["Paid before first use"] and res.invalidated_exclusions == ["Paid search"]
 
 
 def _gtm_session_at_revision_one(slug="gtm-659"):

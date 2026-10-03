@@ -18,7 +18,7 @@ The same four pillars as the software perimeter, re-read for this job:
 | Pillar | Question | Slots |
 |---|---|---|
 | **Why** | What are we trying to achieve, and by when? | Objective · Success metric · Horizon |
-| **What** | Who is this for, and what do they get? | ICP · Existing distribution · Offer |
+| **What** | Who is this for, what do they get, and what stands in the way? | ICP · Existing distribution · Offer · Objections · Alternatives |
 | **How** | How does it reach them, and with what? | Channels · Unit economics · Capacity · Budget |
 | **Validate** | How do we know, and when do we act on it? | Instrumentation · Decision thresholds |
 
@@ -32,7 +32,7 @@ question, is what would settle.
 
 ## Capacity is the binding constraint
 
-Of the twelve slots, `capacity` carries the highest default impact for a reason worth stating
+Of all the slots, `capacity` carries the highest default impact for a reason worth stating
 plainly: the benchmark this perimeter is built from showed capacity being *asserted* rather than
 received -- a plan sized to an ambition instead of to the hours actually available. A go-to-market
 plan that does not fit its capacity is not a plan, whatever the budget or the channel list says, so
@@ -44,14 +44,25 @@ request signals it.
 `existing_distribution` is asked before `channels` is trusted, not after: what audience, relationship
 or surface already exists is usually the single biggest determinant of which channels are even
 viable. A request that proposes a channel without saying what distribution already exists is
-answering a question it has not yet been asked.
+answering a question it has not yet been asked. Its size is half the answer; the other half is fit:
+a list gathered with one promise can be the wrong first cohort for a different offer.
+
+## The objection and the status quo
+
+`objections` and `alternatives` joined after a second launch request (#729), where the strongest
+findings sat in exactly these gaps and the schema had nowhere to hold them. `objections` is what
+would stop the ICP buying or switching, and what answers it; it matters most when the offer moves
+the buyer's data or workflow somewhere new. `alternatives` is what the ICP uses today and what it
+costs them: positioning, the price anchor and the pitch are all defined against it, so it matters
+most once the offer is priced.
 
 ## What the engine produces
 
 While discovery is open, the same per-pillar status and priority questions render as they do for the
 software perimeter. This perimeter ships exactly one artifact, per #607's cost rule: `gtm_plan`
 (`requivo gtm_plan <slug>`) — its equivalent of the decision brief, generated and written to
-`go-to-market-plan.md`. It names a chosen set of actions rather than a ranking, states what it
-deliberately excludes and the resource envelope it assumed, and carries its decision thresholds as
-typed items — see `core/contracts.py`'s `GoToMarketPlan` and `render/markdown.py`'s
-`gtm_plan_markdown` for the split between what it projects off the model and what it judges (#609).
+`go-to-market-plan.md`. It names a chosen set of actions rather than a ranking, contests up to three
+premises the request takes for granted (#728), states what it deliberately excludes and the resource
+envelope it assumed, and carries its challenges and decision thresholds as typed items — see
+`core/contracts.py`'s `GoToMarketPlan` and `render/markdown.py`'s `gtm_plan_markdown` for the split
+between what it projects off the model and what it judges (#609).

@@ -23,7 +23,10 @@ conversation.
      what they want, will build, will spend, have decided. Their unconfirmed **belief about the
      world** (what users want, what a channel yields, what a system does) is never `explicit`,
      however confidently stated — grade it `inferred` or `testable` instead. See `confidence` in the
-     schema above for the full definition; this restates it, and the two must agree.
+     schema above for the full definition; this restates it, and the two must agree. A solo builder
+     confirming their own system is not a belief: an as-is read from the builder's own system,
+     restated to them and confirmed by them, is `explicit` — the builder vouching for what they
+     built. An as-is they have not confirmed stays `inferred`.
    - `inferred` = deduced by you, or the requester's own unconfirmed belief about the world — an
      assumption to confirm.
    - `empty` = unknown, and answerable by asking the person in front of you.
