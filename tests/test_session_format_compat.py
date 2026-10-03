@@ -6,13 +6,15 @@ import json
 import typing
 
 import pytest
-from _fakes import full_model, slot
+from _fakes import FakeClient, full_model, slot
 from pydantic import BaseModel, ValidationError
 
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput, ModelProposal, PersistedEngineOutput, schema_slots
 from requivo.core.errors import RequivoError
 from requivo.core.perimeters import GO_TO_MARKET
+from requivo.providers.anthropic.provider import AnthropicProvider
+from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionService
 
 pytestmark = pytest.mark.usefixtures("workspace")
@@ -79,6 +81,12 @@ def test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_una
     status = svc.status("gtm-729")
     assert [g["slot"] for g in status["readiness"]["blocking_slots"]] == ["objections"]
     assert {e["slot"] for group in status["understanding"].values() for e in group} == set(legacy)
+    # Generation absorbs the plan without re-checking completeness, or it pays and saves nothing (Codex on #740).
+    chl = dict(headline="Cold start assumed", premise="p", alternative="a", consequence="c", recommendation="r", contests=["icp"])
+    client = FakeClient(json.dumps(dict(plan=["p"], challenges=[chl])))
+    result = DiscoveryService(provider=AnthropicProvider(client=client), sessions=svc).generate("gtm-729", "gtm_plan")
+    assert result.status.stale is False and [c.headline for c in svc.load_model("gtm-729").challenges] == ["Cold start assumed"]
+    assert set(svc.load_model("gtm-729").model) == set(legacy)
 
 
 # ── the malformed-session family (#82) ───────────────────────────────────────

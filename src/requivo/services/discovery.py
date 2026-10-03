@@ -742,9 +742,12 @@ class DiscoveryService:
             spec.absorb(out, brief)
             usage = _usage_since(before)
             # Without the precondition, a revision that landed during the call would be discarded.
+            # Not `require_complete`: the slots are the snapshot's, and completeness is the discovery
+            # boundary's (invariant 4), or a session from before a slot was added pays and saves nothing.
+            # `test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_unasked_objection`.
             try:
                 applied = self.sessions.update_model(
-                    slug, out.model_dump_json(), expected_revision=source_revision,
+                    slug, out.model_dump_json(), expected_revision=source_revision, require_complete=False,
                     provenance=self._provenance(artifact_type, cards=cards, surface=surface,
                                                 usage=usage, perimeter=snap.perimeter))
             except RevisionConflictError as e:
