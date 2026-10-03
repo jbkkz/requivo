@@ -322,9 +322,11 @@ requivo impact <slug> <slot-or-label> [<slot-or-label> ...]
 Relay, in plain language, before you apply the new answer: the **decisions to re-validate** (they
 rested on the changed slot via `derived_from`), the **premises to re-examine** (challenges that
 contest it via `contests`), any **excluded options worth reconsidering** (they rested on the changed
-slot via `rests_on`, #599), and the **artifacts that will go stale** and need regenerating. Do not
-invent dependencies the command did not report — the DAG is authoritative. This is advance notice,
-not a question: say it, then continue folding the answer in.
+slot via `rests_on`, #599), and the **artifacts that will go stale** and need regenerating — only
+the ones listed under *ARTIFACTS THAT GO STALE*. A type listed under *NOT GENERATED YET* (#717) was
+never produced in this session: it would rest on the change, but there is nothing to regenerate, so
+do not relay it as stale. Do not invent dependencies the command did not report — the DAG is
+authoritative. This is advance notice, not a question: say it, then continue folding the answer in.
 
 If nothing touched was already `explicit`, skip this and go straight to reasoning the refinement —
 every ordinary answer to an open question takes this path.

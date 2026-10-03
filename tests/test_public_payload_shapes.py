@@ -45,6 +45,8 @@ _UPDATE_RESULT = _keys("status revision:int readiness:dict", **{k: "list" for k 
     "changed_slots", "changed_decisions", "changed_challenges", "changed_opportunities", "changed_exclusions",
     "changed_thresholds", "invalidated_decisions", "invalidated_challenges", "invalidated_exclusions",
     "invalidated_thresholds", "stale_artifacts")})   # #599 added the exclusions; `model diff` is the same dict
+_IMPACT = _keys("slug changed:list decisions:list challenges:list exclusions:list thresholds:list artifacts:list "
+                "stale_artifacts:list evidence:dict")
 _STATUS_BARE = _keys("slug readiness:dict understanding:dict questions:list summary:dict remaining_gaps:list")
 
 # The recorded shapes, keyed by verb; `context_cards` is `list|null` wherever a session may select every card.
@@ -59,6 +61,14 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
     "model validate": [("model validate --json", ("model", "validate", "{proposal}", "--json"), _keys("status slots:int"))],
     "model apply": [("model apply --json", ("model", "apply", "s", "{proposal}", "--json"), _UPDATE_RESULT)],
     "model diff": [("model diff --json", ("model", "diff", "s", "{proposal}", "--json"), _UPDATE_RESULT)],
+    "model show": [("model show --json", ("model", "show", "s", "--json"), _keys(
+        "model:dict questions:list summary:dict decisions:list challenges:list opportunities:list "
+        "exclusions:list thresholds:list"))],
+    "impact": [   # #717: two forms, and a bare model.json cannot say what was generated
+        ("impact <slug> <slot> --json", ("impact", "s", "workflow", "--json"), _IMPACT),
+        ("impact <a bare model.json> <slot> --json", ("impact", "{bare_model}", "workflow", "--json"),
+         _keys("stale_artifacts:null evidence:null", **{k: v for k, v in _IMPACT.items() if k not in ("stale_artifacts", "evidence")})),
+        ("impact <slug> --json", ("impact", "s", "--json"), _keys("slug map:list evidence:dict"))],
     "artifact save": [("artifact save --json",
                        ("artifact", "save", "s", "--type", "prd", "--file", "{prd}", "--revision", "1", "--json"),
                        _keys("type filename revision:int stale:bool"))],

@@ -139,14 +139,34 @@ def test_status_and_model_show_agree_on_a_revision_zero_session():
     for argv in (["status", "rev0"], ["model", "show", "rev0"]):
         err = _fails(argv)
         assert "requivo discover" in err and "apply a proposal first" not in err, (argv, err)
+        # #720: the keyless step beside the API one, never the retired /requivo:discover; the code stays.
+        assert "requivo model apply rev0" in err and "/requivo:run rev0" in err and "/requivo:discover" not in err, err
+        envelope, code = run_cli_exit([*argv, "--json"])
+        assert code == 1 and json.loads(envelope)["code"] == "session_not_found"
     err = _fails(["model", "show", "no-such-slug-at-all"])
     assert "only the request was captured" not in err and "requivo session list" in err
 
 
 def test_impact_on_an_unmatched_slot_exits_1_not_0(tmp_path):
-    """A wrong probe used to be indistinguishable from an empty result (#250)."""
+    """A wrong probe used to be indistinguishable from an empty result (#250), under `--json` too (#717)."""
     _init("s", full_model(), tmp_path)
     _fails(["impact", "s", "not-a-real-slot"])
+    envelope, code = run_cli_exit(["impact", "s", "not-a-real-slot", "--json"])
+    assert code == 1 and json.loads(envelope)["details"] == {"unmatched": ["not-a-real-slot"]}
+
+
+def test_impact_splits_what_goes_stale_from_what_would_rest_on(tmp_path):
+    """#717: only a generated artifact goes stale; the types never generated merely rest on the slot."""
+    _init("s", full_model(), tmp_path)
+    doc = tmp_path / "prd.md"
+    doc.write_text("# PRD", encoding="utf-8")
+    run_cli(["artifact", "save", "s", "--type", "prd", "--file", str(doc), "--revision", "1"])
+    payload = run_cli_json(["impact", "s", "workflow", "--json"])
+    assert payload["stale_artifacts"] == ["prd"] and {"prd", "stories", "brief"} <= set(payload["artifacts"])
+    text = run_cli(["impact", "s", "workflow"])
+    stale, rest = text.split("ARTIFACTS THAT GO STALE")[1].split("NOT GENERATED YET")
+    assert "prd" in stale and "stories" not in stale and "stories" in rest and "prd" not in rest
+    assert json.loads(run_cli(["model", "show", "s", "--json"]))["model"]["workflow"]["confidence"] == "empty"
 
 
 @pytest.mark.parametrize("key, item, announced", [

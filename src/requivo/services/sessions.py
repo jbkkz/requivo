@@ -27,17 +27,13 @@ from requivo.core.dependencies import (
     ReasoningDiff,
     diff_models,
     diff_reasoning,
+    introduced_reasoning,
     propagate,
     resolve_slots,
     thinner_evidence,
+    unknown_slots,
 )
-from requivo.core.errors import (
-    ModelUnreadableError,
-    RevisionConflictError,
-    SessionExistsError,
-    SessionNotFoundError,
-    UnknownSlotError,
-)
+from requivo.core.errors import ModelUnreadableError, RevisionConflictError, SessionExistsError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.persistence.identifiers import _stat_exists
@@ -252,6 +248,16 @@ class SessionService:
         return SessionNotFoundError(message,
                                     details=details if details is not None else {"slug": ref})
 
+    @staticmethod
+    def no_model(slug: str) -> SessionNotFoundError:
+        """A claimed session with no model yet (#250), naming the keyless step beside the API one
+        (#720); still `session_not_found`, since moving the code is breaking (docs/compatibility.md)."""
+        return SessionNotFoundError(
+            f"session '{slug}' has no model yet — only the request was captured. Keyless, apply the "
+            f"first model with `requivo model apply {slug} -` (in Claude Code, /requivo:run {slug} "
+            f"does it for you); with an API key, run `requivo discover` on the same request.",
+            details={"slug": slug})
+
     def _store_for_error_text(self) -> Store:
         """The `Store` this service's repository addresses, for `no_session`'s root; duck-typed on
         `repo.store()`, ambient only when there is none (#272)."""
@@ -453,11 +459,9 @@ class SessionService:
             model = self.load_model(slug)
             resolved, unmatched = resolve_slots(slots, perimeter)
             if unmatched:
-                raise UnknownSlotError(
-                    f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
-                    "(e.g. 'permissions', 'workflow', 'reporting').",
-                    details={"unmatched": unmatched})
+                raise unknown_slots(unmatched)
             report = propagate(model, resolved, perimeter)
+            report.mark_generated(list(meta.artifact_status))
             # Not narrowed to `slots` (#493): the slot that thickened is the one nobody asks about.
             report.evidence = self.thinner_evidence(slug)
         return report
@@ -583,6 +587,9 @@ class SessionService:
         changed = diff_models(current, new) if current is not None else list(new.model.keys())
         # The reasoning layer invalidates on its own; on a first apply there is nothing to compare against.
         reasoning = diff_reasoning(current, new) if current is not None else ReasoningDiff()
+        # ...but what it *introduced* is still reported, the convention `changed` follows (#723):
+        # `test_a_first_apply_reports_the_reasoning_it_introduced`.
+        listed = reasoning if current is not None else introduced_reasoning(new)
         # Artifacts rest on slots through the static ARTIFACT_SLOTS map, so the blast radius is basis-neutral.
         report = propagate(new, changed, perimeter)
 
@@ -641,11 +648,11 @@ class SessionService:
             invalidated_thresholds=invalidated_thresholds,
             stale_artifacts=stale,
             readiness=_readiness(new, perimeter),
-            changed_decisions=reasoning.decisions,
-            changed_challenges=reasoning.challenges,
-            changed_opportunities=reasoning.opportunities,
-            changed_exclusions=reasoning.exclusions,
-            changed_thresholds=reasoning.thresholds,
+            changed_decisions=listed.decisions,
+            changed_challenges=listed.challenges,
+            changed_opportunities=listed.opportunities,
+            changed_exclusions=listed.exclusions,
+            changed_thresholds=listed.thresholds,
         )
 
     # ── status ──────────────────────────────────────────────────────────────────

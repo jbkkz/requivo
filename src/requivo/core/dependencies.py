@@ -20,6 +20,7 @@ from requivo.core.contracts import (
     Opportunity,
     Threshold,
 )
+from requivo.core.errors import UnknownSlotError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.selectors import normalize_tokens
 
@@ -98,6 +99,12 @@ def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tupl
     return ordered, unmatched
 
 
+def unknown_slots(unmatched: list[str]) -> UnknownSlotError:
+    """The one refusal for an `impact` token naming no slot, by the service and `impact --json` (#717)."""
+    return UnknownSlotError(f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
+                            "(e.g. 'permissions', 'workflow', 'reporting').", details={"unmatched": unmatched})
+
+
 @dataclass
 class DecisionImpact:
     decision: str
@@ -144,6 +151,13 @@ class ImpactReport:
     artifacts: list[str] = field(default_factory=list[str])  # artifact names whose slot set is touched
     # `None` is *not reviewed* (#493): `propagate` has no revision history; an empty report ran and found nothing.
     evidence: Optional[EvidenceReport] = None
+    # The `artifacts` the session has generated, which go stale (#717); the rest merely rest on the
+    # slots. `None` is no session to ask (a bare model.json), never "nothing generated".
+    stale_artifacts: Optional[list[str]] = None
+
+    def mark_generated(self, generated: Sequence[str]) -> None:
+        """Split `artifacts` by what the session holds: `test_impact_splits_what_goes_stale_from_what_would_rest_on`."""
+        self.stale_artifacts = [t for t in self.artifacts if t in generated]
 
     @property
     def reasoning_hit(self) -> bool:
@@ -163,6 +177,7 @@ class ImpactReport:
                 "exclusions": [e.to_dict() for e in self.exclusions],
                 "thresholds": [t.to_dict() for t in self.thresholds],
                 "artifacts": self.artifacts,
+                "stale_artifacts": self.stale_artifacts,
                 "evidence": None if self.evidence is None else self.evidence.to_dict()}
 
 
@@ -246,6 +261,15 @@ def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
         exclusions=_diff_items(old.exclusions, new.exclusions),
         thresholds=_diff_items(old.thresholds, new.thresholds),
     )
+
+
+def introduced_reasoning(new: EngineOutput) -> ReasoningDiff:
+    """Every reasoning id a first model carries: `diff_reasoning` against nothing (#723)."""
+    def ids(items: Sequence[_Reasoning]) -> list[str]:
+        return sorted({i.id for i in items})
+    return ReasoningDiff(decisions=ids(new.decisions), challenges=ids(new.challenges),
+                         opportunities=ids(new.opportunities), exclusions=ids(new.exclusions),
+                         thresholds=ids(new.thresholds))
 
 
 def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:

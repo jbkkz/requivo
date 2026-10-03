@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from typing import NamedTuple
 
-from requivo.core.analysis import readiness_blockers, slot_label, slot_meta, state_of
+from requivo.core.analysis import blocking_reason, is_thin, readiness_blockers, slot_label, slot_meta, state_of
 from requivo.core.contracts import (
     Brief,
     Confidence,
@@ -24,10 +24,14 @@ from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
 STATE_ROWS = [
     ("confirmed", "✅ Confirmed"),
+    # A relabel of `is_thin`, the slots readiness still blocks on (#722): one meaning of "Confirmed".
+    ("thin", "✅ Confirmed, not yet precise enough"),
     ("inferred", "🟡 Inferred"),
     ("to_test", "🧪 To test"),
     ("unknown", "⚪ Unknown"),
 ]
+
+_BLOCKING_REASONS = {"unknown": "unknown", "thin": "too thin", "unconfirmed": "unconfirmed"}
 
 # A constant so `test_the_browsable_examples_deterministic_half_matches_the_renderer` can import it (#172).
 DRAFT_NOTE = "(blocking decisions remain — see Unknowns below)"
@@ -55,7 +59,8 @@ def _labeled(label: str, text: str, lw: int = 9, width: int = 80, indent: str = 
 def render_understanding(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     print("UNDERSTANDING")
     for state, label in STATE_ROWS:
-        names = [slot_label(sid, perimeter) for sid, s in out.model.items() if state_of(s) == state]
+        names = [slot_label(sid, perimeter) for sid, s in out.model.items()
+                 if ("thin" if is_thin(s) else state_of(s)) == state]
         if names:
             print(textwrap.fill(" · ".join(names), width=80, initial_indent=f"  {label}   ", subsequent_indent=" " * 15))
 
@@ -83,7 +88,9 @@ def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> 
     session's own, or a go-to-market model shows software slots as blockers."""
     print()
     render_understanding(out, perimeter)
-    blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
+    # Each blocker says why it blocks (#722): `test_the_status_screen_has_one_meaning_of_confirmed`.
+    blockers = [f"{slot_label(b, perimeter)} ({_BLOCKING_REASONS[blocking_reason(out.model.get(b))]})"
+                for b in readiness_blockers(out, perimeter)]
     # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
@@ -195,7 +202,7 @@ def render_perimeter_recap(out: EngineOutput, cards: list[str] | None,
         print("  Inferred, not stated: correct any of these in your answers.")
 
 
-def next_command(payload: dict) -> str | None:
+def next_command(payload: dict, provider: str | None = None) -> str | None:
     """The single next step for a status view, or None when there is not one (#246): open questions
     outrank a stale artifact, which outranks the missing primary artifact
     (`test_open_questions_point_at_answer`). None for a converged session with a fresh brief and for
@@ -205,6 +212,11 @@ def next_command(payload: dict) -> str | None:
     if not slug or artifacts is None:
         return None                      # a bare model.json — no session behind it to point at
     if payload.get("questions"):
+        # A session tagged `claude-code` is driven keyless: the paid verb is never its only step (#720,
+        # `test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb`).
+        if provider == "claude-code":
+            return (f'/requivo:run {slug}   (in Claude Code, no API key; with a key: '
+                    f'requivo answer {slug} "<your answers>")')
         return f'requivo answer {slug} "<your answers>"'
     # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
@@ -220,9 +232,9 @@ def next_command(payload: dict) -> str | None:
     return None
 
 
-def render_next_command(payload: dict) -> None:
+def render_next_command(payload: dict, provider: str | None = None) -> None:
     """Print `next_command`'s answer, once, or nothing; the arrow matches `discover`'s and `answer`'s."""
-    line = next_command(payload)
+    line = next_command(payload, provider)
     if line:
         print(f"\n→ {line}")
 
@@ -498,13 +510,20 @@ def render_impact(report) -> None:
             print(_bullet(t.condition))
             print(f"    ↳ rests on: {', '.join(t.rests_on)}")
 
-    if report.artifacts:
+    # What exists goes stale; a type never generated merely rests on the slots (#717). A bare
+    # model.json (`stale_artifacts is None`) cannot tell, so every type is listed as before.
+    stale = report.artifacts if report.stale_artifacts is None else report.stale_artifacts
+    if stale:
         print("\nARTIFACTS THAT GO STALE")
-        for name in report.artifacts:
+        for name in stale:
             f = ARTIFACT_FILENAMES.get(name)
             where = f" ({f})" if f else " (regenerate on demand)"
             print(f"  • {name}{where}")
         print("\n  → Regenerate these after confirming the change.")
+    not_generated = [t for t in report.artifacts if t not in stale]
+    if not_generated:
+        print("\nNOT GENERATED YET — would rest on this change, nothing to regenerate")
+        print(f"  {', '.join(not_generated)}")
 
 
 def render_evidence(report) -> None:

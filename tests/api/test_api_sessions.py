@@ -18,7 +18,7 @@ from tests.api.conftest import HIGH_EXPLICIT, SESSIONS, engine_reply, refused, s
 
 REQUEST = {"request": "A leave approval system."}
 EMPTY_IMPACT = {"changed": [], "decisions": [], "challenges": [], "exclusions": [], "thresholds": [], "artifacts": [],
-                "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
+                "stale_artifacts": [], "evidence": {"reviewed": 0, "flagged": [], "could_not_tell": []}}
 
 
 def _break(slug: str) -> None:

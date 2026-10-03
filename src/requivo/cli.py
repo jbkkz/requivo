@@ -26,7 +26,7 @@ from requivo.core.adapters import epic_export_json, to_github_json, to_gitlab_js
 from requivo.core.analysis import model_status, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
 from requivo.core.contracts import EngineOutput, Question
-from requivo.core.dependencies import propagate, resolve_slots
+from requivo.core.dependencies import propagate, resolve_slots, unknown_slots
 from requivo.core.errors import AmbiguousPerimeterError, InvalidSlugError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
 from requivo.core.persistence import load_model
@@ -536,12 +536,7 @@ def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
             return svc.load_model(slug), slug
         except SessionNotFoundError:
             # The session exists but was never discovered: the narrower case, under the same code (#250).
-            raise SessionNotFoundError(
-                f"session '{slug}' has no model yet — only the request was captured. Run "
-                f"`requivo discover` on the same request to analyse it (or, in Claude Code, "
-                f"/requivo:discover).",
-                details={"slug": slug},
-            ) from None
+            raise svc.no_model(slug) from None
     raise svc.no_session(ref, what="model file or session", details={"ref": ref})
 
 
@@ -582,11 +577,14 @@ def _cmd_status(a, client) -> None:
     # Cumulative cost from the provenance on provider-backed revisions (#292); silent when there is none.
     # A loose file has no revisions to price, so it never borrows a same-named session's (#681).
     slug = payload.get("slug")
+    provider = None
     if slug:
         svc = SessionService()
         if not Path(ref).is_file() and svc.exists(slug):
-            render_session_cost(svc.meta(slug).revisions)
-    render_next_command(payload)
+            meta = svc.meta(slug)
+            render_session_cost(meta.revisions)
+            provider = meta.provider   # the footer follows the session's provider (#720)
+    render_next_command(payload, provider)
 
 
 DEMO_SLUG = "event-checkin-reconciliation"
@@ -659,9 +657,11 @@ def _cmd_demo(a, client) -> None:
 
 
 def _cmd_impact(a, client) -> None:
-    """Offline query over the dependency DAG: a slot's blast radius, or every slot's downstream."""
+    """Offline query over the dependency DAG: a slot's blast radius, or every slot's downstream.
+    `--json` (#717) is `ImpactReport.to_dict()` plus `slug`, or `{slug, map, evidence}` with no slots."""
     svc = SessionService()
-    ref = _resolve_optional_session(svc, a.session)
+    want_json = getattr(a, "json", False)
+    ref = _resolve_optional_session(svc, a.session, quiet=want_json)
     out, slug = _resolve_ref(ref)
     # Thinner-evidence review (#493) is a walk over frozen revisions, so only a session has one; a
     # loose file never borrows a same-named session's:
@@ -670,18 +670,35 @@ def _cmd_impact(a, client) -> None:
     evidence = None if is_file else svc.thinner_evidence(slug)
     # The session's perimeter, or software for a bare model.json (#608), never a same-named session's:
     # `test_a_loose_model_file_never_borrows_the_perimeter_of_a_session_sharing_its_directory_name`.
-    perimeter = (resolve_perimeter(svc.meta(slug).perimeter) if not is_file and svc.exists_meta(slug)
-                else DEFAULT_PERIMETER)
+    meta = svc.meta(slug) if not is_file and svc.exists_meta(slug) else None
+    perimeter = resolve_perimeter(meta.perimeter) if meta is not None else DEFAULT_PERIMETER
+    def report_on(slots: list[str]):
+        report = propagate(out, slots, perimeter)
+        if meta is not None:   # what exists goes stale; a bare file has nothing to ask (#717)
+            report.mark_generated(list(meta.artifact_status))
+        return report
     if not a.slots:
+        if want_json:   # the rows `render_dependency_map` prints, none carrying an `evidence` of its own
+            reports = [(sid, report_on([sid])) for sid in out.model]
+            rows = [{"slot": sid, **{k: v for k, v in r.to_dict().items() if k != "evidence"}}
+                    for sid, r in reports if not r.empty]
+            print_json({"slug": slug, "map": rows, "evidence": None if evidence is None else evidence.to_dict()})
+            return
         render_dependency_map(out, perimeter)
         render_evidence(evidence)
         return
     resolved, unmatched = resolve_slots(a.slots, perimeter)
     if unmatched:
-        print(f"Unknown slot(s): {', '.join(unmatched)} — use a slot id or a label word "
-              f"(e.g. 'permissions', 'workflow', 'reporting').")
+        if want_json:
+            raise unknown_slots(unmatched)
+        print(unknown_slots(unmatched))
     if resolved:
-        render_impact(propagate(out, resolved, perimeter))
+        report = report_on(resolved)
+        if want_json:
+            report.evidence = evidence
+            print_json({"slug": slug, **report.to_dict()})
+            return
+        render_impact(report)
         render_evidence(evidence)
     if unmatched:
         # A wrong probe exits 1, not 0 and not `EXIT_DEGRADED`: the input was invalid (#250).
@@ -1127,8 +1144,9 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
               lambda sp: sp.add_argument("--json", action="store_true", help=JSON_HELP),
               accepts_path=True, session_required=False)
     model_cmd("impact", "show what a change to given topics would reach; no topics = full map",
-              _cmd_impact, lambda sp: sp.add_argument("slots", nargs="*",
+              _cmd_impact, lambda sp: (sp.add_argument("slots", nargs="*",
               help="slot ids or label words (e.g. permissions workflow); omit for the full map"),
+              sp.add_argument("--json", action="store_true", help=JSON_HELP)),
               accepts_path=True, session_required=False)
     model_cmd("brief", "generate the decision brief — what to review before estimating (API)",
               _generator_verb("brief"))

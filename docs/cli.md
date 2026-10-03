@@ -65,7 +65,7 @@ as the automation contract underneath it (`decision: three-journey-verbs`).
 | `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure — default `software`, frozen at creation) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status [slug]` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
-| `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate + artifacts that go stale (no slots = full map), then the decisions derived from thinner evidence than the session now holds. Omit the slug to resolve the workspace's default session (#541). No network |
+| `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate, the generated artifacts that go stale, and apart from them the types not generated yet that would rest on the change (no slots = full map), then the decisions derived from thinner evidence than the session now holds. `--json` for the same report (`stale_artifacts` is `null` for a bare `model.json`, which cannot say what was generated). Omit the slug to resolve the workspace's default session (#541). No network |
 
 The context-card selector is spelled **`--context`** everywhere — on `run`, on `discover`, on
 `session init`, on `session rescope` and on `context`. `--cards` is a permanent alias of it on all

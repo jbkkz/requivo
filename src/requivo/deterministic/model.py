@@ -20,13 +20,11 @@ def _cmd_model_show(a, client) -> None:
     try:
         model = svc.load_model(slug)
     except SessionNotFoundError:
-        # The narrower "claimed but never discovered" case, kept in sync with `cli.py`'s `_resolve_ref` (#250).
-        raise SessionNotFoundError(
-            f"session '{slug}' has no model yet — only the request was captured. Run "
-            f"`requivo discover` on the same request to analyse it (or, in Claude Code, "
-            f"/requivo:discover).",
-            details={"slug": slug},
-        ) from None
+        # The narrower "claimed but never discovered" case, the one refusal `_resolve_ref` in `cli.py` also raises (#250, #720).
+        raise svc.no_model(slug) from None
+    if a.json:
+        print_json(model.model_dump(mode="json"))   # #717: the same document, under the ensure_ascii contract
+        return
     print(model.model_dump_json(indent=2))
 
 
@@ -93,6 +91,7 @@ def register_model(sub) -> None:
 
     msh = ms.add_parser("show", help="print a session's current model")
     msh.add_argument("session", help="session slug or path")
+    msh.add_argument("--json", action="store_true", help=JSON_HELP)
     msh.set_defaults(func=_cmd_model_show)
 
     mv = ms.add_parser("validate", help="validate a proposal file (no session write)")

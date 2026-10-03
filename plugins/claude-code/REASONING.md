@@ -327,5 +327,7 @@ sessions working at once overwrote each other; `:` in a filename is illegal on W
 needed `rm`, which this plugin deliberately does not grant itself. Content you already hold does not
 need a file.
 
-Every command accepts `--json` for a machine-readable result; prefer it, then present the result to the
-user in plain language. A non-zero exit means failure — the JSON error envelope explains why.
+Most commands accept `--json` for a machine-readable result — `schema`, `context` and `demo` print
+text, and `requivo <verb> --help` says which do. Prefer it where a skill shows it, then present the
+result to the user in plain language. A non-zero exit means failure — under `--json`, the error
+envelope explains why.

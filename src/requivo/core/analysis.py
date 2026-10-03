@@ -68,16 +68,26 @@ def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
     for sid in required:
         s = out.model.get(sid)
         impact = s.impact if s is not None else _default_impacts(perimeter).get(sid, Impact.low)
-        confirmed = (
-            s is not None
-            and s.confidence is Confidence.explicit
-            and s.completeness >= SOFT_COMPLETENESS
-        )
+        confirmed = s is not None and s.confidence is Confidence.explicit and not is_thin(s)
         # A slot deferred to a named test (#610) is a known unknown and does not block readiness.
         deferred_to_test = s is not None and s.confidence is Confidence.testable
         if impact is Impact.high and not confirmed and not deferred_to_test:
             blockers.append(sid)
     return [sid for sid in slot_meta(perimeter)[1] if sid in set(blockers)]  # schema order
+
+
+def is_thin(s: Slot) -> bool:
+    """Confirmed (`explicit`) yet below the soft boundary: blocks readiness, and what it needs is
+    more said, not a confirmation (#722)."""
+    return s.confidence is Confidence.explicit and s.completeness < SOFT_COMPLETENESS
+
+
+def blocking_reason(s: Slot | None) -> str:
+    """Why a readiness blocker blocks (#722): `unknown` (empty or absent), `thin`, or `unconfirmed`.
+    A naming of what `readiness_blockers` decided, never a second readiness rule."""
+    if s is None or s.confidence is Confidence.empty:
+        return "unknown"
+    return "thin" if is_thin(s) else "unconfirmed"
 
 
 def state_of(s: Slot) -> str:
@@ -96,7 +106,9 @@ def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[
     """The model-derived half of a status snapshot (readiness, understanding, questions, summary,
     gaps), the one projection `status --json` and `SessionService.status` both build on."""
     blockers = readiness_blockers(out, perimeter)
-    gaps = [{"slot": s, "label": slot_label(s, perimeter)} for s in blockers]
+    # `reason` (#722) says why each one blocks: added to a nested object, so free (docs/compatibility.md).
+    gaps = [{"slot": s, "label": slot_label(s, perimeter), "reason": blocking_reason(out.model.get(s))}
+            for s in blockers]
     return {
         "readiness": {"ready": not blockers, "blocking_slots": gaps},
         "understanding": understanding_view(out, perimeter),
@@ -119,6 +131,6 @@ def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
             "pillar": pillars.get(sid),
             "completeness": s.completeness,
             "impact": s.impact.value,
-            "thin": s.confidence is Confidence.explicit and s.completeness < SOFT_COMPLETENESS,
+            "thin": is_thin(s),
         })
     return groups

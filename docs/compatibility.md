@@ -59,13 +59,14 @@ and anything built on top. Its layout is documented in full in
 
 ## The `--json` outputs are public
 
-**Every `--json` output is public — all sixteen — and so is the structured error envelope**
+**Every `--json` output is public — all eighteen — and so is the structured error envelope**
 (`{code, message, path?, details?}`). A populated field does not quietly change meaning, a change of
 shape gets a row below, and adding a field is always free.
 
 | Verb | Test |
 |---|---|
 | `requivo status` | `test_every_json_verb_is_inside_the_promise` |
+| `requivo impact` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo doctor` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo session init` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo session list` | `test_every_json_verb_is_inside_the_promise` |
@@ -76,6 +77,7 @@ shape gets a row below, and adding a field is always free.
 | `requivo session import` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo session rescope` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo session delete` | `test_every_json_verb_is_inside_the_promise` |
+| `requivo model show` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo model validate` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo model apply` | `test_every_json_verb_is_inside_the_promise` |
 | `requivo model diff` | `test_every_json_verb_is_inside_the_promise` |
@@ -87,11 +89,10 @@ Membership is guarded both ways by `test_every_json_verb_is_inside_the_promise` 
 false coverage). The **shape** each one promises — a payload's top-level key set and the JSON type
 of each value, nothing nested — is recorded and pinned per verb by
 `test_every_json_verb_has_a_recorded_payload_shape` and
-`test_every_public_json_payload_keeps_its_recorded_top_level_shape`. The `impact` verb is
-deliberately not in this table: it has no `--json` (only a closing "thinner evidence" section on its
-terminal output, since #493, pinned by `test_impact_reports_what_a_named_slot_reaches`) — which is
-why it is spelled without its `requivo` prefix elsewhere here, since the membership guard above reads
-every backtick-quoted `` `requivo <verb>` `` in this section as a promise.
+`test_every_public_json_payload_keeps_its_recorded_top_level_shape`. **`impact --json` has two
+forms (#717):** named slots give the API's `/impact` report plus `slug`, no slots `{slug, map,
+evidence}`; `stale_artifacts` is the generated subset of `artifacts`, and is `null` with `evidence`
+for a bare `model.json`. `model show --json` is the model document the bare verb prints.
 
 **`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`,
 `summary` and `remaining_gaps` are always present; `revision`, `context_cards` and `artifacts` are

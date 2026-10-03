@@ -122,6 +122,19 @@ def test_session_service_create_and_apply():
     assert result.revision == 2 and "problem" in result.changed_slots
 
 
+def test_a_first_apply_reports_the_reasoning_it_introduced():
+    """#723: the convention `changed_slots` already follows; nothing prior is unseated, so nothing is invalidated."""
+    svc = SessionService()
+    svc.create_session("Build a leave approval system.", slug="first")
+    plan = svc.diff("first", _with_reasoning())
+    result = svc.update_model("first", _with_reasoning())
+    model = svc.load_model("first")
+    for r in (plan, result):
+        assert r.changed_decisions == [model.decisions[0].id] and r.changed_challenges == [model.challenges[0].id]
+        assert r.changed_opportunities == r.changed_exclusions == r.changed_thresholds == []
+        assert r.invalidated_decisions == r.invalidated_challenges == [] and r.stale_artifacts == []
+
+
 def test_diff_reports_one_consistent_session_snapshot(monkeypatch):
     """A racing apply cannot pair one revision's model with another revision number (#706)."""
     svc = _session()

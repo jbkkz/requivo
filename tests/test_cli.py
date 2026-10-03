@@ -596,3 +596,28 @@ def test_the_human_status_view_ends_with_exactly_one_pointer():
     assert text.rstrip().endswith(pointers[0])
     raw = run_cli(["status", _SLUG, "--json"])
     assert "requivo answer" not in raw and set(json.loads(raw)) >= {"slug", "readiness", "understanding", "questions", "summary"}
+
+
+def test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb():
+    """#720: a `claude-code` session is driven keyless, so `requivo answer` is never its only next step."""
+    keyless = next_command(_payload(questions=2), provider="claude-code")
+    assert keyless is not None and keyless.startswith(f"/requivo:run {_SLUG}") and "requivo answer" in keyless
+    assert next_command(_payload(questions=2), provider="anthropic") == f'requivo answer {_SLUG} "<your answers>"'
+    store.create_session("plugin", "A leave approval system", provider="claude-code")
+    model = {**full_model(), "questions": [{"q": "How are approvals routed today?", "slot": "problem", "why": "w"}]}
+    store.save_revision("plugin", EngineOutput.model_validate(model))
+    assert run_cli(["status", "plugin"]).rstrip().splitlines()[-1].startswith("→ /requivo:run plugin")
+
+
+def test_the_status_screen_has_one_meaning_of_confirmed():
+    """#722: an `explicit` slot below the soft boundary is named apart from Confirmed; each blocker says why."""
+    store.create_session("thin", "A leave approval system")
+    model = full_model(problem=slot(55, "explicit", "high"), workflow=slot(60, "inferred", "high"), actors=slot(0, "empty", "high"))
+    store.save_revision("thin", EngineOutput.model_validate(model))
+    text = run_cli(["status", "thin"])
+    assert text.split("UNDERSTANDING")[1].split("Ready?")[0].count("Real problem") == 1
+    assert "✅ Confirmed, not yet precise enough   Real problem" in text
+    ready = next(ln for ln in text.splitlines() if "Ready?" in ln)
+    assert "Real problem (too thin)" in ready and "Workflow / lifecycle (unconfirmed)" in ready and "Actors & roles (unknown)" in ready
+    blocking = json.loads(run_cli(["status", "thin", "--json"]))["readiness"]["blocking_slots"]
+    assert {b["slot"]: b["reason"] for b in blocking} == {"problem": "thin", "actors": "unknown", "workflow": "unconfirmed"}
