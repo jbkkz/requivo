@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from _fakes import out, printed, slot
+from _fakes import OBJECTIVE, out, printed, slot
 
 from requivo.core.contracts import (
     PRD,
@@ -30,7 +30,7 @@ from requivo.render.markdown import (
     prd_markdown,
     release_markdown,
 )
-from requivo.render.terminal import render_brief
+from requivo.render.terminal import render_brief, render_perimeter_recap
 
 _MODEL = {"problem": slot(80, "explicit", "high")}
 
@@ -188,6 +188,27 @@ def test_the_decision_brief_projects_the_models_own_words_rather_than_restating_
 def test_the_decision_briefs_english_anchor_covers_the_judgment_the_provider_wrote():
     md = _bilingual_brief()
     assert "**Problem:** Leave approvals are inconsistent." in md and "**Solution:** A single approval workflow." in md
+
+
+# ── the perimeter recap a first discovery opens with (#709) ──────────────────────
+
+
+def test_the_perimeter_recap_names_the_cards_then_the_request_then_what_was_assumed():
+    """#709: the plugin recap's order, read off the model; an explicit slot or an empty inferred one is no assumption."""
+    model = out({"problem": slot(80, "explicit", "high", "Approvals get lost"),
+                 "actors": slot(60, "inferred", "high", "Employees and\nline managers"),
+                 "permissions": slot(40, "inferred", "medium")})
+    model.summary.assumptions = ["Leave balances live in payroll"]
+    text = printed(render_perimeter_recap, model, ["b2b-platform"])
+    marks = ["b2b-platform", OBJECTIVE, "ASSUMED", "Actors & roles — Employees and line managers",
+             "Leave balances live in payroll"]
+    assert all(m in text for m in marks) and [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
+    assert "Approvals get lost" not in text and "Permissions" not in text
+
+
+def test_the_perimeter_recap_has_no_assumption_section_when_nothing_was_assumed():
+    text = printed(render_perimeter_recap, out(_MODEL), ["b2b-platform"])
+    assert "b2b-platform" in text and "ASSUMED" not in text
 
 
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────

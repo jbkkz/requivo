@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from typing import NamedTuple
 
-from requivo.core.analysis import readiness_blockers, slot_label, state_of
+from requivo.core.analysis import readiness_blockers, slot_label, slot_meta, state_of
 from requivo.core.contracts import (
     Brief,
     Confidence,
@@ -173,6 +173,26 @@ def render_grounding(cards: list[str] | None) -> None:
                    f"({', '.join(display_token(n) for n in names)})", lw=20))
     print(_labeled("", "not narrowed at creation — `requivo session rescope` if this request is "
                        "about one product area", lw=20))
+
+
+def render_perimeter_recap(out: EngineOutput, cards: list[str] | None,
+                           perimeter: str = DEFAULT_PERIMETER) -> None:
+    """A first discovery's ground, before its first question (#709), in the plugin recap's order:
+    the cards, the request as read, then what was assumed (inferred slots in schema order, then the
+    summary's assumptions). Selected off the model, never recomputed; a resume never calls it."""
+    render_grounding(cards)
+    if out.summary.objective.strip():
+        print(_labeled("Request, as read", " ".join(out.summary.objective.split()), lw=20))
+    assumed = [f"{slot_label(sid, perimeter)} — {' '.join(out.model[sid].value.split())}"
+               for sid in slot_meta(perimeter)[1]
+               if sid in out.model and out.model[sid].confidence is Confidence.inferred
+               and out.model[sid].value.strip()]
+    assumed += [" ".join(a.split()) for a in out.summary.assumptions if a.strip()]
+    if assumed:
+        print("\nASSUMED TO GET THIS FAR")
+        for line in assumed:
+            print(_bullet(line))
+        print("  Inferred, not stated: correct any of these in your answers.")
 
 
 def next_command(payload: dict) -> str | None:

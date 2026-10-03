@@ -53,6 +53,7 @@ from requivo.render.terminal import (
     render_grounding,
     render_impact,
     render_next_command,
+    render_perimeter_recap,
     render_session_cost,
     render_stale,
     render_stories,
@@ -147,6 +148,8 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
             # `RequivoError`, not `EngineError`: `ProviderOutputError` is a sibling, and `out` still holds
             # the last turn that succeeded. `test_a_provider_output_failure_mid_turn_also_names_the_claimed_session`.
             raise DraftingFailed(e, out, turn) from e
+        if turn == 1:   # a first run's ground, before its first question (#709)
+            render_perimeter_recap(out, only, perimeter)
         # The checkpoint; `_prompt_answers` asks the questions one at a time (#592).
         render_turn_state(out, perimeter)
 
@@ -332,6 +335,7 @@ def _cmd_discover(a, client) -> None:
             _say_nothing_drafted(meta.slug)
             raise
         out = disco.sessions.load_model(slug)
+        render_perimeter_recap(out, only, perimeter)
         render_turn(out, perimeter)
         _say_saved(slug)
         if out.questions:

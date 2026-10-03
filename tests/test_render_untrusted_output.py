@@ -48,6 +48,7 @@ from requivo.render.terminal import (
     render_evidence,
     render_grounding,
     render_impact,
+    render_perimeter_recap,
     render_session_cost,
     render_stories,
     render_turn,
@@ -176,6 +177,8 @@ def _forged_renders() -> dict[str, str]:
                         "recommendation": FORGED, "contests": ["problem"]}]
     d["opportunities"] = [{"text": FORGED, "leverage": "high", "modules": [FORGED]}]
     forged_model = EngineOutput.model_validate(d)
+    recap = EngineOutput.model_validate({**d, "model": {**d["model"], "actors": slot(60, "inferred", "high", FORGED)},
+                                         "summary": {**d["summary"], "assumptions": [FORGED]}})
     stories = Stories(stories=[{"id": FORGED, "title": FORGED, "as_a": FORGED, "i_want": FORGED, "so_that": FORGED,
                                 "acceptance": [FORGED], "slots": ["problem"]}])
     estimate = EstimateDraft(items=[{"story_id": "S1", "title": FORGED, "complexity": "M", "days_low": 1, "days_high": 2,
@@ -192,6 +195,7 @@ def _forged_renders() -> dict[str, str]:
         "render_evidence": printed(render_evidence, _evidence_report(forged_model)),
         "render_session_cost": printed(render_session_cost, [_revision(1, "2026-01-01"), _revision(2, FORGED)]),
         "render_grounding": printed(render_grounding, [FORGED]),
+        "render_perimeter_recap": printed(render_perimeter_recap, recap, [FORGED]),
         "render_docs_menu": printed(render_docs_menu, docs_menu_rows({"prd": ArtifactStatus(
             revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)})),
         "render_context_judgment": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")),

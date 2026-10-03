@@ -392,6 +392,21 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
     assert run_cli_fails(["run", "claimed-only"], client=fake)[0] == 1 and fake.calls == []
 
 
+@pytest.mark.parametrize("argv_tail, first_question", [(["--once"], "PRIORITY QUESTIONS"), ([], "Enter skips")],
+                         ids=["once", "interactive"])
+def test_a_first_run_opens_with_the_perimeter_recap_and_a_resume_does_not_repeat_it(monkeypatch, argv_tail,
+                                                                                      first_question):
+    """#709: the cards and the assumed slots precede the first question on both first-run paths, and only there."""
+    _at_a_terminal(monkeypatch, "q")
+    reply = json.loads(_ASKING_REPLY)
+    reply["model"]["actors"] = slot(60, "inferred", "high", "Line managers approve")
+    text = run_cli(["run", _REQUEST, *argv_tail], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, json.dumps(reply)))
+    marks = ["GROUNDED ON", "Product context", "ASSUMED", "Line managers approve", first_question]
+    assert [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
+    resumed = run_cli(["run", _sessions()[0].slug], client=FakeClient())
+    assert "Enter skips" in resumed and "GROUNDED ON" not in resumed and "ASSUMED" not in resumed
+
+
 @pytest.mark.parametrize("slug", ["leave-approval", "the-leave-approval-system"])
 @pytest.mark.parametrize("once", [False, True], ids=["interactive", "once"])
 def test_run_refuses_an_unreadable_session_before_discovery(monkeypatch, workspace, slug, once):
