@@ -1,5 +1,5 @@
 """`session import`/`export`: archive-shape validation (#141, #101), the concurrency and mid-operation races
-(#113, #111, #114) and the retried rename (#483)."""
+(#113, #111, #114), the retried rename (#483), and the same archive through `SessionService` on a rooted repository (#702)."""
 from __future__ import annotations
 
 import io
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from _cli_harness import _SESSIONS_ROW
-from _fakes import full_model, out, run_cli, run_cli_exit, run_cli_json, run_cli_stdin
+from _fakes import InMemorySessionRepository, full_model, out, run_cli, run_cli_exit, run_cli_json, run_cli_stdin
 
 from requivo.cli import app
 from requivo.core import persistence as store
@@ -27,9 +27,12 @@ from requivo.core.errors import (
     RequivoError,
     SessionExistsError,
     UnreadableArchiveError,
+    UnsupportedRepositoryError,
 )
 from requivo.core.persistence import _REPLACE_ATTEMPTS
-from requivo.deterministic.sessions import archives as det
+from requivo.services import archives as det
+from requivo.services.repository import FileSessionRepository
+from requivo.services.sessions import SessionService
 
 pytestmark = pytest.mark.usefixtures("workspace")
 
@@ -478,3 +481,67 @@ def test_import_into_a_fresh_workspace_writes_the_privacy_gitignore(workspace, t
     assert not marker.exists()
     _import(_zip(tmp_path / "s.zip", _good_entries("s")))
     assert store.list_session_slugs() == ["s"] and marker.exists()
+
+
+# ── #702: the one archive, through SessionService against an injected repository ──
+
+
+def test_a_rooted_export_is_the_clis_archive_and_imports_in_another_workspace(tmp_path, tmp_path_factory, monkeypatch):
+    """#702: byte for byte what `session export` writes for that workspace, and `session import` accepts it."""
+    root_a = tmp_path_factory.mktemp("a")
+    svc = SessionService(FileSessionRepository(root=root_a))
+    svc.create_session("Something.", slug="s")
+    svc.update_model("s", full_model())
+    data = svc.export_archive("s")
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(root_a))
+    run_cli(["session", "export", "s", "-o", str(tmp_path / "cli.zip"), "--json"])
+    assert data == (tmp_path / "cli.zip").read_bytes()
+    (tmp_path / "svc.zip").write_bytes(data)
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path_factory.mktemp("elsewhere")))
+    assert _import(tmp_path / "svc.zip")["slug"] == "s" and store.read_meta("s").current_revision == 1
+
+
+def test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does(tmp_path, tmp_path_factory, workspace):
+    """#702: nothing reaches the ambient workspace or another root, each refusal is the CLI's envelope (a
+    missing file included), and a stream that cannot seek is refused by name rather than as "not a zip"."""
+    root_a, root_b = tmp_path_factory.mktemp("a"), tmp_path_factory.mktemp("b")
+    svc = SessionService(FileSessionRepository(root=root_b))
+    good = _zip(tmp_path / "good.zip", _good_entries("imported"))
+    meta = svc.import_archive(good.read_bytes())
+    assert meta.slug == "imported" and meta.session_id == "abc"
+    assert (root_b / ".requivo" / "sessions" / "imported" / "session.json").is_file()
+    assert not (workspace / ".requivo").exists() and list(root_a.iterdir()) == []
+    with good.open("rb") as stream:
+        assert svc.import_archive(stream, force=True).slug == "imported"
+    _import(good)  # the CLI's workspace now holds the same slug, so the collision below is asked of both
+    for entries in (_good_entries("imported"), {**_good_entries("one"), **_good_entries("two")}, {"s/notes.md": "x"}, None):
+        archive = tmp_path / "case.zip"
+        _zip(archive, entries) if entries is not None else archive.write_text("not a zip", encoding="utf-8")
+        with pytest.raises(RequivoError) as ei:
+            svc.import_archive(archive.read_bytes(), name=str(archive))
+        assert json.loads(json.dumps(ei.value.to_dict())) == _import_error(archive), entries
+    with pytest.raises(RequivoError) as ei:
+        svc.import_archive(tmp_path / "nowhere.zip")
+    assert json.loads(json.dumps(ei.value.to_dict())) == _import_error(tmp_path / "nowhere.zip")
+    assert ei.value.code == "session_not_found"
+
+    class _Pipe(io.BytesIO):
+        def seekable(self):
+            return False
+
+    with pytest.raises(UnreadableArchiveError, match="cannot seek"):
+        svc.import_archive(_Pipe(good.read_bytes()))
+    assert store.list_session_slugs() == ["imported"] and svc.repo.list_slugs() == ["imported"]
+
+
+def test_a_repository_with_no_session_directory_refuses_the_archive_by_name(tmp_path, workspace):
+    """#702: the archive is a directory's zip; a non-file backing is refused, never served from the ambient store."""
+    svc = SessionService(InMemorySessionRepository())
+    svc.create_session("Something.", slug="s")
+    archive = _zip(tmp_path / "s.zip", _good_entries("s")).read_bytes()
+    for attempt in (lambda: svc.export_archive("s"), lambda: svc.import_archive(archive)):
+        with pytest.raises(UnsupportedRepositoryError) as ei:
+            attempt()
+        assert ei.value.code == "unsupported_repository"
+        assert ei.value.details["repository"] == "InMemorySessionRepository"
+    assert not (workspace / ".requivo").exists()

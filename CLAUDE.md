@@ -42,7 +42,8 @@ requivo/
   core/            contracts (StrictModel; PersistedEngineOutput for what is read off disk), analysis, context,
                    persistence/, validation, errors, dependencies (the DAG), integrity, adapters, perimeters
   providers/       base.py = the ReasoningProvider protocol; anthropic/ = client, pricing, completion, generators
-  services/        sessions (SessionService), artifacts, repository (SessionRepository), discovery (DiscoveryService)
+  services/        sessions (SessionService), artifacts, repository (SessionRepository), discovery (DiscoveryService),
+                   archives (the session zip, file-backed only)
   render/          data → str, no side effects
   cli.py           the journey verbs in the order a user meets them; status, demo and impact never build a client
   deterministic/   the plumbing verbs (doctor, schema, context, session, model, artifact), bound through register(sub)

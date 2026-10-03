@@ -122,6 +122,23 @@ def test_session_service_create_and_apply():
     assert result.revision == 2 and "problem" in result.changed_slots
 
 
+def test_diff_reports_one_consistent_session_snapshot(monkeypatch):
+    """A racing apply cannot pair one revision's model with another revision number (#706)."""
+    svc = _session()
+    real_plan = svc._plan
+
+    def apply_between_the_snapshot_and_plan(*args, **kwargs):
+        SessionService().update_model("s", full_model())
+        return real_plan(*args, **kwargs)
+
+    monkeypatch.setattr(svc, "_plan", apply_between_the_snapshot_and_plan)
+    plan = svc.diff("s", REFRAMED)
+
+    assert plan.revision == 1
+    assert set(plan.changed_slots) == set(REFRAMED["model"])
+    assert store.read_meta("s").current_revision == 1
+
+
 @pytest.mark.parametrize("artifact, change", [("prd", MOVED), ("brief", REFRAMED)], ids=["prd-consumes-workflow", "assessment-is-star"])
 def test_apply_flags_generated_artifact_stale(art, artifact, change):
     """The assessment maps to `*`: no decision or challenge is needed to unseat it."""

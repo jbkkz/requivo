@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
-from typing import cast
+from typing import BinaryIO, cast
 
 from requivo.core import persistence as store
 from requivo.core.analysis import model_status, readiness_blockers
@@ -44,6 +44,7 @@ from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
 from requivo.paths import workspace_root
+from requivo.services import archives
 from requivo.services.repository import SessionRepository, accepts_stale, default_repository
 
 logger = logging.getLogger(__name__)
@@ -550,12 +551,13 @@ class SessionService:
     def diff(self, slug: str, proposal: dict | str, *, require_complete: bool = True) -> UpdateResult:
         """Dry run of `update_model`: what *would* change, nothing written. `revision` is the one that would be created."""
         self._ensure_canonical(slug)  # the apply's own gate, `out/` hint included: never a phantom first apply (#678)
-        meta = self.meta(slug)
-        current = self.load_model(slug) if meta.current_revision > 0 else None
+        with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            current = self.load_model(slug) if meta.current_revision > 0 else None
         perimeter = resolve_perimeter(meta.perimeter)
         new = validate_proposal(proposal, require_complete=require_complete, current=current,
                                 perimeter=perimeter)
-        return self._plan(slug, current, new, apply=False, perimeter=perimeter)
+        return self._plan(slug, current, new, apply=False, perimeter=perimeter, before=meta)
 
     def update_model(self, slug: str, proposal: dict | str, *, require_complete: bool = True,
                      expected_revision: int | None = None, provenance: dict | None = None) -> UpdateResult:
@@ -624,7 +626,8 @@ class SessionService:
             logger.info("model applied: slug=%s revision=%d changed_slots=%d stale_artifacts=%d",
                        slug, revision, len(changed), len(stale))
         else:
-            meta = self.repo.read_meta(slug) if self.repo.has_meta(slug) else None
+            meta = before if before is not None else (
+                self.repo.read_meta(slug) if self.repo.has_meta(slug) else None)
             revision = (meta.current_revision + 1) if meta else 1
             stale = _resolve_stale(set(meta.artifact_status) if meta else set())
 
@@ -664,3 +667,27 @@ class SessionService:
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,
         }
+
+    # ── the portable archive (#702): `services/archives.py` is its one implementation ──
+    def export_archive(self, slug: str) -> bytes:
+        """The zip `requivo session export` writes, of this service's repository, taken under the session
+        lock. File-backed only: another backing is `unsupported_repository`."""
+        files = archives.file_store(self.repo, "export_archive")
+        if not self.exists(slug):
+            raise self.no_session(slug)
+        return archives.export_archive(self.repo, files, slug)
+
+    def import_archive(self, data: bytes | BinaryIO | Path, *, force: bool = False,
+                       name: str | None = None) -> SessionMeta:
+        """`requivo session import`'s checks and refusals, landing in this service's repository and nowhere
+        else. `name` is how a refusal names the archive; a `Path` names itself. A stream must be
+        seekable (a zip is read from its end). File-backed only."""
+        return self._import_archive_report(data, force=force, name=name)[0]
+
+    def _import_archive_report(self, data: bytes | BinaryIO | Path, *, force: bool = False,
+                               name: str | None = None) -> tuple[SessionMeta, bool]:
+        """`import_archive`, plus whether it replaced a session: `session import --json`'s `replaced`,
+        decided once inside the import (invariant 9). Not on the seam; the CLI is its caller."""
+        files = archives.file_store(self.repo, "import_archive")
+        label = name if name is not None else str(data) if isinstance(data, Path) else "<archive>"
+        return archives.import_archive(self.repo, files, data, force=force, name=label)

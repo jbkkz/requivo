@@ -32,6 +32,7 @@ STATUS_BY_CODE = {
     "unreadable_archive": 400,
     "invalid_archive": 400,
     "import_move_failed": 500,
+    "unsupported_repository": 501,
     "unstated_source_revision": 400,  # not 409: the remedy is entirely the caller's (#57)
     "invalid_filename": 400,
     "empty_selector_token": 400,

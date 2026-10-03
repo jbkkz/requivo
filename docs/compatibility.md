@@ -124,6 +124,7 @@ raised as `invalid_model` any more.
 | an archive is not a readable zip, or not shaped like an export (8 sub-conditions, closed `problem` vocabulary: `empty`, `too_many_entries`, `too_many_files`, `too_large`, `unsafe_entry`, `entry_outside_session_directory`, `multiple_sessions`) | `unreadable_archive` / `invalid_archive` | `{archive}` / `{problem, …}` | #101, #219 | `test_import_refuses_an_archive_that_is_not_a_session`, `test_import_refuses_an_archive_bounded_by_files_and_bytes_but_not_by_directory_entries` |
 | the import slug is taken and `--force` was not passed | `session_exists` | `{slug}` | #101 | `test_import_refuses_a_collision_unless_forced` |
 | a non-session directory already occupies the import slug | `import_destination_occupied` | `{slug, path}` | #114 | `test_a_stray_directory_at_the_slug_is_refused_by_name_on_every_platform` |
+| `SessionService.export_archive`/`import_archive` over a repository that is not file-backed | `unsupported_repository` | `{repository, operation}` | #702 | `test_a_repository_with_no_session_directory_refuses_the_archive_by_name` |
 | no usable host on a Requivo Web request | `undetermined_host` | `{host_header_present, host_header, hint}` | #52 | `test_a_request_that_states_no_host_at_all_is_refused` |
 | a host this server does not answer to | `host_not_allowed` | `{host, hint}` | #52 | `test_a_request_addressed_to_another_host_is_refused` |
 | the browser declares another site (`Sec-Fetch-Site`) | `cross_site_fetch` | `{sec_fetch_site}` | #52 | `test_a_browser_declared_cross_site_write_is_refused` |
@@ -180,6 +181,7 @@ below are the ones with a specific status and consequence worth stating on their
 | `session_exists` | 409 | a conflict with the store's state, like `revision_conflict` (409 too) |
 | `input_too_large` | 413 | the request itself, refused before any provider call |
 | `spend_ceiling_reached` | 403 | not 429 — a spend budget does not reset with time |
+| `unsupported_repository` | 501 | the injected backing does not implement the session archive (#702) |
 
 | Promise | Since | Test |
 |---|---|---|
@@ -338,6 +340,7 @@ exactly like the CLI and the `--json` envelopes above.
 | Category | Names | Since | Test |
 |---|---|---|---|
 | Services | `SessionService`, `UpdateResult`, `SessionEntry`, `SessionSnapshot`, `Readiness`, `RescopeResult`, `DiscoveryService`, `Generated`, `ArtifactService`, `UnknownArtifactTypeError`, `UnstatedSourceRevisionError`, `UnreadableSourceRevisionError` | #423 | `test_every_declared_seam_name_actually_resolves` |
+| The session archive, against the service's own repository: `SessionService.export_archive(slug) -> bytes` is the zip `session export` writes; `SessionService.import_archive(data, *, force=False, name=None) -> SessionMeta` takes `bytes`, a seekable binary stream or a `Path` and raises `session import`'s refusals, a missing file's `session_not_found` included (an unseekable stream is `unreadable_archive`, by name). File-backed only: any other backing is `unsupported_repository` | #702 | `test_a_rooted_export_is_the_clis_archive_and_imports_in_another_workspace`, `test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does` |
 | Protocols and the shipped repository | `SessionRepository`, `ReasoningProvider`, `FileSessionRepository` (its `__init__(root=...)` and `default_repository()`; `.store()` and `core.persistence.Store` are **not** part of this seam) | #423, #272 | `test_every_declared_seam_name_actually_resolves` |
 | Boundary contracts | `EngineOutput`, `ModelProposal`, `SessionMeta`, `ArtifactStatus`, `RevisionRecord`, `UnexaminableEntry`, `Brief`, `PRD`, `AcceptanceCriteria`, `Epic`, `ReleaseNotes`, `Stories`, `EstimateDraft` | #423 | `test_every_declared_seam_name_actually_resolves` |
 | Failure vocabulary | `RequivoError` and every subclass, `EngineError` | #423 | `test_every_declared_seam_name_actually_resolves` |
