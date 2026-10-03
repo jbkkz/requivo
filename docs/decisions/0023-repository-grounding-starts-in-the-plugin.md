@@ -23,7 +23,7 @@ No prompt asset moved.
 questions** on a request whose answers were in the repository — a golden fixture of that shape, not
 an impression. The harness drives the engine rather than a Claude Code session, so that fixture (a
 request paired with a checkout, its questions captured with and without the grounding) is the first
-piece of work the trigger asks for. A CLI recap renderer waits with the scanner.
+piece of work the trigger asks for. A CLI recap without the repository half is a separate change.
 
 ## What breaking it cost
 
@@ -33,9 +33,9 @@ origin walkthrough: a first run with no grounding in the code already there.
 ## Alternatives rejected
 
 - **A CLI scanner now** — funds a subsystem on the assumption the trigger exists to test.
-- **A recap renderer in `render/` now** — it would have no caller: the plugin cannot call a verb the
-  release a marketplace pinned lacks (`decision: plugin-skills-mirror-a-pinned-cli-commit`), and the
-  CLI has no repository half to give it.
+- **A CLI recap renderer in this change** — deferred, not refused: its CLI-side half (the cards, the
+  restated request, the assumptions) needs no repository and would sit beside `render_understanding`
+  in `requivo run`/`discover`, but it is its own change, tracked separately.
 - **Grade repository facts `explicit`** — the model reaches `ready` on facts nobody confirmed.
 - **Re-read the repository on every turn** — the first run's evidence already carries what was read,
   and a second read is a second view of the user's world beside the session's one snapshot.

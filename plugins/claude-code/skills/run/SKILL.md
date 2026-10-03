@@ -196,22 +196,27 @@ first would re-present a list the user already answered instead of folding their
 ### Ground in the repository
 
 A session started inside a repository should not ask what the checkout already answers. Before you
-reason, look at the directory this Claude Code session is working in — the repository, even when
-`--workspace` sent the session somewhere else. It is a repository when its root holds `.git` (a
-directory, or a file in a worktree) or a project manifest (`pyproject.toml`, `package.json`, `go.mod`,
-`Cargo.toml`, `pom.xml` and the like). If it holds neither, there is nothing to ground in: the recap
-says so in one line, and you reason from the request alone.
+reason, find the repository this Claude Code session is working in — even when `--workspace` sent the
+session somewhere else. Its root is the nearest directory **at or above** the working directory that
+holds `.git` (a directory, or a file in a worktree): a session started in `repo/docs/` grounds in
+`repo/`. With no `.git` anywhere up the path, a project manifest in the working directory itself
+(`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `pom.xml` and the like) marks the root.
+Neither → the recap says *no repository found at `<working directory>` or above* — what was checked,
+never a bare "there is no repository" — and you reason from the request alone.
 
 Read narrowly, with `Glob`, `Grep` and `Read` — never a shell command:
 - the top level first: the README, the manifests, any agent instruction file (`CLAUDE.md`,
   `AGENTS.md`) — what this codebase is, and what it is built with;
 - then `Grep` for the request's own nouns, and open the few files that say what already exists that
-  this request touches.
+  this request touches. **`Grep` runs in `files_with_matches` mode only**, never content mode — a
+  content match prints the matching line, and the line holding `STRIPE_SECRET_KEY=` is exactly what a
+  request about Stripe finds — with a `glob` or `type` narrowed to source files and a `head_limit` of
+  about twenty paths. A matched path on the never-open list below is not opened; it goes on that list.
 
-About a dozen files is the budget, not the tree. Never open `.env*`, key or credential files,
-`.requivo/`, vendored or generated trees (`node_modules/`, `.venv/`, `vendor/`, `dist/`, `build/`),
-lockfiles or binaries, and never copy a secret into a slot, its evidence or the recap: the model is
-written to disk and travels into every document made from it.
+About a dozen files is the budget, not the tree, and the `Grep` cap above is separate from it. Never
+open `.env*`, key or credential files, `.requivo/`, vendored or generated trees (`node_modules/`,
+`.venv/`, `vendor/`, `dist/`, `build/`), lockfiles or binaries, and never copy a secret into a slot,
+its evidence or the recap: the model is written to disk and travels into every document made from it.
 
 Keep two lists as you go, because the recap reports both: what you **chose not to open** (by the rule
 above, or past the budget) and what you **tried to read and could not**. A short list of what was read
@@ -270,7 +275,7 @@ Before the first question, hand the user the ground the session is standing on. 
   none of them as their domain has learned something no `context.status` reports. One line, not a
   lecture,
 - **what this codebase appears to be, and what it is built with** — each claim with the file it came
-  from — or, in one line, that there was no repository to read,
+  from — or, in one line, that no repository was found at the working directory or above,
 - **what already exists that the request touches**, by path,
 - **the request, restated** — what is being asked for, kept apart from what is already built,
 - **what was assumed to get this far** — the summary's assumptions and every inferred slot, those read
