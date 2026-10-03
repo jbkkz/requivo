@@ -10,7 +10,7 @@ Write the **go-to-market plan**: the go-to-market perimeter's one document, its 
 decision brief. It says what a builder would commit to this week, given the hours and the money
 actually available. A judgment, not a recap. **You** do the analysis; Requivo tracks the document.
 This mirrors `src/requivo/assets/prompts/gtm_plan.md` and the `GoToMarketPlan` contract in
-`core/contracts.py`, at commit `1efbd43` — the rules the CLI's `requivo gtm_plan` gives its own
+`core/contracts.py`, at commit `e9d5fa9` — the rules the CLI's `requivo gtm_plan` gives its own
 reasoning call, restated here because the plugin cannot import that file at runtime
 (`decision: plugin-skills-mirror-a-pinned-cli-commit`). Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md`
 unless you already hold it from an earlier `/requivo:*` in this conversation — and read it again
@@ -118,7 +118,10 @@ Emit all three every time, `[]` for an empty one: a new plan replaces the last p
 CLI's does, so a challenge this plan no longer raises is removed rather than left standing. Leave
 `decisions` and `opportunities` out: the plan does not speak to them, and an absent key keeps what is
 established (REASONING.md, *the reasoning layer*). On a refusal, read `code`/`details`, fix the
-proposal and apply again; a refused apply wrote nothing. Do not dry-run it with `requivo model
+proposal and apply again; a refused apply wrote nothing. A session older than one of the
+perimeter's slots is refused as `missing_required_slot` for a slot its model never had: add that slot
+as unknown (`confidence` `empty`, `completeness` 0, its `impact_default`, no value), never a value
+you guessed, and the plan names it as unresolved. Do not dry-run it with `requivo model
 validate`: that verb takes no session, so it checks the proposal against the software vocabulary and
 refuses a go-to-market model for the wrong reason.
 
