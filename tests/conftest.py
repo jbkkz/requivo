@@ -1,5 +1,7 @@
 """Suite-wide guarantees — what every test gets without asking, and deliberately nothing else (#419)."""
+import contextlib
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from _fakes import (  # noqa: F401  (re-exported for the suites)
 
 from requivo.core import persistence as _persistence_store
 from requivo.core.contracts import EngineOutput
+from requivo.core.persistence import lock as _persistence_lock
 from requivo.services.artifacts import ArtifactService as _ArtifactService
 from requivo.services.sessions import SessionService as _SessionService
 
@@ -97,7 +100,9 @@ def blind_to_dangling_links(monkeypatch) -> None:
             tail.append(s.name)
             s = s.parent
 
-    monkeypatch.setattr(_persistence_store, "_resolve", resolve)
+    # Where the containment check looks it up, not only on the package, which it never reads (#713).
+    for module in (_persistence_store, _persistence_lock):
+        monkeypatch.setattr(module, "_resolve", resolve)
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +114,18 @@ def _no_ambient_credentials(monkeypatch):
     monkeypatch.setattr("requivo.cli.load_dotenv", lambda *a, **kw: False)
     # Layer 3: a call that still escapes — an on-disk profile resolves without a single variable set.
     monkeypatch.setenv("ANTHROPIC_BASE_URL", SINKHOLE_BASE_URL)
+
+
+@pytest.fixture(autouse=True)
+def _no_personal_context_cards(monkeypatch):
+    # The developer's own `~/.config/requivo/context` never reaches a test; one exercising user cards sets
+    # its own: `test_no_personal_context_card_reaches_a_test` (#711). `mkdtemp` + `rmdir`, not pytest's tmp
+    # machinery, whose cleanup scans: `test_the_workspace_guard_does_not_hide_a_listing_error` breaks `scandir`.
+    empty = tempfile.mkdtemp(prefix="requivo-no-user-cards-")
+    monkeypatch.setenv("REQUIVO_CONTEXT_DIR", empty)
+    yield
+    with contextlib.suppress(OSError):
+        os.rmdir(empty)
 
 
 def _workspace_entries(root):

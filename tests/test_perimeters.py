@@ -174,6 +174,19 @@ def test_impact_is_scoped_to_the_sessions_own_perimeter():
         svc.impact(slug, ["business_rules"])
 
 
+def test_a_loose_model_file_never_borrows_the_perimeter_of_a_session_sharing_its_directory_name(workspace):
+    """`impact <dir>/s/model.json` reads a bare file as software, beside a go-to-market session `s` (#705)."""
+    svc = SessionService()
+    svc.create_session("grow the funnel", slug="s", perimeter=GO_TO_MARKET)
+    svc.update_model("s", _gtm_payload())
+    assert "gtm_plan" in run_cli(["impact", "s"]) and "gtm_plan" in run_cli(["impact", "s", "capacity"])  # must fire
+    loose = workspace / "elsewhere" / "s" / "model.json"
+    loose.parent.mkdir(parents=True)
+    loose.write_text(json.dumps({"model": _slots(SOFTWARE), "questions": [], "summary": {"objective": "x"}}), encoding="utf-8")
+    assert "prd" in run_cli(["impact", str(loose)])   # the dependency map, read as software
+    assert "prd" in run_cli(["impact", str(loose), "business_rules"])
+
+
 def test_perimeter_is_frozen_at_creation_and_visible_in_status_and_session_show():
     """#608 acceptance: recorded, frozen, and visible through `status --json` and `session show --json`."""
     svc = SessionService()

@@ -665,9 +665,11 @@ def _cmd_impact(a, client) -> None:
     # Thinner-evidence review (#493) is a walk over frozen revisions, so only a session has one; a
     # loose file never borrows a same-named session's:
     # `test_a_loose_model_file_never_borrows_the_review_of_a_session_sharing_its_directory_name`.
-    evidence = None if Path(ref).is_file() else svc.thinner_evidence(slug)
-    # The session's perimeter, or software for a bare model.json (#608).
-    perimeter = (resolve_perimeter(svc.meta(slug).perimeter) if svc.exists_meta(slug)
+    is_file = Path(ref).is_file()
+    evidence = None if is_file else svc.thinner_evidence(slug)
+    # The session's perimeter, or software for a bare model.json (#608), never a same-named session's:
+    # `test_a_loose_model_file_never_borrows_the_perimeter_of_a_session_sharing_its_directory_name`.
+    perimeter = (resolve_perimeter(svc.meta(slug).perimeter) if not is_file and svc.exists_meta(slug)
                 else DEFAULT_PERIMETER)
     if not a.slots:
         render_dependency_map(out, perimeter)

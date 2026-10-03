@@ -33,6 +33,22 @@ def test_the_net_fires_when_a_credential_is_ambient():
     )
 
 
+def test_no_personal_context_card_reaches_a_test(tmp_path):
+    """#711: a card in the developer's own `~/.config/requivo/context` is invisible inside a test; the probe's
+    must-fire half removes the net and finds it, so the planted card is real."""
+    home = tmp_path / "home"
+    (home / ".config" / "requivo" / "context").mkdir(parents=True)
+    (home / ".config" / "requivo" / "context" / "planted-card.md").write_text("# Planted\n", encoding="utf-8")
+    proc = _workspace_probe(tmp_path, (
+        "import os\n"
+        "from requivo.core.context import available_cards\n"
+        "assert 'planted-card' not in available_cards(), 'a personal card reached a test'\n"
+        "os.environ.pop('REQUIVO_CONTEXT_DIR', None)\n"
+        "assert 'planted-card' in available_cards(), 'the control: the planted card was not found'\n"
+    ), HOME=str(home), USERPROFILE=str(home))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_importing_the_cli_leaves_the_environment_alone(tmp_path):
     """#419's first mechanism, closed: importing `requivo.cli` from a directory holding a `.env` must not load
     it."""
@@ -107,7 +123,8 @@ _PYTEST = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
 
 def _child(cwd, argv, *, tests_on_path=False, **env_extra):
     """A child interpreter on this checkout's `src` (#420), with the canary and the workspace scrubbed."""
-    env = {k: v for k, v in os.environ.items() if k not in ("REQUIVO_HERMETICITY_CANARY", "REQUIVO_WORKSPACE")}
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("REQUIVO_HERMETICITY_CANARY", "REQUIVO_WORKSPACE", "REQUIVO_CONTEXT_DIR")}
     names = ("src", "tests") if tests_on_path else ("src",)
     env["PYTHONPATH"] = os.pathsep.join(str(_REPO_ROOT / name) for name in names)
     env.update(env_extra)
@@ -211,7 +228,7 @@ def test_the_workspace_guard_does_not_hide_a_listing_error(tmp_path):
     assert "cannot inspect watched workspace" in proc.stdout
 
 
-def _workspace_probe(cwd, body):
+def _workspace_probe(cwd, body, **env_extra):
     # Copy the real net, not a stand-in.
     (cwd / "conftest.py").write_text(
         (_REPO_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8"), encoding="utf-8",
@@ -220,8 +237,8 @@ def _workspace_probe(cwd, body):
     (cwd / probe).write_text(
         "def test_probe():\n" + textwrap.indent(body, "    "), encoding="utf-8",
     )
-    return _workspace_pytest(cwd, probe)
+    return _workspace_pytest(cwd, probe, **env_extra)
 
 
-def _workspace_pytest(cwd, target):
-    return _child(cwd, _PYTEST + [target], tests_on_path=True)
+def _workspace_pytest(cwd, target, **env_extra):
+    return _child(cwd, _PYTEST + [target], tests_on_path=True, **env_extra)

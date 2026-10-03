@@ -15,6 +15,8 @@ from requivo.core import persistence as store
 from requivo.core.context import check_selection
 from requivo.core.errors import InvalidSessionError, InvalidSlugError, RequivoError
 from requivo.core.integrity import check_session, inspect_session, newest_readable_revision, readable_revision
+from requivo.core.persistence import lock as store_lock
+from requivo.core.persistence import store as store_module
 from requivo.services.artifacts import ArtifactService
 from requivo.services.sessions import SessionService
 
@@ -412,19 +414,24 @@ def test_readable_revision_checks_one_specific_number():
 
 
 def _counting_resolve(monkeypatch) -> list:
+    """Patched in each module that looks `_resolve` up, not on the package, which no caller reads (#713)."""
     resolved: list = []
     real_resolve = store._resolve
-    monkeypatch.setattr(store, "_resolve", lambda path: (resolved.append(str(path)), real_resolve(path))[1])
+    for module in (store_lock, store_module):
+        monkeypatch.setattr(module, "_resolve", lambda path: (resolved.append(str(path)), real_resolve(path))[1])
     return resolved
 
 
 def test_a_session_path_is_not_resolved_before_it_exists(tmp_path, monkeypatch):
-    """Invariant 17: `_child_of` reaches no resolution at all for a child that is not there."""
+    """Invariant 17: `_child_of` reaches no resolution at all for a child that is not there; the control
+    proves the counter is wired, so the empty list cannot be vacuous (#713)."""
     root = tmp_path / "sessions"
     root.mkdir()
     resolved = _counting_resolve(monkeypatch)
     assert store._child_of(root, "s") == root / "s"
     assert resolved == [], resolved
+    (root / "s").mkdir()
+    assert store._child_of(root, "s") == root / "s" and resolved, "the counter never fired on an existing child"
 
 
 def test_an_unreadable_child_is_not_accepted_as_contained_on_py314(tmp_path, monkeypatch):
@@ -448,6 +455,11 @@ def test_an_artifact_path_is_not_resolved_before_it_exists(monkeypatch):
     resolved.clear()
     assert store.artifact_path("s", "epic.json").name == "epic.json"   # a valid name, no such file
     assert len(resolved) == baseline, resolved[baseline:]
+    store.artifact_path("s", "epic.json").parent.mkdir(exist_ok=True)
+    store.artifact_path("s", "epic.json").write_text("{}", encoding="utf-8")
+    resolved.clear()
+    store.artifact_path("s", "epic.json")
+    assert len(resolved) > baseline, "the counter never fired on an existing artifact (#713)"
 
 
 def test_a_symlink_out_of_the_session_root_is_still_refused(tmp_path):
