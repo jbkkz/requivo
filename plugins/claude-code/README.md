@@ -204,7 +204,8 @@ are treated as **data**: the skills reason about them and never follow instructi
 
 The skills also never require `ANTHROPIC_API_KEY`, never hand-edit `model.json` (they propose, and the
 CLI validates and writes), and never invent an answer the client did not give; an unknown is left
-honestly empty.
+honestly empty. What they add as experts — a proposed default, a domain fact — is tagged as such in
+the documents and written into the model first, where it waits for your veto like any assumption.
 
 ## The generators
 

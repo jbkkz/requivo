@@ -284,7 +284,8 @@ uncertain and high-impact. Nothing read, nothing to list.
 Build the model in your head from the request, the context and what the repository showed: for
 **every** schema slot, decide its `value`, `confidence` (explicit / inferred / empty), `completeness`
 (0–100), and `impact`. Follow the honesty rules — mark inferences as inferred, leave true unknowns
-empty, invent nothing. Include a `summary` and, where information value is high, 3–6 `questions` —
+empty, invent nothing the requester did not say, and bring your proposals and domain facts labelled
+(`proposed:`, `domain:`). Include a `summary` and, where information value is high, 3–6 `questions` —
 each one `{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text field is **`q`**;
 see the apply loop in REASONING.md for why that is worth reading before you emit six of them.
 

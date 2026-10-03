@@ -51,7 +51,8 @@ off the model you loaded in step 1.
   traces), in plain language — never the raw slot id.
 - One terse note per item — what makes it S vs L, or which unknown widens it.
 - 2–5 batch-level risks (dependencies, soft slots that could blow scope, regulatory, shared modules).
-- Estimate **only** the stories you just wrote. Do not invent stories or scope.
+- Estimate **only** the stories you just wrote. Do not invent stories or scope. A story resting on a
+  proposal (`proposed:` evidence) is estimated as proposed, tagged `[proposed]` in its note.
 - `days_low` never exceeds `days_high` for an item — the low end is optimistic, not a floor error.
 - **Total and confidence are computed, not judged** — the same formula the CLI applies in Python after
   its own call, so state it here rather than leaving it to a feel: `Total` sums `days_low` and

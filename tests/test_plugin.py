@@ -236,6 +236,51 @@ def test_the_keyless_gtm_plan_folds_what_the_cli_absorbs_and_saves_through_the_r
     assert saved == {"type": "gtm_plan", "filename": "go-to-market-plan.md", "revision": 1, "stale": False}
 
 
+def test_the_keyless_brief_names_its_decision_sections_and_a_proposal_it_applies_awaits_veto(workspace, monkeypatch):
+    """#746, #749, #744: step 3 names the decision sections and puts opportunities through the challenge check; its
+    apply carries exclusions and thresholds, and a `proposed:` value applied that way reaches the defaults list."""
+    from _fakes import run_cli, run_cli_stdin
+
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.services.sessions import SessionService
+    text, step = SKILLS["brief"], _section(SKILLS["brief"], r"^## 3\..*$")
+    sections = ("Evidence and its limits", "Options considered and set aside", "Riskiest assumptions: cheap test → kill signal",
+                "What would make me stop", "Open questions that block the decision")
+    assert not [s for s in sections if f"**{s}**" not in step], "brief: step 3 lacks a decision section (#746)"
+    assert "what would have to be true" in step and "becomes a challenge" in step, "brief: opportunities skip the check (#749)"
+    apply = re.search(r"^requivo model apply .*?\n(.*?)\nJSON$", text, re.DOTALL | re.MULTILINE)
+    assert apply and {"exclusions", "thresholds"} <= set(re.findall(r'^\s*"(\w+)":', apply.group(1), re.MULTILINE))
+
+    slug = SessionService().create_session("A leave approval system", slug="brief-keyless").slug
+    explicit = {"completeness": 90, "confidence": "explicit", "impact": "high", "value": "x", "evidence": "request: x"}
+    model = dict.fromkeys(schema_slot_ids()[1], explicit)
+    model["constraints"] = {**explicit, "confidence": "inferred", "value": "EU hosting", "evidence": "proposed: documents stay in the EU"}
+    proposal = {"model": model, "questions": [], "summary": {"objective": "Approve leave"},
+                "exclusions": [{"option": "A mobile app", "reason": "The deadline funds the web flow", "rests_on": ["constraints"]}],
+                "thresholds": [{"condition": "Under 5 pilots", "measure": "pilots signed", "action": "stop", "rests_on": ["success_metrics"]}]}
+    applied = json.loads(run_cli_stdin(["model", "apply", slug, "-", "--expected-revision", "0", "--json"], json.dumps(proposal), monkeypatch))
+    assert applied["changed_exclusions"] and applied["changed_thresholds"], applied
+    assert "proposed: documents stay in the EU" in run_cli(["status", slug]).split("WHAT I WILL ASSUME UNLESS YOU OBJECT", 1)[1]
+
+
+def test_a_document_that_proposes_tags_it_and_writes_it_back_before_it_saves():
+    """#744 (`decision: the-expert-proposes-and-labels`): REASONING.md defines the source tags and the evidence
+    prefixes; every generator knows a proposal; brief and prd apply the proposal before saving against that revision."""
+    reasoning = REASONING.read_text(encoding="utf-8")
+    honesty, tags = _section(reasoning, r"^## Honesty rules.*$"), _section(reasoning, r"^## Source tags.*$")
+    assert "`proposed: " in honesty and "`domain: " in honesty, "REASONING.md: expertise has no evidence prefix"
+    assert all(f"`[{t}]`" in tags for t in ("requester", "evidence", "repo", "proposed", "domain", "assumed"))
+    assert "proposes writes the proposal back first" in reasoning
+    assert not [n for n in ARTIFACT_SKILLS if not re.search(r"`(proposed:|\[proposed\])", SKILLS[n])], "a generator cannot tell a proposal"
+    for name in ("brief", "prd"):
+        text = SKILLS[name]
+        body = text.split("---", 2)[2]
+        assert "Bash(requivo model apply:*)" in _frontmatter(text)["allowed-tools"], f"{name}: cannot write a proposal back"
+        apply, save = body.find("model apply <slug> - --expected-revision N"), body.find("--revision M")
+        assert -1 < apply < save, f"{name}: no write-back apply ahead of a save against the revision it made"
+        assert not re.search(r"not new invention|never a stated requirement|not added from outside", text), f"{name}: forbids proposing"
+
+
 def test_docs_offers_each_perimeter_its_own_documents_through_skills_it_can_run():
     """#719: the docs skill's perimeter table is the registry's split; every type it offers has a skill, the CLI's
     label, and grants docs already holds, since it runs that skill's steps under its own."""

@@ -87,9 +87,11 @@ Every slot id in `contests` and `rests_on` comes from step 2's schema. The apply
 go-to-market's vocabulary, the same check the CLI's own plan is held to, and refuses any other.
 
 **Voice.** Write for a builder deciding what to do this week: no slot ids, completeness percentages
-or confidence labels in the prose. Say the business thing. **No unsourced industry knowledge**: never
-"most founders do X" or "this channel typically converts at…" — state it as your own reasoning from
-this model, or tie it to the product context.
+or confidence labels in the prose. Say the business thing. **Domain facts, labelled; no folklore**: a
+checkable fact the plan rests on (a platform's terms, a regulation) is tagged `[domain]`, a concrete
+default you propose `[proposed]` with its rationale, and step 4 writes both back (REASONING.md, *a
+document that proposes*). Never "most founders do X" or "this channel typically converts at…": that
+is not a fact, so state it as your own reasoning from this model, or tie it to the product context.
 
 **Language.** The plan anchors English whatever language the request arrived in, like every
 buildable artifact (`docs/requirements-model.md`, *The language of the outputs*).
@@ -97,15 +99,15 @@ buildable artifact (`docs/requirements-model.md`, *The language of the outputs*)
 ## 4. Fold the reasoning back into the model — do not skip this
 The typed half of the plan is part of the model, exactly as the CLI's `requivo gtm_plan` absorbs it:
 a later answer that changes the offer must report the challenge contesting it, and one that changes
-capacity the exclusion resting on it. Take the model from step 2 unchanged and add those three lists,
-and only those:
+capacity the exclusion resting on it. Take the model from step 2, unchanged but for the proposals
+the plan introduced, and add those three lists, and only those:
 
 ```bash
 requivo model apply <slug> - --expected-revision N --json <<'JSON'
 {
-  "model": { … exactly as it was … },
+  "model": { … as it was, proposals folded in … },
   "questions": [ … exactly as they were … ],
-  "summary": { … exactly as it was … },
+  "summary": { … as it was … },
   "challenges": [{"headline": "…", "premise": "…", "alternative": "…", "consequence": "…",
                   "recommendation": "…", "contests": ["<slot ids whose premise this contests>"]}],
   "exclusions": [{"option": "…", "reason": "…", "rests_on": ["<slot ids the cut rests on>"]}],

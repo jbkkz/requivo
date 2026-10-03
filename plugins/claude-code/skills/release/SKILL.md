@@ -40,7 +40,9 @@ when you save.
   uncertain parts of the model. Honest but neutral; it manages expectations, it doesn't apologise.
 - `notes`: anything a stakeholder must act on or be aware of (a permission to grant, a one-time setup,
   a configuration choice). Omit if the model implies none.
-- Never invent a capability the model doesn't support.
+- Never invent a capability the model doesn't support. One resting on a proposal nobody confirmed
+  (`proposed:` evidence) is not announced as delivered: it is a choice to confirm under *Before you
+  start*.
 
 **Voice.** This is the most client-facing artifact — write like a PM announcing a feature to a client.
 **Never** expose internals: no slot ids, completeness percentages, confidence labels

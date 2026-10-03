@@ -84,6 +84,9 @@ In the canonical order above, for each type the user picked (from `$ARGUMENTS` o
   `/requivo:<type> <slug>` had been invoked directly, with the slug and revision you
   already resolved. This skill never repeats those rules; the referenced skill is the source, the
   same way `/requivo:estimate` already defers to `/requivo:stories` for its own reasoning rules.
+- **A type that applies moves the revision.** `brief`, `prd` and `gtm_plan` write their reasoning or
+  proposals into the model before saving; after one, re-read `revision` with
+  `requivo status <slug> --json` and give the next type that one, so later documents build on it.
 - **`estimate` absorbs `stories`.** If both are picked, generate `estimate` only — its own step 2
   reasons and saves the stories first, against the same revision as the estimate (invariant 6), so a
   separate `stories` run would write the same file twice against two different revisions. Drop

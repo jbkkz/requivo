@@ -107,10 +107,7 @@ it, and name the shell-restart step up front rather than letting the user discov
 > in) before the second line — it won't resolve otherwise. Then run this request again and the
 > preflight will pick up from a CLI that's actually there.
 
-Then stop, the same way the four things below do: nothing has been mutated, so there is nothing to
-undo, and this is a variant of that fallback rather than a fourth outcome — the reason it is spelled
-out here rather than folded into the four things is that *those* are generic to every missing-CLI
-case, while this sequence is specific to having no package manager at all.
+Then stop, as the four things below do: nothing has been mutated, so there is nothing to undo.
 
 ### If the CLI is not installed: say these four things, then stop
 
@@ -218,8 +215,21 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   `empty`, quote the phrase, and ask which reading they meant.
 - `completeness` (0–100) is how fully the slot is pinned down; `impact` (low/medium/high) is how much
   it changes the shape/cost of the solution.
-- Never fabricate an answer the client did not give. An unknown left honestly empty is correct; a
-  guessed value dressed as fact is a bug.
+- **Fabrication and expertise are different things** (`decision: the-expert-proposes-and-labels`).
+  What the requester said, decided or observed is never invented: an unknown left honestly empty is
+  correct, a guessed value dressed as their word is a bug. What *you* know is another matter, and
+  withholding it is a bug too. Bring what a senior PM would, each `inferred` and labelled so it is
+  never passed off as the requester's word:
+  - **a proposed default**: a concrete design choice where the model leaves room (how the core
+    feature works, where data is hosted, what happens when a rule changes), with evidence
+    `proposed: <one-line rationale>`;
+  - **domain knowledge**: a regulatory, technical or market fact the request bears on (who is the
+    data controller, which data is special-category), with evidence `domain: <the fact>`. It feeds
+    `constraints` and `risks`, and becomes a question when it is uncertain and high-impact.
+
+  A fact can be checked; "most teams do X" cannot, so it is never written. Both kinds reach the
+  defaults list, *what I will assume unless you object* (#731), like any inference, so the user can
+  veto either. A proposal never overwrites an `explicit` value and never closes an open decision.
 - **A value read from the repository is `inferred`, never `explicit`**, however plainly the file
   states it. `explicit` is the client's word — the request or an answer; a README is what someone once
   wrote, and a model that grades it `explicit` reaches `ready` on facts nobody confirmed. The user
@@ -229,10 +239,29 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   builder vouching for what they built, not a belief about the world: grade it `explicit`. The
   schema's "what a system does is never explicit" is about an unconfirmed belief; an as-is the builder
   has not confirmed stays `inferred`.
-- **Evidence names its source, and keeps the two apart**: `repo: <path>` for a file
-  (`repo: pyproject.toml`), `request:` for the client's words, both on a slot resting on both — never
-  blended into one sentence. The request is what someone wants; the repository is what is already
-  true, and a challenge that contests one must stay distinguishable from one that contests the other.
+- **Evidence names its source, and keeps the sources apart**: `repo: <path>` for a file
+  (`repo: pyproject.toml`), `request:` for the client's words, `proposed:` and `domain:` for what you
+  brought, each its own clause on a slot resting on several — never blended into one sentence. The
+  request is what someone wants; the repository is what is already true, and a challenge that
+  contests one must stay distinguishable from one that contests the other.
+
+## Source tags in the documents
+
+The brief and the PRD tag each claim with where it comes from, so a reader tells the requester's word
+from your proposal at a glance: one legend line under the title, then a tag after each claim.
+
+| tag | the claim comes from | read off the slot it rests on |
+| --- | --- | --- |
+| `[requester]` | the requester's words or answers | `explicit`, whatever else the evidence names |
+| `[evidence]` | a source the request brought (threads, data, an attached document) | an evidence clause quoting it |
+| `[repo]` | the repository | `repo:` |
+| `[proposed]` | your proposed default, with its one-line rationale | `proposed:` |
+| `[domain]` | domain knowledge | `domain:` |
+| `[assumed]` | an inference with none of the above | `inferred`, no such clause |
+
+A slot resting on several sources tags each claim by its own clause. The model keeps one confidence
+per slot (claim-level provenance is #747's design): the tags are a render of it, not a new field, and
+not the confidence labels the voice rules keep out of the prose.
 
 ## The revision contract (every skill, no exceptions)
 
@@ -249,12 +278,8 @@ still true**:
 
 Skipping step 3 does not make your apply safer — it makes it silent. Without `--expected-revision`,
 a change someone else made while you were reasoning is overwritten with no error, and the user is
-never told. Skipping step 4 used to be the same failure one layer up: an artifact you reasoned from
-revision 3 was recorded as if it came from the session's current state, so a PRD built on a superseded
-model was filed as fresh. Since #6 the save is **refused** instead — `--revision` has no default,
-because which revision you reasoned from is the one fact only you hold. Nothing is written, and the
-error names the flag and the revisions the session has. So step 4 is not a precaution you can trade
-away for brevity: leave it off and the save does not happen.
+never told. Step 4 cannot be skipped at all (#6): `--revision` has no default, because which revision
+you reasoned from is the one fact only you hold, so a save without it is refused and writes nothing.
 
 If the apply fails with `revision_conflict`, the session moved under you. Do not retry the same
 proposal — it was reasoned against a model that no longer exists. Re-read the model, tell the user
@@ -275,12 +300,9 @@ files anywhere:
    { "model": { … }, "questions": [ … ], "summary": { … } }
    JSON
    ```
-   A question is `{ "q": …, "slot": …, "why": … }` — **the text field is `q`**, not `question`. It is
-   spelled out because `question` is the natural guess and the contract is `extra="forbid"`, so the
-   guess costs a whole apply cycle: two errors per question (`questions.N.q Field required` and
-   `questions.N.question Extra inputs are not permitted`), which is 12 for a six-question turn.
-   Recoverable — the first of each pair names `q` — but the round trip is avoidable, and it was
-   spent for real on a plugin session before this line existed (#489).
+   A question is `{ "q": …, "slot": …, "why": … }` — **the text field is `q`**, not `question`, the
+   natural guess. The contract is `extra="forbid"`, so the guess costs a whole apply cycle: two
+   errors per question (#489).
 3. If it fails, read the JSON error (`code`, `message`, `details`), **fix your proposal**, and apply
    again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
    `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
@@ -309,7 +331,8 @@ A model carries `decisions`, `challenges`, `opportunities`, `exclusions` and `th
 its slots — the judgment over the facts, produced by the assessment and inherited by every later
 generator (`exclusions` is a fourth, added by #599: an option that was considered and deliberately
 ruled out; `thresholds` is a fifth, added by #604: a decision that has not fired yet, "at X, do Y" —
-`/requivo:gtm-plan` populates both, with `challenges`, on a go-to-market session). In a proposal
+`/requivo:brief` populates both on a software session, as its options set aside and its kill signals
+(#746), and `/requivo:gtm-plan` on a go-to-market one). In a proposal
 all five are **tri-state**, and the difference is load-bearing:
 
 | in your proposal | meaning |
@@ -341,3 +364,22 @@ Most commands accept `--json` for a machine-readable result — `schema`, `conte
 text, and `requivo <verb> --help` says which do. Prefer it where a skill shows it, then present the
 result to the user in plain language. A non-zero exit means failure — under `--json`, the error
 envelope explains why.
+
+## A document that proposes writes the proposal back first
+
+Documents stay views of the model, so a `[proposed]` or `[domain]` claim a document introduces goes
+into the model before the document is saved. The brief, the PRD and the go-to-market plan do it:
+
+1. From the model you read at revision `N`, set each slot a new proposal rests on to `inferred`, the
+   proposal in its value, and add a `proposed: <rationale>` (or `domain: <fact>`) clause to its
+   evidence beside the clauses already there. Never touch an `explicit` slot: a proposal fills room
+   the model leaves. One that fits no slot is an open question, not a requirement. A proposal on a
+   `low`-impact slot also gets a line in the summary's `assumptions`, or the defaults list skips it.
+2. Apply with `--expected-revision N`: every other slot and the questions as they were, the summary
+   with only step 1's lines added, the reasoning keys absent unless the skill speaks to them. Call the
+   revision it returns `M`.
+3. Save the document with `--revision M`, and relay the apply's `stale_artifacts`: a proposal is a
+   real change, and an older document resting on that slot is now behind.
+
+The other generation skills build from proposals already in the model, tagged the same way, and send
+a new one to `/requivo:prd` or `/requivo:run`; they hold no `model apply`.

@@ -11,8 +11,9 @@ technical docs speak.
 
 - **What we know** — stated directly by the client, or, with no client, the builder's own committed
   intent (what they want, will build, will spend) — never their unconfirmed belief about the world.
-- **What we are assuming** — inferred from context, or the builder's own unconfirmed belief about the
-  world (will users want this, will they pay); confirm before building.
+- **What we are assuming** — inferred from context, proposed as a default, drawn from domain
+  knowledge, or the builder's own unconfirmed belief about the world (will users want this, will they
+  pay); confirm before building.
 - **Open question** — not yet known, and worth asking when the answer would move the build.
 - **To test** — not yet known, and **not** worth asking: only a real test would settle it. It names
   what would, and does not block readiness.
@@ -85,6 +86,15 @@ their own system: an as-is read from it, restated to them and confirmed, is `exp
 **`testable` is a gap no amount of asking closes** — a go-to-market bet, whether anyone wants the
 feature — where `unknown` is one an answer would close. A `testable` slot must name what would settle
 it or it is refused; named, it does not block readiness. Settling one is an ordinary model change.
+
+**What the reasoner brings is `inferred`, and says where it came from**
+(`decision: the-expert-proposes-and-labels`). The requester's word is never invented, but the
+reasoner is expected to contribute a concrete default where the model leaves room (evidence
+`proposed: <rationale>`) and the regulatory, technical or market facts the request bears on
+(`domain: <fact>`). Both enter the model before any document states them, so they reach the "what I
+will assume unless you object" list and can be vetoed; documents stay views of the model, and tag
+each claim by its source. The keyless plugin does this; the API path's generator prompts still carry
+the older rule.
 
 ## Decisions, challenges, opportunities
 

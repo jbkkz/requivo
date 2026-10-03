@@ -29,7 +29,10 @@ Note the `revision` — call it `N`. It is the model these stories will rest on,
 when you save.
 
 ## 2. Reason → decompose into stories
-- Derive stories from what the model **says**. Do not invent scope the model doesn't support.
+- Derive stories from what the model **says**. Do not invent scope the model doesn't support. A value
+  it holds as a proposal (`proposed:` or `domain:` evidence) is buildable, its acceptance line tagged
+  `[proposed]` and phrased to confirm; a new proposal of yours goes to `/requivo:prd` or
+  `/requivo:run`, which write it back (REASONING.md, *a document that proposes*).
 - One story = one shippable slice of behavior, independently testable. Split by workflow step / actor
   / rule, **not** by technical layer (no "build the database" story).
 - Aim for 3–8 stories, ordered by delivery priority. Each has an `id` (`S1`, `S2`, …), a title, an
