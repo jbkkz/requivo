@@ -121,7 +121,7 @@ def test_the_shared_preflight_is_walked_and_not_only_the_skills():
     sources = invocation_sources(PLUGIN_ROOT)
     names = [p.name for p in sources.paths]
     assert "REASONING.md" in names, f"the preflight is not walked; walked {names}"
-    assert names.count("SKILL.md") == 11, f"expected eleven skills, walked {names}"  # #542, #539, #545, #543, #602
+    assert names.count("SKILL.md") == 12, f"expected twelve skills, walked {names}"  # #542, #539, #545, #543, #602, #719
     assert sources.unreadable == [], sources.unreadable
     from_preflight = referenced_invocations([PLUGIN_ROOT / "REASONING.md"])
     assert ("doctor", None) in from_preflight, f"the preflight must name the probe it runs; extracted {sorted(from_preflight)}"

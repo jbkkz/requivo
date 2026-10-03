@@ -52,6 +52,7 @@ This skill answers *where are we*; the user's next move follows from the answer,
 there — never with the slug attached, since neither pointer below needs the user to carry one. Not
 ready, with open questions: `/requivo:run` folds their answers in. Ready, with no decision brief yet:
 `/requivo:brief <slug>` (`brief` still takes a slug positionally; state the one this skill already
-resolved, not a placeholder). Something marked as needing an update: the *needs updating* lines above
-already say what it reaches; `/requivo:run` is where the change goes in, and it announces the blast
-radius before applying. One pointer, not a menu.
+resolved, not a placeholder) — or, on a `go-to-market` session, whose document is the go-to-market
+plan rather than a brief, `/requivo:gtm-plan <slug>` the same way. Something marked as needing an
+update: the *needs updating* lines above already say what it reaches; `/requivo:run` is where the
+change goes in, and it announces the blast radius before applying. One pointer, not a menu.

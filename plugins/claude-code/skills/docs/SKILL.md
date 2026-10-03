@@ -1,13 +1,13 @@
 ---
 name: docs
-description: Show a menu of the seven documents a Requivo session's model can produce — decision brief, PRD, user stories, estimate, acceptance criteria, delivery epic, release notes — each with a one-line purpose and whether it is up to date, needs updating, or has not been generated. Generate the ones the user picks, one or several, reasoning in this Claude session. Use when the user wants a document but does not know its name, or wants to see what is fresh.
+description: Show a menu of the documents a Requivo session's model can produce — for a software session the seven (decision brief, PRD, user stories, estimate, acceptance criteria, delivery epic, release notes), for a go-to-market session its go-to-market plan — each with a one-line purpose and whether it is up to date, needs updating, or has not been generated. Generate the ones the user picks, one or several, reasoning in this Claude session. Use when the user wants a document but does not know its name, or wants to see what is fresh.
 allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo status:*), Bash(requivo artifact list:*), Bash(requivo model show:*), Bash(requivo context:*), Bash(requivo schema:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:docs
 
 Show what the model can produce and its freshness, then generate the picks — reasoning in *this*
-Claude session, the same way `/requivo:brief` and the other six generators do on their own. This
+Claude session, the same way `/requivo:brief` and the other generators do on their own. This
 skill does not reason a document itself; it resolves the session, shows the menu, and runs the
 matching generator skill's own steps for each pick. Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md`
 unless you already hold it from an earlier `/requivo:*` in this conversation — and read it again
@@ -34,18 +34,28 @@ Split it on whitespace and commas. Run `requivo session list --json` once — th
   type (or `all`).
 
 With a slug in hand, run `requivo status <slug> --json`. If `revision` is `0`, the session has no
-model yet: say so and point at `/requivo:run <slug>` instead of showing a menu, and stop.
+model yet: say so and point at `/requivo:run <slug>` instead of showing a menu, and stop. Note its
+`perimeter` (absent reads as `software`): it decides which documents the session can produce.
 
-## 3. The seven document types, in the order the user meets them
-`brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release` — the same names the CLI's own
-verbs use, and the same order every time. A document token from `$ARGUMENTS` is matched by name
-(case-insensitive) or, from the menu below, by its row number. Refuse an unrecognised token —
-name it back to the user and list the seven valid names — **before running anything**; an unknown
-pick is not silently dropped.
+## 3. The session's document types, in the order the user meets them
+A perimeter produces its own documents and no other's (#719), the same split the CLI's
+`requivo docs` and `artifact save` hold. The session's `perimeter` picks one row:
+
+| Perimeter | Document types |
+|---|---|
+| `software` | `brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release` |
+| `go-to-market` | `gtm_plan` |
+
+The names are the CLI's own artifact types, in the same order every time. A perimeter this table
+does not name has no documents in this plugin build: say so, point at `requivo docs <slug>`, and stop.
+A document token from `$ARGUMENTS` is matched by name (case-insensitive, `gtm-plan` reads as
+`gtm_plan`) or, from the menu below, by its row number. Refuse an unrecognised token, or one the
+session's perimeter does not produce — name it back to the user with the session's perimeter and
+list its valid names — **before running anything**; an unknown pick is not silently dropped.
 
 ## 4. No document type given: show the menu
 Run `requivo artifact list <slug> --json` alongside the `status --json` from step 2. For each of
-the seven types, in the order above, print one row: a number, its label, one sentence on what it is
+the session's types, in the order above, print one row: a number, its label, one sentence on what it is
 for, and its state — read `stale` off the artifact list payload, **never compare revision numbers**
 (a document reasoned from an older revision can still be exactly current; invariant 1):
 
@@ -58,6 +68,7 @@ for, and its state — read `stale` off the artifact list payload, **never compa
 | `criteria` | Acceptance criteria | Given/When/Then acceptance criteria a client can sign off on |
 | `epic` | Delivery epic | The delivery epic, ready for a tracker |
 | `release` | Release notes | Client-facing release notes |
+| `gtm_plan` | Go-to-market plan | The go-to-market plan to review before committing capacity to it |
 
 State per row: **not generated** (the type is absent from the artifact list payload), **up to date
 (rev N)** (present, `stale: false`), or **needs updating (from rev N)** (present, `stale: true`).
@@ -68,8 +79,9 @@ slug or a revision**; you already hold both.
 ## 5. Generate the picks
 In the canonical order above, for each type the user picked (from `$ARGUMENTS` or the menu):
 
-- **Read that type's own skill file** — `${CLAUDE_PLUGIN_ROOT}/skills/<type>/SKILL.md` — and follow
-  its steps as if `/requivo:<type> <slug>` had been invoked directly, with the slug and revision you
+- **Read that type's own skill file** — `${CLAUDE_PLUGIN_ROOT}/skills/<type>/SKILL.md`, with `_`
+  written `-` (`gtm_plan` is `skills/gtm-plan/SKILL.md`) — and follow its steps as if
+  `/requivo:<type> <slug>` had been invoked directly, with the slug and revision you
   already resolved. This skill never repeats those rules; the referenced skill is the source, the
   same way `/requivo:estimate` already defers to `/requivo:stories` for its own reasoning rules.
 - **`estimate` absorbs `stories`.** If both are picked, generate `estimate` only — its own step 2

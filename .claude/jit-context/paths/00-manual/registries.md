@@ -12,6 +12,7 @@ reachable (`test_the_real_artifact_registries_agree_on_their_key_sets`):
 - `render/markdown.py`: the writer; `services/discovery.py`: its `_WRITERS` entry;
 - `core/dependencies.py`: `_ARTIFACT_SLOTS_RAW` (what the staleness graph reads) and, if saveable,
   `ARTIFACT_FILENAMES`;
-- `web/viewmodels/labels.py`: `ARTIFACT_LABELS`; `cli.py`: the subcommand.
+- `web/viewmodels/labels.py`: `ARTIFACT_LABELS`; `cli.py`: the subcommand;
+- the keyless skill under `plugins/claude-code/skills/` and its row in `/requivo:docs`' perimeter table.
 
 Staleness is the dependency graph, never the revision number. `docs/extending.md` has the rest.

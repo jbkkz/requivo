@@ -17,7 +17,9 @@ new type touches all of these, or it lands in some tables and not others (#270, 
 - an entry in `core/dependencies.py`'s `_ARTIFACT_SLOTS_RAW` (the slots the artifact consumes; the
   staleness graph reads this and nothing else) and, if saveable, `ARTIFACT_FILENAMES`;
 - a label in `web/viewmodels/labels.py`'s `ARTIFACT_LABELS`;
-- a subcommand in `cli.py`.
+- a subcommand in `cli.py`;
+- the keyless skill, `plugins/claude-code/skills/<type>/SKILL.md` with `_` written `-`, and the type
+  in `/requivo:docs`' perimeter table (`test_docs_offers_each_perimeter_its_own_documents_through_skills_it_can_run`).
 
 `test_the_real_artifact_registries_agree_on_their_key_sets` fails when a type reaches some tables and
 not the rest. A generator whose text is user-facing carries the Voice rule: no slot ids, percentages

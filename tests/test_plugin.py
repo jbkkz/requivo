@@ -24,14 +24,14 @@ from version_skew import BEHIND, COULD_NOT_LOOK, IN_STEP, check, compare  # noqa
 from version_skew import tested_against_version as read_tested_against_version  # noqa: E402
 
 # Claude Code namespaces plugin skills as `/<plugin>:<skill>`.
-EXPECTED_SKILLS = {"demo", "run", "status", "docs", "brief", "prd", "stories", "estimate", "criteria", "epic", "release"}
+EXPECTED_SKILLS = {"demo", "run", "status", "docs", "brief", "prd", "stories", "estimate", "criteria", "epic", "release", "gtm-plan"}
 # One preferred install command, named in the shared preflight and nowhere else in the skills (#138).
 PREFERRED_INSTALL = "uv tool install requivo"
 # The generators the CLI's own optional API mode can produce (#542), and what each skill mirrors.
 CLI_API_MODE_GENERATORS = ("criteria", "epic", "release", "stories", "estimate")
 GENERATOR_PROMPTS = {"stories": ["stories.md"], "estimate": ["stories.md", "estimate.md"],
-                     "criteria": ["criteria.md"], "epic": ["epic.md"], "release": ["release.md"]}
-ARTIFACT_SKILLS = ("brief", "prd", *CLI_API_MODE_GENERATORS)
+                     "criteria": ["criteria.md"], "epic": ["epic.md"], "release": ["release.md"], "gtm-plan": ["gtm_plan.md"]}
+ARTIFACT_SKILLS = ("brief", "prd", *CLI_API_MODE_GENERATORS, "gtm-plan")
 SKILLS = {p.parent.name: p.read_text(encoding="utf-8") for p in sorted((PLUGIN / "skills").glob("*/SKILL.md"))}
 assert SKILLS, "no skills found -- a guard over them would otherwise pass by having nothing to check"
 README = (PLUGIN / "README.md").read_text(encoding="utf-8")
@@ -139,7 +139,7 @@ def test_every_skill_meets_the_static_rules(name):
         pattern = re.escape(rule.removesuffix(":*")).replace(r"\*", ".*") + (".*" if rule.endswith(":*") else "")
         reached = [v for v in ("session delete", "session import") if re.fullmatch(pattern, f"requivo {v} x")]
         assert not reached, f"{name}: Bash({rule}) runs `requivo {reached[0]}` without a prompt; grant the verbs it runs"
-    others = {re.sub(r"[^a-z]", "", m) for m in re.findall(r"/requivo:([a-z]+)", body)} - {name}
+    others = set(re.findall(r"/requivo:([a-z]+(?:-[a-z]+)*)", body)) - {name}   # a hyphenated name is one skill (#719)
     assert others, f"{name}: body names no other skill; its own `# /requivo:{name}` heading does not count"
 
 
@@ -199,6 +199,59 @@ def test_artifact_saving_skills_state_the_revision_they_reasoned_from(name):
     assert lines, f"{name}: must save via `requivo artifact save`"
     for ln in lines:
         assert "--revision" in ln, f"{name}: `artifact save` must state the revision it reasoned from: {ln.strip()}"
+
+
+def test_the_keyless_gtm_plan_folds_what_the_cli_absorbs_and_saves_through_the_real_cli(workspace, monkeypatch):
+    """#719: the skill's apply carries exactly the lists `absorb_gtm_reasoning` writes, and its save line, run on the
+    real CLI after that apply, records a go-to-market plan against the revision the apply made."""
+    import shlex
+
+    from _fakes import run_cli_stdin
+
+    from requivo.core.contracts import schema_slot_ids
+    from requivo.core.perimeters import GO_TO_MARKET
+    from requivo.services.discovery import absorb_gtm_reasoning
+    from requivo.services.sessions import SessionService
+    text, reasoning = SKILLS["gtm-plan"], ("decisions", "challenges", "opportunities", "exclusions", "thresholds")
+    target = SimpleNamespace(**dict.fromkeys(reasoning))
+    absorb_gtm_reasoning(target, SimpleNamespace(**{k: [k] for k in reasoning}))  # type: ignore[arg-type]
+    apply = re.search(r"^requivo model apply .*?\n(.*?)\nJSON$", text, re.DOTALL | re.MULTILINE)
+    assert apply, "gtm-plan: no `model apply` heredoc to fold the plan's reasoning with"
+    emitted = set(re.findall(r'^\s*"(\w+)":', apply.group(1), re.MULTILINE)) & set(reasoning)
+    assert emitted == {k for k in reasoning if getattr(target, k) is not None}, "gtm-plan folds other lists than the CLI absorbs"
+
+    slug = SessionService().create_session("Launch a paid hosted tier", slug="gtm-keyless", perimeter=GO_TO_MARKET).slug
+    explicit = {"completeness": 90, "confidence": "explicit", "impact": "high", "value": "x", "evidence": "request: x"}
+    proposal = {"model": dict.fromkeys(schema_slot_ids(GO_TO_MARKET)[1], explicit), "questions": [],
+                "summary": {"objective": "First paying users"},
+                "challenges": [{"headline": "Paid before first use", "premise": "p", "alternative": "a", "consequence": "c",
+                                "recommendation": "r", "contests": ["offer"]}],
+                "exclusions": [{"option": "Paid search", "reason": "No budget", "rests_on": ["budget"]}],
+                "thresholds": [{"condition": "CAC over the ceiling", "measure": "CAC", "action": "stop", "rests_on": ["unit_economics"]}]}
+    applied = json.loads(run_cli_stdin(["model", "apply", slug, "-", "--expected-revision", "0", "--json"], json.dumps(proposal), monkeypatch))
+    save = re.search(r"^requivo artifact save .*?(?= <<)", text, re.MULTILINE)
+    assert save, "gtm-plan: no `artifact save` line to run"
+    argv = shlex.split(save.group(0).replace("<slug>", slug).replace(" M ", f" {applied['revision']} "))[1:]
+    saved = json.loads(run_cli_stdin(argv, "# Go-to-Market Plan", monkeypatch))
+    assert saved == {"type": "gtm_plan", "filename": "go-to-market-plan.md", "revision": 1, "stale": False}
+
+
+def test_docs_offers_each_perimeter_its_own_documents_through_skills_it_can_run():
+    """#719: the docs skill's perimeter table is the registry's split; every type it offers has a skill, the CLI's
+    label, and grants docs already holds, since it runs that skill's steps under its own."""
+    from requivo.core.perimeters import get_perimeter, known_perimeter_ids
+    from requivo.render.terminal import DOC_TYPES
+    from requivo.web.viewmodels.labels import ARTIFACT_LABELS
+    text, tick = SKILLS["docs"], "\x60"
+    rows = re.findall(rf"^\| {tick}([a-z-]+){tick} \| ((?:{tick}\w+{tick}(?:, )?)+) \|$", text, re.MULTILINE)
+    offered = {p: re.findall(rf"{tick}(\w+){tick}", types) for p, types in rows}
+    assert offered == {p: [t for t in DOC_TYPES if t in get_perimeter(p).artifact_types] for p in known_perimeter_ids()}
+    labels = dict(re.findall(rf"^\| {tick}(\w+){tick} \| ([^|{tick}]+?) \|", text, re.MULTILINE))
+    grants = {n: set(re.findall(r"\bBash\(([^)]*)\)", _frontmatter(t)["allowed-tools"])) for n, t in SKILLS.items()}
+    for doc_type in (t for types in offered.values() for t in types):
+        skill = doc_type.replace("_", "-")
+        assert skill in SKILLS and labels.get(doc_type) == ARTIFACT_LABELS[doc_type], doc_type
+        assert grants[skill] <= grants["docs"], (skill, grants[skill] - grants["docs"])
 
 
 def test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of():

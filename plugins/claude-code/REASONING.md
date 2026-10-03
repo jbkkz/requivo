@@ -309,7 +309,7 @@ A model carries `decisions`, `challenges`, `opportunities`, `exclusions` and `th
 its slots — the judgment over the facts, produced by the assessment and inherited by every later
 generator (`exclusions` is a fourth, added by #599: an option that was considered and deliberately
 ruled out; `thresholds` is a fifth, added by #604: a decision that has not fired yet, "at X, do Y" —
-nothing in this skill populates either one yet, but a proposal you build by hand may). In a proposal
+`/requivo:gtm-plan` populates both, with `challenges`, on a go-to-market session). In a proposal
 all five are **tri-state**, and the difference is load-bearing:
 
 | in your proposal | meaning |

@@ -122,10 +122,11 @@ The commands, in the order they are usually reached. `/requivo:demo` takes nothi
    asking, or when you say so.
 2. **`/requivo:status <slug>`**. Where it stands: readiness, what is still blocking, which generated
    documents need updating. A local read, so use it as often as you like.
-3. **`/requivo:docs <slug>`**. A menu of the seven documents the model can produce — decision brief,
-   PRD, user stories, estimate, acceptance criteria, delivery epic, release notes — each with its
-   freshness. Pick one or several; each is saved as a tracked document, tied to the revision it was
-   written from.
+3. **`/requivo:docs <slug>`**. A menu of the documents the model can produce, each with its
+   freshness: for a software request the seven — decision brief, PRD, user stories, estimate,
+   acceptance criteria, delivery epic, release notes — and for a go-to-market request its
+   go-to-market plan. Pick one or several; each is saved as a tracked document, tied to the revision
+   it was written from.
 
 Step 3 is not the end of anything. The model is the durable product and each document is a view of
 it, so any of them can be regenerated later from the saved model without redoing discovery.
@@ -207,8 +208,8 @@ honestly empty.
 
 ## The generators
 
-Seven artifact types can be produced from a session's model, and — since #542 — every one of them
-reasons in *this* Claude session, with no `ANTHROPIC_API_KEY` anywhere in the loop:
+A software session's model produces seven artifact types and a go-to-market session's one, and
+every one of them reasons in *this* Claude session, with no `ANTHROPIC_API_KEY` anywhere in the loop:
 
 | Skill | Produces | Where the thinking happens |
 |---|---|---|
@@ -219,13 +220,14 @@ reasons in *this* Claude session, with no `ANTHROPIC_API_KEY` anywhere in the lo
 | `/requivo:criteria` | Given/When/Then acceptance criteria (a recette checklist) | this Claude session |
 | `/requivo:epic` | A delivery epic — the work breakdown a dev team tracks | this Claude session |
 | `/requivo:release` | Client-facing release notes | this Claude session |
+| `/requivo:gtm-plan` | The go-to-market plan, a go-to-market session's one document | this Claude session |
 
 Each is saved as a tracked artifact tied to the model revision it was reasoned from, and flagged stale
 the moment something it rests on changes — `/requivo:status` names which ones need regenerating.
 
-The `requivo` CLI can also produce all seven itself, in its own **optional API mode**: useful for
-automation outside a Claude Code session, and it needs the `requivo[anthropic]` extra plus an
-`ANTHROPIC_API_KEY` to do it. That mode is unrelated to the skills above, which never call it.
+The `requivo` CLI can also produce every one of them itself, in its own **optional API mode**:
+useful for automation outside a Claude Code session, and it needs the `requivo[anthropic]` extra plus
+an `ANTHROPIC_API_KEY` to do it. That mode is unrelated to the skills above, which never call it.
 The one piece that stays CLI-only is the epic's tracker export (`--export-json`, `--github`,
 `--gitlab`): each reasons the epic afresh through that API mode before writing the export, so there is
 no way to export the epic a skill just saved without a new, key-requiring call. `requivo doctor`
