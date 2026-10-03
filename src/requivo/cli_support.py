@@ -43,7 +43,7 @@ def _print_session_candidates(resolution: SessionResolution) -> None:
     `test_run_candidate_listing_cannot_be_made_to_print_a_line_a_session_wrote`."""
     print("Several sessions in this workspace:")
     for entry in resolution.candidates:
-        marker = "→" if entry.slug == resolution.default else " "
+        marker = "\u2192" if entry.slug == resolution.default else " "
         slug = display_token(entry.slug)
         # `entry.meta is not None`, not `entry.readable`: pyright narrows on the former.
         if entry.meta is not None:
@@ -51,7 +51,7 @@ def _print_session_candidates(resolution: SessionResolution) -> None:
                   f"updated {display_token(entry.meta.updated_at)})")
         else:
             print(f"  {marker} {slug}  (unreadable: {display_token(entry.error or 'unknown')})")
-    print(f"Using {display_token(resolution.default)} — pass a slug explicitly to choose another "
+    print(f"Using {display_token(resolution.default)} \u2014 pass a slug explicitly to choose another "
           "(see `requivo session list`).")
 
 
@@ -75,7 +75,7 @@ def _wrote(slug: str, result, label: str) -> None:
 def _wrote_file(slug: str, status, label: str) -> None:
     """The same line over a bare `ArtifactStatus`, for `estimate`'s second document (#519)."""
     # Through the chokepoint (#36), direct rather than through the repository (#76): no seam hands back a path.
-    print(f"\nWrote {label} → {store.artifact_path(slug, status.filename)}")
+    print(f"\nWrote {label} \u2192 {store.artifact_path(slug, status.filename)}")
 
 
 def _is_wildcard_bind_address(host: str) -> bool:
@@ -90,6 +90,15 @@ def _is_wildcard_bind_address(host: str) -> bool:
         return False
 
 
+def _display_url(host: str, port: int) -> str:
+    """URL shown and opened for a local bind. An IPv6 literal contains `:` and must be bracketed
+    (`http://[::1]:8765`); the unbracketed form is not a valid URL, so the banner and
+    `webbrowser.open` both fail. The address passed to `uvicorn.run` is unchanged.
+    `test_an_ipv6_host_is_bracketed_in_the_banner`."""
+    shown = f"[{host}]" if ":" in host else host
+    return f"http://{shown}:{port}"
+
+
 def _announce_bind(host: str, *, verb: str, exposure: str) -> None:
     """What both local HTTP surfaces say and do when asked to bind beyond loopback (#425, #508);
     `exposure` is the one sentence that differs. Loopback: nothing."""
@@ -98,14 +107,14 @@ def _announce_bind(host: str, *, verb: str, exposure: str) -> None:
     if _is_wildcard_bind_address(host):
         # A wildcard is not a `Host` a browser sends, so it is not auto-allowlisted; the warning names
         # what to do next (#217). `test_a_wildcard_bind_is_not_auto_allowlisted_and_the_warning_names_the_env_var`.
-        print(f"⚠  Binding to {host} (every interface): {exposure} A wildcard bind address is not "
-              "a valid Host header, so it is NOT auto-allowlisted — every request will be refused "
+        print(f"\u26a0  Binding to {host} (every interface): {exposure} A wildcard bind address is not "
+              "a valid Host header, so it is NOT auto-allowlisted \u2014 every request will be refused "
               "until you set REQUIVO_WEB_ALLOWED_HOSTS to the hostname or IP LAN clients will "
               f"actually use, e.g.:\n"
               f"    REQUIVO_WEB_ALLOWED_HOSTS=192.168.1.50 requivo {verb} --host {host}",
               file=sys.stderr)
     else:
-        print(f"⚠  Binding to {host}: {exposure} Prefer 127.0.0.1 unless you fully control the "
+        print(f"\u26a0  Binding to {host}: {exposure} Prefer 127.0.0.1 unless you fully control the "
               "network.", file=sys.stderr)
         # A deliberate bind elsewhere is a real `Host`, recorded without widening the default.
         os.environ.setdefault("REQUIVO_WEB_ALLOWED_HOSTS", host)

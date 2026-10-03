@@ -14,6 +14,7 @@ from _surfaces import SURFACES
 
 from requivo.api.auth import API_TOKEN_ENV, ApiTokenRequiredError
 from requivo.cli import _build_parser, _cmd_api_serve, _cmd_web, app
+from requivo.cli_support import _display_url
 from requivo.core.errors import RequivoError
 from requivo.providers.errors import EngineError
 from requivo.web.config import provider_status
@@ -54,6 +55,41 @@ def test_an_equivalent_spelling_of_the_wildcard_address_is_caught_too(monkeypatc
     warning = _web(spelling, monkeypatch, capsys)
     assert HOSTS_ENV not in os.environ, f"{spelling!r} is the same address as '::'"
     assert HOSTS_ENV in warning
+
+
+def test_an_ipv6_host_is_bracketed_in_the_banner(monkeypatch, capsys):
+    """#684: `::1` is a supported loopback bind, but an unbracketed IPv6 URL is invalid."""
+    assert _display_url("::1", 8765) == "http://[::1]:8765"
+    assert _display_url("127.0.0.1", 8765) == "http://127.0.0.1:8765"
+
+    opened = []
+
+    class _ImmediateTimer:
+        def __init__(self, _interval, fn):
+            self._fn = fn
+
+        def start(self):
+            self._fn()
+
+    import threading
+    import webbrowser
+
+    monkeypatch.setattr(threading, "Timer", _ImmediateTimer)
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    calls = _stub_uvicorn(monkeypatch)
+    monkeypatch.setattr("requivo.web.logging_setup.configure_web_logging", lambda: None)
+    monkeypatch.setattr("requivo.web.app.create_app", lambda: object())
+    with pytest.raises(_RunCalled):
+        _cmd_web(argparse.Namespace(host="::1", port=8765, no_open=False, reload=False), None)
+    out = capsys.readouterr().out
+    assert "Requivo Web → http://[::1]:8765" in out
+    assert opened == ["http://[::1]:8765"]
+    assert calls[0][1]["host"] == "::1"
+
+    calls = _serve(monkeypatch, host="::1", port=8765)
+    err = capsys.readouterr()
+    assert "Requivo API → http://[::1]:8765   (docs: http://[::1]:8765/docs)" in err.out
+    assert calls[0][1] == {"host": "::1", "port": 8765}
 
 
 def test_the_missing_web_extra_keeps_its_published_error_code(monkeypatch):
