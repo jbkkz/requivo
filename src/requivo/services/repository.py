@@ -36,7 +36,8 @@ class SessionRepository(Protocol):
         ...
 
     def ensure_writable(self, slug: str) -> None:
-        """Prepare a session for its first mutation, raising `SessionNotFoundError` if there is none."""
+        """Gate every write route and its dry run, raising `SessionNotFoundError` if there is no session.
+        Side-effect free: a check, never a materialisation, since `diff` and the previews call it."""
         ...
 
     def create(self, slug: str, request: str, *, provider: Optional[str] = None,

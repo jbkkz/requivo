@@ -260,7 +260,8 @@ class SessionService:
         return Store(workspace_root())
 
     def _ensure_canonical(self, slug: str) -> None:
-        """Before any mutation: migrate a legacy `out/<slug>/` session in place on first write."""
+        """Before any mutation or its dry run: refuse a missing session, naming an `out/`-only one
+        for `requivo session migrate`. It never migrates or writes anything itself."""
         self.repo.ensure_writable(slug)
 
     # ── creation ──────────────────────────────────────────────────────────────
@@ -330,7 +331,7 @@ class SessionService:
         return None
 
     def ensure_canonical(self, slug: str) -> None:
-        """Public form of the migrate-on-first-mutation guard."""
+        """Public form of the write-route existence guard."""
         self._ensure_canonical(slug)
 
     # ── deletion ─────────────────────────────────────────────────────────────
