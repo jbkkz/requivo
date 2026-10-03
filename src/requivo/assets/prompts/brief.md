@@ -77,7 +77,8 @@ cut belongs in `exclusions` below, not padded into either list as a lower-priori
   Also give `derived_from`: the **slot ids** this decision rests on (the facts that, if they changed,
   would force you to reopen the decision). Use ids from the schema above (e.g. `["permissions",
   "business_rules"]`). This is the dependency edge — be precise: list only the slots the decision
-  genuinely depends on, not every slot it touches.
+  genuinely depends on, not every slot it touches. And give `source`: `requester` when the requester
+  made this choice, `proposed` when it is your recommendation for them to own.
 - `exclusions`: options you seriously weighed for `next_steps` or `opportunities` and did **not**
   include, each because it loses to a constraint this model already states — never because it was
   merely the weaker of two good ideas. For each: `option` (what was considered), `reason` (the

@@ -6,7 +6,17 @@ import json
 from enum import Enum
 from typing import Annotated, Any, Optional, TypeVar, Union, cast
 
-from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializeAsAny,
+    SerializerFunctionWrapHandler,
+    ValidationInfo,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 
@@ -40,6 +50,12 @@ def _stable_id(prefix: str, *parts: str) -> str:
     across revisions and machines while the statement is unchanged, new when it is reworded."""
     digest = hashlib.sha256("␟".join(p.strip() for p in parts).encode("utf-8")).hexdigest()
     return f"{prefix}_{digest[:10]}"
+
+
+def _without(data: dict[str, Any], **absent: object) -> dict[str, Any]:
+    """`data` minus each key holding its absent value: a field this version added stays off the wire
+    until it says something (`test_a_claimless_model_is_written_exactly_as_before`)."""
+    return {k: v for k, v in data.items() if k not in absent or v != absent[k]}
 
 
 def _context_perimeter(info: Optional[ValidationInfo]) -> str:
@@ -113,6 +129,71 @@ class Level(str, Enum):
     high = "high"
 
 
+IMPACT_RANK = {Impact.low: 0, Impact.medium: 1, Impact.high: 2}
+
+# The cap on claims per slot (#751), refused rather than truncated (invariant 3).
+MAX_CLAIMS_PER_SLOT = 8
+
+
+class ClaimSource(str, Enum):
+    """Where a claim's statement came from (#751); it never changes under one claim id."""
+
+    requester = "requester"  # said by the requester, or a third party's own word they relay
+    artifact = "artifact"    # read from something the requester owns: code, data, documents
+    evidence = "evidence"    # third-party material: public threads, interviews, market data
+    proposed = "proposed"    # a choice proposed for the requester to own
+    domain = "domain"        # domain knowledge: a regulation, a norm, a known trap
+    assumed = "assumed"      # inferred, with no stated basis
+
+
+class Confirmation(str, Enum):
+    """What an answerer has done with a claim: the one thing about it that moves."""
+
+    open = "open"
+    let_stand = "let_stand"  # shown as a default at a checkpoint, not overturned
+    confirmed = "confirmed"
+    to_test = "to_test"      # only a real test settles it; `test_plan` required
+
+
+class Answerer(str, Enum):
+    requester = "requester"
+    delegate = "delegate"
+    agent = "agent"          # answering from documents on the requester's behalf (#724)
+
+
+class Claim(StrictModel):
+    """One independently confirmable statement inside a slot (#751). Informational in 3.x: readiness
+    still reads the slot's `confidence` (`decision: claims-carry-provenance`)."""
+
+    id: str = ""                              # derived from `text`; see _stable_id
+    text: NonEmpty
+    source: ClaimSource
+    confirmation: Confirmation = Confirmation.open
+    answered_by: Optional[Answerer] = None    # required when let_stand or confirmed
+    impact: Optional[Impact] = None           # None inherits the slot's; never above it (see Slot)
+    evidence: str = ""
+    test_plan: str = ""                       # required exactly when to_test
+
+    @model_validator(mode="after")
+    def _assign_id_and_check_settlement(self) -> Claim:
+        # Refused, never repaired, so it rides the retry loop: `test_a_claim_is_refused_rather_than_repaired`.
+        object.__setattr__(self, "id", _stable_id("clm", self.text))
+        to_test = self.confirmation is Confirmation.to_test
+        if to_test and not self.test_plan.strip():
+            raise ValueError(f"claim {self.text!r} is to_test and names no test_plan")
+        # Named rather than `not to_test`: an unknown confirmation off disk is not judged here (invariant 8).
+        if self.confirmation in (Confirmation.open, Confirmation.let_stand, Confirmation.confirmed) and self.test_plan.strip():
+            raise ValueError(f"claim {self.text!r} carries a test_plan but is not to_test")
+        if self.confirmation in (Confirmation.let_stand, Confirmation.confirmed) and self.answered_by is None:
+            raise ValueError(f"claim {self.text!r} is {self.confirmation.value} and names no answered_by")
+        return self
+
+    @model_serializer(mode="wrap")
+    def _omit_defaults(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Every turn re-sends the model, so an unset field costs tokens on each one.
+        return _without(handler(self), answered_by=None, impact=None, evidence="", test_plan="")
+
+
 class Slot(StrictModel):
     completeness: int = Field(ge=0, le=100)
     confidence: Confidence
@@ -121,6 +202,8 @@ class Slot(StrictModel):
     evidence: str = ""
     # What would settle this slot; required exactly when `confidence` is `testable` (#610).
     test_plan: str = ""
+    # Informational in 3.x (#751): recorded, diffed and shown; readiness still reads `confidence`.
+    claims: list[Claim] = Field(default_factory=list[Claim], max_length=MAX_CLAIMS_PER_SLOT)
 
     @model_validator(mode="after")
     def _testable_names_its_settlement(self) -> Slot:
@@ -129,7 +212,17 @@ class Slot(StrictModel):
             raise ValueError(
                 "confidence 'testable' names no test_plan -- state what would settle this slot, or "
                 "grade it inferred/empty instead")
+        # A claim outranking its slot, or two claims on one id: `test_a_claim_is_refused_rather_than_repaired`.
+        above = [c.text for c in self.claims if c.impact is not None and IMPACT_RANK[c.impact] > IMPACT_RANK[self.impact]]
+        if above:
+            raise ValueError(f"claims rated above their slot's impact ({self.impact.value}): {above}")
+        _reject_duplicate_ids("claims", [c.id for c in self.claims])
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_claims(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # No claims is absent, never `[]` (invariant 6): a claimless model is written as an older 3.x wrote it.
+        return _without(handler(self), claims=[])
 
 
 class Question(StrictModel):
@@ -437,6 +530,13 @@ class Challenge(StrictModel):
         return self
 
 
+class DecisionSource(str, Enum):
+    """Who owns a decision (#751): the requester's own choice, or one proposed for them to own."""
+
+    requester = "requester"
+    proposed = "proposed"
+
+
 class DesignDecision(StrictModel):
     # A settled decision; why/alternative/tradeoff only where there was a real fork.
     id: str = ""           # derived from `decision`; see _stable_id
@@ -445,6 +545,11 @@ class DesignDecision(StrictModel):
     alternative: str = ""  # what was weighed instead
     tradeoff: str = ""     # the cost accepted for this choice
     derived_from: list[str] = Field(default_factory=list)  # slot ids the decision rests on (the DAG edge)
+    source: Optional[DecisionSource] = None  # informational (#751); None is unstated, never guessed
+
+    @model_serializer(mode="wrap")
+    def _omit_unstated_source(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _without(handler(self), source=None)
 
     @model_validator(mode="after")
     def _assign_id(self):
@@ -693,22 +798,41 @@ EngineOutput.model_rebuild()
 # contract nobody twinned is caught by `test_the_persisted_contract_is_permissive_all_the_way_down`.
 
 
+def _known_or_raw(enum: type[Enum], v: object) -> object:
+    """`v` as a member of `enum` when this build knows it, else the raw string a newer Requivo wrote."""
+    try:
+        return enum(v) if isinstance(v, str) else v
+    except ValueError:
+        return v
+
+
+class PersistedClaim(Claim):
+    model_config = ConfigDict(extra="allow")
+    # A provenance value this build does not know loads (invariant 8) and never reads as a known one:
+    # `test_a_claim_value_this_version_does_not_know_round_trips`.
+    source: Union[ClaimSource, str]  # pyright: ignore[reportIncompatibleVariableOverride]
+    confirmation: Union[Confirmation, str] = Confirmation.open  # pyright: ignore[reportIncompatibleVariableOverride]
+    answered_by: Union[Answerer, str, None] = None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("source", "confirmation", "answered_by", mode="before")
+    @classmethod
+    def _value_or_raw(cls, v: object, info: ValidationInfo) -> object:
+        enum = {"source": ClaimSource, "confirmation": Confirmation}.get(info.field_name or "", Answerer)
+        return _known_or_raw(enum, v)
+
+
 class PersistedSlot(Slot):
     model_config = ConfigDict(extra="allow")
     # A confidence value this build does not know must load (invariant 8) and never read as `explicit`:
     # `test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit`.
     # `Union`, never `Confidence | str`: pydantic evaluates this at class definition, which 3.9 cannot.
     confidence: Union[Confidence, str]  # pyright: ignore[reportIncompatibleVariableOverride]
+    claims: list[PersistedClaim] = Field(default_factory=list[PersistedClaim], max_length=MAX_CLAIMS_PER_SLOT)  # pyright: ignore[reportIncompatibleVariableOverride]
 
     @field_validator("confidence", mode="before")
     @classmethod
     def _confidence_or_raw(cls, v: object) -> object:
-        if isinstance(v, str):
-            try:
-                return Confidence(v)
-            except ValueError:
-                return v
-        return v
+        return _known_or_raw(Confidence, v)
 
 
 class PersistedQuestion(Question):
@@ -721,6 +845,12 @@ class PersistedSummary(Summary):
 
 class PersistedDesignDecision(DesignDecision):
     model_config = ConfigDict(extra="allow")
+    source: Union[DecisionSource, str, None] = None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _source_or_raw(cls, v: object) -> object:
+        return _known_or_raw(DecisionSource, v)
 
 
 class PersistedChallenge(Challenge):

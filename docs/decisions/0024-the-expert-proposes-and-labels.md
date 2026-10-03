@@ -31,7 +31,8 @@ told.** Decided by the maintainer on 2026-10-03.
   list and can be vetoed.
 - **Documents tag claims by source**: requester, evidence, repo, proposed, domain, assumed. The tag
   is derived from the slot's confidence and evidence; the model keeps one confidence per slot
-  (`decision: confidence-stays-one-axis`), and claim-level provenance is #747's separate design.
+  (`decision: confidence-stays-one-axis`), and claim-level provenance is #747's separate design
+  (since landed, informational in 3.x, as `decision: claims-carry-provenance`).
 
 **Status.** The keyless plugin carries this (#746, #749). The API path's generator prompts under
 `assets/prompts/` still carry the old rule ("no unsourced industry knowledge"); moving them is a

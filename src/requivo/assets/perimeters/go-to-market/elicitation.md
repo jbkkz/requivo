@@ -25,8 +25,8 @@ The same four pillars as the software perimeter, re-read for this job:
 ## Each slot is the same small record
 
 `completeness`, `confidence` (explicit / inferred / empty / testable), `impact`, `value`, `evidence`,
-`test_plan` -- identical shape and identical meaning to the software perimeter (Core, not perimeter,
-per `docs/decisions/0020-the-job-not-the-artifact-type.md`). `testable` is not an edge case here: "will
+`test_plan`, optional `claims` (#751) -- identical shape and identical meaning to the software
+perimeter (Core, not perimeter, per `docs/decisions/0020-the-job-not-the-artifact-type.md`). `testable` is not an edge case here: "will
 this channel convert" and "will anyone pay this price" are exactly the gaps a real test, not another
 question, is what would settle.
 

@@ -44,10 +44,11 @@ def _keys(spec: str, **typed: str) -> dict[str, str]:
 _UPDATE_RESULT = _keys("status revision:int readiness:dict", **{k: "list" for k in (
     "changed_slots", "changed_decisions", "changed_challenges", "changed_opportunities", "changed_exclusions",
     "changed_thresholds", "invalidated_decisions", "invalidated_challenges", "invalidated_exclusions",
-    "invalidated_thresholds", "stale_artifacts")})   # #599 added the exclusions; `model diff` is the same dict
+    "invalidated_thresholds", "stale_artifacts", "changed_claims")})   # #599 the exclusions, #751 the claims; `model diff` is the same dict
 _IMPACT = _keys("slug changed:list decisions:list challenges:list exclusions:list thresholds:list artifacts:list "
                 "stale_artifacts:list evidence:dict")
-_STATUS_BARE = _keys("slug readiness:dict understanding:dict questions:list summary:dict remaining_gaps:list")
+_STATUS_BARE = _keys("slug readiness:dict understanding:dict questions:list summary:dict remaining_gaps:list "
+                     "claims_below_slot_impact:int")   # #751
 
 # The recorded shapes, keyed by verb; `context_cards` is `list|null` wherever a session may select every card.
 # `session delete` is last by necessity: every case above operates on slug "s", and it removes it.

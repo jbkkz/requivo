@@ -24,6 +24,7 @@ from requivo.core.contracts import (
     GoToMarketPlan,
     Leverage,
     Opportunity,
+    PersistedEngineOutput,
     ReleaseNotes,
     Stories,
 )
@@ -41,6 +42,7 @@ from requivo.render.markdown import (
 from requivo.render.terminal import (
     docs_menu_rows,
     render_brief,
+    render_claims,
     render_context_judgment,
     render_defaults,
     render_dependency_map,
@@ -185,6 +187,10 @@ def _forged_renders() -> dict[str, str]:
                                 "acceptance": [FORGED], "slots": ["problem"]}])
     estimate = EstimateDraft(items=[{"story_id": "S1", "title": FORGED, "complexity": "M", "days_low": 1, "days_high": 2,
                                      "drives": [FORGED]}], risks=[FORGED])
+    # A claim's text, and a source only a newer Requivo knows, as a mix line and a moved line (#751).
+    claimed = dict(d["model"])
+    claimed["actors"] = dict(slot(60, "inferred", "high"), claims=[dict(text=FORGED, source=FORGED)])
+    claims_model = PersistedEngineOutput.model_validate(dict(d, model=claimed))
     # The persisted fields read where the prose is not the model's: usage_priced_as_of (#388), context_cards (#40),
     # ArtifactStatus.filename (#544), ContextJudgment.reason (#593). Both `render_evidence` arms print a decision.
     return {
@@ -200,6 +206,7 @@ def _forged_renders() -> dict[str, str]:
         "render_perimeter_recap": printed(render_perimeter_recap, recap, [FORGED]),
         "render_defaults": printed(render_defaults, recap),   # an inferred value, its evidence, an assumption (#731)
         "render_turn_state": printed(render_turn_state, recap),
+        "render_claims": printed(render_claims, claims_model, "software", forged_model),
         "render_docs_menu": printed(render_docs_menu, docs_menu_rows({"prd": ArtifactStatus(
             revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)})),
         "render_context_judgment": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")),

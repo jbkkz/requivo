@@ -40,6 +40,15 @@ conversation.
      defaults to low, but a compliance / audit / traceability / regulatory need named anywhere —
      even inside success_metrics or constraints — makes auditability (reporting), and often permissions
      and constraints, **high-impact**. A named obligation is a build cost, not a nice-to-have.
+   - `claims` (optional, at most 8): only on a slot that **mixes** statements of different
+     provenance (a stated limit plus assumed obligations), one per independently confirmable
+     statement: `{"text", "source", "confirmation"}`. `source` is where it came from — `requester`
+     (said by them), `artifact` (read from their system or documents), `evidence` (third-party
+     material), `proposed` (your proposal for them to own), `domain` (a norm or regulation),
+     `assumed` — and never changes. `confirmation` is `open`, `let_stand` (shown as a default, not
+     overturned), `confirmed` (accepted in words; both add `"answered_by": "requester"`) or
+     `to_test` (with `test_plan`). A claim may carry a lower `impact` than its slot's, saying why in
+     `evidence`. Claims are informational: grade the slot as above, and omit them on a one-kind slot.
 
 2. **Score each slot's information value**: `information_value = uncertainty × impact`.
    - Uncertainty ← low completeness and/or non-explicit confidence.
@@ -69,6 +78,8 @@ You do **not** start over: you **update** the existing model.
   conclusively settles the slot, `inferred` if it only narrows it) and clear `test_plan`; fold the
   result into `value` / `evidence` like any other confirmation. A test result is a real model change,
   not a formality — treat it exactly like an answer that confirmed an `inferred` slot.
+- Carry a slot's `claims` forward: an answer moves a claim's `confirmation`, never its `source`; an
+  overturned default becomes a new `requester` claim and the old one goes.
 - Recompute `information_value` and re-ask ONLY the questions still worth it. Drop resolved ones,
   add ones a fresh answer just revealed.
 - **Stop signal**: when no slot is both uncertain AND high-impact, return `"questions": []`.

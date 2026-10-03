@@ -5,9 +5,16 @@ The decision is never taken here: `validate_proposal` and `SessionService.update
 from __future__ import annotations
 
 from requivo.core.errors import SessionNotFoundError
+from requivo.core.selectors import display_text
 from requivo.core.validation import validate_proposal
 from requivo.deterministic._shared import JSON_HELP, _read_document, print_json
-from requivo.services.sessions import SessionService
+from requivo.services.sessions import SessionService, UpdateResult
+
+
+def _print_claim_moves(result: UpdateResult, indent: str) -> None:
+    """Which claim moved (#751), one line each; the text is LLM-authored, so it is neutralized (#40)."""
+    for m in result.changed_claims:
+        print(f"{indent}claim {m['change'].replace('_', ' ')}: {m['slot']} — {display_text(m['text'])}")
 
 
 def _cmd_model_show(a, client) -> None:
@@ -53,6 +60,7 @@ def _cmd_model_apply(a, client) -> None:
         return
     print(f"✅ Applied → revision {result.revision}")
     print(f"   changed slots: {', '.join(result.changed_slots) or '(none)'}")
+    _print_claim_moves(result, "   ")
     if result.invalidated_decisions:
         print(f"   decisions to re-validate: {len(result.invalidated_decisions)}")
     if result.invalidated_challenges:
@@ -79,6 +87,7 @@ def _cmd_model_diff(a, client) -> None:
         return
     print(f"Would apply as revision {result.revision}")
     print(f"  changed slots: {', '.join(result.changed_slots) or '(none)'}")
+    _print_claim_moves(result, "  ")
     if result.stale_artifacts:
         print(f"  would go stale: {', '.join(result.stale_artifacts)}")
 
