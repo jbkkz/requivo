@@ -49,6 +49,7 @@ and anything built on top. Its layout is documented in full in
 | `model.json`'s slot ids come from its session's own **perimeter** schema (`assets/perimeters/<id>/model_schema.json`, one perimeter per session, frozen at creation) — the same vocabulary `requivo schema --perimeter <id>` prints | 0.1 (plural since #608) | `test_validate_rejects_unknown_slot`, `test_a_go_to_market_model_validates_and_reaches_readiness_against_its_own_vocabulary` |
 | `session.json` carries `format_version`, currently **1** | 0.1 | `test_store_migrate_session_rejects_a_future_format` |
 | `session.json` carries `perimeter` — `null` for a session written before #608, which reads as the **software** perimeter (a default, never a guess: there was only ever one); a *named* perimeter this install does not have is refused by name (`unknown_perimeter`), by the loader, `doctor` and `session verify` alike — the one place this page's own "adding a field is free" rule is deliberately not enough, because a perimeter is *interpreted* rather than carried through | #608 | `test_a_pre_perimeter_session_still_opens_as_software`, `test_an_unknown_perimeter_is_refused_by_name_by_the_loader`, `test_an_unknown_perimeter_is_refused_by_name_by_session_verify_and_doctor` |
+| `session.json`'s `context_cards`: `null` is every card, a list names cards, and `["none"]` alone is the explicit *no product context*, printed and shown as such and distinct from an accidental empty selection, which stays refused. An **older** Requivo reads `["none"]` as an unknown card: its reasoning turns and `context --session` refuse with `unknown_context_card`, never loading every card instead | #721 | `test_an_explicit_none_selection_reads_no_card_and_says_so`, `test_context_none_is_recorded_and_shown_as_no_product_context` |
 | A session written by an **older** Requivo keeps loading — a retired field is ignored, a field added since takes its default | 0.1 | `test_a_session_written_by_an_older_requivo_still_loads` |
 | A session written by a **newer** Requivo is refused clearly (`unsupported_format_version`, `{format_version, supported_format_version}`), and a model authored against a newer slot schema is refused independently (`unsupported_schema_version`) | 0.9.5 | `test_a_session_from_a_newer_requivo_is_refused_not_guessed`, `test_a_session_from_a_newer_slot_schema_is_refused_clearly` |
 | An unknown key in `session.json` survives a load-mutate-write cycle by an older reader, rather than being dropped | 0.9.4 | `test_a_field_from_a_future_requivo_survives_a_round_trip` |
@@ -114,7 +115,7 @@ raised as `invalid_model` any more.
 | Condition | Code | `details` | Since | Test |
 |---|---|---|---|---|
 | a stray comma inside a selection (`--context "a,,b"`) | `empty_selector_token` | `{selector, position}` | 0.10.0 | `test_an_empty_token_and_an_empty_selection_are_two_codes` |
-| a selection that selects nothing (`--context ""`) | `empty_selection` | `{selector, tokens}` | 0.10.0 | `test_an_empty_token_and_an_empty_selection_are_two_codes` |
+| a selection that selects nothing (a stored `context_cards: []`; `--context ""` is every card) | `empty_selection` | `{selector, tokens}` | 0.10.0 | `test_an_empty_token_and_an_empty_selection_are_two_codes` |
 | a selector token carrying a control character | `unsafe_selector_token` | `{selector, position}` | #40 | `test_a_control_character_in_a_selector_token_is_refused_not_echoed` |
 | an install with no context cards at all, read | `no_context_cards` | `{roots}` | #41 | `test_resolve_cards_on_a_zero_card_install_names_the_install_not_the_card` |
 | an install with no context cards at all, at session creation | `no_context_cards` | `{roots}` | #41 | `test_creating_a_session_on_a_zero_card_install_refuses_at_creation` |
@@ -139,12 +140,12 @@ The unstated/unreadable source-revision pair deliberately still shares its five-
 `test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape` pins that a shared shape is
 a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`origin_mismatch` above.
 
-**`doctor --json` and `session list`/`migrate`/`verify --json` additions** — each additive, each
-narrows or widens exactly one field, never a shape:
+**`--json` field additions** — each additive, each narrows or widens exactly one field, never a shape:
 
 | Field | Promise | Since | Test |
 |---|---|---|---|
 | `doctor`'s `perimeters.schemas` | Per-installed-ID `{ok, slots, error}`; a load failure has `slots: null` and does not hide other rows. Legacy `schema` and perimeter-discovery fields retain their meanings | #623 | `test_doctor_reports_each_perimeters_schema_health`, `test_doctor_isolates_a_broken_perimeter_schema` |
+| `session init`'s `perimeter` | the session's resolved perimeter id, `software` when none was named; `--perimeter` refuses an unknown id as `unknown_perimeter` | #719 | `test_session_init_records_a_perimeter_and_refuses_an_unknown_one` |
 | `sessions.total` | `null`, not `0`, when the session root itself could not be read | #34-family | `test_doctor_tells_an_empty_workspace_from_an_unreadable_one` |
 | `sessions.non_sessions[]` | what is under the session root and is not a session; `slug_shaped` asks the read-time reserved-name rule, so a `con` directory now reads `true` | #67, #408 | `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`, `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken` |
 | `sessions.unexaminable[]` | names under the session root whose examination raised; distinct from `non_sessions` and excluded from `total` | #80 | `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick` |

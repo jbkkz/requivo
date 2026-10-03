@@ -72,7 +72,7 @@ method this table names.
 | POST | `/api/v1/sessions/{slug}/revisions/preview` | 200 | `SessionService.diff` | The apply as a dry run: nothing written |
 | GET | `/api/v1/sessions/{slug}/status` | 200 | `SessionService.status` | `status --json` |
 | GET | `/api/v1/sessions/{slug}/impact` | 200 | `SessionService.impact` | `?slots=a,b`: what rests on those slots |
-| PUT | `/api/v1/sessions/{slug}/context-cards` | 200 | `SessionService.rescope` | `{context_cards}`; `null` selects every card |
+| PUT | `/api/v1/sessions/{slug}/context-cards` | 200 | `SessionService.rescope` | `{context_cards}`; `null` selects every card, `["none"]` no product context (#721) |
 | POST | `/api/v1/sessions/{slug}/discover` | 200 | `DiscoveryService.run_discovery` | Paid. The first discovery; 409 above revision 0 |
 | POST | `/api/v1/sessions/{slug}/answers` | 200 | `DiscoveryService.answer` | Paid. `{answers, expected_revision}`, the revision required |
 | GET | `/api/v1/sessions/{slug}/artifacts` | 200 | `ArtifactService.list` | Every saved artifact and its `stale` flag |

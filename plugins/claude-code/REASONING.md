@@ -196,11 +196,13 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
 
 ## The model vocabulary
 
-- Get the exact slots and the driver rule with: `requivo schema` (add `--framework` for the human
+- Get the exact slots and the driver rule with: `requivo schema --perimeter <id>`, the session's own
+  perimeter (`perimeter` in `session init --json` or `status --json`; `--framework` adds the human
   spec). Get the product knowledge with: `requivo context --session <slug>` — the cards *that*
-  session was created with. Use bare `requivo context` only before a session exists: a session's
-  card selection is held constant across its turns, and reading every card on a later turn means
-  reasoning from a wider context than the model was built on.
+  session was created with, or the statement that it has none (`--context none`, #721: impact then
+  rests on each slot's `impact_default`). Use bare `requivo context` only before a session exists:
+  a session's card selection is held constant across its turns, and reading every card on a later
+  turn means reasoning from a wider context than the model was built on.
 - Every slot you emit MUST be a schema slot id. A typo or invented slot is rejected by validation.
 - The **driver** is `information_value = uncertainty × impact`. Ask (and probe) where information value
   is high; leave empty-but-low-impact slots alone. Impact is estimated from the product context.

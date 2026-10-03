@@ -57,7 +57,7 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
         "context:dict perimeters:dict provider_anthropic:dict workspace:dict sessions:dict locks:dict"))],
     "session init": [("session init --json",
                       ("session", "init", "Build a leave approval system.", "--slug", "s", "--context", "b2b-platform", "--json"),
-                      _keys("slug session_id path context_cards:list|null revision:int"))],
+                      _keys("slug session_id path context_cards:list|null perimeter revision:int"))],   # #719
     "model validate": [("model validate --json", ("model", "validate", "{proposal}", "--json"), _keys("status slots:int"))],
     "model apply": [("model apply --json", ("model", "apply", "s", "{proposal}", "--json"), _UPDATE_RESULT)],
     "model diff": [("model diff --json", ("model", "diff", "s", "{proposal}", "--json"), _UPDATE_RESULT)],

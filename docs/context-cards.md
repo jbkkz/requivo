@@ -56,6 +56,11 @@ requivo run --context b2b-platform,financial-reporting "…"
 The selection is held constant across the session's turns (so the cached system prompt survives) and
 reused by the generators.
 
+When **no** installed card is about the request, say so: `--context none` records *no product
+context* (#721), distinct from omitting the flag, which loads every card. Impact then rests on each
+slot's `impact_default` baseline and the request alone, and `status`, the recap and
+`requivo context --session` say so. `none` stands alone, so a card named `none.md` cannot be selected.
+
 Every name is checked, on every turn, against the cards on disk. A misspelled card is refused rather
 than dropped (an empty selection means *every* card), and so is an empty token:
 

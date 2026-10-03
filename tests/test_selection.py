@@ -9,6 +9,7 @@ import pytest
 from requivo.core import context as context_mod
 from requivo.core.context import (
     _SELECTION_REFUSALS,
+    NO_CONTEXT_TEXT,
     available_cards,
     build_prompt,
     check_selection,
@@ -193,10 +194,25 @@ def test_check_selection_answers_exactly_what_load_context_would_do():
     assert isinstance(check_selection([" "]), EmptySelectorTokenError)   # a token, not a selection
 
 
-@pytest.mark.parametrize("selection", [None, [A_CARD], [A_CARD, ANOTHER_CARD], ["no-such-card"], []])
+@pytest.mark.parametrize("selection", [None, [A_CARD], [A_CARD, ANOTHER_CARD], ["no-such-card"], [], ["none"],
+                                       ["none", A_CARD]])
 def test_check_selection_agrees_with_load_context_on_every_selection(selection):
     """The drift guard itself (#12)."""
     _agrees(selection)
+
+
+def test_an_explicit_none_selection_reads_no_card_and_says_so(zero_cards):
+    """#721: `none` is the informed empty selection, one token on every selector; the accidental empty stays refused."""
+    assert resolve_cards([" None "]) == ["none"] and check_selection(["none"]) is None
+    # On an install with no card at all: `None` is refused there (#33), `none` reads nothing and says so.
+    assert load_context(["none"]) == NO_CONTEXT_TEXT and NO_CONTEXT_TEXT in build_prompt("engine.md", ["none"])
+    stem = _install_a_card(zero_cards)
+    assert stem not in load_context(["none"]) and stem in load_context(None)
+    with pytest.raises(UnknownContextCardError) as ei:
+        resolve_cards(["none", stem])
+    assert ei.value.details == {"unknown": ["none"]} and "stands alone" in ei.value.message
+    with pytest.raises(EmptySelectionError):
+        load_context([])
 
 
 # ── 4. an install with no cards at all (#33): the wide instance the two narrow fixes left open ───

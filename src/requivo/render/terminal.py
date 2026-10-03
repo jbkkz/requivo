@@ -156,9 +156,13 @@ def render_grounding(cards: list[str] | None) -> None:
     this for the first discovery only). `None` is *every card in the install*, re-resolved now. An
     unreadable card directory is its own third state and must not fail `status`:
     `test_an_unreadable_card_directory_degrades_the_grounding_line_rather_than_the_verb`."""
-    from requivo.core.context import available_cards
+    from requivo.core.context import available_cards, is_no_context
     from requivo.core.errors import ContextUnreadableError
     print("\nGROUNDED ON")
+    if is_no_context(cards):   # the informed choice (#721), never the empty install below
+        print(_labeled("Product context", "none, chosen at creation (--context none) — impact is "
+                       "estimated from each topic's schema baseline and the request alone", lw=20))
+        return
     if cards:
         print(_labeled("Product context", ", ".join(display_token(c) for c in cards), lw=20))
         return

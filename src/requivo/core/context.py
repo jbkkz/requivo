@@ -34,6 +34,24 @@ _SELECTION_REFUSALS = (
 )
 
 
+# The explicit empty selection (#721): `none` alone records "no product context", distinct from `None`
+# (every card) and from an accidental empty, which stays refused (#13, #33). Stored as this token, so
+# an older Requivo refuses it as an unknown card rather than loading every card:
+# `test_an_explicit_none_selection_reads_no_card_and_says_so`.
+NO_CONTEXT = "none"
+NO_CONTEXT_TEXT = (
+    "No product context card was selected for this session (`--context none`): no installed card "
+    "describes what this request is about. Estimate each slot's impact from its `impact_default` "
+    "baseline in the schema, raised only by a driver the request itself names.")
+
+
+def is_no_context(only: Iterable[str] | None) -> bool:
+    """Whether a selection is the explicit `none` alone (#721); checked ahead of the install, since it
+    reads no card. Beside a card, `none` is an unknown card: `resolve_cards` says why."""
+    tokens = list(only) if only is not None else []
+    return len(tokens) == 1 and tokens[0].strip().lower() == NO_CONTEXT
+
+
 def _card_paths() -> dict[str, Path]:
     """Loadable cards keyed by stem: bundled plus `user_context_dir()`, user winning on a stem clash,
     `_`-prefixed files skipped, in sorted-stem order so the prompt cache holds."""
@@ -132,9 +150,15 @@ def resolve_cards(tokens: Iterable[str]) -> list[str] | None:
     tokens = list(tokens)
     if not tokens:
         return None
+    if is_no_context(tokens):
+        return [NO_CONTEXT]
     # One read for both the lookup and the `Available:` line.
     paths = _cards_for_selection()
     keys = normalize_tokens(tokens, what="context card")
+    if NO_CONTEXT in keys:
+        raise UnknownContextCardError(
+            f"`{NO_CONTEXT}` selects no product context and stands alone; it cannot be combined with a "
+            "card. Pass it alone, or name only the cards to load.", details={"unknown": [NO_CONTEXT]})
     # `sorted` is a tie-break between two stems differing only in case; which wins is deliberately unchanged.
     avail = {stem.lower(): stem for stem in sorted(paths)}
     picked: list[str] = []
@@ -156,9 +180,12 @@ def load_context(only: list[str] | None = None) -> str:
     it (#33): `test_load_context_refuses_a_selection_that_matched_nothing`,
     `test_load_context_refuses_an_install_with_no_cards_at_all`,
     `test_build_prompt_never_sends_an_empty_context_to_a_paid_call`."""
-    paths = _cards_for_selection()
     # `only` is materialised before the guard iterates it: a generator read twice yields nothing
-    keep = _selection_keys(list(only), paths) if only is not None else None
+    only = list(only) if only is not None else None
+    if is_no_context(only):
+        return NO_CONTEXT_TEXT
+    paths = _cards_for_selection()
+    keep = _selection_keys(only, paths) if only is not None else None
     # Explicit encoding (invariant 16): `test_the_prompt_assembly_path_never_decodes_an_asset_with_the_locale_encoding`.
     cards = [f"## {stem}\n{paths[stem].read_text(encoding='utf-8')}"
              for stem in sorted(paths)
@@ -208,6 +235,8 @@ def check_selection(only: list[str] | None) -> RequivoError | None:
     (`test_check_selection_agrees_with_load_context_on_every_selection`). A failure of the card
     directory itself is not swallowed."""
     try:
+        if is_no_context(only):
+            return None
         paths = _cards_for_selection()
         if only is not None:
             _selection_keys(list(only), paths)

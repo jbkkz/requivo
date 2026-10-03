@@ -10,6 +10,7 @@ from _fakes import full_model, run_cli, run_cli_exit, run_cli_json, run_cli_stdi
 
 from requivo.cli import app
 from requivo.core import persistence as store
+from requivo.core.context import NO_CONTEXT_TEXT
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import _REPLACE_ATTEMPTS, SESSION_FORMAT_VERSION, canonical_dir
 from requivo.services.sessions import SessionService
@@ -187,6 +188,28 @@ def test_session_rescope_to_all_cards_reports_none():
     _init("s", "--context", "b2b-platform")
     assert run_cli_json(["session", "rescope", "s", "--context", "", "--json"])["context_cards"] is None
     assert store.read_meta("s").context_cards is None
+
+
+def test_session_init_records_a_perimeter_and_refuses_an_unknown_one():
+    """#719: the keyless path reaches every installed perimeter, refused by name as the service refuses it."""
+    r = run_cli_json(["session", "init", "Launch a hosted tier.", "--slug", "g", "--perimeter", "go-to-market", "--json"])
+    assert r["perimeter"] == "go-to-market" == run_cli_json(["session", "show", "g", "--json"])["perimeter"]
+    assert run_cli_json(["session", "init", "Something.", "--slug", "d", "--json"])["perimeter"] == "software"
+    out, code = run_cli_exit(["session", "init", "Something else.", "--slug", "x", "--perimeter", "no-such", "--json"])
+    assert code == 1 and json.loads(out)["code"] == "unknown_perimeter" and not store.session_exists("x")
+
+
+def test_context_none_is_recorded_and_shown_as_no_product_context(tmp_path):
+    """#721: `none` is the informed empty selection, distinct from every card on init, rescope, status and context."""
+    assert run_cli_json(["session", "init", "Launch a dev tool.", "--slug", "n", "--context", "none", "--json"])["context_cards"] == ["none"]
+    assert run_cli_json(["session", "init", "Launch a dev tool.", "--json"])["slug"] != "n"   # another identity
+    assert run_cli(["context", "--session", "n"]).strip() == NO_CONTEXT_TEXT
+    _apply("n", tmp_path)
+    assert "none, chosen at creation" in run_cli(["status", "n"])
+    out, code = run_cli_exit(["session", "rescope", "n", "--context", "none,b2b-platform", "--json"])
+    assert code == 1 and json.loads(out)["code"] == "unknown_context_card"
+    assert run_cli_json(["session", "rescope", "n", "--context", "", "--json"])["context_cards"] is None
+    assert run_cli_json(["session", "rescope", "n", "--context", "none", "--json"])["context_cards"] == ["none"]
 
 
 def test_session_rescope_reports_when_nothing_changed():

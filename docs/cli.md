@@ -79,7 +79,9 @@ or a document type for another session.
 A selector — `--context a,b`, or the slot names given to `impact` — is checked rather than best-guessed.
 An **empty** name (what an unset shell variable expands to) is refused. A slot name that matches
 nothing is listed as unmatched and the rest still resolve; an unknown *card* is a hard error, since
-dropping it would silently load every card. Pass no selector to select everything deliberately. See
+dropping it would silently load every card. Pass no selector to select everything deliberately, or
+`--context none` (on `session init`, `session rescope`, `run`, `discover`) for **no product context**:
+impact then rests on each slot's schema baseline, and status says so (#721). See
 [context-cards.md](context-cards.md#scoping-a-session-to-relevant-cards).
 
 ### Decisions derived from thinner evidence (#493)
@@ -193,7 +195,7 @@ these apply.
 
 | Command | Flags | Does |
 |---|---|---|
-| `requivo session init <request\|file\|->` | `--slug`, `--context`/`--cards`, `--provider`, `--json` | Create a session from a request (no LLM). `--slug` sets an explicit slug instead of one derived from the request; `--provider` is an informational tag (e.g. `claude-code`) recorded on the session |
+| `requivo session init <request\|file\|->` | `--slug`, `--context`/`--cards`, `--perimeter`, `--provider`, `--json` | Create a session from a request (no LLM). `--slug` sets an explicit slug instead of one derived from the request; `--perimeter ID` chooses the decision structure as on `discover` (default `software`, an unknown id refused as `unknown_perimeter`, #719); `--provider` is an informational tag (e.g. `claude-code`) recorded on the session |
 | `requivo session list` | `--json` | List canonical sessions |
 | `requivo session show <session>` | `--json` | Show a session's metadata + artifacts |
 | `requivo session migrate` | `--json` | Migrate ALL legacy `out/` sessions into `.requivo/sessions/` |

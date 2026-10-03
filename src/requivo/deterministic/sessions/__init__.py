@@ -30,7 +30,11 @@ def register_sessions(sub) -> None:
     si.add_argument("request", help="the request, a path to a file containing it, or '-' for stdin")
     si.add_argument("--slug", help="explicit session slug (default: derived from the request)")
     si.add_argument("--context", "--cards", metavar="CARDS", dest="context",
-                    help="comma-separated context cards to record. Alias: --cards.")
+                    help="comma-separated context cards to record (default: every card), or 'none' for "
+                         "no product context. Alias: --cards.")
+    si.add_argument("--perimeter", default=None, metavar="ID",
+                    help="which installed perimeter this session runs under, frozen at creation "
+                         "(default: software; `requivo doctor` lists them)")
     si.add_argument("--provider", default=None, help="informational provider tag (e.g. claude-code)")
     si.add_argument("--json", action="store_true", help=JSON_HELP)
     si.set_defaults(func=_cmd_session_init)
@@ -69,7 +73,8 @@ def register_sessions(sub) -> None:
     sr = ss.add_parser("rescope", help="re-scope an existing session's context cards")
     sr.add_argument("session", help="session slug or path")
     sr.add_argument("--context", "--cards", metavar="CARDS", dest="context", required=True,
-                    help="comma-separated context cards to switch to, or '' for every card. "
+                    help="comma-separated context cards to switch to, '' for every card, or 'none' "
+                         "for no product context. "
                          "Alias: --cards. Required — unlike `init`, omitting it is not a default.")
     sr.add_argument("--json", action="store_true", help=JSON_HELP)
     sr.set_defaults(func=_cmd_session_rescope)

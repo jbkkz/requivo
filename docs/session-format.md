@@ -112,7 +112,9 @@ never a half-applied session.
 revision whose `model_hash` is identical to the one it succeeds — the model carries forward
 unchanged, and `surface: "session-rescope"` tells them apart. `context_cards` lives on `session.json`,
 read fresh each turn, so a re-scope changes only what the *next* turn reasons against; at revision 0 it
-mints no revision at all.
+mints no revision at all. `null` there is every card; `["none"]` alone is the deliberate *no product
+context* of `--context none` (#721), which an older Requivo refuses as an unknown card rather than
+widening to every card.
 
 ## Artifacts and freshness
 
@@ -183,7 +185,8 @@ trace a blast radius against the wrong vocabulary, confidently. `unknown_perimet
 loader (`migrate_session`) and reported the same way by `doctor` and `session verify`.
 
 Which perimeters an install has is itself observable: `requivo doctor` (`--json`'s `perimeters` key)
-lists them, and `requivo schema --perimeter <id>` prints any one of their schemas.
+lists them, and `requivo schema --perimeter <id>` prints any one of their schemas. A keyless caller
+names one at creation with `requivo session init --perimeter <id>` (#719).
 
 ## Slugs
 

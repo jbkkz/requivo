@@ -181,6 +181,17 @@ def test_session_scoped_skills_read_the_session_s_context_cards():
         assert "context --session" in SKILLS[name], f"{name}: must read context scoped to the session"
 
 
+def test_run_chooses_a_perimeter_and_may_choose_no_card_before_session_init_through_real_flags():
+    """#719, #721: both choices precede `session init`, and the flags they pass exist on this checkout's `session init`."""
+    from requivo.cli import _build_parser
+    from requivo.core.context import resolve_cards
+    text, sub = SKILLS["run"], lambda p, name: next(a.choices[name] for a in p._actions if isinstance(a, argparse._SubParsersAction))
+    init = {opt for a in sub(sub(_build_parser(), "session"), "init")._actions for opt in a.option_strings}
+    assert {"--perimeter", "--context"} <= init and resolve_cards(["none"]) == ["none"]
+    assert "`--perimeter <id>`" in text and "`--context none`" in text and "perimeters.installed" in text
+    assert text.index("### Choose the perimeter") < text.index("### Choose the product context cards") < text.index("### Create the session")
+
+
 @pytest.mark.parametrize("name", ARTIFACT_SKILLS)
 def test_artifact_saving_skills_state_the_revision_they_reasoned_from(name):
     """Every artifact skill saves via the CLI, and every `artifact save` line states `--revision` (#6, #519, #542)."""
