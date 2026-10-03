@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+from typing import Any
 
 from requivo.core.contracts import (
     SOFT_COMPLETENESS,
@@ -15,7 +16,7 @@ from requivo.core.perimeters import DEFAULT_PERIMETER
 
 
 @functools.cache
-def slot_meta(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict, dict]:
+def slot_meta(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict[str, str], dict[str, str]]:
     """`(pillars, labels)` keyed by slot id, projected from `perimeter`'s schema and cached (#608),
     reading `schema_slots()` (#301: `test_the_four_slot_projections_all_read_from_one_schema_parse`)."""
     slots = schema_slots(perimeter)
@@ -40,7 +41,7 @@ def slot_labels(slot_ids: list[str], perimeter: str = DEFAULT_PERIMETER) -> list
 
 def soft_slots(out: EngineOutput) -> list[str]:
     """Slots that still carry real uncertainty AND move the solution: medium/high impact and (low completeness or not explicit)."""
-    soft = []
+    soft: list[str] = []
     for slot_id, s in out.model.items():
         if s.impact in (Impact.medium, Impact.high) and (
             s.completeness < SOFT_COMPLETENESS or s.confidence is not Confidence.explicit
@@ -63,7 +64,7 @@ def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
     the schema's required slots, so an omitted one blocks at its baseline impact; confirmation is
     `explicit` *and* completeness at the soft boundary, so a one-word reply cannot read as confirmed."""
     _, required = schema_slot_ids(perimeter)
-    blockers = []
+    blockers: list[str] = []
     for sid in required:
         s = out.model.get(sid)
         impact = s.impact if s is not None else _default_impacts(perimeter).get(sid, Impact.low)
@@ -91,7 +92,7 @@ def state_of(s: Slot) -> str:
     return "unknown"
 
 
-def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict:
+def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, Any]:
     """The model-derived half of a status snapshot (readiness, understanding, questions, summary,
     gaps), the one projection `status --json` and `SessionService.status` both build on."""
     blockers = readiness_blockers(out, perimeter)
@@ -106,11 +107,11 @@ def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict:
     }
 
 
-def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, list[dict]]:
+def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, list[dict[str, Any]]]:
     """The per-slot understanding grouped by state, each entry with pillar, label, completeness,
     impact and the `thin` flag (confirmed but below coverage)."""
     pillars, _labels = slot_meta(perimeter)
-    groups: dict[str, list[dict]] = {"confirmed": [], "inferred": [], "to_test": [], "unknown": []}
+    groups: dict[str, list[dict[str, Any]]] = {"confirmed": [], "inferred": [], "to_test": [], "unknown": []}
     for sid, s in out.model.items():
         groups[state_of(s)].append({
             "slot": sid,

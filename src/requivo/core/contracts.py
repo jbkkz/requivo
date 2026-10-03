@@ -4,7 +4,7 @@ import functools
 import hashlib
 import json
 from enum import Enum
-from typing import Annotated, Optional, TypeVar, Union
+from typing import Annotated, Any, Optional, TypeVar, Union, cast
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, ValidationInfo, field_validator, model_validator
 
@@ -44,9 +44,9 @@ def _stable_id(prefix: str, *parts: str) -> str:
 
 def _context_perimeter(info: Optional[ValidationInfo]) -> str:
     """The perimeter a validation runs against, from `model_validate(..., context=...)`; software by default."""
-    ctx = info.context if info is not None else None
-    if isinstance(ctx, dict) and ctx.get("perimeter"):
-        return ctx["perimeter"]
+    ctx: object = info.context if info is not None else None
+    if isinstance(ctx, dict) and cast("dict[str, Any]", ctx).get("perimeter"):
+        return cast("dict[str, Any]", ctx)["perimeter"]
     return DEFAULT_PERIMETER
 
 
@@ -58,7 +58,7 @@ def _reject_duplicate_ids(label: str, ids: list[str]) -> None:
 
 
 @functools.cache
-def schema_slots(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict, ...]:
+def schema_slots(perimeter: str = DEFAULT_PERIMETER) -> tuple[dict[str, Any], ...]:
     """One perimeter's `model_schema.json` `slots`, parsed once per perimeter and cached (#608, #301),
     as a tuple of raw dicts in file order. `perimeter` defaults to software; an unknown one raises
     `UnknownPerimeterError`."""
@@ -243,7 +243,7 @@ class ModelProposal(StrictModel):
     model_config = ConfigDict(protected_namespaces=(), extra="forbid")
     model: dict[str, Slot]
     # The cap is an invariant: a turn that floods questions has stopped prioritising by information value.
-    questions: list[Question] = Field(default_factory=list, max_length=MAX_QUESTIONS)
+    questions: list[Question] = Field(default_factory=list[Question], max_length=MAX_QUESTIONS)
     summary: Summary
     # The reasoning layer, filled by absorbing the assessment's Brief, never by the discovery turn.
     # `SerializeAsAny` on these five and nowhere else: `resolve()` carries an unstated collection
@@ -282,7 +282,7 @@ class ModelProposal(StrictModel):
             },
             context={"perimeter": perimeter},
         )
-        carried = getattr(prior, "__pydantic_extra__", None) or {}
+        carried: dict[str, Any] = getattr(prior, "__pydantic_extra__", None) or {}
         if not carried:
             return resolved
         return PersistedEngineOutput.model_validate(
@@ -326,11 +326,14 @@ class EngineOutput(ModelProposal):
     """A *resolved* model: the five reasoning collections are always concrete lists. A proposal
     becomes one through `resolve()`, the only place the tri-state question is answered."""
 
-    decisions: list[SerializeAsAny[DesignDecision]] = Field(default_factory=list)
-    challenges: list[SerializeAsAny[Challenge]] = Field(default_factory=list)
-    opportunities: list[SerializeAsAny[Opportunity]] = Field(default_factory=list)
-    exclusions: list[SerializeAsAny[Exclusion]] = Field(default_factory=list)
-    thresholds: list[SerializeAsAny[Threshold]] = Field(default_factory=list)
+    # Narrowing the proposal's `Optional` lists is the point (invariant 10), which a checker reads as an
+    # unsafe mutable override: `test_reasoning_merely_omitted_by_a_turn_is_preserved`. The factories
+    # say `Any` because the item classes are defined below.
+    decisions: list[SerializeAsAny[DesignDecision]] = Field(default_factory=list[Any])  # pyright: ignore[reportIncompatibleVariableOverride]
+    challenges: list[SerializeAsAny[Challenge]] = Field(default_factory=list[Any])  # pyright: ignore[reportIncompatibleVariableOverride]
+    opportunities: list[SerializeAsAny[Opportunity]] = Field(default_factory=list[Any])  # pyright: ignore[reportIncompatibleVariableOverride]
+    exclusions: list[SerializeAsAny[Exclusion]] = Field(default_factory=list[Any])  # pyright: ignore[reportIncompatibleVariableOverride]
+    thresholds: list[SerializeAsAny[Threshold]] = Field(default_factory=list[Any])  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class Story(StrictModel):
@@ -482,18 +485,18 @@ class Brief(StrictModel):
     problem: str = ""                                   # one-line problem statement (exec summary)
     solution: str = ""                                  # one-line solution statement (exec summary)
     introduces: list[str] = Field(default_factory=list)
-    challenges: list[Challenge] = Field(default_factory=list)  # premises worth contesting before build
+    challenges: list[Challenge] = Field(default_factory=list[Challenge])  # premises worth contesting before build
     complexity: Level
     complexity_reasons: list[str] = Field(default_factory=list)  # the "because …" behind the verdict
     cost_driver: str = ""
     risks: list[str] = Field(default_factory=list)
-    opportunities: list[Opportunity] = Field(default_factory=list)  # ranked by leverage
+    opportunities: list[Opportunity] = Field(default_factory=list[Opportunity])  # ranked by leverage
     next_steps: list[str] = Field(default_factory=list)
-    decisions: list[DesignDecision] = Field(default_factory=list)  # settled decisions, with tradeoffs
+    decisions: list[DesignDecision] = Field(default_factory=list[DesignDecision])  # settled decisions, with tradeoffs
     # Typed exclusions the brief proposes (#600): `test_brief_carries_typed_exclusions_it_can_propose_600`.
-    exclusions: list[Exclusion] = Field(default_factory=list)
+    exclusions: list[Exclusion] = Field(default_factory=list[Exclusion])
     # Typed thresholds (#604): `test_brief_carries_typed_exclusions_it_can_propose_600`.
-    thresholds: list[Threshold] = Field(default_factory=list)
+    thresholds: list[Threshold] = Field(default_factory=list[Threshold])
     open_decisions: list[str] = Field(default_factory=list)  # decisions still to make
 
 
@@ -540,9 +543,9 @@ class GoToMarketPlan(StrictModel):
     plan: list[str] = Field(default_factory=list)        # the chosen set -- not a ranking (#600)
     rationale: str = ""                                    # why this set, given the envelope below
     risks: list[str] = Field(default_factory=list)
-    exclusions: list[Exclusion] = Field(default_factory=list)      # #599
-    thresholds: list[Threshold] = Field(default_factory=list)      # #604
-    envelope: list[EnvelopeElement] = Field(default_factory=list)  # #603
+    exclusions: list[Exclusion] = Field(default_factory=list[Exclusion])      # #599
+    thresholds: list[Threshold] = Field(default_factory=list[Threshold])      # #604
+    envelope: list[EnvelopeElement] = Field(default_factory=list[EnvelopeElement])  # #603
     open_decisions: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -568,7 +571,7 @@ class PRD(StrictModel):
     users: list[str] = Field(default_factory=list)
     in_scope: list[str] = Field(default_factory=list)
     out_of_scope: list[str] = Field(default_factory=list)
-    requirements: list[Requirement] = Field(default_factory=list)
+    requirements: list[Requirement] = Field(default_factory=list[Requirement])
     workflow: list[str] = Field(default_factory=list)
     business_rules: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
@@ -579,7 +582,7 @@ class PRD(StrictModel):
     open_questions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     # The envelope this document was planned within (#603); empty when the model has no constraint content.
-    envelope: list[EnvelopeElement] = Field(default_factory=list)
+    envelope: list[EnvelopeElement] = Field(default_factory=list[EnvelopeElement])
 
     @model_validator(mode="after")
     def _validate_unique_requirement_ids(self):
@@ -692,11 +695,11 @@ class PersistedSlot(Slot):
     # A confidence value this build does not know must load (invariant 8) and never read as `explicit`:
     # `test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unread_as_explicit`.
     # `Union`, never `Confidence | str`: pydantic evaluates this at class definition, which 3.9 cannot.
-    confidence: Union[Confidence, str]
+    confidence: Union[Confidence, str]  # pyright: ignore[reportIncompatibleVariableOverride]
 
     @field_validator("confidence", mode="before")
     @classmethod
-    def _confidence_or_raw(cls, v):
+    def _confidence_or_raw(cls, v: object) -> object:
         if isinstance(v, str):
             try:
                 return Confidence(v)
@@ -740,12 +743,14 @@ class PersistedEngineOutput(EngineOutput):
 
     model_config = ConfigDict(protected_namespaces=(), extra="allow")
     # A re-declared field must restate its constraints: pydantic drops the parent's `FieldInfo`.
-    # `test_the_persisted_mirror_copies_every_constraint_it_restates`.
-    model: dict[str, PersistedSlot]
-    questions: list[PersistedQuestion] = Field(default_factory=list, max_length=MAX_QUESTIONS)
-    summary: PersistedSummary
-    decisions: list[PersistedDesignDecision] = Field(default_factory=list)
-    challenges: list[PersistedChallenge] = Field(default_factory=list)
-    opportunities: list[PersistedOpportunity] = Field(default_factory=list)
-    exclusions: list[PersistedExclusion] = Field(default_factory=list)
-    thresholds: list[PersistedThreshold] = Field(default_factory=list)
+    # `test_the_persisted_mirror_copies_every_constraint_it_restates`. Each re-declaration swaps in a
+    # permissive twin, an unsafe mutable override to a checker and the point of invariant 8:
+    # `test_the_persisted_contract_is_permissive_all_the_way_down`.
+    model: dict[str, PersistedSlot]  # pyright: ignore[reportIncompatibleVariableOverride]
+    questions: list[PersistedQuestion] = Field(default_factory=list[PersistedQuestion], max_length=MAX_QUESTIONS)  # pyright: ignore[reportIncompatibleVariableOverride]
+    summary: PersistedSummary  # pyright: ignore[reportIncompatibleVariableOverride]
+    decisions: list[PersistedDesignDecision] = Field(default_factory=list[PersistedDesignDecision])  # pyright: ignore[reportIncompatibleVariableOverride]
+    challenges: list[PersistedChallenge] = Field(default_factory=list[PersistedChallenge])  # pyright: ignore[reportIncompatibleVariableOverride]
+    opportunities: list[PersistedOpportunity] = Field(default_factory=list[PersistedOpportunity])  # pyright: ignore[reportIncompatibleVariableOverride]
+    exclusions: list[PersistedExclusion] = Field(default_factory=list[PersistedExclusion])  # pyright: ignore[reportIncompatibleVariableOverride]
+    thresholds: list[PersistedThreshold] = Field(default_factory=list[PersistedThreshold])  # pyright: ignore[reportIncompatibleVariableOverride]

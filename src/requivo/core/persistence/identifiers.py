@@ -96,7 +96,7 @@ def _raise_reserved_slug(slug: str) -> None:
         details={"slug": slug})
 
 
-def _slug_shape(slug: str) -> str:
+def _slug_shape(slug: object) -> str:
     """Pattern and length: the parts of slug validity that hold regardless of what is on disk."""
     if not isinstance(slug, str) or not _SLUG_RE.match(slug):
         raise InvalidSlugError(
@@ -111,7 +111,7 @@ def _slug_shape(slug: str) -> str:
     return slug
 
 
-def _refuse_new_reserved_slug(slug: str, existing_check: Path) -> None:
+def _refuse_new_reserved_slug(slug: str, existing_check: Path) -> None:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): lock.py, store.py
     """Refuse a reserved Windows device name (#221) unless something already occupies `existing_check`
     (#372): a session on disk under such a name is data, not a request to create anything. Through
     `_probe`, so a stat this cannot make is `SessionUnreadableError`, not a side taken.
@@ -152,7 +152,7 @@ def _shape_only(name: str) -> bool:
     return True
 
 
-def _is_lock_stem(stem: str) -> bool:
+def _is_lock_stem(stem: str) -> bool:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): scan.py
     """Whether a `<stem>.lock` or `<stem>.discovering` is one this store could have written: shape
     alone (#409), never a read of `session_root()` (#401, invariant 17), never `lock_path` (which
     answers about a different file) and never `is_slug` (which guards creation).
@@ -172,7 +172,7 @@ _FILENAME_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 MAX_FILENAME_LENGTH = 120
 
 
-def validate_filename(filename: str) -> str:
+def validate_filename(filename: object) -> str:
     """Return `filename` if it is a safe bare filename, else raise `InvalidFilenameError`; the sibling
     of `validate_slug`, in Core so every surface inherits it (invariant 14)."""
     if not isinstance(filename, str) or not _FILENAME_RE.match(filename):

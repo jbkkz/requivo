@@ -267,6 +267,12 @@ def test_complete_accepts_a_max_tokens_reply_whose_json_is_complete():
     assert _complete(_MaxTokensClient(complete), "sys", _USER, EngineOutput).model["problem"].completeness == 80
 
 
+def test_a_give_up_with_no_attempt_is_a_structured_error_not_an_unbound_local():
+    """`retries=-1` runs no attempt, so no `raw` reply was ever bound (#667)."""
+    with pytest.raises(ProviderOutputError):
+        _complete(FakeClient(_ENGINE_REPLY), "sys", _USER, EngineOutput, retries=-1)
+
+
 # ── #283: the malformed reply survives retry give-up ──────────────────────────────
 
 

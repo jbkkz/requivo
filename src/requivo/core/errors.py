@@ -5,21 +5,23 @@ by `code`, never by message. The base carries a stable `code`, an optional dotte
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class RequivoError(Exception):
     """Base for every Requivo failure. `code` is the stable machine identifier; subclasses set it."""
 
     code = "requivo_error"
 
-    def __init__(self, message: str, *, path: str | None = None, details: dict | None = None):
+    def __init__(self, message: str, *, path: str | None = None, details: dict[str, Any] | None = None):
         super().__init__(message)
         self.message = message
         self.path = path
-        self.details = details or {}
+        self.details: dict[str, Any] = details or {}
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """The serializable envelope -- safe for `--json` output, Claude Code, and HTTP."""
-        out: dict = {"code": self.code, "message": self.message}
+        out: dict[str, Any] = {"code": self.code, "message": self.message}
         if self.path is not None:
             out["path"] = self.path
         if self.details:

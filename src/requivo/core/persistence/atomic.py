@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 
-def _atomic_write(path: Path, content: str) -> Path:
+def _atomic_write(path: Path, content: str) -> Path:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): store.py
     """Write via a unique temp file and an atomic rename, so an interruption never leaves a half-written
     file (`test_concurrent_atomic_writes_do_not_collide_on_a_temp_file`); scratch is never left behind
     (`test_a_failed_atomic_write_leaves_no_scratch_file`)."""

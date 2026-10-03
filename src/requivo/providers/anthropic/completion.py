@@ -186,6 +186,7 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     an explicit id (#434, `test_a_constructed_model_makes_no_env_read`). Every exit records the spend first."""
     attempt = messages
     last_err = None
+    raw: str | None = None  # None only when `retries < 0` runs no attempt: `test_a_give_up_with_no_attempt_is_a_structured_error_not_an_unbound_local`
     model = model if model is not None else current_model_name()
     rec = CallRecord(model=model, attempts=0, operation=operation)
     started = time.perf_counter()
@@ -261,9 +262,8 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     rec.latency_ms = int((time.perf_counter() - started) * 1000)
     _record(rec)  # record the spend even on give-up — those tokens were still billed
     _log_gave_up(rec, f"retries exhausted against the {out_model.__name__} contract")
-    # The give-up is the one exit where the raw reply is worth keeping (#283); `raw` is assigned by
-    # every iteration that reaches here. Best-effort.
-    debug_path = _save_failed_reply(raw, out_model.__name__)
+    # The give-up is the one exit where the raw reply is worth keeping (#283). Best-effort.
+    debug_path = _save_failed_reply(raw, out_model.__name__) if raw is not None else None
     details = {"contract": out_model.__name__, "attempts": retries + 1, "last_error": str(last_err)}
     saved_note = ""
     if debug_path is not None:

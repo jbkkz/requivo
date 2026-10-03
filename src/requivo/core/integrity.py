@@ -16,6 +16,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -57,7 +58,7 @@ class IntegrityProblem:
     def is_problem(self) -> bool:
         return self.severity == SEVERITY_PROBLEM
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"code": self.code, "message": self.message, "severity": self.severity}
 
 
@@ -66,7 +67,7 @@ def blocking(findings: list[IntegrityProblem]) -> list[IntegrityProblem]:
     return [f for f in findings if f.is_problem]
 
 
-def _read_json(path: Path) -> tuple[dict | None, str | None]:
+def _read_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     try:
         return json.loads(path.read_text(encoding="utf-8")), None
     except (OSError, json.JSONDecodeError) as e:
@@ -266,15 +267,15 @@ def inspect_session_dir(d: Path, *, expected_slug: str | None = None) -> list[In
         # Classification runs before the existence check, so a refused name is never probed.
         try:
             f = artifacts / validate_filename(st.filename)
-            safe = is_contained(f, artifacts)
+            safe = f if is_contained(f, artifacts) else None
         except (InvalidFilenameError, OSError, ValueError):
-            safe = False
-        if not safe:
+            safe = None
+        if safe is None:
             bad("unsafe_artifact_filename",
                 f"the {atype!r} artifact is recorded under {st.filename!r}, which this session "
                 "cannot confirm is a bare file inside artifacts/ — refused without checking whether "
                 "it exists")
-        elif not f.is_file():
+        elif not safe.is_file():
             bad("missing_artifact_file",
                 f"session.json records a {atype!r} artifact but artifacts/{st.filename} is missing")
 

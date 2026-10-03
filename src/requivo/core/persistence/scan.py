@@ -3,10 +3,13 @@
 """
 from __future__ import annotations
 
+# pyright: reportPrivateUsage=false, reportUnusedClass=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from requivo.core.persistence.identifiers import _is_lock_stem, _shape_only, _stat_exists
 
@@ -28,7 +31,7 @@ class NonSessionEntry:
     error: str | None
     slug_shaped: bool
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "kind": self.kind, "entries": self.entries,
                 "entry_count": self.entry_count, "error": self.error,
                 "slug_shaped": self.slug_shaped}
@@ -41,7 +44,7 @@ class UnexaminableEntry:
     name: str
     error: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "error": self.error}
 
 

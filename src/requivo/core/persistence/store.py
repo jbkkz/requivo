@@ -4,14 +4,17 @@ re-exported from `core/persistence/__init__.py`.
 """
 from __future__ import annotations
 
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import json
 import os
 import shutil
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from requivo.core.contracts import EngineOutput
 from requivo.core.errors import (
@@ -242,7 +245,7 @@ class Store(_ScanMixin, _LockMixin):
 
 
     def save_revision(self, slug: str, model: EngineOutput, *, expected_revision: int | None = None,
-                      provenance: dict | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
+                      provenance: dict[str, Any] | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
         """Persist a new model revision: freeze `revisions/NNNN-model.json`, replace `model.json`,
         record provenance, bump `current_revision` and `updated_at`, and flag the recorded artifacts
         named in `stale` in that same `session.json` write (#648). Returns `(new_revision, meta)`.
@@ -372,7 +375,7 @@ class Store(_ScanMixin, _LockMixin):
             if _stat_exists(src / name):
                 request = (src / name).read_text(encoding="utf-8")
                 break
-        old: dict = {}
+        old: dict[str, Any] = {}
         if (src / "session.json").exists():
             try:
                 old = json.loads((src / "session.json").read_text(encoding="utf-8"))
@@ -473,7 +476,7 @@ def lock_path(slug: str) -> Path:
 
 
 @contextmanager
-def session_lock(slug: str) -> Iterator[_LockHandle]:
+def session_lock(slug: str) -> Generator[_LockHandle, None, None]:
     """Ambient-default wrapper (#272) -- see `Store.session_lock`."""
     with _default_store().session_lock(slug) as handle:
         yield handle   # forwarded, not swallowed: the annotation above is the contract, not decoration
@@ -552,7 +555,7 @@ def delete_session(slug: str) -> None:
 
 
 def save_revision(slug: str, model: EngineOutput, *, expected_revision: int | None = None,
-                  provenance: dict | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
+                  provenance: dict[str, Any] | None = None, stale: Sequence[str] = ()) -> tuple[int, SessionMeta]:
     """Ambient-default wrapper (#272) -- see `Store.save_revision`."""
     return _default_store().save_revision(
         slug, model, expected_revision=expected_revision, provenance=provenance, stale=stale)

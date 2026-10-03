@@ -110,7 +110,7 @@ class PerimeterSummary(NamedTuple):
 
 def perimeter_summaries() -> list[PerimeterSummary]:
     """Every installed perimeter as one line for the router; a per-perimeter read failure degrades its row (invariant 15)."""
-    out = []
+    out: list[PerimeterSummary] = []
     for pid in known_perimeter_ids():
         try:
             hint = get_perimeter(pid).router_hint_path.read_text(encoding="utf-8").strip()
