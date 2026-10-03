@@ -246,12 +246,27 @@ def test_a_missing_session_is_refused_by_name(call):
         call(SessionService())
 
 
-def test_diff_of_a_revision_zero_session_still_plans_revision_one():
-    """The dry run refuses a missing session like the apply does, never as a fresh one (#678)."""
+def test_diff_of_a_revision_zero_session_plans_revision_one():
+    """A session with no model yet plans the first revision the apply would write; it was refused
+    as `session_not_found` because the dry run read a model that does not exist yet (#678)."""
     svc = SessionService()
     svc.create_session("Build a leave approval system.", slug="leave", provider="claude-code")
     plan = svc.diff("leave", full_model())
     assert (plan.status, plan.revision) == ("planned", 1)
+
+
+@pytest.mark.parametrize("call", [
+    lambda svc: svc.diff("old", full_model()), lambda svc: svc.update_model("old", full_model()),
+    lambda svc: ArtifactService().save("old", "prd", "# PRD\n", source_revision=1),
+], ids=["diff", "update_model", "artifact_save"])
+def test_a_session_only_in_the_retired_layout_gets_the_migrate_hint_on_every_write_route(call):
+    """The dry run and the artifact save answer an `out/`-only session as the apply does (#678, #679)."""
+    legacy = store.legacy_dir("old")
+    legacy.mkdir(parents=True)
+    (legacy / "model.json").write_text(json.dumps(full_model()), encoding="utf-8")
+    with pytest.raises(E.SessionNotFoundError) as e:
+        call(SessionService())
+    assert e.value.details == {"slug": "old", "legacy": True} and "session migrate" in str(e.value)
 
 
 def test_the_same_request_under_different_cards_is_a_different_session():

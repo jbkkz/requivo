@@ -548,8 +548,7 @@ class SessionService:
     # ── the write path ──────────────────────────────────────────────────────────
     def diff(self, slug: str, proposal: dict | str, *, require_complete: bool = True) -> UpdateResult:
         """Dry run of `update_model`: what *would* change, nothing written. `revision` is the one that would be created."""
-        if not self.exists(slug):  # the apply's refusal, not a first apply of a session that is not there (#678)
-            raise self.no_session(slug)
+        self._ensure_canonical(slug)  # the apply's own gate, `out/` hint included: never a phantom first apply (#678)
         meta = self.meta(slug)
         current = self.load_model(slug) if meta.current_revision > 0 else None
         perimeter = resolve_perimeter(meta.perimeter)

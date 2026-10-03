@@ -70,7 +70,7 @@ class ArtifactService:
         computed against the current model (invariant 2). The `None` default exists so the omission
         is a structured refusal: `test_an_omitted_source_revision_is_refused_rather_than_read_as_now` (#6)."""
         filename = self._filename(artifact_type)
-        self.repo.read_meta(slug)  # a missing session raises the standard refusal (#679), as `show` does
+        self.repo.ensure_writable(slug)  # the apply's refusal, `out/` hint included (#679)
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             perimeter = resolve_perimeter(meta.perimeter)

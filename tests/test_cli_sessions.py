@@ -262,8 +262,17 @@ def test_mutating_routes_to_a_missing_session_give_the_standard_sentence(verb, t
                               str(proposal), "--revision", "1"],
             "session-rescope": ["session", "rescope", "no-such-session", "--context", ""]}[verb]
     err = _fails(argv, capsys)
-    assert str(store.session_root()) in err and "requivo session list" in err, err
+    assert str(store.session_root()) in err and "requivo session list" in err and "--workspace" in err, err
     assert "canonical" not in err.lower()
+
+
+def test_model_diff_exits_zero_with_the_first_plan_on_a_session_with_no_model_yet(tmp_path):
+    """Revision 0 plans revision 1, as `model apply` would write it; it exited 1 before (#678)."""
+    _init("fresh")
+    proposal = tmp_path / "p.json"
+    proposal.write_text(json.dumps(full_model()), encoding="utf-8")
+    out, code = run_cli_exit(["model", "diff", "fresh", str(proposal), "--json"])
+    assert code == 0 and (json.loads(out)["status"], json.loads(out)["revision"]) == ("planned", 1)
 
 
 def test_the_structured_envelope_still_carries_the_published_code_and_slug(capsys):
