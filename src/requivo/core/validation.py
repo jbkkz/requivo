@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 from pydantic import ValidationError
 
@@ -20,7 +21,7 @@ class Incompleteness:
     """A completeness rule a proposal breaks: the message plus what a structured error needs."""
     message: str
     path: str
-    details: dict = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 def completeness_gap(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> Incompleteness | None:
@@ -47,24 +48,26 @@ def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT
             f"{field} exceeds {limit:,} characters", details={"limit": limit, "field": field})
 
 
-def validate_proposal(data: dict | str, *, require_complete: bool = True,
+def validate_proposal(data: dict[str, Any] | str, *, require_complete: bool = True,
                       current: EngineOutput | None = None,
                       perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Validate a proposed model (dict or JSON string) into an `EngineOutput`, raising a structured
     `RequivoError`. `require_complete` gates the completeness boundary; the vocabulary check always
     runs. `current` is the model being refined, which makes the reasoning tri-state real (`ModelProposal`)."""
+    parsed: object = data
     if isinstance(data, str):
         try:
-            data = json.loads(data)
+            parsed = json.loads(data)
         except json.JSONDecodeError as e:
             raise InvalidModelError(f"proposal is not valid JSON: {e}", path="model") from e
-    if not isinstance(data, dict):
+    if not isinstance(parsed, dict):
         raise InvalidModelError("proposal must be a JSON object", path="model")
+    data = cast("dict[str, Any]", parsed)
 
     # A precise `unknown_slot` before Pydantic's generic dump.
-    model_slots = data.get("model")
+    model_slots: object = data.get("model")
     if isinstance(model_slots, dict):
-        bad = unknown_slots(set(model_slots), perimeter)
+        bad = unknown_slots(set(cast("dict[str, object]", model_slots)), perimeter)
         if bad:
             raise UnknownSlotError(
                 f"model names slots the schema does not define: {bad}",

@@ -6,11 +6,20 @@ edge sets: slot → decision from `DesignDecision.derived_from`, slot → artifa
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional, Union
 
 from requivo.core.analysis import slot_label, slot_meta
-from requivo.core.contracts import Confidence, EngineOutput
+from requivo.core.contracts import (
+    Challenge,
+    Confidence,
+    DesignDecision,
+    EngineOutput,
+    Exclusion,
+    Opportunity,
+    Threshold,
+)
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.selectors import normalize_tokens
 
@@ -73,7 +82,8 @@ def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tupl
     # Materialised before the helper iterates it: a generator would be exhausted by `normalize_tokens`.
     tokens = list(tokens)
     keys = normalize_tokens(tokens, what="slot")
-    resolved, unmatched = [], []
+    resolved: list[str] = []
+    unmatched: list[str] = []
     for raw, key in zip(tokens, keys):
         if key in labels:  # exact slot id
             hit = [key]
@@ -93,7 +103,7 @@ class DecisionImpact:
     decision: str
     rests_on: list[str]  # labels of the changed slots this decision was derived from
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"decision": self.decision, "rests_on": self.rests_on}
 
 
@@ -102,7 +112,7 @@ class ChallengeImpact:
     headline: str
     rests_on: list[str]  # labels of the changed slots whose premise this challenge contests
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"headline": self.headline, "rests_on": self.rests_on}
 
 
@@ -111,7 +121,7 @@ class ExclusionImpact:
     option: str
     rests_on: list[str]  # labels of the changed slots this exclusion rests on
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"option": self.option, "rests_on": self.rests_on}
 
 
@@ -120,18 +130,18 @@ class ThresholdImpact:
     condition: str
     rests_on: list[str]  # labels of the changed slots this threshold rests on
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"condition": self.condition, "rests_on": self.rests_on}
 
 
 @dataclass
 class ImpactReport:
     changed: list[str]  # labels of the slots in question
-    decisions: list[DecisionImpact] = field(default_factory=list)
-    challenges: list[ChallengeImpact] = field(default_factory=list)
-    exclusions: list[ExclusionImpact] = field(default_factory=list)
-    thresholds: list[ThresholdImpact] = field(default_factory=list)
-    artifacts: list[str] = field(default_factory=list)  # artifact names whose slot set is touched
+    decisions: list[DecisionImpact] = field(default_factory=list[DecisionImpact])
+    challenges: list[ChallengeImpact] = field(default_factory=list[ChallengeImpact])
+    exclusions: list[ExclusionImpact] = field(default_factory=list[ExclusionImpact])
+    thresholds: list[ThresholdImpact] = field(default_factory=list[ThresholdImpact])
+    artifacts: list[str] = field(default_factory=list[str])  # artifact names whose slot set is touched
     # `None` is *not reviewed* (#493): `propagate` has no revision history; an empty report ran and found nothing.
     evidence: Optional[EvidenceReport] = None
 
@@ -145,7 +155,7 @@ class ImpactReport:
         return (not self.decisions and not self.challenges and not self.exclusions
                and not self.thresholds and not self.artifacts)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """The wire shape for the API's `/impact` route (#425); the field names are this dataclass's own."""
         return {"changed": self.changed,
                 "decisions": [d.to_dict() for d in self.decisions],
@@ -191,27 +201,31 @@ def propagate(out: EngineOutput, changed: list[str], perimeter: str = DEFAULT_PE
     return report
 
 
+# One item of any reasoning collection: each carries a content-derived `id` (invariant 5).
+_Reasoning = Union[DesignDecision, Challenge, Opportunity, Exclusion, Threshold]
+
+
 @dataclass
 class ReasoningDiff:
     """What moved in the reasoning layer between two model versions — ids, per collection."""
-    decisions: list[str] = field(default_factory=list)
-    challenges: list[str] = field(default_factory=list)
-    opportunities: list[str] = field(default_factory=list)
-    exclusions: list[str] = field(default_factory=list)
-    thresholds: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list[str])
+    challenges: list[str] = field(default_factory=list[str])
+    opportunities: list[str] = field(default_factory=list[str])
+    exclusions: list[str] = field(default_factory=list[str])
+    thresholds: list[str] = field(default_factory=list[str])
 
     @property
     def changed(self) -> bool:
         return bool(self.decisions or self.challenges or self.opportunities or self.exclusions
                     or self.thresholds)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"decisions": self.decisions, "challenges": self.challenges,
                 "opportunities": self.opportunities, "exclusions": self.exclusions,
                 "thresholds": self.thresholds}
 
 
-def _diff_items(old_items: list, new_items: list) -> list[str]:
+def _diff_items(old_items: Sequence[_Reasoning], new_items: Sequence[_Reasoning]) -> list[str]:
     """Ids added, removed or edited between two reasoning collections. Symmetric, populated → empty
     included, which is safe only because both sides are *resolved* models (`ModelProposal.resolve`
     carries omitted reasoning forward), so an empty side is a genuine deletion."""
@@ -236,7 +250,7 @@ def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
 
 def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
     """Slot ids that materially changed (value, confidence, impact or test plan; completeness alone is noise)."""
-    changed = []
+    changed: list[str] = []
     for sid in old.model.keys() | new.model.keys():
         old_slot = old.model.get(sid)
         new_slot = new.model.get(sid)
@@ -270,7 +284,7 @@ class ThinnerEvidence:
     # The revision the decision was first recorded at; the pure comparison leaves it None.
     derived_at: Optional[int] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"decision": self.decision, "id": self.id, "thickened": self.thickened,
                 "derived_at": self.derived_at}
 
@@ -282,7 +296,7 @@ class EvidenceUnknown:
     id: str
     reason: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"decision": self.decision, "id": self.id, "reason": self.reason}
 
 
@@ -291,14 +305,14 @@ class EvidenceReport:
     """What `thinner_evidence` found. `reviewed` counts every decision examined, so an empty `flagged`
     on a model with decisions reads as *checked, none*."""
     reviewed: int = 0
-    flagged: list[ThinnerEvidence] = field(default_factory=list)
-    could_not_tell: list[EvidenceUnknown] = field(default_factory=list)
+    flagged: list[ThinnerEvidence] = field(default_factory=list[ThinnerEvidence])
+    could_not_tell: list[EvidenceUnknown] = field(default_factory=list[EvidenceUnknown])
 
     @property
     def empty(self) -> bool:
         return not self.flagged and not self.could_not_tell
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"reviewed": self.reviewed,
                 "flagged": [f.to_dict() for f in self.flagged],
                 "could_not_tell": [u.to_dict() for u in self.could_not_tell]}

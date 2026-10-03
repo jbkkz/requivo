@@ -4,10 +4,13 @@ through (#550, invariant 8). `Store` is the only writer.
 """
 from __future__ import annotations
 
+# pyright: reportUnusedFunction=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -37,7 +40,7 @@ def _read_model(path: Path, *, slug: Optional[str] = None, revision: Optional[in
         return PersistedEngineOutput.model_validate_json(
             path.read_text(encoding="utf-8"), context={"perimeter": perimeter})
     except (ValidationError, ValueError, OSError) as e:
-        details: dict = {"path": str(path)}
+        details: dict[str, Any] = {"path": str(path)}
         if slug is not None:
             details["slug"] = slug
         if revision is not None:
@@ -115,7 +118,7 @@ class SessionMeta(BaseModel):
     perimeter: Optional[str] = None
     # A session-level `prompt_versions` map lived here and is retired (`_RETIRED_KEYS`).
     current_revision: int = 0            # 0 == session created but no model applied yet
-    revisions: list[RevisionRecord] = Field(default_factory=list)  # provenance log, one per applied revision
+    revisions: list[RevisionRecord] = Field(default_factory=list[RevisionRecord])  # provenance log, one per applied revision
     artifact_status: dict[str, ArtifactStatus] = Field(default_factory=dict)
 
 
@@ -132,7 +135,7 @@ def content_hash(text: str) -> str:
 _RETIRED_KEYS = ("prompt_versions",)
 
 
-def migrate_session(data: dict) -> SessionMeta:
+def migrate_session(data: dict[str, Any]) -> SessionMeta:
     """The version frontier: a raw session.json dict to a `SessionMeta`; a newer format is refused
     clearly, unknown keys are carried through, retired ones dropped."""
     fv = data.get("format_version", SESSION_FORMAT_VERSION)

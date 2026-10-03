@@ -77,7 +77,7 @@ class CardSummary(NamedTuple):
 def card_summaries() -> list[CardSummary]:
     """Every installed card as one line; a per-card read failure degrades its own row (invariant 15):
     `test_one_unreadable_card_degrades_its_own_summary_row`."""
-    out = []
+    out: list[CardSummary] = []
     for stem, path in sorted(_card_paths().items()):
         try:
             text = path.read_text(encoding="utf-8")
@@ -137,7 +137,8 @@ def resolve_cards(tokens: Iterable[str]) -> list[str] | None:
     keys = normalize_tokens(tokens, what="context card")
     # `sorted` is a tie-break between two stems differing only in case; which wins is deliberately unchanged.
     avail = {stem.lower(): stem for stem in sorted(paths)}
-    picked, unknown = [], []
+    picked: list[str] = []
+    unknown: list[str] = []
     for raw, key in zip(tokens, keys):
         # an unknown name is echoed as typed (stripped)
         (picked if key in avail else unknown).append(avail.get(key, raw.strip()))

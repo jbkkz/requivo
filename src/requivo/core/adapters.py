@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from requivo.core.contracts import Epic
 
@@ -10,7 +11,7 @@ EPIC_EXPORT_FORMAT = "requivo-epic"
 EPIC_EXPORT_VERSION = 2
 
 
-def epic_export(epic: Epic, slug: str, source_revision: int) -> dict:
+def epic_export(epic: Epic, slug: str, source_revision: int) -> dict[str, Any]:
     """A tool-neutral, versioned envelope of an epic an importer can feed to either tracker. `slug`
     and `source_revision` (#274) are provenance, not freshness: compared against `status --json`'s
     `artifacts.epic.stale`, never a revision number (invariant 1).
@@ -55,7 +56,7 @@ def epic_export_json(epic: Epic, slug: str, source_revision: int) -> str:
     return json.dumps(epic_export(epic, slug, source_revision), indent=2) + "\n"
 
 
-def to_github(export: dict, slug: str) -> dict:
+def to_github(export: dict[str, Any], slug: str) -> dict[str, Any]:
     """Neutral epic export → a GitHub issue-creation plan, pure. GitHub has no native epic or
     dependency, so the epic is a tracking issue with a task list and `depends_on` is stated in bodies;
     every issue carries the `requivo-epic:<slug>` idempotency label; `milestone` is a name."""
@@ -63,7 +64,7 @@ def to_github(export: dict, slug: str) -> dict:
     title_by_ref = {i["ref"]: i["title"] for i in export["issues"]}
     epic_title = export["epic"]["title"]
 
-    def child_body(issue: dict) -> str:
+    def child_body(issue: dict[str, Any]) -> str:
         parts = [issue["description"]] if issue["description"] else []
         deps = [title_by_ref.get(ref, ref) for ref in issue.get("depends_on", [])]
         if deps:
@@ -101,13 +102,13 @@ def to_github_json(epic: Epic, slug: str, source_revision: int) -> str:
     return json.dumps(to_github(epic_export(epic, slug, source_revision), slug), indent=2) + "\n"
 
 
-def to_gitlab(export: dict, slug: str) -> dict:
+def to_gitlab(export: dict[str, Any], slug: str) -> dict[str, Any]:
     """Neutral epic export → a GitLab issue-creation plan, pure: `depends_on` becomes issue `links`
     (`blocks`); the epic is a tracking issue on any tier; the same idempotency label."""
     label = f"requivo-epic:{slug}"
     epic_title = export["epic"]["title"]
 
-    def child_description(issue: dict) -> str:
+    def child_description(issue: dict[str, Any]) -> str:
         parts = [issue["description"]] if issue["description"] else []
         parts.append(f"_Part of epic: {epic_title}_")
         return "\n\n".join(parts)

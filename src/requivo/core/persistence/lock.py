@@ -3,10 +3,13 @@
 """
 from __future__ import annotations
 
+# pyright: reportPrivateUsage=false, reportUnusedClass=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import os
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,7 +46,7 @@ class _LockHandle:
 
     __slots__ = ("_key", "_requests")
 
-    def __init__(self, key: tuple, requests: set):
+    def __init__(self, key: tuple[str, str], requests: set[tuple[str, str]]):
         self._key = key
         self._requests = requests
 
@@ -170,7 +173,7 @@ class _LockMixin:
 
 
     @contextmanager
-    def session_lock(self, slug: str) -> Iterator[_LockHandle]:
+    def session_lock(self, slug: str) -> Generator[_LockHandle, None, None]:
         """Hold the exclusive lock on a session for the block: re-entrant within a thread, exclusive
         across threads and processes. The lock file lives outside the session (#113). A session must
         exist to be locked, checked *after* the lock is held (invariant 9,
@@ -180,7 +183,7 @@ class _LockMixin:
         depths: dict[tuple[str, str], int] = getattr(_held_locks, "depths", None) or {}
         _held_locks.depths = depths
         # Thread-local beside `depths`: a lock is held by a thread. Not `or set()`, which would replace an empty set.
-        requests = getattr(_held_locks, "unlink_requests", None)
+        requests: set[tuple[str, str]] | None = getattr(_held_locks, "unlink_requests", None)
         if requests is None:
             requests = set()
             _held_locks.unlink_requests = requests

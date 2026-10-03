@@ -97,7 +97,9 @@ _WRITERS: dict[str, Callable[[Any], str]] = {
 # in `_WRITERS`: it takes the reasoning-absorbing path `brief` does (`_ASSESSMENT_ARTIFACTS`).
 GENERATABLE: tuple[str, ...] = ("brief", "gtm_plan", *_WRITERS)
 
-_A = TypeVar("_A")
+# Covariant, so `Generated[Brief]` is a `Generated[object]` and each `Literal` overload of `generate()`
+# narrows the `str` one instead of overlapping it unsafely; frozen, as covariance needs a read-only field.
+_A_co = TypeVar("_A_co", covariant=True)
 
 
 @dataclass
@@ -112,14 +114,14 @@ class SavedEstimate:
     stories_status: ArtifactStatus
 
 
-@dataclass
-class Generated(Generic[_A]):
+@dataclass(frozen=True)
+class Generated(Generic[_A_co]):
     """What one generation produced: the saved `status`, the typed `artifact` (so a caller renders
     its own view without a second call) and the `model` it was rendered from (post-absorption for
     the assessment). The type parameter is resolved by `generate()`'s overloads. `decision: typed-generation-seam`"""
 
     status: ArtifactStatus
-    artifact: _A
+    artifact: _A_co
     model: EngineOutput
 
 

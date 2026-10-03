@@ -6,7 +6,7 @@ import re
 import sys
 import textwrap
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, NoReturn
 
 from dotenv import load_dotenv
 
@@ -241,9 +241,9 @@ def _say_nothing_drafted(slug: str) -> None:
 
 
 def _rescue_drafted(disco, request: str, e: DraftingFailed, *, cards, slug: str,
-                    perimeter: str = "software"):
+                    perimeter: str = "software") -> NoReturn:
     """Persist what an interrupted drafting loop had already paid for, then let the failure surface.
-    Turn 1 failing has nothing to save, so it points at `discover` rather than `answer`. Never returns.
+    Turn 1 failing has nothing to save, so it points at `discover` rather than `answer`.
     Pinned by `test_a_failed_draft_turn_persists_the_turns_that_succeeded`."""
     if e.last is None:
         _say_nothing_drafted(slug)
@@ -548,13 +548,10 @@ def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
     svc = SessionService()
     # A loose model.json borrows no session sharing its directory name (#681):
     # `test_a_loose_model_file_never_borrows_a_session_sharing_its_directory_name`.
-    is_session = not Path(ref).is_file() and svc.exists(slug)
-    perimeter = DEFAULT_PERIMETER
-    if is_session:
-        meta = svc.meta(slug)
-        perimeter = resolve_perimeter(meta.perimeter)
+    meta = svc.meta(slug) if not Path(ref).is_file() and svc.exists(slug) else None
+    perimeter = resolve_perimeter(meta.perimeter) if meta is not None else DEFAULT_PERIMETER
     payload: dict = {"slug": slug, **model_status(out, perimeter)}
-    if is_session:
+    if meta is not None:
         payload["revision"] = meta.current_revision
         payload["context_cards"] = meta.context_cards
         payload["perimeter"] = perimeter

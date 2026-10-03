@@ -3,6 +3,9 @@ on `Store`, `lock.py` or `scan.py`, so `lock.py` can import from here without a 
 """
 from __future__ import annotations
 
+# pyright: reportUnusedFunction=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import hashlib
 import re
 import unicodedata
@@ -96,7 +99,7 @@ def _raise_reserved_slug(slug: str) -> None:
         details={"slug": slug})
 
 
-def _slug_shape(slug: str) -> str:
+def _slug_shape(slug: object) -> str:
     """Pattern and length: the parts of slug validity that hold regardless of what is on disk."""
     if not isinstance(slug, str) or not _SLUG_RE.match(slug):
         raise InvalidSlugError(
@@ -172,7 +175,7 @@ _FILENAME_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 MAX_FILENAME_LENGTH = 120
 
 
-def validate_filename(filename: str) -> str:
+def validate_filename(filename: object) -> str:
     """Return `filename` if it is a safe bare filename, else raise `InvalidFilenameError`; the sibling
     of `validate_slug`, in Core so every surface inherits it (invariant 14)."""
     if not isinstance(filename, str) or not _FILENAME_RE.match(filename):

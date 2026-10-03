@@ -4,8 +4,10 @@ so `requivo.core.persistence.X` resolves as before the split.
 """
 from __future__ import annotations
 
-# This file's whole job is re-export, so every import below is used by the point of the file.
+# This file's whole job is re-export, so every import below is used by the point of the file, private
+# names included: the containment tests reach `_child_of` and `_resolve` through it (tests/test_integrity.py).
 # ruff: noqa: F401
+# pyright: reportUnusedImport=false, reportPrivateUsage=false
 # The stdlib/vendor names are re-exported too: a handful of tests patch `store.fcntl`.
 import hashlib
 import json

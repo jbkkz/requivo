@@ -310,7 +310,12 @@ pythonVersion = "3.9"
 # class does not fund coverage here (CLAUDE.md, #288).
 pythonPlatform = "All"
 
-typeCheckingMode = "basic"
+# `standard` over the package, and `strict` path by path (#667), so the gate only ratchets up: `core/`
+# first, the deterministic engine whose types carry the invariants, then `services/`, `render/` and
+# the rest, one PR per group. A path joins `strict` when it is clean under it, never with a blanket
+# file-level opt-out; a suppression names the invariant or the test it protects.
+typeCheckingMode = "standard"
+strict = ["src/requivo/core"]
 
 # The `.venv` this project's own install instructions create and `uv run` uses. Without it pyright
 # resolves against whatever python is first on PATH, `pydantic` reads as an unresolved import, and

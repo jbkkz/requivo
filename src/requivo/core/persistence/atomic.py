@@ -2,6 +2,9 @@
 """
 from __future__ import annotations
 
+# pyright: reportUnusedFunction=false
+# #550 split one module into this package: an underscore name is private to the package, not to its
+# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import os
 import time
 import uuid
