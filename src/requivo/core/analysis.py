@@ -50,6 +50,14 @@ def soft_slots(out: EngineOutput) -> list[str]:
     return soft
 
 
+def veto_defaults(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+    """The `inferred` slots worth a veto at a checkpoint (#731): `soft_slots`' rule narrowed to the
+    inferred ones carrying a value, in schema order. A selection, never a second ranking."""
+    soft = set(soft_slots(out))
+    return [sid for sid in slot_meta(perimeter)[1] if sid in soft
+            and out.model[sid].confidence is Confidence.inferred and out.model[sid].value.strip()]
+
+
 def estimate_confidence(n_soft: int) -> str:
     """Estimate confidence derived from how many high-impact slots are still soft."""
     if n_soft <= 1:

@@ -396,15 +396,42 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
                          ids=["once", "interactive"])
 def test_a_first_run_opens_with_the_perimeter_recap_and_a_resume_does_not_repeat_it(monkeypatch, argv_tail,
                                                                                       first_question):
-    """#709: the cards and the assumed slots precede the first question on both first-run paths, and only there."""
+    """#709: the cards precede the first question on both first-run paths, and only there; the defaults
+    list (#731) closes the recap, and a resume's first checkpoint lists it again in full."""
     _at_a_terminal(monkeypatch, "q")
     reply = json.loads(_ASKING_REPLY)
     reply["model"]["actors"] = slot(60, "inferred", "high", "Line managers approve")
     text = run_cli(["run", _REQUEST, *argv_tail], client=FakeClient(_ROUTING_REPLY, _JUDGMENT_REPLY, json.dumps(reply)))
-    marks = ["GROUNDED ON", "Product context", "ASSUMED", "Line managers approve", first_question]
+    marks = ["GROUNDED ON", "Product context", "WHAT I WILL ASSUME", "Line managers approve", first_question]
     assert [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
     resumed = run_cli(["run", _sessions()[0].slug], client=FakeClient())
-    assert "Enter skips" in resumed and "GROUNDED ON" not in resumed and "ASSUMED" not in resumed
+    assert "Enter skips" in resumed and "GROUNDED ON" not in resumed and "Line managers approve" in resumed
+
+
+_ACTORS = {**slot(60, "inferred", "high", "Line managers"), "evidence": "the request\nnames them"}
+
+
+def test_each_checkpoint_shows_the_defaults_its_turn_moved_and_counts_the_rest():
+    """#731: the first checkpoint lists every default worth a veto, a later one only what its turn moved."""
+    first = EngineOutput.model_validate({**full_model(actors=_ACTORS, permissions=slot(50, "inferred", "medium", "Managers")),
+                                         "questions": [{"q": "Who approves?", "slot": "permissions", "why": "w"}]})
+    first.summary.assumptions = ["Balances live in payroll"]
+    second = first.model_copy(deep=True, update={"questions": []})
+    second.model["permissions"].value = "HR approves"
+    turn1, turn2 = _converse(_provider(first, second), answers=["HR"])[1].split("TURN 2")
+    assert all(m in turn1 for m in ("WHAT I WILL ASSUME", "Actors & roles — Line managers (why: the request names them)",
+                                    "— Managers", "Balances live in payroll", "To overturn one")), turn1
+    assert "HR approves" in turn2 and "+ 2 earlier default(s) still standing" in turn2, turn2
+    assert "Line managers" not in turn2 and "payroll" not in turn2 and "overturn" not in turn2
+
+
+def test_answer_diffs_its_defaults_against_the_revision_it_refined():
+    """#731 on the one-shot verb: the turn before is the revision the answer was folded into."""
+    seed_session("defaults", actors=_ACTORS)
+    reply = {**full_model(actors=_ACTORS, permissions=slot(50, "inferred", "medium", "HR approves")),
+             "questions": [{"q": "Who escalates?", "slot": "permissions", "why": "w"}]}
+    text = run_cli(["answer", "defaults", "HR approves."], client=FakeClient(json.dumps(reply)))
+    assert "HR approves" in text and "Line managers" not in text and "+ 1 earlier default(s)" in text, text
 
 
 @pytest.mark.parametrize("slug", ["leave-approval", "the-leave-approval-system"])

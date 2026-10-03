@@ -99,7 +99,6 @@ _RENDER_FAILED_UNPAID = (
 )
 
 
-
 _RENDER_FAILED_TAIL = (
     "\n"
     "Set PYTHONIOENCODING=utf-8, or redirect to a file, to see the output itself.\n"
@@ -142,16 +141,16 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
     for turn in range(1, MAX_TURNS + 1):
         print(f"\n──────────── TURN {turn} ────────────")
         try:
-            out = disco.draft_turn(request, current_model=out, answers=answers, cards=only,
-                                   perimeter=perimeter)
+            prev, out = out, disco.draft_turn(request, current_model=out, answers=answers, cards=only,
+                                              perimeter=perimeter)
         except (RequivoError, KeyboardInterrupt) as e:
             # `RequivoError`, not `EngineError`: `ProviderOutputError` is a sibling, and `out` still holds
             # the last turn that succeeded. `test_a_provider_output_failure_mid_turn_also_names_the_claimed_session`.
             raise DraftingFailed(e, out, turn) from e
         if turn == 1:   # a first run's ground, before its first question (#709)
-            render_perimeter_recap(out, only, perimeter)
-        # The checkpoint; `_prompt_answers` asks the questions one at a time (#592).
-        render_turn_state(out, perimeter)
+            render_perimeter_recap(out, only)
+        # The checkpoint, its defaults diffed against `prev` (#731); `_prompt_answers` asks one at a time (#592).
+        render_turn_state(out, perimeter, prev)
 
         if not out.questions:
             break
@@ -335,7 +334,7 @@ def _cmd_discover(a, client) -> None:
             _say_nothing_drafted(meta.slug)
             raise
         out = disco.sessions.load_model(slug)
-        render_perimeter_recap(out, only, perimeter)
+        render_perimeter_recap(out, only)
         render_turn(out, perimeter)
         _say_saved(slug)
         if out.questions:
@@ -411,7 +410,7 @@ def _cmd_answer(a, client) -> None:
     result = disco.answer(slug, a.answers, surface="cli-answer")
     perimeter = resolve_perimeter(svc.meta(slug).perimeter)
     out = svc.load_model(slug)
-    render_turn(out, perimeter)
+    render_turn(out, perimeter, svc.load_revision(slug, result.revision - 1))  # the defaults it moved (#731)
     if result.stale_artifacts:
         pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
         render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
@@ -477,9 +476,9 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     """`run <slug>` on a discovered session (#540): `answer` inside a loop, never a second discovery."""
     svc = disco.sessions
     perimeter = resolve_perimeter(svc.meta(slug).perimeter)
-    out = svc.load_model(slug)
+    prev, out = None, svc.load_model(slug)   # a resume's first checkpoint lists every default (#731)
     for _turn in range(1, MAX_TURNS + 1):
-        render_turn_state(out, perimeter)
+        render_turn_state(out, perimeter, prev)
         if not out.questions:
             primary = get_perimeter(perimeter).primary_artifact  # #609 -- was hardcoded "brief"
             print(f"\n✅ Discovery converged — run `requivo {primary} {slug}` for the {_LABEL[primary]}."
@@ -493,7 +492,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
         if result.stale_artifacts:
             pairs = [(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts]
             render_stale(pairs, [slot_label(sid, perimeter) for sid in result.changed_slots])
-        out = svc.load_model(slug)
+        prev, out = out, svc.load_model(slug)
     else:
         print(f"\n⚠️  Reached the {MAX_TURNS}-turn limit.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")

@@ -42,6 +42,7 @@ from requivo.render.terminal import (
     docs_menu_rows,
     render_brief,
     render_context_judgment,
+    render_defaults,
     render_dependency_map,
     render_docs_menu,
     render_estimate,
@@ -52,6 +53,7 @@ from requivo.render.terminal import (
     render_session_cost,
     render_stories,
     render_turn,
+    render_turn_state,
 )
 from requivo.services.discovery import DiscoveryService, Grounding
 
@@ -151,7 +153,6 @@ _NON_PROSE_RENDERERS = {
     "render_next_command": "a fixed command template plus a slug and an artifact type, no model text",
     "render_stale": "artifact filenames from ARTIFACT_FILENAMES and schema slot labels, no model text",
     "render_usage": "the in-process usage ledger this run itself built -- never persisted, never read back off disk (#388)",
-    "render_turn_state": "render_understanding plus the readiness verdict -- schema slot labels and a fixed verdict string (#592)",
 }
 
 # What each swept renderer must also have printed, proving the other rows rendered something to be forged through.
@@ -177,7 +178,8 @@ def _forged_renders() -> dict[str, str]:
                         "recommendation": FORGED, "contests": ["problem"]}]
     d["opportunities"] = [{"text": FORGED, "leverage": "high", "modules": [FORGED]}]
     forged_model = EngineOutput.model_validate(d)
-    recap = EngineOutput.model_validate({**d, "model": {**d["model"], "actors": slot(60, "inferred", "high", FORGED)},
+    actors = {**slot(60, "inferred", "high", FORGED), "evidence": FORGED}
+    recap = EngineOutput.model_validate({**d, "model": {**d["model"], "actors": actors},
                                          "summary": {**d["summary"], "assumptions": [FORGED]}})
     stories = Stories(stories=[{"id": FORGED, "title": FORGED, "as_a": FORGED, "i_want": FORGED, "so_that": FORGED,
                                 "acceptance": [FORGED], "slots": ["problem"]}])
@@ -196,6 +198,8 @@ def _forged_renders() -> dict[str, str]:
         "render_session_cost": printed(render_session_cost, [_revision(1, "2026-01-01"), _revision(2, FORGED)]),
         "render_grounding": printed(render_grounding, [FORGED]),
         "render_perimeter_recap": printed(render_perimeter_recap, recap, [FORGED]),
+        "render_defaults": printed(render_defaults, recap),   # an inferred value, its evidence, an assumption (#731)
+        "render_turn_state": printed(render_turn_state, recap),
         "render_docs_menu": printed(render_docs_menu, docs_menu_rows({"prd": ArtifactStatus(
             revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)})),
         "render_context_judgment": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")),

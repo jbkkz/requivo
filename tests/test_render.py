@@ -30,7 +30,7 @@ from requivo.render.markdown import (
     prd_markdown,
     release_markdown,
 )
-from requivo.render.terminal import render_brief, render_perimeter_recap
+from requivo.render.terminal import render_brief, render_defaults, render_perimeter_recap
 
 _MODEL = {"problem": slot(80, "explicit", "high")}
 
@@ -193,22 +193,24 @@ def test_the_decision_briefs_english_anchor_covers_the_judgment_the_provider_wro
 # ── the perimeter recap a first discovery opens with (#709) ──────────────────────
 
 
-def test_the_perimeter_recap_names_the_cards_then_the_request_then_what_was_assumed():
-    """#709: the plugin recap's order, read off the model; an explicit slot or an empty inferred one is no assumption."""
-    model = out({"problem": slot(80, "explicit", "high", "Approvals get lost"),
-                 "actors": slot(60, "inferred", "high", "Employees and\nline managers"),
-                 "permissions": slot(40, "inferred", "medium")})
-    model.summary.assumptions = ["Leave balances live in payroll"]
+def test_the_perimeter_recap_names_the_cards_then_the_request():
+    """#709: the plugin recap order, read off the model; what was assumed is the checkpoint list (#731)."""
+    model = out({"actors": slot(60, "inferred", "high", "Line managers")})
     text = printed(render_perimeter_recap, model, ["b2b-platform"])
-    marks = ["b2b-platform", OBJECTIVE, "ASSUMED", "Actors & roles — Employees and line managers",
-             "Leave balances live in payroll"]
-    assert all(m in text for m in marks) and [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
-    assert "Approvals get lost" not in text and "Permissions" not in text
+    assert OBJECTIVE in text and text.index("b2b-platform") < text.index(OBJECTIVE) and "Line managers" not in text
 
 
-def test_the_perimeter_recap_has_no_assumption_section_when_nothing_was_assumed():
-    text = printed(render_perimeter_recap, out(_MODEL), ["b2b-platform"])
-    assert "b2b-platform" in text and "ASSUMED" not in text
+def test_the_defaults_worth_a_veto_are_the_inferred_values_that_move_the_solution():
+    """#731: the soft_slots impact rule, inferred and valued only, in schema order, then the summary assumptions."""
+    model = out({"problem": slot(80, "explicit", "high", "Approvals get lost"),
+                 "actors": slot(60, "inferred", "high", "Employees and   line managers"),
+                 "permissions": slot(40, "inferred", "medium"), "edge_cases": slot(40, "inferred", "low", "Half days")})
+    model.summary.assumptions = ["Leave balances live in payroll"]
+    text = printed(render_defaults, model)
+    marks = ["WHAT I WILL ASSUME", "Actors", "Employees and line managers", "Leave balances live in payroll"]
+    assert [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
+    assert not any(s in text for s in ("Approvals get lost", "Permissions", "Half days", "overturn"))
+    assert printed(render_defaults, out(_MODEL)) == "", "nothing assumed, no section"
 
 
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────

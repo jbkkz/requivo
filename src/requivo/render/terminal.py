@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from typing import NamedTuple
 
-from requivo.core.analysis import blocking_reason, is_thin, readiness_blockers, slot_label, slot_meta, state_of
+from requivo.core.analysis import blocking_reason, is_thin, readiness_blockers, slot_label, state_of, veto_defaults
 from requivo.core.contracts import (
     Brief,
     Confidence,
@@ -82,10 +82,12 @@ def render_readiness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> N
         print(_labeled("Remaining gaps", ", ".join(gaps), lw=20))
 
 
-def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
+def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
+                      previous: EngineOutput | None = None) -> None:
     """A turn's checkpoint without the questions; the interactive loops ask those one at a time
     (#592, `test_the_interactive_loop_asks_one_question_per_prompt`). `perimeter` (#608) is the
-    session's own, or a go-to-market model shows software slots as blockers."""
+    session's own, or a go-to-market model shows software slots as blockers. `previous` is the
+    model the turn started from, so the defaults list shows only what the turn moved (#731)."""
     print()
     render_understanding(out, perimeter)
     # Each blocker says why it blocks (#722): `test_the_status_screen_has_one_meaning_of_confirmed`.
@@ -94,12 +96,46 @@ def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> 
     # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
+    render_defaults(out, perimeter, previous)
 
 
-def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
+def _default_lines(out: EngineOutput, perimeter: str) -> list[str]:
+    """One line per default: a `veto_defaults` slot with its evidence, then each summary assumption."""
+    def flat(text: str) -> str:
+        return " ".join(text.split())
+    lines = []
+    for sid in veto_defaults(out, perimeter):
+        s = out.model[sid]
+        why = f" (why: {flat(s.evidence)})" if s.evidence.strip() else ""
+        lines.append(f"{slot_label(sid, perimeter)} — {flat(s.value)}{why}")
+    return lines + [flat(a) for a in out.summary.assumptions if a.strip()]
+
+
+def render_defaults(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
+                    previous: EngineOutput | None = None) -> None:
+    """What the engine will assume unless the user objects (#731), as `/requivo:run`'s checkpoint
+    shows it: in full on a first look, then only the lines `previous` did not carry, the rest
+    counted. Selected off the model, never recomputed:
+    `test_each_checkpoint_shows_the_defaults_its_turn_moved_and_counts_the_rest`."""
+    lines = _default_lines(out, perimeter)
+    if not lines:
+        return
+    before = set(_default_lines(previous, perimeter)) if previous is not None else set()
+    fresh = [line for line in lines if line not in before]
+    print("\nWHAT I WILL ASSUME UNLESS YOU OBJECT")
+    for line in fresh:
+        print(_bullet(line))
+    if len(lines) > len(fresh):
+        print(f"  + {len(lines) - len(fresh)} earlier default(s) still standing (`requivo status` lists them).")
+    if out.questions:
+        print("  To overturn one, say so in any answer, in your own words: it is folded in like an answer.")
+
+
+def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
+                previous: EngineOutput | None = None) -> None:
     """The checkpoint plus the questions, for the verbs with nobody at a prompt (`discover`,
     `answer`, `status`, `demo`)."""
-    render_turn_state(out, perimeter)
+    render_turn_state(out, perimeter, previous)
     if out.questions:
         print("\nPRIORITY QUESTIONS")
         for i, q in enumerate(out.questions, 1):
@@ -186,24 +222,13 @@ def render_grounding(cards: list[str] | None) -> None:
                        "about one product area", lw=20))
 
 
-def render_perimeter_recap(out: EngineOutput, cards: list[str] | None,
-                           perimeter: str = DEFAULT_PERIMETER) -> None:
+def render_perimeter_recap(out: EngineOutput, cards: list[str] | None) -> None:
     """A first discovery's ground, before its first question (#709), in the plugin recap's order:
-    the cards, the request as read, then what was assumed (inferred slots in schema order, then the
-    summary's assumptions). Selected off the model, never recomputed; a resume never calls it."""
+    the cards, then the request as read. What was assumed follows at the checkpoint, the recap's
+    last item (`render_defaults`, #731). Selected off the model; a resume never calls it."""
     render_grounding(cards)
     if out.summary.objective.strip():
         print(_labeled("Request, as read", " ".join(out.summary.objective.split()), lw=20))
-    assumed = [f"{slot_label(sid, perimeter)} — {' '.join(out.model[sid].value.split())}"
-               for sid in slot_meta(perimeter)[1]
-               if sid in out.model and out.model[sid].confidence is Confidence.inferred
-               and out.model[sid].value.strip()]
-    assumed += [" ".join(a.split()) for a in out.summary.assumptions if a.strip()]
-    if assumed:
-        print("\nASSUMED TO GET THIS FAR")
-        for line in assumed:
-            print(_bullet(line))
-        print("  Inferred, not stated: correct any of these in your answers.")
 
 
 def next_command(payload: dict, provider: str | None = None) -> str | None:

@@ -9,7 +9,7 @@
 [src]
 # src/requivo, .py files. Measured after #627's tranche 2 cut src/ prose by the rule.
 prose_share_max = 0.196
-largest_module_max_lines = 1304
+largest_module_max_lines = 1303
 module_docstring_max_lines = 15
 function_docstring_max_lines = 12
 
