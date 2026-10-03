@@ -97,9 +97,7 @@ _WRITERS: dict[str, Callable[[Any], str]] = {
 # in `_WRITERS`: it takes the reasoning-absorbing path `brief` does (`_ASSESSMENT_ARTIFACTS`).
 GENERATABLE: tuple[str, ...] = ("brief", "gtm_plan", *_WRITERS)
 
-# Covariant, so `Generated[Brief]` is a `Generated[object]` and each `Literal` overload of `generate()`
-# narrows the `str` one instead of overlapping it unsafely; frozen, as covariance needs a read-only field.
-_A_co = TypeVar("_A_co", covariant=True)
+_A = TypeVar("_A")
 
 
 @dataclass
@@ -114,14 +112,14 @@ class SavedEstimate:
     stories_status: ArtifactStatus
 
 
-@dataclass(frozen=True)
-class Generated(Generic[_A_co]):
+@dataclass
+class Generated(Generic[_A]):
     """What one generation produced: the saved `status`, the typed `artifact` (so a caller renders
     its own view without a second call) and the `model` it was rendered from (post-absorption for
     the assessment). The type parameter is resolved by `generate()`'s overloads. `decision: typed-generation-seam`"""
 
     status: ArtifactStatus
-    artifact: _A_co
+    artifact: _A
     model: EngineOutput
 
 
@@ -717,7 +715,7 @@ class DiscoveryService:
                 **kwargs) -> Generated[ReleaseNotes]: ...
     @overload
     def generate(self, slug: str, artifact_type: str, *, surface: str = "generate",
-                **kwargs) -> Generated[object]: ...
+                **kwargs) -> Generated[Any]: ...
 
     def generate(self, slug: str, artifact_type: str, *, surface: str = "generate", **kwargs):
         """Generate an artifact through the provider and save it with its source revision; every

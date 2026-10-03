@@ -16,7 +16,7 @@ Three, together, because each alone leaves the seam untyped:
 
 1. **`Generated` is generic**, its parameter resolved by `generate()`'s overloads.
 2. **`generate()` has six `@overload`s**: five keyed by `Literal` on the saved artifact types, a
-   sixth taking a plain `str` and returning `Generated[object]`. `disco.generate(slug, "prd")` is
+   sixth taking a plain `str` and returning `Generated[Any]`. `disco.generate(slug, "prd")` is
    `Generated[PRD]` with no cast visible to the caller.
 3. **`_WRITERS` is annotated `dict[str, Callable[[Any], str]]`.** Left to infer, a dict of narrow
    writers (`prd_markdown(prd: PRD)`, …) is a *union* of callables, and calling one demands an

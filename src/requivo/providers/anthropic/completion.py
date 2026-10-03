@@ -186,7 +186,7 @@ def _complete(client, system: str | SystemPrompt, messages: list[dict], out_mode
     an explicit id (#434, `test_a_constructed_model_makes_no_env_read`). Every exit records the spend first."""
     attempt = messages
     last_err = None
-    raw: str | None = None  # stays None only when `retries < 0` runs no attempt at all
+    raw: str | None = None  # None only when `retries < 0` runs no attempt: `test_a_give_up_with_no_attempt_is_a_structured_error_not_an_unbound_local`
     model = model if model is not None else current_model_name()
     rec = CallRecord(model=model, attempts=0, operation=operation)
     started = time.perf_counter()

@@ -3,9 +3,6 @@ on `Store`, `lock.py` or `scan.py`, so `lock.py` can import from here without a 
 """
 from __future__ import annotations
 
-# pyright: reportUnusedFunction=false
-# #550 split one module into this package: an underscore name is private to the package, not to its
-# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import hashlib
 import re
 import unicodedata
@@ -114,7 +111,7 @@ def _slug_shape(slug: object) -> str:
     return slug
 
 
-def _refuse_new_reserved_slug(slug: str, existing_check: Path) -> None:
+def _refuse_new_reserved_slug(slug: str, existing_check: Path) -> None:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): lock.py, store.py
     """Refuse a reserved Windows device name (#221) unless something already occupies `existing_check`
     (#372): a session on disk under such a name is data, not a request to create anything. Through
     `_probe`, so a stat this cannot make is `SessionUnreadableError`, not a side taken.
@@ -155,7 +152,7 @@ def _shape_only(name: str) -> bool:
     return True
 
 
-def _is_lock_stem(stem: str) -> bool:
+def _is_lock_stem(stem: str) -> bool:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): scan.py
     """Whether a `<stem>.lock` or `<stem>.discovering` is one this store could have written: shape
     alone (#409), never a read of `session_root()` (#401, invariant 17), never `lock_path` (which
     answers about a different file) and never `is_slug` (which guards creation).

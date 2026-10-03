@@ -4,9 +4,6 @@ through (#550, invariant 8). `Store` is the only writer.
 """
 from __future__ import annotations
 
-# pyright: reportUnusedFunction=false
-# #550 split one module into this package: an underscore name is private to the package, not to its
-# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -122,7 +119,7 @@ class SessionMeta(BaseModel):
     artifact_status: dict[str, ArtifactStatus] = Field(default_factory=dict)
 
 
-def _now() -> str:
+def _now() -> str:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): store.py
     """UTC, second precision, Z-suffixed: the one timestamp format."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 

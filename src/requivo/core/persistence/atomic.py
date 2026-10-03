@@ -2,16 +2,13 @@
 """
 from __future__ import annotations
 
-# pyright: reportUnusedFunction=false
-# #550 split one module into this package: an underscore name is private to the package, not to its
-# file, shared between siblings and re-exported by `__init__` for tests/test_integrity.py.
 import os
 import time
 import uuid
 from pathlib import Path
 
 
-def _atomic_write(path: Path, content: str) -> Path:
+def _atomic_write(path: Path, content: str) -> Path:  # pyright: ignore[reportUnusedFunction]  # package-private (#550): store.py
     """Write via a unique temp file and an atomic rename, so an interruption never leaves a half-written
     file (`test_concurrent_atomic_writes_do_not_collide_on_a_temp_file`); scratch is never left behind
     (`test_a_failed_atomic_write_leaves_no_scratch_file`)."""
