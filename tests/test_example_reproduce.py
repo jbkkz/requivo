@@ -90,9 +90,13 @@ def _n8n_workflows() -> dict[str, dict]:
 
 
 def test_the_n8n_examples_are_wired_and_carry_no_credential():
-    """Three importable flows (#437): every connection lands on a node, and no secret is in the JSON."""
+    """Three importable flows (#437): every connection lands on a node, and no secret is in the JSON.
+
+    `n8n import:workflow` refuses a flow without an `id` (NOT NULL on workflow_entity.id, n8n 2.41.6).
+    """
     flows = _n8n_workflows()
     assert len(flows) == 3, sorted(flows)
+    assert len({flow.get("id") for flow in flows.values()} - {None}) == 3, "each flow needs its own id"
     for name, flow in flows.items():
         names = {n["name"] for n in flow["nodes"]}
         assert len(names) == len(flow["nodes"]), f"{name}: duplicate node names"

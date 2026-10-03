@@ -8,8 +8,10 @@ Three importable workflows for the automation contract in [../../docs/integratio
 | `b-reply-answer.json` | reply received, `answer`, the same `status --json` gate |
 | `c-epic-to-github.json` | freshness guard, `epic --export-json --github`, idempotency search, milestones, issues, tracking issue, Slack |
 
-Import each with *Workflows, Import from file*. All three are inactive on import. The data in them is
-synthetic (`req-4812`); no real address or tracker appears.
+Import each with *Workflows, Import from file*, or from a shell with
+`n8n import:workflow --input=<file>`. All three are inactive on import. The data in them is synthetic
+(`req-4812`); no real address or tracker appears. Each carries a fixed `id`, which the CLI import
+requires; importing a file again replaces the workflow with that `id`.
 
 ## Prerequisites
 
@@ -18,6 +20,11 @@ synthetic (`req-4812`); no real address or tracker appears.
   mounted at `/data/requivo`. Every command passes `--workspace /data/requivo`; change that path in
   the Execute Command nodes if yours differs.
 - `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`, because the flows read `$env.*` (below).
+- `NODES_EXCLUDE` without `n8n-nodes-base.executeCommand`, for example
+  `NODES_EXCLUDE='["n8n-nodes-base.localFileTrigger"]'`. Its default (n8n 2.41.6) excludes the Execute
+  Command node, which every flow runs.
+- `N8N_RESTRICT_FILE_ACCESS_TO` including `/data/requivo`. The Read/Write Files node is confined to
+  `~/.n8n-files` by default, and flows A and C read and write under the workspace.
 
 ## Credentials: environment names only
 
@@ -55,5 +62,9 @@ after import. Nothing about them is exported.
 
 ## Checking an import
 
-CI parses these files and checks their wiring, never an import into n8n. Before relying on a flow,
-import it into your n8n, point `GITHUB_REPOSITORY` at a scratch repository and run it once.
+CI parses these files and checks their wiring; it does not import them. On 2026-10-03 all three
+were imported into a fresh n8n Community Edition 2.41.6 with `n8n import:workflow`, exported back with
+`n8n export:workflow --all` unchanged (nodes, parameters, connections, no credentials), and every
+node's `type` and `typeVersion` was checked against that release's `n8n-nodes-base`. None was run. Before
+relying on a flow, import it into your n8n, point `GITHUB_REPOSITORY` at a scratch repository and run
+it once.
