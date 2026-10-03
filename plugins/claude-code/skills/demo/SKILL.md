@@ -1,7 +1,7 @@
 ---
 name: demo
 description: Replay a real Requivo run from saved output, ending on what changing one answer makes stale. Offline, no API key, no session, nothing written. Use when the user wants to see what Requivo does before giving it a real request, or asks for a demo or a first thing to try.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo demo:*), Read
 ---
 
 # /requivo:demo

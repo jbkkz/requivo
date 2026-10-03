@@ -1,7 +1,7 @@
 ---
 name: run
 description: Run a Requivo session end to end, in one conversation. No argument resumes the most recent session (or lists several to choose from); a request or a path starts a new one; a slug resumes that one. Reason with this Claude session (no API key): discover, present questions, fold the user's prose answers into new revisions, and stop on ready, on convergence, or when the user says stop. Use when the user wants to work a Requivo session without typing a slug or choosing a verb themselves.
-allowed-tools: Bash(requivo:*), Read, Glob, Grep
+allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo session verify:*), Bash(requivo session init:*), Bash(requivo context:*), Bash(requivo schema:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo impact:*), Read, Glob, Grep
 ---
 
 # /requivo:run

@@ -3,18 +3,18 @@ built and tested against, for the shared preflight in `../REASONING.md` (#251).
 
 Why this is not simply "the plugin shells out to this script"
 ---------------------------------------------------------------
-Every skill here grants only `Bash(requivo:*)` plus read-only file tools -- a narrow grant that
-lets a skill run `requivo …` without a permission prompt and nothing else. Making this script part
-of the *runtime* preflight would mean widening that grant, on every skill, to also cover shelling
-out to a second program -- a real security/UX decision (every extra Bash prefix a skill can run
-without asking is more surface, and an unverified change to it could just as easily turn "warn and
-continue" into "prompt the user before every single skill invocation") and a bigger one than this
-low-risk, low-effort issue asked for. So the runtime check is prose in `REASONING.md`: Claude reads
-the doctor JSON it already fetched during the preflight (already permitted) and this plugin's own
-`.claude-plugin/plugin.json` via the `Read` tool (already permitted, and already how every skill
-reads `REASONING.md` itself) and does the three-way comparison below by reasoning over two numbers
-it already has -- no new permission, no new failure mode if a script does not exist on someone's
-PATH.
+Every skill here grants only the `Bash(requivo <verb>:*)` prefixes it runs (#710) plus read-only
+file tools -- a narrow grant that lets a skill run those calls without a prompt and nothing else.
+Making this script part of the *runtime* preflight would mean widening that grant, on every skill,
+to also cover shelling out to a second program -- a real security/UX decision (every extra Bash
+prefix a skill can run without asking is more surface, and an unverified change to it could just as
+easily turn "warn and continue" into "prompt the user before every single skill invocation") and a
+bigger one than this low-risk, low-effort issue asked for. So the runtime check is prose in
+`REASONING.md`: Claude reads the doctor JSON it already fetched during the preflight (already
+permitted) and this plugin's own `.claude-plugin/plugin.json` via the `Read` tool (already
+permitted, and already how every skill reads `REASONING.md` itself) and does the three-way
+comparison below by reasoning over two numbers it already has -- no new permission, no new failure
+mode if a script does not exist on someone's PATH.
 
 This module is the tested, unambiguous specification of that comparison (so REASONING.md's prose
 has a ground truth to be checked against in `tests/test_plugin.py`, including the

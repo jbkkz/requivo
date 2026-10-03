@@ -1,7 +1,7 @@
 ---
 name: stories
 description: Decompose a Requivo session's model into implementable user stories, in this Claude session, and save them as a tracked artifact. Use when the user wants a delivery-planner's breakdown of the model into shippable slices.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo schema:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:stories

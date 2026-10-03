@@ -1,7 +1,7 @@
 ---
 name: brief
 description: Produce the decision brief from a Requivo session's current understanding, using this Claude session for the judgment, and save it as a tracked document tied to the revision it was written from. Use when the questions have been worked through and the user needs something to review before estimating or committing to the scope.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo status:*), Bash(requivo model show:*), Bash(requivo context:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:brief

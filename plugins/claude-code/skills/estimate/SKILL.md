@@ -1,7 +1,7 @@
 ---
 name: estimate
 description: Derive user stories and a day-based, uncertainty-aware effort estimate from a Requivo session's model, in this Claude session, and save both as tracked artifacts against one revision. Use when the user wants an effort estimate for the current scope.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo schema:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:estimate

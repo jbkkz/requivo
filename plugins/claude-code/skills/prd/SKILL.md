@@ -1,7 +1,7 @@
 ---
 name: prd
 description: Generate a PRD from a Requivo session's model — a view of the model, with unknowns kept visible and open decisions left open — and save it as a tracked artifact. Use when the user wants a Product Requirements Document from a discovered model.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:prd

@@ -117,7 +117,7 @@ def test_exactly_the_expected_skills_exist():
 
 @pytest.mark.parametrize("name", sorted(SKILLS))
 def test_every_skill_meets_the_static_rules(name):
-    """Frontmatter, no key, no temp file, the preflight (#93, #138, #512), Bash only (#121), the arc (#539)."""
+    """Frontmatter, no key, no temp file, the preflight (#93, #138, #512), Bash only (#121) and never delete/import (#710), the arc (#539)."""
     text = SKILLS[name]
     fm, body = _frontmatter(text), text.split("---", 2)[2]
     assert fm.get("name") == name and fm.get("description") and "allowed-tools" in fm, f"{name}: frontmatter"
@@ -135,6 +135,10 @@ def test_every_skill_meets_the_static_rules(name):
     assert not stray, f"{name}: states an install command of its own ({stray.group(0)!r}); REASONING.md names the one"
     assert re.search(r"\bBash\(", tools), f"{name}: declares no Bash grant ({tools!r}); revisit the README prerequisite with it"
     assert not re.search(r"\b(PowerShell|Shell)\b", tools), f"{name}: declares a second route to the CLI beside Bash"
+    for rule in re.findall(r"\bBash\(([^)]*)\)", tools):   # repository text must not reach these unprompted (#710, #707)
+        pattern = re.escape(rule.removesuffix(":*")).replace(r"\*", ".*") + (".*" if rule.endswith(":*") else "")
+        reached = [v for v in ("session delete", "session import") if re.fullmatch(pattern, f"requivo {v} x")]
+        assert not reached, f"{name}: Bash({rule}) runs `requivo {reached[0]}` without a prompt; grant the verbs it runs"
     others = {re.sub(r"[^a-z]", "", m) for m in re.findall(r"/requivo:([a-z]+)", body)} - {name}
     assert others, f"{name}: body names no other skill; its own `# /requivo:{name}` heading does not count"
 
@@ -180,7 +184,7 @@ def test_session_scoped_skills_read_the_session_s_context_cards():
 @pytest.mark.parametrize("name", ARTIFACT_SKILLS)
 def test_artifact_saving_skills_state_the_revision_they_reasoned_from(name):
     """Every artifact skill saves via the CLI, and every `artifact save` line states `--revision` (#6, #519, #542)."""
-    lines = [ln for ln in SKILLS[name].splitlines() if "artifact save" in ln]
+    lines = [ln for ln in SKILLS[name].split("---", 2)[2].splitlines() if "artifact save" in ln]   # the body: #710's grant names the verb
     assert lines, f"{name}: must save via `requivo artifact save`"
     for ln in lines:
         assert "--revision" in ln, f"{name}: `artifact save` must state the revision it reasoned from: {ln.strip()}"

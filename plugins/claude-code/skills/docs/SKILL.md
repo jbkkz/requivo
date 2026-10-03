@@ -1,7 +1,7 @@
 ---
 name: docs
 description: Show a menu of the seven documents a Requivo session's model can produce — decision brief, PRD, user stories, estimate, acceptance criteria, delivery epic, release notes — each with a one-line purpose and whether it is up to date, needs updating, or has not been generated. Generate the ones the user picks, one or several, reasoning in this Claude session. Use when the user wants a document but does not know its name, or wants to see what is fresh.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo status:*), Bash(requivo artifact list:*), Bash(requivo model show:*), Bash(requivo context:*), Bash(requivo schema:*), Bash(requivo model apply:*), Bash(requivo model validate:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:docs

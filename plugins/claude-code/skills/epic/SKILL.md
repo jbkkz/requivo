@@ -1,7 +1,7 @@
 ---
 name: epic
 description: Turn a Requivo session's model into a delivery epic — a work breakdown a dev team can track and ship — in this Claude session, and save it as a tracked artifact. Use when the user wants an epic with trackable issues from the model.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:epic

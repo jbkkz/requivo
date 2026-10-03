@@ -50,7 +50,7 @@ refusable, and the simple answer beats the clever one.
    ship and the one screening scrutinises, traded for one `pip install` it only moves (a rewritten
    `pip install` still needs a `pip`).
 2. **On Windows the mechanism may be absent**: no Git Bash, no Bash tool, no `bin/`. (The skills'
-   `allowed-tools: Bash(requivo:*)` rests on the same assumption; #121 made Git for Windows a stated
+   `Bash(requivo <verb>:*)` grants rest on the same assumption; #121 made Git for Windows a stated
    prerequisite.)
 3. **A shim cannot find its data directory** without adding a hook to a plugin whose virtue is having
    none.

@@ -1,7 +1,7 @@
 ---
 name: status
 description: Show a Requivo session's readiness, blocking slots, current revision, and artifact freshness. Pure deterministic read — no reasoning, no API key. Use when the user asks where a session stands or what is still blocking it.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requivo status:*), Read
 ---
 
 # /requivo:status

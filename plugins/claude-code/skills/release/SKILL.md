@@ -1,7 +1,7 @@
 ---
 name: release
 description: Draft client-facing release notes from a Requivo session's model, in this Claude session, and save them as a tracked artifact. Use when the user wants an announcement a non-technical stakeholder can read to understand what they are getting.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:release

@@ -1,7 +1,7 @@
 ---
 name: criteria
 description: Draft test-ready acceptance criteria (a recette checklist) from a Requivo session's model, in this Claude session, and save them as a tracked artifact. Use when the user wants Given/When/Then scenarios a QA engineer can run and a client can sign off on.
-allowed-tools: Bash(requivo:*), Read
+allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo status:*), Bash(requivo artifact save:*), Read
 ---
 
 # /requivo:criteria
