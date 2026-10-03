@@ -27,7 +27,7 @@ clauses. The design is #751.
 - **In 3.x claims are informational.** They are recorded, validated, persisted, diffed and shown;
   readiness, `state_of`, `soft_slots` and `veto_defaults` still read the slot's `confidence`, and 0021's
   grading rule stands unchanged. A slot with one kind of statement needs no claims, and no claims is
-  absent on disk, so a claimless session is written exactly as 3.5 wrote it.
+  absent on disk, so a claimless session is written exactly as an older 3.x wrote it.
 - **A claim rated below its slot's impact is counted, never capped.** `status` names the count; the
   golden harness watches the rate. A cap would encode a judgment that is sometimes right.
 - `DesignDecision` gains an informational `source` (`requester` | `proposed`): who owns the choice.
