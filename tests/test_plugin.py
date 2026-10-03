@@ -272,6 +272,11 @@ def test_a_document_that_proposes_tags_it_and_writes_it_back_before_it_saves():
     assert all(f"`[{t}]`" in tags for t in ("requester", "evidence", "repo", "proposed", "domain", "assumed"))
     assert "proposes writes the proposal back first" in reasoning
     assert not [n for n in ARTIFACT_SKILLS if not re.search(r"`(proposed:|\[proposed\])", SKILLS[n])], "a generator cannot tell a proposal"
+    # One mapping, in REASONING.md: a skill restating it relabelled `domain:` facts `[proposed]` (Codex on #752).
+    taggers = [n for n in ARTIFACT_SKILLS if re.search(r"`\[(proposed|domain)\]`|\btagged\b", SKILLS[n])]
+    assert len(taggers) > 5 and not [n for n in taggers if "*Source tags*" not in SKILLS[n]], "a skill tags without REASONING.md's table"
+    chunks = [(n, c) for n in ARTIFACT_SKILLS for c in re.split(r"\n(?=- )|\n\n", SKILLS[n])]
+    assert not [n for n, c in chunks if "`domain:" in c and "`[proposed]`" in c and "`[domain]`" not in c], "domain: tagged [proposed]"
     for name in ("brief", "prd"):
         text = SKILLS[name]
         body = text.split("---", 2)[2]

@@ -89,9 +89,10 @@ go-to-market's vocabulary, the same check the CLI's own plan is held to, and ref
 **Voice.** Write for a builder deciding what to do this week: no slot ids, completeness percentages
 or confidence labels in the prose. Say the business thing. **Domain facts, labelled; no folklore**: a
 checkable fact the plan rests on (a platform's terms, a regulation) is tagged `[domain]`, a concrete
-default you propose `[proposed]` with its rationale, and step 4 writes both back (REASONING.md, *a
-document that proposes*). Never "most founders do X" or "this channel typically converts at…": that
-is not a fact, so state it as your own reasoning from this model, or tie it to the product context.
+default you propose `[proposed]` with its rationale (REASONING.md's *Source tags*), and step 4 writes
+both back (REASONING.md, *a document that proposes*). Never "most founders do X" or "this channel
+typically converts at…": that is not a fact, so state it as your own reasoning from this model, or
+tie it to the product context.
 
 **Language.** The plan anchors English whatever language the request arrived in, like every
 buildable artifact (`docs/requirements-model.md`, *The language of the outputs*).

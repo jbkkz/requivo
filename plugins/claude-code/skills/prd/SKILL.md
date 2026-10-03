@@ -35,7 +35,7 @@ acceptance criteria, assumptions, open questions, risks). The rules:
   where data is hosted and who can read it, what happens to past results when a rule changes, what is
   recorded — state a concrete requirement or design tagged `[proposed]` with a one-line rationale.
   A regulatory or technical fact the request bears on is tagged `[domain]`.
-- **Label every claim** with REASONING.md's source tags, one legend line under the title. Untagged
+- **Label every claim** from REASONING.md's *Source tags*, one legend line under the title. Untagged
   is never a way to pass an inference off as stated.
 - **Unknowns stay visible.** An `empty` slot is an open question. An `inferred` one may carry a
   requirement only under its tag, never untagged as settled.

@@ -44,8 +44,9 @@ when you save.
 - Use only what the model supports. Where it is thin or uncertain about a behaviour, do **not** invent
   a definitive criterion — put the open point in `open_questions` instead. A criterion QA can't
   objectively pass or fail is worthless, and every `then` must be observable and checkable. A
-  behaviour the model holds as a proposal (`proposed:` evidence) gets a scenario tagged `[proposed]`,
-  expected and to confirm; a new proposal of yours is an open question carrying your recommendation.
+  behaviour the model holds as a proposal or a domain fact (`proposed:` or `domain:` evidence) gets a
+  scenario tagged from REASONING.md's *Source tags*, expected and to confirm; a new proposal of yours
+  is an open question carrying your recommendation.
 - Honour `confidence` and `impact`: `explicit` → a firm scenario; `inferred` → phrase the `then` as
   *expected, to confirm*, or route it to `open_questions`; `empty` + high impact → `open_questions`,
   never a definitive AC; `empty` + low impact → a non-blocking open question or leave it out.

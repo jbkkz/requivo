@@ -248,7 +248,9 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
 ## Source tags in the documents
 
 The brief and the PRD tag each claim with where it comes from, so a reader tells the requester's word
-from your proposal at a glance: one legend line under the title, then a tag after each claim.
+from your proposal at a glance: one legend line under the title, then a tag after each claim. This
+table is the one mapping: every skill that tags a line takes the tag from it, never from its own, so a
+`domain:` fact stays `[domain]` in every document built on it.
 
 | tag | the claim comes from | read off the slot it rests on |
 | --- | --- | --- |

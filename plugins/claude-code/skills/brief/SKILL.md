@@ -37,7 +37,7 @@ requivo context --session <slug>    # exactly the cards this session was created
 
 ## 3. Reason → write the brief
 Produce it in PM language, in the order a scope review is run, under one legend line for
-REASONING.md's source tags:
+REASONING.md's *Source tags*:
 
 1. **Request and objective** — the underlying problem, what is being built, complexity and its cost driver.
 2. **Current understanding** — the scope in a short paragraph.

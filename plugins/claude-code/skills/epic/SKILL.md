@@ -50,8 +50,9 @@ you save.
   `open_question` or leave it out.
 - **Never assert a decision the model hasn't made.** Where two behaviours are both plausible, that is
   a `spike` or `open_question`, not a behaviour described as settled in an issue. A design the model
-  holds as a proposal (`proposed:` or `domain:` evidence) is a firm issue tagged `[proposed]`; a new
-  one of yours is an `open_question` with your recommendation, for `/requivo:prd` to write back.
+  holds as a proposal or a domain fact (`proposed:` or `domain:` evidence) is a firm issue, tagged from
+  REASONING.md's *Source tags*; a new one of yours is an `open_question` with your recommendation,
+  for `/requivo:prd` to write back.
 - Fold in the model's reasoning layer: `decisions` build for the decided path (tradeoff in the
   description); an unresolved `challenges` entry becomes a `spike` issue dependent work depends on, or
   an `open_question` — never a side described as settled; `opportunities` go in `out_of_scope` or a
