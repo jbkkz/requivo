@@ -3,7 +3,7 @@ built and tested against, for the shared preflight in `../REASONING.md` (#251).
 
 Why this is not simply "the plugin shells out to this script"
 ---------------------------------------------------------------
-Every skill in this plugin declares `allowed-tools: Bash(requivo:*), Read` -- a narrow grant that
+Every skill here grants only `Bash(requivo:*)` plus read-only file tools -- a narrow grant that
 lets a skill run `requivo …` without a permission prompt and nothing else. Making this script part
 of the *runtime* preflight would mean widening that grant, on every skill, to also cover shelling
 out to a second program -- a real security/UX decision (every extra Bash prefix a skill can run

@@ -113,11 +113,13 @@ The commands, in the order they are usually reached. `/requivo:demo` takes nothi
 1. **`/requivo:run [request | path | slug]`**. Paste the client or stakeholder request in whatever
    shape it arrived. You get the first structured read of it — what the request states outright, what
    Requivo inferred and marked as an assumption, what is genuinely unknown — and the few questions
-   whose answers would change the solution. Answer in prose; each answer is validated and applied as
-   a new revision, and you are told what moved and what that made stale. When you revise something
-   already settled, the skill says what that change reaches — the decisions to re-validate and the
-   documents to regenerate, read off the dependency graph — *before* applying it. It stops when the
-   session is ready, when nothing left is worth asking, or when you say so.
+   whose answers would change the solution. Started inside a repository, it reads the checkout first
+   and, before the first question, says what it took from which file and what it did not read. Answer
+   in prose; each answer is validated and applied as a new revision, and you are told what moved and
+   what that made stale. When you revise something already settled, the skill says what that change
+   reaches — the decisions to re-validate and the documents to regenerate, read off the dependency
+   graph — *before* applying it. It stops when the session is ready, when nothing left is worth
+   asking, or when you say so.
 2. **`/requivo:status <slug>`**. Where it stands: readiness, what is still blocking, which generated
    documents need updating. A local read, so use it as often as you like.
 3. **`/requivo:docs <slug>`**. A menu of the seven documents the model can produce — decision brief,
