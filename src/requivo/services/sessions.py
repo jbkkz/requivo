@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
-from typing import cast
+from typing import BinaryIO, cast
 
 from requivo.core import persistence as store
 from requivo.core.analysis import model_status, readiness_blockers
@@ -44,6 +44,7 @@ from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
 from requivo.paths import workspace_root
+from requivo.services import archives
 from requivo.services.repository import SessionRepository, accepts_stale, default_repository
 
 logger = logging.getLogger(__name__)
@@ -664,3 +665,25 @@ class SessionService:
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,
         }
+
+    # ── the portable archive (#702): `services/archives.py` is its one implementation ──
+    def export_archive(self, slug: str) -> bytes:
+        """The zip `requivo session export` writes, of this service's repository, taken under the session
+        lock. File-backed only: another backing is `unsupported_repository`."""
+        files = archives.file_store(self.repo, "export_archive")
+        if not self.exists(slug):
+            raise self.no_session(slug)
+        return archives.export_archive(self.repo, files, slug)
+
+    def import_archive(self, data: bytes | BinaryIO | Path, *, force: bool = False,
+                       name: str | None = None) -> SessionMeta:
+        """`requivo session import`'s checks and refusals, landing in this service's repository and nowhere
+        else. `name` is how a refusal names the archive; a `Path` names itself. File-backed only."""
+        return self.import_archive_report(data, force=force, name=name)[0]
+
+    def import_archive_report(self, data: bytes | BinaryIO | Path, *, force: bool = False,
+                              name: str | None = None) -> tuple[SessionMeta, bool]:
+        """`import_archive`, plus whether it replaced a session: `session import --json`'s `replaced`."""
+        files = archives.file_store(self.repo, "import_archive")
+        label = name if name is not None else str(data) if isinstance(data, Path) else "<archive>"
+        return archives.import_archive(self.repo, files, data, force=force, name=label)

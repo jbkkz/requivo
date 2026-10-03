@@ -39,7 +39,9 @@ The code is the `requivo` package under `src/`. The layers form a strict DAG:
   `claim_session` and the un-persisted `draft_turn` an interactive loop takes and repeats) the CLI and Web both call, so there is one pipeline, not two. Storage is injected as a `SessionRepository`
   (`FileSessionRepository` today; Postgres-swappable). Its workspace root is constructor state
   (#272): `FileSessionRepository(root=...)` is fixed for the instance's lifetime; `root=None`, the
-  CLI's default, resolves `REQUIVO_WORKSPACE`/cwd on every call.
+  CLI's default, resolves `REQUIVO_WORKSPACE`/cwd on every call. The portable session archive is
+  `SessionService.export_archive`/`import_archive` over that same repository (#702), file-backed only;
+  `session export/import` only resolve a path and print.
 - **`render/`** turns data into strings; **`cli.py` + `deterministic/`** are the only layers that
   touch argv/stdout/TTY. `deterministic/` is a package of one module per verb group (`doctor`,
   `sessions`, `model`, `artifacts`, over a `_shared`), composed into the single `register(sub)` the

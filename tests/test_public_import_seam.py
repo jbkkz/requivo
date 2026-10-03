@@ -9,10 +9,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = REPO_ROOT / "src" / "requivo"
 COMPAT_MD = REPO_ROOT / "docs" / "compatibility.md"
 
-# (module -> names) -- the seam this change declares.
+# (module -> names) -- the seam this change declares; a dotted name is a method on a declared class (#702).
 SEAM: dict[str, tuple[str, ...]] = {
     "requivo.services.sessions": (
         "SessionService", "UpdateResult", "SessionEntry", "SessionSnapshot", "Readiness", "RescopeResult",
+        "SessionService.export_archive", "SessionService.import_archive",
     ),
     "requivo.services.discovery": ("DiscoveryService", "Generated"),
     "requivo.services.artifacts": (
@@ -35,8 +36,17 @@ SEAM: dict[str, tuple[str, ...]] = {
 NEWLY_CLASSIFIED_MODULES = ("requivo.render", "requivo.paths", "requivo.streams", "requivo.cli", "requivo.web")
 
 
+def _resolves(module: str, name: str) -> bool:
+    obj = importlib.import_module(module)
+    for part in name.split("."):
+        if not hasattr(obj, part):
+            return False
+        obj = getattr(obj, part)
+    return True
+
+
 def test_every_declared_seam_name_actually_resolves():
-    unresolved = [f"{m}.{n}" for m, names in SEAM.items() for n in names if not hasattr(importlib.import_module(m), n)]
+    unresolved = [f"{m}.{n}" for m, names in SEAM.items() for n in names if not _resolves(m, n)]
     assert unresolved == [], f"declared but does not exist: {unresolved}"
 
 

@@ -181,6 +181,13 @@ class ImportMoveFailedError(InvalidSessionError):
     code = "import_move_failed"
 
 
+class UnsupportedRepositoryError(RequivoError):
+    """The operation needs a file-backed repository and the injected one is not: the session archive is
+    a directory's zip (#702). `details`: `{repository, operation}`. 501: the backing lacks it."""
+
+    code = "unsupported_repository"
+
+
 class SessionNotFoundError(RequivoError):
     """No session matches the given reference (slug or path)."""
 

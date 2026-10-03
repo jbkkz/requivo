@@ -350,11 +350,9 @@ _SURFACE_STORAGE_ALLOWLIST = {
     ("cli.py", "write_artifact_file"): "writes the three neutral epic exports -- untracked extra views of an already-saved artifact, not a second artifact-list row. Carries its own source_revision since #274.",
     ("cli.py", "load_model"): "reads a bare model.json the user named on the command line -- not a session, no repository method can reach it.",
     ("deterministic/sessions/lifecycle.py", "canonical_dir"): "session init reports where the session landed. See the cli.py entry.",
-    ("deterministic/sessions/archives.py", "canonical_dir"): "export/restore/import each report or need the directory they are about to zip, copy into or move over.",
+    ("deterministic/sessions/archives.py", "canonical_dir"): "restore needs the directory it copies into, and import reports where the session landed; the archive itself is services/archives.py's (#702).",
     ("deterministic/sessions/verify.py", "canonical_dir"): "the restore remedy line searches this session's own revisions/ before telling the reader session restore would do anything.",
-    ("deterministic/sessions/archives.py", "ensure_store_dir"): "creates .requivo/sessions/ before import moves a session into it, and writes the privacy .gitignore (#211).",
     ("deterministic/sessions/lifecycle.py", "migrate_legacy"): "converts a session from the retired out/ layout -- a statement about two filesystem layouts, which is what the verb is.",
-    ("deterministic/sessions/archives.py", "validate_slug"): "checks a directory name inside an uploaded archive is slug-shaped, before anything is extracted -- before any session exists.",
     ("deterministic/sessions/archives.py", "_replace_with_retry"): "the transient-PermissionError retry export/restore share with _atomic_write (invariant 18), moved to core/persistence/atomic.py by #550.",
     ("deterministic/doctor.py", "scan_session_root"): "the one caller needing all three parts of one partition -- two separate scans is two instants, and a session.json landing between them lands in no answer at all.",
     ("deterministic/doctor.py", "scan_lock_root"): "the lock-root residue check (#180) -- a fact about the filesystem backing, with no backing-neutral form.",
@@ -365,7 +363,7 @@ _SURFACE_STORAGE_ALLOWLIST = {
     ("api/dependencies.py", "_slug_shape"): "the identical call as web/dependencies.py's entry, one surface over (#425); slice 1 has no creation route, so only the read-time half exists here.",
     ("api/dependencies.py", "_refuse_new_reserved_slug"): "mirrors web/dependencies.py's pair, for the same reason (#372, #425).",
     ("providers/anthropic/completion.py", "_atomic_write"): "writes the JSON retry loop's final malformed reply into .requivo/debug/ so a bug report is one paste (#283); the private name is deliberate (#355) -- the alternative is a second atomic-write implementation, which invariant 16 exists to prevent.",
-    ("providers/anthropic/completion.py", "ensure_store_dir"): "creates .requivo/debug/ before the first failed reply is written into it. Same reasoning as the archives.py ensure_store_dir entry above.",
+    ("providers/anthropic/completion.py", "ensure_store_dir"): "creates .requivo/debug/ before the first failed reply is written into it, and writes the privacy .gitignore when that creates .requivo/ (#211).",
     ("deterministic/sessions/lifecycle.py", "UnexaminableEntry"): "a plain dataclass, not a call -- reused vocabulary for the legacy out/ root's own scan (#411), which has no repository method of its own.",
 }
 
