@@ -177,11 +177,13 @@ first would re-present a list the user already answered instead of folding their
    a reply, in one turn — the case this skill exists to remove a separate turn for): go straight to
    **6. Fold in an answer**. Do not present the questions back to them first; they already answered.
 2. Otherwise, if `readiness.ready` is `true`, or `questions` is empty: go straight to
-   **8. Stop, and say which** with `N` as the final revision — there is nothing new to ask.
+   **8. Stop, and say which** with `N` as the current revision — there is no high-value question left
+   to derive, and step 8 asks whatever is still open before closing.
 3. Otherwise — `readiness.ready` is `false` and `questions` is non-empty, and the user has not
    answered yet: present those questions (numbered, verbatim — the question format of the perimeter
-   recap below) and go to **7. Wait for the reply**. There is a model already; there is nothing to
-   reason from scratch, and no repository to re-read: what the first run read is in its evidence.
+   recap below) with the recap's defaults list, and go to **7. Wait for the reply**. There is a model
+   already; there is nothing to reason from scratch, and no repository to re-read: what the first run
+   read is in its evidence.
 
 ## 5. Reason from scratch (new sessions only)
 
@@ -207,6 +209,16 @@ never a bare "there is no repository" — and you reason from the request alone.
 Read narrowly, with `Glob`, `Grep` and `Read` — never a shell command:
 - the top level first: the README, the manifests, any agent instruction file (`CLAUDE.md`,
   `AGENTS.md`) — what this codebase is, and what it is built with;
+- then the surfaces the session's perimeter reads its slots from (#730), found by `Glob` on file names
+  and `Grep` as below — a request rarely shares a noun with them:
+
+  | perimeter | read first |
+  | --- | --- |
+  | `software` | nothing beyond the request's nouns |
+  | `go-to-market` | public-facing copy (landing, hero and pricing pages or components); signup and waitlist forms, with their validation; analytics event definitions |
+
+  The list lives here, not in the perimeter's `engine_guidance.md`, which is assembled into the
+  engine's prompt;
 - then `Grep` for the request's own nouns, and open the few files that say what already exists that
   this request touches. **`Grep` runs in `files_with_matches` mode only**, never content mode — a
   content match prints the matching line, and the line holding `STRIPE_SECRET_KEY=` is exactly what a
@@ -230,6 +242,15 @@ against it, with no `status` in between to pick a fresher one (one snapshot, inv
 The CLI reads no repository, deliberately; the trigger that funds a scanner there is
 `decision: repository-grounding-starts-in-the-plugin`.
 
+### What the request forces the existing system to do
+
+When the request is about a system you read (a repository, a schema, a config), list before deriving
+any question what the request requires that system to do that it does not do today (#732): new data
+access, more volume, new external calls, new permissions. Each consequence carrying a cost, a risk or
+an exposure for its users becomes a `constraints` or `risks` entry (the closest slot in a perimeter
+without them), with evidence naming the file it was read from, and a question when it is both
+uncertain and high-impact. Nothing read, nothing to list.
+
 ### Reason → propose
 
 Build the model in your head from the request, the context and what the repository showed: for
@@ -238,6 +259,11 @@ Build the model in your head from the request, the context and what the reposito
 empty, invent nothing. Include a `summary` and, where information value is high, 3–6 `questions` —
 each one `{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text field is **`q`**;
 see the apply loop in REASONING.md for why that is worth reading before you emit six of them.
+
+**Acceptance is derived, not asked** (#734). Draft Given/When/Then criteria from the slots the user
+has confirmed (rules, workflow, edge cases, the success measure) into `acceptance`, where the
+perimeter has one, as `inferred`, and show them in the defaults list below for veto. Never ask for
+acceptance with an example to accept; if you ask about it at all, ask what would make them reject it.
 
 ### Apply → fix → re-apply
 
@@ -276,10 +302,14 @@ Before the first question, hand the user the ground the session is standing on. 
   lecture,
 - **what this codebase appears to be, and what it is built with** — each claim with the file it came
   from — or, in one line, that no repository was found at the working directory or above,
-- **what already exists that the request touches**, by path,
+- **what was read**, by path, and what of it the request touches — saying whether the perimeter's
+  surfaces were among them,
 - **the request, restated** — what is being asked for, kept apart from what is already built,
-- **what was assumed to get this far** — the summary's assumptions and every inferred slot, those read
-  from the repository named with their file, so the user can disagree with a line rather than a vibe,
+- **what the request forces the system to do** that it does not do today, from the step above,
+- **what I will assume unless you object** — the defaults list: the summary's assumptions and every
+  `inferred` value that would change the solution if wrong (the ones you would otherwise have asked
+  about at low uncertainty), one line each with its rationale, those read from the repository named
+  with their file, so the user can overturn a line rather than a vibe,
 - **what was not read** — both lists from the grounding step, by name. Say that nothing was skipped
   only when nothing was,
 - what is still blocking readiness,
@@ -296,7 +326,7 @@ Then fold all four answers into **one** `model apply` and present the checkpoint
 the result*). That is the cadence, and the CLI's own loop holds it at
 `QUESTIONS_PER_CHECKPOINT` in `cli.py`.
 
-Two rules make it work rather than merely feel slower:
+Three rules make it work rather than merely feel slower:
 
 - **Nothing is applied mid-window.** The four answers are one turn. Applying after each question
   would buy four reasoning cycles where the user paid for one, and would re-derive the remaining
@@ -304,9 +334,19 @@ Two rules make it work rather than merely feel slower:
 - **The surplus is dropped, not queued.** If the turn produced more than four questions, the ones
   past the window are not asked later — the next turn derives its own against the updated model, and
   answering four often makes the fifth obsolete or reveals a better one.
+- **A queued question can be replaced** (#735). When the answer just given opens a higher-value
+  question than the next one queued, ask that instead and say so in one line. The window stays four
+  questions, and the apply at its end stays one.
 
 A user who answers several questions at once in a single message has answered them: take what they
 gave, do not re-ask it one at a time.
+
+Every question you emit or show is worded for the person answering it (#736):
+- **one decision per question** — two decisions are two questions;
+- **in their words** — no engineer's vocabulary unless they are one; "is cost a constraint at all?"
+  before a choice between cost-control mechanisms;
+- **no example answer inside it** — an example offered is an example accepted; give distinct options,
+  or ask openly.
 
 ## 6. Fold in an answer
 
@@ -337,6 +377,11 @@ Start from the current model. For each slot the answers touch: raise `completene
 each one `{ "q": …, "slot": …, "why": … }`, the text field being **`q`** — and
 emit `[]` when nothing is both uncertain and high-impact (discovery has converged). Pass the client's
 answers through faithfully — do not embellish them.
+
+A default the user overturned is an answer: fold it in like one (#731). A default they confirmed in
+words is `explicit`; one they let stand stays `inferred`. When an answer widens what an existing system
+must do, redo *What the request forces the existing system to do* for it. When the turn confirmed a
+slot the drafted `acceptance` rests on, redraft it.
 
 Say nothing about `decisions`, `challenges`, `opportunities`, `exclusions` or `thresholds` — leave
 the keys out entirely. A refinement turn is not re-deriving the brief, and what is established stands
@@ -373,6 +418,9 @@ From the `model apply` JSON, tell the user in plain language:
 - any **artifacts that went stale** (`stale_artifacts`) — recommend regenerating those; a saved
   brief rests on the whole understanding, so it needs updating on any material change,
 - the new readiness (ready, or which slots still block it),
+- **what I will assume unless you object** (#731) — the defaults list, as in the perimeter recap,
+  the `inferred` values this turn added or changed in full, drafted acceptance criteria included, and
+  one line counting the earlier ones still standing,
 - the next single question, verbatim, or that discovery has converged.
 
 Go to **8. Stop, and say which** to check whether one of the three stop conditions has been reached;
@@ -396,6 +444,13 @@ Three conditions end the loop, and no others do. Check them in this order, and s
    high-impact enough to ask about.
 3. **The user says stop** — in their own words, at any point, whether or not the loop above has
    converged.
+
+**Before closing on 1 or 2, ask what is still open** (#736). Every slot still `empty` and every fork a
+value leaves undecided is an open question the documents will print, low-impact or not: the driver
+kept them out of the loop, not out of the session. Ask them now, in plain words and under the wording
+rules above, batched in one message when there are several, and fold the answers in with one more
+apply, then check the conditions again. Only the user leaves one open, by saying stop or declining
+it, and none is asked twice.
 
 When one of these fires, close with:
 - the session's status in the vocabulary the user reads elsewhere — *what we know*, *what we are

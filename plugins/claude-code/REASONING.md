@@ -208,9 +208,12 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
 ## Honesty rules for every slot
 
 - Mark `confidence`:
-  - `explicit` — the request states it outright.
+  - `explicit` — the request states it outright, or the user confirmed it in an answer.
   - `inferred` — you reasonably assumed it from context. Say so; never present an assumption as a fact.
   - `empty` — genuinely unknown. Do **not** invent a value to fill it.
+- **An ambiguous phrase is a question, not an inference** (#733). When the requester's own words admit
+  two or more readings that would change the solution, do not pick one as `inferred`: leave the slot
+  `empty`, quote the phrase, and ask which reading they meant.
 - `completeness` (0–100) is how fully the slot is pinned down; `impact` (low/medium/high) is how much
   it changes the shape/cost of the solution.
 - Never fabricate an answer the client did not give. An unknown left honestly empty is correct; a
@@ -219,6 +222,11 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   states it. `explicit` is the client's word — the request or an answer; a README is what someone once
   wrote, and a model that grades it `explicit` reaches `ready` on facts nobody confirmed. The user
   confirming it is what flips it, as for any other inference.
+- **A solo builder confirming their own system makes it `explicit`** (#716). With no third party, an
+  as-is you read from the builder's own system, restated to them and then confirmed by them, is the
+  builder vouching for what they built, not a belief about the world: grade it `explicit`. The
+  schema's "what a system does is never explicit" is about an unconfirmed belief; an as-is the builder
+  has not confirmed stays `inferred`.
 - **Evidence names its source, and keeps the two apart**: `repo: <path>` for a file
   (`repo: pyproject.toml`), `request:` for the client's words, both on a slot resting on both — never
   blended into one sentence. The request is what someone wants; the repository is what is already
