@@ -16,6 +16,8 @@ from requivo.core import persistence as store
 from requivo.core.contracts import schema_slot_ids, schema_slots
 from requivo.core.errors import InvalidSlugError, SessionLockedError
 from requivo.core.perimeters import get_perimeter, known_perimeter_ids
+from requivo.core.persistence import identifiers as store_identifiers
+from requivo.core.persistence import store as store_module
 from requivo.deterministic import doctor as det
 from requivo.services.artifacts import ArtifactService
 from requivo.services.sessions import SessionService
@@ -584,7 +586,9 @@ def test_a_symlink_at_the_lock_name_does_not_sink_the_guard_file_beside_it(works
 def test_a_reserved_lock_stem_no_longer_probes_the_session_root(monkeypatch):
     """#409 removed `_is_lock_stem`'s call into `session_root()`: shape is all it asks."""
     _lock_files("con.lock")
-    monkeypatch.setattr(store, "_probe", _raise(store.SessionUnreadableError("could not determine whether session exists")))
+    # Where `_probe` is looked up, not on the package, which no caller reads (#713).
+    for module in (store_identifiers, store_module):
+        monkeypatch.setattr(module, "_probe", _raise(store.SessionUnreadableError("could not determine whether session exists")))
     r = _doctor("locks")
     assert r["total"] == 1 and r["unmatched"] == ["con"] and r["unexpected"] == [] and r["unexaminable"] == []
 

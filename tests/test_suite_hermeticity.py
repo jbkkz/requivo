@@ -122,7 +122,8 @@ _PYTEST = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
 
 
 def _child(cwd, argv, *, tests_on_path=False, **env_extra):
-    """A child interpreter on this checkout's `src` (#420), with the canary and the workspace scrubbed."""
+    """A child interpreter on this checkout's `src` (#420), with the canary, the workspace and
+    `REQUIVO_CONTEXT_DIR` (#711) scrubbed."""
     env = {k: v for k, v in os.environ.items()
            if k not in ("REQUIVO_HERMETICITY_CANARY", "REQUIVO_WORKSPACE", "REQUIVO_CONTEXT_DIR")}
     names = ("src", "tests") if tests_on_path else ("src",)

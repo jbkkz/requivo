@@ -486,7 +486,8 @@ def test_a_dangling_symlink_is_refused_where_the_platform_cannot_resolve_it(tmp_
     (root / "target").mkdir()
     symlink_or_skip(root / "dangling", tmp_path / "not-yet", target_is_directory=True)
     blind_to_dangling_links(monkeypatch)
-    assert store._resolve(root / "dangling") == store._resolve(root) / "dangling", "the simulation is not reproducing the defect"
+    # Read off `lock`, the module `is_contained` looks it up in (#713), not the package.
+    assert store_lock._resolve(root / "dangling") == store_lock._resolve(root) / "dangling", "the simulation is not reproducing the defect"
     with pytest.raises(InvalidSlugError):
         store._child_of(root, "dangling")
     assert store._child_of(root, "s") == root / "s" and store._child_of(root, "absent") == root / "absent"

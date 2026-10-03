@@ -124,7 +124,8 @@ def _no_personal_context_cards(monkeypatch):
     empty = tempfile.mkdtemp(prefix="requivo-no-user-cards-")
     monkeypatch.setenv("REQUIVO_CONTEXT_DIR", empty)
     yield
-    with contextlib.suppress(OSError):
+    # Only "already gone": a test that wrote into the shared empty dir fails here instead of leaking it.
+    with contextlib.suppress(FileNotFoundError):
         os.rmdir(empty)
 
 
