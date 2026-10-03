@@ -221,7 +221,7 @@ class Slot(StrictModel):
 
     @model_serializer(mode="wrap")
     def _omit_absent_claims(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        # No claims is absent, never `[]` (invariant 6): a claimless model is written as 3.5 wrote it.
+        # No claims is absent, never `[]` (invariant 6): a claimless model is written as an older 3.x wrote it.
         return _without(handler(self), claims=[])
 
 
