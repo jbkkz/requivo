@@ -2,6 +2,9 @@
 
 **Slug:** `confidence-stays-one-axis`
 
+Amended by `decision: claims-carry-provenance` (#751): statements inside a slot now carry provenance; the
+slot's `confidence` stays the readiness axis through 3.x.
+
 ## Context
 
 The target user is now as often a builder with a half-formed idea as a PM relaying a request, and

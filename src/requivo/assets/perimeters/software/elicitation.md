@@ -29,6 +29,8 @@ impact         low | medium | high                      how much it shapes the s
 value          what we currently know
 evidence       what it's based on
 test_plan      what would settle it — only when confidence is testable
+claims         optional, on a mixed slot: each statement   informational in 3.x (#751)
+               with its source and confirmation
 ```
 
 `confidence` is what keeps assumptions visible. An `inferred` slot is something the engine deduced

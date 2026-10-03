@@ -92,7 +92,7 @@ requivo model apply <slug> - --expected-revision N --json <<'JSON'
   "questions": [ … ],
   "summary": { … },
   "decisions":     [{"decision": "…", "why": "…", "alternative": "…", "tradeoff": "…",
-                     "derived_from": ["<slot ids the decision rests on>"]}],
+                     "derived_from": ["<slot ids the decision rests on>"], "source": "requester|proposed"}],
   "challenges":    [{"headline": "…", "premise": "…", "alternative": "…", "consequence": "…",
                      "recommendation": "…", "contests": ["<slot ids whose premise this contests>"]}],
   "opportunities": [{"text": "…", "leverage": "high|medium|future", "modules": ["…"]}],
@@ -105,10 +105,11 @@ JSON
 
 These are the same items as in your prose, stated structurally: section 7 is `exclusions`, sections
 9 and 10 are `thresholds`. Emit all five lists, `[]` for an empty one: a new brief replaces the last
-one's items. `derived_from`, `contests` and `rests_on` are the dependency edges: they are what lets
-Requivo tell the user *which* later change unseats *which* decision, option set aside or kill signal.
-An item with no edges still records fine, but it can never be reported as invalidated; a threshold
-needs at least one.
+one's items. A decision's `source` says who owns it (#751): `requester` for their own choice,
+`proposed` for your recommendation. `derived_from`, `contests` and `rests_on` are the dependency
+edges: they are what lets Requivo tell the user *which* later change unseats *which* decision, option
+set aside or kill signal. An item with no edges still records fine, but it can never be reported as
+invalidated; a threshold needs at least one.
 
 Note the revision the apply returns — call it `M`. Slots may not have moved at all; the reasoning is
 the change, and Requivo tracks it as one.

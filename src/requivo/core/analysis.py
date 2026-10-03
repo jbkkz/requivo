@@ -4,6 +4,7 @@ import functools
 from typing import Any
 
 from requivo.core.contracts import (
+    IMPACT_RANK,
     SOFT_COMPLETENESS,
     Confidence,
     EngineOutput,
@@ -110,6 +111,13 @@ def state_of(s: Slot) -> str:
     return "unknown"
 
 
+def claims_below_slot_impact(out: EngineOutput) -> int:
+    """Claims rated below their slot's impact (#751): counted and named in `status`, never capped,
+    so a downgrade that would carry a slot stays visible (`decision: claims-carry-provenance`)."""
+    return sum(1 for s in out.model.values() for c in s.claims
+               if c.impact is not None and IMPACT_RANK[c.impact] < IMPACT_RANK[s.impact])
+
+
 def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, Any]:
     """The model-derived half of a status snapshot (readiness, understanding, questions, summary,
     gaps), the one projection `status --json` and `SessionService.status` both build on."""
@@ -124,12 +132,13 @@ def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[
                       for q in out.questions],
         "summary": out.summary.model_dump(),
         "remaining_gaps": gaps,
+        "claims_below_slot_impact": claims_below_slot_impact(out),
     }
 
 
 def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, list[dict[str, Any]]]:
     """The per-slot understanding grouped by state, each entry with pillar, label, completeness,
-    impact and the `thin` flag (confirmed but below coverage)."""
+    impact, the `thin` flag (confirmed but below coverage) and its informational `claims` (#751)."""
     pillars, _labels = slot_meta(perimeter)
     groups: dict[str, list[dict[str, Any]]] = {"confirmed": [], "inferred": [], "to_test": [], "unknown": []}
     for sid, s in out.model.items():
@@ -140,5 +149,6 @@ def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
             "completeness": s.completeness,
             "impact": s.impact.value,
             "thin": is_thin(s),
+            "claims": [c.model_dump(mode="json") for c in s.claims],
         })
     return groups

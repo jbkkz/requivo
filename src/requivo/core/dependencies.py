@@ -18,6 +18,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Exclusion,
     Opportunity,
+    Slot,
     Threshold,
 )
 from requivo.core.errors import UnknownSlotError
@@ -270,8 +271,30 @@ def introduced_reasoning(new: EngineOutput) -> ReasoningDiff:
                          thresholds=_diff_items([], new.thresholds))
 
 
+# What a kept claim id can move on (#751); its evidence, like a slot's, is not material.
+_CLAIM_FIELDS = ("source", "confirmation", "impact", "test_plan")
+
+
+def _claim_changes(sid: str, old: Optional[Slot], new: Optional[Slot]) -> list[dict[str, str]]:
+    before = dict((c.id, c) for c in (old.claims if old else []))
+    after = dict((c.id, c) for c in (new.claims if new else []))
+    moves = [(c, "added") for i, c in after.items() if i not in before]
+    moves += [(c, "removed") for i, c in before.items() if i not in after]
+    moves += [(c, f) for i, c in after.items() if i in before for f in _CLAIM_FIELDS
+              if getattr(before[i], f) != getattr(c, f)]
+    return [dict(slot=sid, claim=c.id, text=c.text, change=change) for c, change in moves]
+
+
+def diff_claims(old: Optional[EngineOutput], new: EngineOutput) -> list[dict[str, str]]:
+    """Which claim moved (#751), `{slot, claim, text, change}`: `added`, `removed`, or the field a
+    kept id moved on. Against nothing, every claim is `added`, as `changed_slots` lists every slot."""
+    before = old.model if old is not None else {}
+    order = list(new.model) + [sid for sid in before if sid not in new.model]
+    return [m for sid in order for m in _claim_changes(sid, before.get(sid), new.model.get(sid))]
+
+
 def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
-    """Slot ids that materially changed (value, confidence, impact or test plan; completeness alone is noise)."""
+    """Slot ids that materially changed (value, confidence, impact, test plan or a claim; completeness alone is noise)."""
     changed: list[str] = []
     for sid in old.model.keys() | new.model.keys():
         old_slot = old.model.get(sid)
@@ -284,6 +307,8 @@ def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:
             or old_slot.impact != new_slot.impact
             # A re-planned test is a material change (#610): `test_a_re_planned_test_is_a_material_change`.
             or old_slot.test_plan.strip() != new_slot.test_plan.strip()
+            # Generators read the claims, so a moved one is material: `test_a_moved_claim_is_a_material_change`.
+            or _claim_changes(sid, old_slot, new_slot)
         ):
             changed.append(sid)
     return changed

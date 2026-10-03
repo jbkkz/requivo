@@ -26,6 +26,7 @@ from requivo.core.dependencies import (
     EvidenceReport,
     ImpactReport,
     artifact_slots,
+    diff_claims,
     diff_models,
     propagate,
     resolve_slots,
@@ -139,6 +140,21 @@ def test_a_re_planned_test_is_a_material_change():
         return EngineOutput.model_validate({"model": _testable(plan), "questions": [], "summary": {}})
     assert diff_models(_m("Run a pricing survey."), _m("Run a two-week paid pilot.")) == ["business_rules"]
     assert diff_models(_m("Run a pricing survey."), _m("Run a pricing survey.")) == []
+
+
+def test_a_moved_claim_is_a_material_change():
+    """#751: claims ride into every generator prompt, so a moved one marks its slot changed and is named; a claim's
+    evidence, like a slot's, is not material."""
+    stated = dict(text="5-10 h/week", source="requester")
+
+    def _m(*claims):
+        return EngineOutput.model_validate(full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"), claims=list(claims))))
+    before, confirmed = _m(stated), _m(dict(stated, confirmation="confirmed", answered_by="requester"))
+    assert diff_models(before, confirmed) == ["constraints"] and diff_models(before, _m(dict(stated, evidence="the call"))) == []
+    moves = diff_claims(before, confirmed)
+    assert [(m["slot"], m["change"], m["text"]) for m in moves] == [("constraints", "confirmation", "5-10 h/week")]
+    assert [m["change"] for m in diff_claims(before, _m())] == ["removed"]
+    assert [m["change"] for m in diff_claims(None, before)] == ["added"]
 
 
 # ── coverage: every slot reaches some artifact (#269) ───────────────────────────

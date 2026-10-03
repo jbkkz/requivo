@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import textwrap
+from collections import Counter
 from typing import NamedTuple
 
-from requivo.core.analysis import blocking_reason, is_thin, readiness_blockers, slot_label, state_of, veto_defaults
+from requivo.core.analysis import (
+    blocking_reason,
+    claims_below_slot_impact,
+    is_thin,
+    readiness_blockers,
+    slot_label,
+    state_of,
+    veto_defaults,
+)
 from requivo.core.contracts import (
+    IMPACT_RANK,
     Brief,
+    Claim,
     Confidence,
     ContextDecision,
     EngineOutput,
@@ -15,7 +26,7 @@ from requivo.core.contracts import (
     PerimeterDecision,
     Stories,
 )
-from requivo.core.dependencies import ARTIFACT_FILENAMES
+from requivo.core.dependencies import ARTIFACT_FILENAMES, diff_claims
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.selectors import display_text, display_token
@@ -96,7 +107,39 @@ def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
+    render_claims(out, perimeter, previous)
     render_defaults(out, perimeter, previous)
+
+
+def _claim_label(c: Claim, slot_impact: Impact) -> str:
+    """`source`, or `source · confirmation` once it moved, plus an impact set below the slot's (#751)."""
+    label, confirmation = str(getattr(c.source, "value", c.source)), str(getattr(c.confirmation, "value", c.confirmation))
+    label += "" if confirmation == "open" else f" · {confirmation.replace('_', ' ')}"
+    return label + (f" ({c.impact.value})" if c.impact and IMPACT_RANK[c.impact] < IMPACT_RANK[slot_impact] else "")
+
+
+def claim_move(move: dict, perimeter: str = DEFAULT_PERIMETER) -> str:
+    """One claim `diff_claims` reported moved, as a line: a relabel, never a second diff."""
+    text, change = display_text(move["text"]), move["change"].replace("_", " ")
+    return f"{slot_label(move['slot'], perimeter)}: \"{text}\" ({change})"
+
+
+def render_claims(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
+                  previous: EngineOutput | None = None) -> None:
+    """Each slot's claim mix, the count rated below their slot's impact (#751, decision 6) and, with
+    `previous`, the claims the turn moved. Silent with no claims: `test_status_labels_claims_and_counts_the_downgraded`."""
+    rows = [(sid, s) for sid, s in out.model.items() if s.claims]
+    if not rows:
+        return
+    print("\nCLAIMS  (informational: readiness reads each topic as a whole)")
+    for sid, s in rows:
+        mix = Counter(_claim_label(c, s.impact) for c in s.claims)
+        print(_labeled(slot_label(sid, perimeter), ", ".join(f"{n} {label}" for label, n in mix.items()), lw=20))
+    below = claims_below_slot_impact(out)
+    if below:
+        print(f"  {below} claim(s) rated below their topic's impact.")
+    for move in diff_claims(previous, out) if previous is not None else []:
+        print(_bullet("moved: " + claim_move(move, perimeter)))
 
 
 def _default_lines(out: EngineOutput, perimeter: str) -> list[str]:

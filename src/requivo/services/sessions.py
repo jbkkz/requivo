@@ -25,6 +25,7 @@ from requivo.core.dependencies import (
     EvidenceUnknown,
     ImpactReport,
     ReasoningDiff,
+    diff_claims,
     diff_models,
     diff_reasoning,
     introduced_reasoning,
@@ -127,6 +128,8 @@ class UpdateResult:
     changed_opportunities: list[str] = field(default_factory=list)
     changed_exclusions: list[str] = field(default_factory=list)
     changed_thresholds: list[str] = field(default_factory=list)
+    # Which claim moved inside the changed slots (#751): `{slot, claim, text, change}` from `diff_claims`.
+    changed_claims: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -138,6 +141,7 @@ class UpdateResult:
             "changed_opportunities": self.changed_opportunities,
             "changed_exclusions": self.changed_exclusions,
             "changed_thresholds": self.changed_thresholds,
+            "changed_claims": self.changed_claims,
             "invalidated_decisions": self.invalidated_decisions,
             "invalidated_challenges": self.invalidated_challenges,
             "invalidated_exclusions": self.invalidated_exclusions,
@@ -653,6 +657,7 @@ class SessionService:
             changed_opportunities=listed.opportunities,
             changed_exclusions=listed.exclusions,
             changed_thresholds=listed.thresholds,
+            changed_claims=diff_claims(current, new),
         )
 
     # ── status ──────────────────────────────────────────────────────────────────

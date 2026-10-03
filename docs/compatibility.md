@@ -54,6 +54,7 @@ and anything built on top. Its layout is documented in full in
 | A session written by a **newer** Requivo is refused clearly (`unsupported_format_version`, `{format_version, supported_format_version}`), and a model authored against a newer slot schema is refused independently (`unsupported_schema_version`) | 0.9.5 | `test_a_session_from_a_newer_requivo_is_refused_not_guessed`, `test_a_session_from_a_newer_slot_schema_is_refused_clearly` |
 | An unknown key in `session.json` survives a load-mutate-write cycle by an older reader, rather than being dropped | 0.9.4 | `test_a_field_from_a_future_requivo_survives_a_round_trip` |
 | The same is true of `model.json` and every `revisions/NNNN-model.json`, through a permissive read contract; an *apply* still replaces slots/summary/questions, but the reasoning layer and top-level keys survive a turn that says nothing about them | #14 | `test_a_model_written_by_a_newer_requivo_loads_and_survives_a_round_trip`, `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save`, `test_the_persisted_contract_is_permissive_all_the_way_down` |
+| A slot's `claims` and a decision's `source` are informational fields added with no `format_version` bump: readiness still reads the slot's `confidence`, both stay absent on disk until set (a claimless model is written as before), an older 3.x reader carries them through a re-save as unknown keys and drops a slot's claims only when a turn replaces the slot, and a value this build does not know round-trips without reading as a known one | #751 | `test_a_claimless_model_is_written_exactly_as_before`, `test_a_claim_value_this_version_does_not_know_round_trips` |
 | An artifact type the reading build has no generator for is a **note** (`session verify`'s `notes`, `doctor`'s `sessions.notes`), never a `problems` entry, and `session import` accepts it | #260 | `test_an_artifact_type_from_a_newer_requivo_is_not_reported_as_a_defect`, `test_session_verify_passes_and_still_names_the_unknown_type`, `test_doctor_names_the_unknown_type_without_calling_the_session_inconsistent`, `test_a_future_artifact_type_survives_an_export_import_round_trip` |
 | A tolerated unknown artifact type must still look like one — a plain lowercase name, ≤64 chars — or it is refused as `unsafe_artifact_type`; every other check (filename guard, containment, revision existence) still applies | #260 | `test_an_artifact_type_that_is_not_a_plausible_token_is_still_a_problem`, `test_a_tolerated_artifact_type_is_held_to_every_other_check`, `test_an_unsafe_artifact_filename_on_an_unknown_type_is_still_refused` |
 | A Windows reserved device name (`con`, `prn`, `aux`, `nul`, `com1`-`com9`, `lpt1`-`lpt9`) is refused on any *new* session or artifact filename, on every platform — **breaking**: such a slug was legal before #221. A session already on disk under such a name is unaffected and stays readable | #221 | `test_reserved_windows_device_names_are_refused_as_slugs`, `test_reserved_windows_device_names_are_refused_as_filename_stems`, `test_a_session_already_on_disk_under_a_reserved_slug_is_readable_by_every_verb_that_named_it` |
@@ -134,11 +135,10 @@ raised as `invalid_model` any more.
 | the origin is outside the host's trust domain | `origin_mismatch` | `{origin, host}` | #52 | `test_a_write_from_another_origin_is_refused` |
 | the request token was absent or wrong | `missing_request_token` | `{}` | #52 | `test_a_write_without_the_request_token_is_refused` |
 
-`invalid_session` is the family base and nothing raises it directly — `except InvalidSessionError`
-still catches every arm above without enumerating them (`test_nothing_raises_the_malformed_session_family_base`).
-The unstated/unreadable source-revision pair deliberately still shares its five-key `details` shape;
-`test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape` pins that a shared shape is
-a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`origin_mismatch` above.
+`invalid_session` is the family base and nothing raises it directly — `except InvalidSessionError` still catches
+every arm above without enumerating them (`test_nothing_raises_the_malformed_session_family_base`). The
+unstated/unreadable source-revision pair deliberately shares its five-key `details` shape: a choice, not an
+obligation (`test_the_two_provenance_refusals_carry_two_codes_and_one_details_shape`), as for `opaque_origin`/`origin_mismatch`.
 
 **`--json` field additions** — each additive, each narrows or widens exactly one field, never a shape:
 
@@ -146,6 +146,7 @@ a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`orig
 |---|---|---|---|
 | `doctor`'s `perimeters.schemas` | Per-installed-ID `{ok, slots, error}`; a load failure has `slots: null` and does not hide other rows. Legacy `schema` and perimeter-discovery fields retain their meanings | #623 | `test_doctor_reports_each_perimeters_schema_health`, `test_doctor_isolates_a_broken_perimeter_schema` |
 | `session init`'s `perimeter` | the session's resolved perimeter id, `software` when none was named; `--perimeter` refuses an unknown id as `unknown_perimeter` | #719 | `test_session_init_records_a_perimeter_and_refuses_an_unknown_one` |
+| `model apply`/`model diff`'s `changed_claims`, `status`'s `claims_below_slot_impact` and each `understanding` entry's `claims` | `{slot, claim, text, change}` per claim that moved (`added`, `removed`, or `source`/`confirmation`/`impact`/`test_plan` on a kept id); the count of claims rated below their slot's impact; the slot's claims, `[]` when none | #751 | `test_status_labels_claims_and_counts_the_downgraded`, `test_every_public_json_payload_keeps_its_recorded_top_level_shape` |
 | `sessions.total` | `null`, not `0`, when the session root itself could not be read | #34-family | `test_doctor_tells_an_empty_workspace_from_an_unreadable_one` |
 | `sessions.non_sessions[]` | what is under the session root and is not a session; `slug_shaped` asks the read-time reserved-name rule, so a `con` directory now reads `true` | #67, #408 | `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`, `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken` |
 | `sessions.unexaminable[]` | names under the session root whose examination raised; distinct from `non_sessions` and excluded from `total` | #80 | `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick` |
@@ -159,10 +160,9 @@ a choice, not an obligation, the same answer #52 gives for `opaque_origin`/`orig
 | `artifact list`'s payload is `{slug, artifacts}`, not the bare type-keyed map — **breaking** | #107 | `test_every_public_json_payload_keeps_its_recorded_top_level_shape` |
 | `session migrate`'s `interrupted`, `errors`, `unreadable`; exits `4` when any is non-empty rather than always `0` | #262, #411 | `test_session_migrate_survives_one_undecodable_legacy_request_beside_a_healthy_session`, `test_session_migrate_survives_a_reserved_name_legacy_directory_beside_a_healthy_one` |
 
-Terminal (non-`--json`) rendering of `session show`, `session list` and `artifact list` escapes a
-control character read back out of `session.json` rather than echoing it — `--json` is unaffected,
-since `json.dumps` already escapes the full C0/C1 range. Pinned by
-`test_session_show_cannot_be_made_to_print_a_line_a_session_wrote` and
+Terminal (non-`--json`) rendering of `session show`, `session list` and `artifact list` escapes a control character
+read back out of `session.json` rather than echoing it — `--json` is unaffected, since `json.dumps` already escapes
+the full C0/C1 range. Pinned by `test_session_show_cannot_be_made_to_print_a_line_a_session_wrote` and
 `test_artifact_list_cannot_be_made_to_print_a_row_a_session_wrote`.
 
 ### HTTP statuses in Requivo Web
@@ -203,6 +203,7 @@ than implied since 0.9.6:
 | `decisions`/`challenges`/`opportunities` are **tri-state**: an omitted key leaves them untouched, `[]` deletes them, a list replaces them | 0.9.6 | `test_reasoning_merely_omitted_by_a_turn_is_preserved` |
 | `exclusions` — an option considered and deliberately ruled out — is a fourth tri-state reasoning collection, added as a free field (no `format_version` bump); each item carries a content-derived id and `rests_on` (slot ids), the same DAG edge `derived_from` is for a decision | #599 | `test_reasoning_items_carry_a_stable_content_derived_id`, `test_propagate_flags_dependent_decisions_and_artifacts` |
 | `thresholds` — a decision that has not fired yet, "at X, do Y" — is a fifth tri-state reasoning collection, added as a free field (no `format_version` bump); each item carries a content-derived id and a required, non-empty `rests_on` (slot ids), the same DAG edge `derived_from` is for a decision | #604 | `test_reasoning_items_carry_a_stable_content_derived_id`, `test_propagate_flags_dependent_thresholds` |
+| `model.<slot>.claims` (at most eight, each refused rather than repaired) and a decision's `source` are optional; a slot with no `claims` key has none. A Requivo older than #751 refuses either as an extra input (`invalid_model`) | #751 | `test_a_claim_is_refused_rather_than_repaired` |
 
 ## The session lock
 
@@ -325,10 +326,9 @@ above](#http-statuses-in-requivo-web)); removing or moving a route is breaking. 
 | `epic` | `epic.md` | 0.1 |
 | `release` | `release-notes.md` | 0.1 |
 
-Renaming a filename here needs a `format_version` bump, exactly as renaming a populated key does. The
-type and filename deliberately differ for `brief`; both are stable, as two separate facts. `estimate`
-and `stories` joined this table in #519 (`decision: the-estimate-graduates`) as additive: an older
-Requivo reads a session carrying either row as a note, and format_version stays at 1. Pinned by
+Renaming a filename here needs a `format_version` bump, exactly as renaming a populated key does. The type and
+filename deliberately differ for `brief`; both are stable, as two separate facts. `estimate` and `stories` joined in
+#519 (`decision: the-estimate-graduates`) as additive: an older Requivo reads either row as a note. Pinned by
 `test_both_analyses_are_registered_everywhere_a_saveable_type_is` and
 `test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_one_snapshot`.
 
