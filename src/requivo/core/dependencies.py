@@ -265,11 +265,9 @@ def diff_reasoning(old: EngineOutput, new: EngineOutput) -> ReasoningDiff:
 
 def introduced_reasoning(new: EngineOutput) -> ReasoningDiff:
     """Every reasoning id a first model carries: `diff_reasoning` against nothing (#723)."""
-    def ids(items: Sequence[_Reasoning]) -> list[str]:
-        return sorted({i.id for i in items})
-    return ReasoningDiff(decisions=ids(new.decisions), challenges=ids(new.challenges),
-                         opportunities=ids(new.opportunities), exclusions=ids(new.exclusions),
-                         thresholds=ids(new.thresholds))
+    return ReasoningDiff(decisions=_diff_items([], new.decisions), challenges=_diff_items([], new.challenges),
+                         opportunities=_diff_items([], new.opportunities), exclusions=_diff_items([], new.exclusions),
+                         thresholds=_diff_items([], new.thresholds))
 
 
 def diff_models(old: EngineOutput, new: EngineOutput) -> list[str]:

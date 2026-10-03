@@ -688,6 +688,9 @@ def _cmd_impact(a, client) -> None:
         render_evidence(evidence)
         return
     resolved, unmatched = resolve_slots(a.slots, perimeter)
+    if want_json and meta is not None:   # a session: the service's one locked read, the API's report (#717)
+        print_json({"slug": slug, **svc.impact(slug, list(a.slots)).to_dict()})
+        return
     if unmatched:
         if want_json:
             raise unknown_slots(unmatched)
