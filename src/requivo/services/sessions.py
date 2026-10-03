@@ -678,12 +678,14 @@ class SessionService:
     def import_archive(self, data: bytes | BinaryIO | Path, *, force: bool = False,
                        name: str | None = None) -> SessionMeta:
         """`requivo session import`'s checks and refusals, landing in this service's repository and nowhere
-        else. `name` is how a refusal names the archive; a `Path` names itself. File-backed only."""
-        return self.import_archive_report(data, force=force, name=name)[0]
+        else. `name` is how a refusal names the archive; a `Path` names itself. A stream must be
+        seekable (a zip is read from its end). File-backed only."""
+        return self._import_archive_report(data, force=force, name=name)[0]
 
-    def import_archive_report(self, data: bytes | BinaryIO | Path, *, force: bool = False,
-                              name: str | None = None) -> tuple[SessionMeta, bool]:
-        """`import_archive`, plus whether it replaced a session: `session import --json`'s `replaced`."""
+    def _import_archive_report(self, data: bytes | BinaryIO | Path, *, force: bool = False,
+                               name: str | None = None) -> tuple[SessionMeta, bool]:
+        """`import_archive`, plus whether it replaced a session: `session import --json`'s `replaced`,
+        decided once inside the import (invariant 9). Not on the seam; the CLI is its caller."""
         files = archives.file_store(self.repo, "import_archive")
         label = name if name is not None else str(data) if isinstance(data, Path) else "<archive>"
         return archives.import_archive(self.repo, files, data, force=force, name=label)

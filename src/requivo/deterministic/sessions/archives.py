@@ -1,5 +1,5 @@
 """`requivo session export/import/restore`: the archive verbs (#550). Export and import are thin wrappers
-over `SessionService.export_archive`/`import_archive_report`, whose one implementation is
+over `SessionService.export_archive`/`import_archive`, whose one implementation is
 `services/archives.py` (#702). The transient-rename retry they share with the store is
 `core/persistence/atomic.py`'s.
 """
@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from requivo.core import persistence as store
-from requivo.core.errors import InvalidModelError, ModelUnreadableError, SessionNotFoundError
+from requivo.core.errors import InvalidModelError, ModelUnreadableError
 from requivo.core.integrity import newest_readable_revision, readable_revision
 from requivo.core.perimeters import resolve_perimeter
 from requivo.core.persistence import _replace_with_retry
@@ -96,12 +96,8 @@ def _cmd_session_restore(a, client) -> None:
 
 
 def _cmd_session_import(a, client) -> None:
-    """Import an archive file through `SessionService.import_archive_report`, into this workspace."""
-    archive = Path(a.archive)
-    if not archive.is_file():
-        raise SessionNotFoundError(f"archive not found: {display_token(str(archive))}",
-                                   details={"archive": str(archive)})
-    meta, replaced = SessionService().import_archive_report(archive, force=a.force)
+    """Import an archive file through `SessionService.import_archive`'s report, into this workspace."""
+    meta, replaced = SessionService()._import_archive_report(Path(a.archive), force=a.force)
     target = store.canonical_dir(meta.slug)
     if a.json:
         # `slug`/`path`, the spelling every sibling verb uses; `replaced` is the guard's own answer (#111).

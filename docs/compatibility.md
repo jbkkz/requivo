@@ -181,6 +181,7 @@ below are the ones with a specific status and consequence worth stating on their
 | `session_exists` | 409 | a conflict with the store's state, like `revision_conflict` (409 too) |
 | `input_too_large` | 413 | the request itself, refused before any provider call |
 | `spend_ceiling_reached` | 403 | not 429 — a spend budget does not reset with time |
+| `unsupported_repository` | 501 | the injected backing does not implement the session archive (#702) |
 
 | Promise | Since | Test |
 |---|---|---|
@@ -339,7 +340,7 @@ exactly like the CLI and the `--json` envelopes above.
 | Category | Names | Since | Test |
 |---|---|---|---|
 | Services | `SessionService`, `UpdateResult`, `SessionEntry`, `SessionSnapshot`, `Readiness`, `RescopeResult`, `DiscoveryService`, `Generated`, `ArtifactService`, `UnknownArtifactTypeError`, `UnstatedSourceRevisionError`, `UnreadableSourceRevisionError` | #423 | `test_every_declared_seam_name_actually_resolves` |
-| The session archive, against the service's own repository: `SessionService.export_archive(slug) -> bytes` is the zip `session export` writes; `SessionService.import_archive(data, *, force=False, name=None) -> SessionMeta` takes `bytes`, a binary stream or a `Path` and raises `session import`'s refusals. File-backed only: any other backing is `unsupported_repository` | #702 | `test_a_rooted_export_is_the_clis_archive_and_imports_in_another_workspace`, `test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does` |
+| The session archive, against the service's own repository: `SessionService.export_archive(slug) -> bytes` is the zip `session export` writes; `SessionService.import_archive(data, *, force=False, name=None) -> SessionMeta` takes `bytes`, a seekable binary stream or a `Path` and raises `session import`'s refusals, a missing file's `session_not_found` included (an unseekable stream is `unreadable_archive`, by name). File-backed only: any other backing is `unsupported_repository` | #702 | `test_a_rooted_export_is_the_clis_archive_and_imports_in_another_workspace`, `test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does` |
 | Protocols and the shipped repository | `SessionRepository`, `ReasoningProvider`, `FileSessionRepository` (its `__init__(root=...)` and `default_repository()`; `.store()` and `core.persistence.Store` are **not** part of this seam) | #423, #272 | `test_every_declared_seam_name_actually_resolves` |
 | Boundary contracts | `EngineOutput`, `ModelProposal`, `SessionMeta`, `ArtifactStatus`, `RevisionRecord`, `UnexaminableEntry`, `Brief`, `PRD`, `AcceptanceCriteria`, `Epic`, `ReleaseNotes`, `Stories`, `EstimateDraft` | #423 | `test_every_declared_seam_name_actually_resolves` |
 | Failure vocabulary | `RequivoError` and every subclass, `EngineError` | #423 | `test_every_declared_seam_name_actually_resolves` |

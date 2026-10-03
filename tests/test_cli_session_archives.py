@@ -13,8 +13,7 @@ from pathlib import Path
 
 import pytest
 from _cli_harness import _SESSIONS_ROW
-from _fakes import full_model, out, run_cli, run_cli_exit, run_cli_json, run_cli_stdin
-from test_repository_conformance import InMemorySessionRepository
+from _fakes import InMemorySessionRepository, full_model, out, run_cli, run_cli_exit, run_cli_json, run_cli_stdin
 
 from requivo.cli import app
 from requivo.core import persistence as store
@@ -503,7 +502,8 @@ def test_a_rooted_export_is_the_clis_archive_and_imports_in_another_workspace(tm
 
 
 def test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does(tmp_path, tmp_path_factory, workspace):
-    """#702: nothing reaches the ambient workspace or another root, and each refusal is the CLI's envelope."""
+    """#702: nothing reaches the ambient workspace or another root, each refusal is the CLI's envelope (a
+    missing file included), and a stream that cannot seek is refused by name rather than as "not a zip"."""
     root_a, root_b = tmp_path_factory.mktemp("a"), tmp_path_factory.mktemp("b")
     svc = SessionService(FileSessionRepository(root=root_b))
     good = _zip(tmp_path / "good.zip", _good_entries("imported"))
@@ -520,6 +520,17 @@ def test_a_rooted_import_lands_under_its_root_only_and_refuses_as_the_cli_does(t
         with pytest.raises(RequivoError) as ei:
             svc.import_archive(archive.read_bytes(), name=str(archive))
         assert json.loads(json.dumps(ei.value.to_dict())) == _import_error(archive), entries
+    with pytest.raises(RequivoError) as ei:
+        svc.import_archive(tmp_path / "nowhere.zip")
+    assert json.loads(json.dumps(ei.value.to_dict())) == _import_error(tmp_path / "nowhere.zip")
+    assert ei.value.code == "session_not_found"
+
+    class _Pipe(io.BytesIO):
+        def seekable(self):
+            return False
+
+    with pytest.raises(UnreadableArchiveError, match="cannot seek"):
+        svc.import_archive(_Pipe(good.read_bytes()))
     assert store.list_session_slugs() == ["imported"] and svc.repo.list_slugs() == ["imported"]
 
 

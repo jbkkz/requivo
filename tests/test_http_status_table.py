@@ -90,10 +90,12 @@ def test_every_error_code_has_an_explicit_http_status():
     # #101.
     ("invalid_archive", 400, "the caller handed us this archive — the same answer its two siblings "
                              "on the import path already give"),
+    # #702.
+    ("unsupported_repository", 501, "the injected backing does not implement the session archive; nothing "
+                                    "the caller sent is wrong, and no retry will change it"),
 ])
 def test_a_server_side_fault_is_not_reported_as_the_users_bad_request(code, status, why):
-    """The five decisions this change makes, each pinned with its reason, plus the three the issue confirms
-    were already right at 400."""
+    """Each status decision pinned with its reason (#34, #101, #702)."""
     from requivo.http import STATUS_BY_CODE
     assert STATUS_BY_CODE[code] == status, why
 

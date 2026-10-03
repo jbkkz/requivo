@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import threading
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -13,6 +14,8 @@ import pytest
 from requivo.cli import app
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput, _schema_order, schema_slot_ids
+from requivo.core.errors import RevisionConflictError, SessionExistsError, SessionNotFoundError
+from requivo.core.persistence import ArtifactStatus, RevisionRecord, SessionMeta
 from requivo.services.sessions import SessionService
 
 OBJECTIVE = "A leave approval system"
@@ -364,3 +367,97 @@ def deny_access(d: Path, request, untested: str) -> Path:
 
 
 _run_app = run_cli
+
+
+class InMemorySessionRepository:
+    """A dict-backed SessionRepository — no filesystem, no `.requivo/` directory (#424)."""
+
+    def __init__(self):
+        self._meta: dict = {}
+        self._model: dict = {}
+        self._revs: dict = {}      # (slug, revision) → model, the history a file backing keeps on disk
+        self._req: dict = {}
+        self._art: dict = {}
+        self._locks: dict = {}
+        self._locks_guard = threading.Lock()
+
+    def _lock_for(self, slug):
+        # threading.RLock is re-entrant *per thread* by construction (#424).
+        with self._locks_guard:
+            return self._locks.setdefault(slug, threading.RLock())
+
+    @contextmanager
+    def lock(self, slug):
+        with self._lock_for(slug):
+            yield
+
+    def _require(self, slug):
+        if slug not in self._meta:
+            raise SessionNotFoundError(f"no session '{slug}'", details={"slug": slug})
+
+    def exists(self, slug): return slug in self._meta
+    def has_meta(self, slug): return slug in self._meta
+    def ensure_writable(self, slug): self._require(slug)
+
+    def create(self, slug, request, *, provider=None, model_name=None, context_cards=None, perimeter=None):
+        # Invariant 11, at this backing's own layer (#424).
+        if slug in self._meta:
+            raise SessionExistsError(f"session '{slug}' already exists", details={"slug": slug})
+        meta = SessionMeta(session_id="mem-" + slug, slug=slug, created_at="t", updated_at="t",
+                           provider=provider, model_name=model_name, context_cards=context_cards,
+                           perimeter=perimeter)
+        self._meta[slug], self._req[slug], self._art[slug] = meta, request, {}
+        return meta
+
+    def read_meta(self, slug):
+        self._require(slug)
+        return self._meta[slug]
+
+    def delete(self, slug):
+        # The dict-backed analogue of the file backing's lock-then-remove (#238).
+        self._require(slug)
+        with self.lock(slug):
+            for table in (self._meta, self._model, self._req, self._art):
+                table.pop(slug, None)
+            for key in [k for k in self._revs if k[0] == slug]:
+                self._revs.pop(key, None)
+
+    def write_meta(self, slug, meta): self._meta[slug] = meta
+    def list_slugs(self): return sorted(self._meta)
+    def list_unexaminable(self): return []  # a real answer rather than a stub (#80)
+
+    def load_model(self, slug):
+        if slug not in self._model:
+            raise SessionNotFoundError(f"no model '{slug}'", details={"slug": slug})
+        return self._model[slug]
+
+    def load_revision(self, slug, revision):
+        if (slug, revision) not in self._revs:
+            raise SessionNotFoundError(f"no revision {revision}", details={"slug": slug, "revision": revision})
+        return self._revs[(slug, revision)]
+
+    def save_revision(self, slug, model, *, expected_revision=None, provenance=None):
+        meta = self.read_meta(slug)
+        if expected_revision is not None and meta.current_revision != expected_revision:
+            raise RevisionConflictError("conflict", details={"expected": expected_revision,
+                                                             "actual": meta.current_revision})
+        rev = meta.current_revision + 1
+        prov = dict(provenance or {})
+        meta.revisions.append(RevisionRecord(
+            revision=rev, created_at="t", previous_revision=meta.current_revision or None,
+            model_hash="sha256:mem", provider=prov.get("provider"), model_name=prov.get("model_name"),
+            surface=prov.get("surface"), prompt_version=prov.get("prompt_version")))
+        meta.current_revision = rev
+        self._model[slug] = self._revs[(slug, rev)] = model
+        return rev, meta
+
+    def request_text(self, slug): return self._req.get(slug, "")
+    def context_cards(self, slug): return self._meta[slug].context_cards if slug in self._meta else None
+
+    def save_artifact(self, slug, artifact_type, filename, content, *, source_revision, stale=False):
+        self._art[slug][filename] = content
+        st = ArtifactStatus(revision=source_revision, filename=filename, updated_at="t", stale=stale)
+        self._meta[slug].artifact_status[artifact_type] = st
+        return st
+
+    def load_artifact(self, slug, filename): return self._art.get(slug, {}).get(filename)

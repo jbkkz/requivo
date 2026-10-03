@@ -20,6 +20,7 @@ from requivo.core.errors import (
     InconsistentArchiveError,
     InvalidArchiveError,
     SessionExistsError,
+    SessionNotFoundError,
     SessionUnreadableError,
     UnreadableArchiveError,
     UnsupportedRepositoryError,
@@ -177,6 +178,13 @@ def import_archive(repo: SessionRepository, store: Store, data: bytes | BinaryIO
                    force: bool, name: str) -> tuple[SessionMeta, bool]:
     """Inspect → extract to scratch → validate → move into place, under `store`; nothing lands until
     the whole archive has been checked. Returns the landed session and whether it replaced one."""
+    if isinstance(data, Path) and not data.is_file():
+        raise SessionNotFoundError(f"archive not found: {display_token(name)}", details={"archive": name})
+    if not isinstance(data, (bytes, bytearray, Path)) and not data.seekable():
+        # zipfile reads the central directory from the end; refused by name, not as "not a zip file".
+        raise UnreadableArchiveError(
+            f"{display_token(name)} is a stream that cannot seek, and a .zip is read from its end -- pass "
+            "bytes, a path, or a seekable stream", details={"archive": name})
     root = store.session_root()
     # `ensure_store_dir`, not `mkdir`: import can create `.requivo/` and must write the privacy
     # `.gitignore` (#211). `test_import_into_a_fresh_workspace_writes_the_privacy_gitignore`.
