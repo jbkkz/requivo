@@ -15,7 +15,7 @@ from pydantic import BaseModel, ValidationError, create_model
 
 from requivo.core.context import build_system_prompt
 from requivo.core.contracts import StrictModel, schema_slot_ids
-from requivo.core.perimeters import GO_TO_MARKET, SOFTWARE
+from requivo.core.perimeters import GO_TO_MARKET, SOFTWARE, known_perimeter_ids
 from requivo.paths import PERIMETERS, PROMPTS
 from requivo.providers.anthropic import generators
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS, _STANDALONE_PROMPTS
@@ -226,9 +226,14 @@ def test_the_confidence_grading_in_the_schema_and_the_prompt_agree():
         assert value in engine_md, f"{value!r} missing from engine.md's restatement"
 
 
-def test_a_solo_builders_confirmed_as_is_grades_explicit_on_both_reasoning_surfaces():
-    """#716: the discovery prompt each perimeter sends, and the plugin's REASONING.md (#737), carry one rule."""
-    reasoning = (Path(__file__).resolve().parents[1] / "plugins" / "claude-code" / "REASONING.md").read_text(encoding="utf-8")
-    surfaces = [build_system_prompt("engine.md", perimeter=p).text for p in (SOFTWARE, GO_TO_MARKET)] + [reasoning]
-    for text in (" ".join(s.split()) for s in surfaces):
-        assert "vouching for what they built" in text and "not confirmed stays `inferred`" in text
+def test_every_definition_of_solo_builder_confidence_carries_the_confirmed_as_is_exception():
+    """#716 (Codex on #740): engine.md, each perimeter's `explicit` grading and REASONING.md (#737) define it; one
+    still saying "only their own intent" without the exception contradicts the rest inside one system prompt."""
+    plugin = Path(__file__).resolve().parents[1] / "plugins" / "claude-code" / "REASONING.md"
+    surfaces = dict(engine=(PROMPTS / "engine.md").read_text(encoding="utf-8"), plugin=plugin.read_text(encoding="utf-8"))
+    for p in known_perimeter_ids():
+        surfaces[p] = json.loads((PERIMETERS / p / "model_schema.json").read_text(encoding="utf-8"))["confidence"]["explicit"]
+    for name, raw in surfaces.items():
+        text = " ".join(raw.replace("`", "").lower().split())
+        assert "vouching for what they built" in text and "not confirmed stays inferred" in text, f"{name} lacks the #716 exception"
+    assert "vouching for what they built" in build_system_prompt("engine.md", perimeter=GO_TO_MARKET).text  # what is sent

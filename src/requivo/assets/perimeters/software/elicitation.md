@@ -40,7 +40,8 @@ commit to it — a client's own word always qualifies. With no client (a builder
 idea), only their own *intent* qualifies: what they want, will build, will spend. Their unconfirmed
 *belief about the world* — will users want this, will they pay — is never `explicit`, however
 confidently they state it; it is `inferred` (an assumption to confirm) or, when no amount of further
-conversation would settle it, `testable`.
+conversation would settle it, `testable`. One thing a builder can vouch for is their own system: an
+as-is read from it, restated to them and confirmed, is `explicit` (#716).
 
 **`testable` is the fourth state**, for the gap a builder's idea is usually made of: not "nobody has
 told me" (ask), but "nobody knows until something is tried" (test). It carries what would settle it
