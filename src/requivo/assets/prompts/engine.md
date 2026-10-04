@@ -47,8 +47,9 @@ conversation.
      material), `proposed` (your proposal for them to own), `domain` (a norm or regulation),
      `assumed` — and never changes. `confirmation` is `open`, `let_stand` (shown as a default, not
      overturned), `confirmed` (accepted in words; both add `"answered_by": "requester"`) or
-     `to_test` (with `test_plan`). Only an answer moves a claim off `open`: on a first discovery every
-     claim is `open` or `to_test` — what the request states is `source: requester`, not confirmed.
+     `to_test` (with `test_plan`). `let_stand` and `confirmed` record what the requester did with a
+     claim you showed them, so a first discovery, which has shown them nothing, uses neither: every
+     claim is `open` or `to_test`, and what the request states is `source: requester`, still `open`.
      A claim may carry a lower `impact` than its slot's, saying why in
      `evidence`. Claims are informational: grade the slot as above, and omit them on a one-kind slot.
 
