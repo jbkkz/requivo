@@ -49,8 +49,8 @@ class AnthropicProvider:
         """`PerimeterJudge`, the third protocol this class satisfies (#601)."""
         return judge_perimeter(self.client, request, perimeters, model=self._model)
 
-    def generate(self, artifact_type: str, model: EngineOutput, *, only: list[str] | None = None,
-                 **kwargs):
+    def generate(self, artifact_type: str, model: EngineOutput, *, request: str = "",
+                 only: list[str] | None = None, **kwargs):
         """`**kwargs` carries per-artifact options; an unknown one is a TypeError. `model` is the
         requirements model; `self._model` is forwarded by name as the LLM id (#434,
         `test_generate_threads_the_constructed_model_too`)."""
@@ -58,7 +58,7 @@ class AnthropicProvider:
             fn = _GENERATORS[artifact_type]
         except KeyError as e:
             raise EngineError(f"unknown artifact type for the Anthropic provider: {artifact_type!r}") from e
-        return fn(self.client, model, only=only, model=self._model, **kwargs)
+        return fn(self.client, model, only=only, request=request, model=self._model, **kwargs)
 
     def model_name(self) -> str:
         return self._model if self._model is not None else current_model_name()

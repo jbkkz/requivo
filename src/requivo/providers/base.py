@@ -44,9 +44,10 @@ class ReasoningProvider(Protocol):
         sending the identical system prompt: a hint about repetition only the caller can give (#9, #58, #77)."""
         ...
 
-    def generate(self, artifact_type: str, model: EngineOutput, *, only: list[str] | None = None,
-                 **kwargs) -> object:
-        """A model → its typed artifact contract; `**kwargs` carries per-artifact options. `estimate`
+    def generate(self, artifact_type: str, model: EngineOutput, *, request: str = "",
+                 only: list[str] | None = None, **kwargs) -> object:
+        """A model → its typed artifact contract, reasoned beside the session's `request` (#782,
+        which `DiscoveryService` always passes); `**kwargs` carries per-artifact options. `estimate`
         returns `(EstimateDraft, soft_slots, confidence)`, the two extras being deterministic reads of
         the same model; everything else returns exactly its contract."""
         ...

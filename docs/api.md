@@ -83,7 +83,8 @@ method this table names.
 `POST .../artifacts/estimate` is the CLI's own `estimate`: the stories are reasoned from the same
 snapshot and saved as `stories`, then the estimate is saved beside them against the same revision
 (`decision: the-estimate-graduates`). Its `artifact` carries `draft`, `soft`, `confidence`,
-`stories` and `stories_status`. There is no separate analyses route.
+`uncovered` (the high-impact slots no story covers, #782), `stories` and `stories_status`. There is
+no separate analyses route.
 
 Not in this version: deleting a session, archive export and import, `session migrate`, `doctor`.
 

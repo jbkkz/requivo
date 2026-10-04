@@ -751,7 +751,7 @@ def _render_stories(slug: str, result) -> None:
 
 def _render_estimate(slug: str, result) -> None:
     est = result.artifact
-    render_estimate(est.draft, est.soft, est.confidence)
+    render_estimate(est.draft, est.soft, est.confidence, est.uncovered)
     _wrote_file(slug, est.stories_status, "user stories")
 
 

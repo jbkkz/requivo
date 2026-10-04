@@ -196,7 +196,8 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             # reuse_system=True: engine.md's system prompt is sent K times here (#58); brief.md's too (#9).
             out = with_retry(run, client, [{"role": "user", "content": req["request"]}], reuse_system=True,
                              model=model, perimeter=perimeter)
-            brief = with_retry(advise, client, out, reuse_system=True, model=model) if with_brief else None
+            brief = (with_retry(advise, client, out, request=req["request"], reuse_system=True, model=model)
+                     if with_brief else None)
         except Exception as exc:
             # A run counts only once its assessment (if asked for) landed too (#557).
             keep_partial(req["slug"], runs_envelope(req["request"], models, briefs, model=model,

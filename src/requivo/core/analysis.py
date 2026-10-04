@@ -10,6 +10,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Impact,
     Slot,
+    Stories,
     schema_slot_ids,
     schema_slots,
 )
@@ -59,13 +60,24 @@ def veto_defaults(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list
             and out.model[sid].confidence is Confidence.inferred and out.model[sid].value.strip()]
 
 
-def estimate_confidence(n_soft: int) -> str:
-    """Estimate confidence derived from how many high-impact slots are still soft."""
+def estimate_confidence(n_soft: int, n_uncovered: int = 0) -> str:
+    """Estimate confidence from how many slots are still soft, never `high` while a slot is
+    uncovered (`uncovered_slots`, #782): an estimate missing an area is not a confident one."""
     if n_soft <= 1:
-        return "high"
+        return "medium" if n_uncovered else "high"
     if n_soft <= 3:
         return "medium"
     return "low"
+
+
+def uncovered_slots(out: EngineOutput, stories: Stories, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+    """High-impact What/How slots carrying a value that no story traces to through `Story.slots`,
+    in schema order (#782): scope the model states and the estimate does not cost. Why/Validate
+    slots frame a build rather than slice into it; an empty slot is already soft."""
+    pillars, _ = slot_meta(perimeter)
+    traced = {sid for st in stories.stories for sid in st.slots}
+    return [sid for sid, pillar in pillars.items() if pillar in ("what", "how") and sid not in traced
+            and sid in out.model and out.model[sid].impact is Impact.high and out.model[sid].value.strip()]
 
 
 def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
