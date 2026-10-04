@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from _fakes import out, printed, slot
+from _fakes import full_model, out, printed, slot
 from pydantic import ValidationError
 
 from requivo.core.analysis import (
@@ -32,6 +32,7 @@ from requivo.core.contracts import (
     Exclusion,
     Feature,
     GoToMarketPlan,
+    ModelProposal,
     Opportunity,
     Requirement,
     Scenario,
@@ -130,6 +131,25 @@ def test_a_claim_is_refused_rather_than_repaired(claims):
     assert len(kept.claims) == 8 and kept.claims[-1].id == Slot.model_validate(dict(slot(), claims=[_CLAIM])).claims[0].id
     assert kept.claims[-1].id.startswith("clm_") and kept.claims[-1].id != "clm_forged"
     assert DesignDecision(decision="Approve-first", source="requester").id == DesignDecision(decision="Approve-first").id
+
+
+@pytest.mark.parametrize("confirmation", ["confirmed", "let_stand"])
+def test_a_first_model_cannot_carry_a_claim_nobody_answered(confirmation):
+    """#751: on a first model nothing has been asked, so stated is not confirmed; the provider's retry hook
+    and the services' first apply share the rule, and a later turn may settle the same claim."""
+    from requivo.core.errors import InvalidModelError
+    from requivo.core.validation import validate_proposal
+    from requivo.providers.anthropic.generators import _require_complete_model
+    settled = dict(_CLAIM, confirmation=confirmation, answered_by="requester")
+    proposal = full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"), claims=[settled]))
+    with pytest.raises(InvalidModelError):
+        validate_proposal(proposal, first=True)
+    with pytest.raises(ValueError, match="nothing has been asked yet"):
+        _require_complete_model(ModelProposal.model_validate(proposal), first=True)
+    _require_complete_model(ModelProposal.model_validate(proposal))
+    assert validate_proposal(proposal).model["constraints"].claims[0].confirmation.value == confirmation
+    opening = full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"), claims=[_CLAIM]))
+    assert validate_proposal(opening, first=True).model["constraints"].claims[0].confirmation.value == "open"
 
 
 # ── reasoning items and their ids (invariant 5) ────────────────────────────────

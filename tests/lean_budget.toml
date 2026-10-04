@@ -26,12 +26,14 @@ function_docstring_max_lines = 5
 [estate]
 # The tests that guard the repo's own self-description rather than its runtime, summed. #627's
 # tranche 3 removed the guards that only guarded prose and slimmed the rest to their runtime rules.
-total_max_lines = 2899
+# Raised 2899 -> 2908 by #751: its claim-vocabulary guard met #685's scripts-group guard on one base.
+total_max_lines = 2908
 
 [docs]
 # `decision_record_max_lines`: #627's tranche 5 rewrote every record to Context / Decision / Cost /
 # Alternatives; the longest (0004, the HTTP API facade, eight numbered sub-decisions) measured 80.
-compatibility_max_lines = 418
+# `compatibility_max_lines` raised 418 -> 419 by #751: claims are a new public field, a row each place it shows.
+compatibility_max_lines = 419
 decision_record_max_lines = 84
 
 [scripts]

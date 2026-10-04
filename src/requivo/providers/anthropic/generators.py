@@ -24,32 +24,33 @@ from requivo.core.contracts import (
     Stories,
 )
 from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET, PerimeterSummary
-from requivo.core.validation import completeness_gap
+from requivo.core.validation import completeness_gap, unearned_confirmation
 from requivo.providers.anthropic.completion import _complete
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
 
-def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> None:
+def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER, first: bool = False) -> None:
     """A discovery reply owes the whole required slot set and a non-empty objective
-    (`core.validation.completeness_gap`), raised as a `ValueError` so the retry loop nudges the model.
+    (`core.validation.completeness_gap`) and, on a `first` turn, no claim nobody answered (#751),
+    raised as a `ValueError` so the retry loop nudges the model.
     `perimeter` (#608) must be the one the reply was reasoned against; `run()` closes over its own."""
-    gap = completeness_gap(out, perimeter)
+    gap = completeness_gap(out, perimeter) or (unearned_confirmation(out) if first else None)
     if gap is not None:
         raise ValueError(gap.message)
 
 
 def run(client, messages: list[dict], retries: int = 2, only: list[str] | None = None,
         carry_from: EngineOutput | None = None, *, reuse_system: bool = True,
-        model: str | None = None, perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
+        model: str | None = None, perimeter: str = DEFAULT_PERIMETER, first: bool = False) -> EngineOutput:
     """Engine turn: request/answers → filled model, parsed as a `ModelProposal` (a quiet reply is not
     a deletion) and resolved against `carry_from`. `only` restricts the cards; `perimeter` (#608)
     grounds the prompt and the validation context. `reuse_system` is the caller's: only the
-    interactive loop re-sends this prompt (#9, #58, #77).
+    interactive loop re-sends this prompt (#9, #58, #77). `first`: a turn no answer has reached.
     `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
     proposal = _complete(
         client, build_system_prompt("engine.md", only, perimeter=perimeter), messages, ModelProposal,
-        retries, validate=lambda o: _require_complete_model(o, perimeter), reuse_system=reuse_system,
+        retries, validate=lambda o: _require_complete_model(o, perimeter, first), reuse_system=reuse_system,
         model=model, operation="analyze", context={"perimeter": perimeter})
     return proposal.resolve(carry_from, perimeter=perimeter)
 

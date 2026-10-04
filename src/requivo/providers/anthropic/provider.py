@@ -39,7 +39,7 @@ class AnthropicProvider:
             return answer_turn(self.client, current_model, request, answers, only=only,
                                reuse_system=reuse_system, model=self._model, perimeter=perimeter)
         return run(self.client, [{"role": "user", "content": request}], only=only,
-                   reuse_system=reuse_system, model=self._model, perimeter=perimeter)
+                   reuse_system=reuse_system, model=self._model, perimeter=perimeter, first=True)
 
     def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
         """`ContextJudge`, the second protocol this class satisfies."""
