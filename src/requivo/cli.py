@@ -16,7 +16,9 @@ from requivo.cli_support import (
     _display_url,
     _generator_service,
     _missing_extra_message,
+    _offer_to_save_card,
     _print_session_candidates,
+    _prompt_perimeter_choice,
     _render_usage_safely,
     _resolve_optional_session,
     _wrote,
@@ -200,27 +202,6 @@ def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETE
     return "\n".join(replies)
 
 
-def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
-    """Ask which perimeter candidate to use after an ambiguous route (#601); `None` means declined.
-    `KeyboardInterrupt` is deliberately not caught, so a cancel exits 130 rather than 1:
-    `test_an_interrupt_at_the_perimeter_prompt_exits_130_not_1`."""
-    candidates = e.details.get("candidates", [])
-    reason = display_text(e.details.get("reason", ""))
-    print(f"\nMore than one installed perimeter could fit this request — {reason}")
-    for i, c in enumerate(candidates, 1):
-        print(f"  {i}. {c}")
-    try:
-        ans = input(f"      Which one? [1-{len(candidates)}, Enter to skip] > ").strip()
-    except EOFError:
-        print("\nStopped.")
-        return None
-    if not ans.isdigit() or not (1 <= int(ans) <= len(candidates)):
-        return None
-    chosen = candidates[int(ans) - 1]
-    print(f"→ Continuing under {chosen}.")
-    return chosen
-
-
 # ── Subcommand CLI (`requivo`) ────────────────────────────────────────────────
 # Each handler parses, calls the services, renders, writes. `app()` takes an optional client so tests
 # can inject a stub; only the verbs that call the API build one.
@@ -324,9 +305,10 @@ def _cmd_discover(a, client) -> None:
         # Claimed, routed, judged and re-claimed in one service call (#593, #601); `only`/`perimeter`
         # are rebound. The `except` below needs the slug to name.
         meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=perimeter)
+                                                                 perimeter=perimeter, save_card=a.save_card)
         perimeter = meta.perimeter
-        render_context_judgment(grounding, routing)
+        render_context_judgment(grounding, routing, only)
+        _offer_to_save_card(disco, grounding)  # before the turn the card grounds (#598)
         try:
             slug = disco.start(request, cards=only, slug=meta.slug, finalize=False,
                                surface="cli-discover", perimeter=perimeter)
@@ -346,17 +328,18 @@ def _cmd_discover(a, client) -> None:
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
     try:
         meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=perimeter)
+                                                                 perimeter=perimeter, save_card=a.save_card)
     except AmbiguousPerimeterError as e:
         # Someone is at a prompt: ask, don't guess (#601). A chosen perimeter re-runs explicit.
         chosen = _prompt_perimeter_choice(e)
         if chosen is None:
             raise
         meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=chosen)
+                                                                 perimeter=chosen, save_card=a.save_card)
     slug = meta.slug
     perimeter = meta.perimeter
-    render_context_judgment(grounding, routing)
+    render_context_judgment(grounding, routing, only)
+    _offer_to_save_card(disco, grounding)
     try:
         drafted = converse(disco, request, only=only, perimeter=perimeter)
     except DraftingFailed as e:
@@ -463,12 +446,17 @@ def _run_target(svc: SessionService) -> tuple[str, bool]:
     return resolution.default, True
 
 
+# One help string for the one flag both discovering verbs take (#598).
+_SAVE_CARD_HELP = ("if no installed card describes the request's domain and a card is written for it, "
+                   "also keep it in REQUIVO_CONTEXT_DIR for later sessions, without asking")
+
+
 def _refuse_resume_only_flags(a) -> None:
-    """`--once`/`--context` describe a new discovery; refused on a resume rather than ignored.
-    `test_run_refuses_once_and_context_when_resuming`."""
-    if a.once or a.context:
+    """`--once`/`--context`/`--save-card` describe a new discovery; refused on a resume rather than
+    ignored. `test_run_refuses_once_and_context_when_resuming`."""
+    if a.once or a.context or a.save_card:
         raise RequivoError(
-            "requivo run <slug>: --once and --context apply to a new discovery, not to resuming an "
+            "requivo run <slug>: --once, --context and --save-card apply to a new discovery, not to resuming an "
             "existing session, which reuses the session's own context cards. Drop them, or discover "
             "a fresh session with `requivo discover`/`requivo run <request>`.")
 
@@ -1120,6 +1108,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     r.add_argument("--context", "--cards", metavar="CARDS", dest="context",
                    help="comma-separated context cards for a new discovery (refused when "
                         "resuming, which reuses the session's own cards). Alias: --cards.")
+    r.add_argument("--save-card", action="store_true", help=_SAVE_CARD_HELP)
     r.set_defaults(func=_cmd_run)
 
     d = sub.add_parser("discover",
@@ -1138,6 +1127,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
                    help="which installed perimeter this session runs under, frozen at creation. "
                         "Omit it to let the router (#601) judge the request's shape and pick one, "
                         "or ask when more than one plausibly fits.")
+    d.add_argument("--save-card", action="store_true", help=_SAVE_CARD_HELP)
     d.set_defaults(func=_cmd_discover)
 
     model_cmd("answer", "fold the client's answers in and report what moved (API)",

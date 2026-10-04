@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 
 from requivo.core.analysis import estimate_confidence, soft_slots
-from requivo.core.context import CardSummary, build_prompt, build_standalone_prompt, build_system_prompt
+from requivo.core.context import NO_CONTEXT, CardSummary, build_prompt, build_standalone_prompt, build_system_prompt
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -69,6 +69,11 @@ def judge_context(client, request: str, cards: list[CardSummary], *,
             raise ValueError(
                 f"cards {unknown} are not installed; name only the cards listed in the prompt, "
                 f"spelled exactly, or use decision 'uncovered' if none of them describes this domain")
+        # A written card never shadows an installed one (#598); the service refuses it again on write.
+        if judgment.card is not None and judgment.card.stem in {k.lower() for k in known} | {NO_CONTEXT}:
+            raise ValueError(
+                f"card stem {judgment.card.stem!r} is already taken; if that card describes this "
+                f"domain decide 'installed', otherwise name the new card differently")
 
     listing = "\n".join(
         f"- {c.stem}: " + ("(this card could not be read)" if c.unreadable else c.domain or "(no domain stated)")

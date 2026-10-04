@@ -7,7 +7,8 @@ import os
 import sys
 
 from requivo.core import persistence as store
-from requivo.core.selectors import display_token
+from requivo.core.errors import AmbiguousPerimeterError
+from requivo.core.selectors import display_text, display_token
 from requivo.render.terminal import render_usage
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionResolution, SessionService
@@ -25,6 +26,44 @@ def _render_usage_safely(ledger) -> None:
         render_usage(ledger)
     except UnicodeEncodeError:
         safe_write(sys.stderr, _USAGE_UNPRINTABLE)
+
+
+def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
+    """Ask which perimeter candidate to use after an ambiguous route (#601); `None` means declined.
+    `KeyboardInterrupt` is deliberately not caught, so a cancel exits 130 rather than 1:
+    `test_an_interrupt_at_the_perimeter_prompt_exits_130_not_1`."""
+    candidates = e.details.get("candidates", [])
+    reason = display_text(e.details.get("reason", ""))
+    print(f"\nMore than one installed perimeter could fit this request — {reason}")
+    for i, c in enumerate(candidates, 1):
+        print(f"  {i}. {c}")
+    try:
+        ans = input(f"      Which one? [1-{len(candidates)}, Enter to skip] > ").strip()
+    except EOFError:
+        print("\nStopped.")
+        return None
+    if not ans.isdigit() or not (1 <= int(ans) <= len(candidates)):
+        return None
+    chosen = candidates[int(ans) - 1]
+    print(f"→ Continuing under {chosen}.")
+    return chosen
+
+
+def _offer_to_save_card(disco: DiscoveryService, grounding) -> None:
+    """Ask, at a terminal only and defaulting to No, whether to keep a card written for this session
+    (#598): writing outside the workspace is the user's act. `test_a_written_card_is_kept_only_on_consent`."""
+    if grounding.written is None or grounding.saved or grounding.note or not sys.stdin.isatty():
+        return
+    try:
+        answer = input("      Save this card for reuse in later sessions? [y/N] > ").strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("y", "yes"):
+        return
+    try:
+        print(f"→ Saved for reuse → {display_text(str(disco.keep_card(grounding.written.stem)))}")
+    except (ValueError, OSError) as e:
+        print(f"→ Not saved: {display_text(str(e))}. The card stays with this session.")
 
 
 def _generator_service(a, client) -> tuple[str, DiscoveryService]:

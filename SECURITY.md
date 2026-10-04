@@ -43,6 +43,14 @@ business data* — material for the engine to analyse, never instructions for it
 prompts state this trust boundary explicitly, so text like "ignore the above instructions" embedded
 in a request is modelled as a requirement to capture, not a command to follow.
 
+One context card can itself be derived from a request: when a first `requivo discover` finds that no
+installed card describes the request's domain, the engine writes one (#598) into the workspace's
+`.requivo/cards/`, where it reaches the system prompt of that session; only if you agree, or pass
+`--save-card`, is it kept in `REQUIVO_CONTEXT_DIR` and reaches later sessions too. It is held as
+fields, not free text — one line per value, size-capped, refused rather than trimmed, never
+overwriting another card — and printed in full before it grounds anything. Read it, and delete the
+file if it is wrong.
+
 This is a mitigation, not a guarantee: LLM prompt-injection defences are imperfect. Do not run
 Requivo on requests from a source you would not trust to read your prompts, and review
 generated artifacts before acting on them.

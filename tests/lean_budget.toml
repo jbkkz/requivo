@@ -32,8 +32,8 @@ total_max_lines = 2908
 [docs]
 # `decision_record_max_lines`: #627's tranche 5 rewrote every record to Context / Decision / Cost /
 # Alternatives; the longest (0004, the HTTP API facade, eight numbered sub-decisions) measured 80.
-# `compatibility_max_lines` raised 418 -> 419 by #751: claims are a new public field, a row each place it shows.
-compatibility_max_lines = 419
+# `compatibility_max_lines` raised 418 -> 420 by #751 (claims, a new public field) and #598 (`--save-card`, a new flag): a row each.
+compatibility_max_lines = 420
 decision_record_max_lines = 84
 
 [scripts]

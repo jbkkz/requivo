@@ -244,6 +244,63 @@ class ContextDecision(str, Enum):
 # A judgment names installed cards by stem; a shape check, not a policy.
 MAX_JUDGED_CARDS = 16
 
+# A written card rides the system block of every later call (#598): one line per value and a byte cap
+# under the largest bundled card, each refused rather than trimmed (invariant 3).
+MAX_GENERATED_CARD_BYTES = 6_000
+CardLine = Annotated[str, Field(min_length=1, max_length=300)]
+
+
+def _breaks_a_line(value: str) -> bool:
+    """C0, DEL, C1 and the Unicode line/paragraph separators: whatever can end a line or move a cursor."""
+    return any(ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F or c in "\u2028\u2029" for c in value)
+
+
+class GeneratedCard(StrictModel):
+    """The card an `uncovered` verdict writes (#598, `decision: the-engine-writes-the-missing-card`): the
+    engine fills fields, never Markdown, and `markdown()` is the one writer of the file.
+    `test_a_generated_card_that_could_forge_a_line_is_refused_not_trimmed`."""
+
+    stem: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", min_length=2, max_length=48)
+    title: CardLine
+    business_domain: CardLine
+    typical_users: CardLine
+    what_it_does: CardLine
+    entities: list[CardLine] = Field(min_length=1, max_length=10)
+    key_concepts: list[CardLine] = Field(min_length=1, max_length=10)
+    regulatory: list[CardLine] = Field(default_factory=list, max_length=10)
+    recurring_traps: list[CardLine] = Field(min_length=1, max_length=10)
+
+    @field_validator("title", "business_domain", "typical_users", "what_it_does", "entities",
+                     "key_concepts", "regulatory", "recurring_traps")
+    @classmethod
+    def _one_line_each(cls, value: str | list[str]) -> str | list[str]:
+        for line in [value] if isinstance(value, str) else value:
+            if _breaks_a_line(line) or not line.strip():
+                raise ValueError(f"{line!r} is not one line of text; every card value is a single line, "
+                                 "since it is written into the system prompt of every later call")
+        return value
+
+    @model_validator(mode="after")
+    def _within_the_cap(self) -> GeneratedCard:
+        size = len(self.markdown().encode("utf-8"))
+        if size > MAX_GENERATED_CARD_BYTES:
+            raise ValueError(f"the card renders to {size} bytes, over the {MAX_GENERATED_CARD_BYTES}-byte "
+                             "cap; write fewer, shorter lines")
+        return self
+
+    def markdown(self) -> str:
+        """The card file, in `_template.md`'s sections, so `card_summaries` reads its domain back."""
+        def bullets(items: list[str]) -> str:
+            return "\n".join(f"  - {item}" for item in items) or "  - none identified from the request"
+        return (f"# Context card — {self.title}\n\n"
+                "> Written by Requivo from a client request: its reading, not a source. Correct or delete this file.\n\n"
+                f"## Who\n- Business domain: {self.business_domain}\n- Typical users / roles: {self.typical_users}\n\n"
+                f"## The product / module\n- What it does: {self.what_it_does}\n"
+                f"- Main business objects (entities):\n{bullets(self.entities)}\n"
+                f"- Key domain concepts:\n{bullets(self.key_concepts)}\n\n"
+                f"## Sensitivities & constraints\n- Regulatory:\n{bullets(self.regulatory)}\n"
+                f"- Recurring traps:\n{bullets(self.recurring_traps)}\n")
+
 
 class ContextJudgment(StrictModel):
     """Whether the installed context cards cover this request's domain. `reason` is shown verbatim
@@ -252,6 +309,7 @@ class ContextJudgment(StrictModel):
     decision: ContextDecision
     reason: NonEmpty
     cards: list[str] = Field(default_factory=list, max_length=MAX_JUDGED_CARDS)
+    card: Optional[GeneratedCard] = None
 
     @model_validator(mode="after")
     def _shape_matches_the_decision(self) -> ContextJudgment:
@@ -266,6 +324,10 @@ class ContextJudgment(StrictModel):
             raise ValueError(
                 f"decision {self.decision.value!r} names cards {self.cards!r}; only 'installed' "
                 f"selects, so this reply's verdict and its payload disagree")
+        if (self.decision is ContextDecision.uncovered) != (self.card is not None):
+            raise ValueError(
+                f"decision {self.decision.value!r} {'carries' if self.card else 'writes no'} card; "
+                "'uncovered' writes the missing card, and only 'uncovered' does")
         return self
 
 

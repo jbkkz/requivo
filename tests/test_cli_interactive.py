@@ -506,7 +506,8 @@ def test_run_with_no_argument_is_not_hijacked_by_a_same_named_file(monkeypatch, 
     assert len(_sessions()) == 1, "a second session was created from the file"
 
 
-@pytest.mark.parametrize("flag", [["--once"], ["--context", "b2b-platform"]], ids=["once", "context"])
+@pytest.mark.parametrize("flag", [["--once"], ["--context", "b2b-platform"], ["--save-card"]],
+                         ids=["once", "context", "save-card"])
 def test_run_refuses_once_and_context_when_resuming(flag):
     """#540, found in review: `--once`/`--context` describe a *new* discovery and used to be silently ignored on a resume."""
     SessionService().create_session("a request about resumed", slug="resumed")

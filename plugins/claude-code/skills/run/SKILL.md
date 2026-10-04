@@ -40,10 +40,12 @@ shape the `empty` case is warned about above, one level up, and it is currently 
 cards back to the user in the perimeter recap, below, so a human can be the one to notice (#489).
 
 `decision: the-engine-writes-the-missing-card` has the engine's own first discovery judge the
-domain and report an uncovered one (#593); writing the missing card is not built yet (#598). That
-judgment runs inside `requivo discover`, not on this path: `session init` and in-session reasoning
-never make it. Here, naming the cards
-back is the whole of the protection — do it.
+domain (#593) and, for an uncovered one, write the missing card and scope the session to it alone
+(#598) — into the workspace's `.requivo/cards/`, and into `REQUIVO_CONTEXT_DIR` only when the user
+agrees or passes `--save-card`. That judgment runs inside `requivo discover`, not on this path:
+`session init` and in-session reasoning never make it, and never write a card. Here, naming the cards
+back is the whole of the protection — do it. A kept card is an ordinary installed card; an unsaved one
+is selectable by its name with `--context` but is never listed.
 
 ## 2. What are you being asked to do?
 

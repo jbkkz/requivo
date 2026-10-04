@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
-from requivo.core.context import card_summaries, resolve_cards
+from requivo.core.context import card_summaries, keep_generated_card, resolve_cards, write_generated_card
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -27,6 +27,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GeneratedCard,
     GoToMarketPlan,
     PerimeterDecision,
     PerimeterJudgment,
@@ -37,6 +38,7 @@ from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
     AmbiguousPerimeterError,
     ArtifactWriteFailedError,
+    ContextUnreadableError,
     RequivoError,
     RevisionConflictError,
     SessionLockedError,
@@ -287,6 +289,11 @@ class Grounding(NamedTuple):
 
     judgment: ContextJudgment | None
     why_not: str
+    # An `uncovered` verdict (#598): where its card was written, whether it was kept for later
+    # sessions, or why it was not written or not selected.
+    written: Path | None = None
+    note: str = ""
+    saved: bool = False
 
 
 class Routing(NamedTuple):
@@ -445,7 +452,7 @@ class DiscoveryService:
         return Reclaim(meta, True, recreated)
 
     def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
-                         perimeter: str | None = None
+                         perimeter: str | None = None, save_card: bool = False  # consent, #598
                          ) -> ClaimAndGround:
         """Claim the session, route it to its perimeter (#601), judge its grounding (#593), and act
         on each verdict when acting is safe: one implementation of the destructive step (invariant 14).
@@ -463,7 +470,7 @@ class DiscoveryService:
         with ExitStack() as held:
             held.enter_context(_discovery_guard(base, self._store_for_repo()))
             return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
-                                               held=held, held_slugs={base})
+                                               held=held, held_slugs={base}, save_card=save_card)
 
     def _guard_claim(self, meta, *, created: bool, held: ExitStack, held_slugs: set[str]) -> None:
         """Hold the guard on the slug the claim *landed* on, not only the base name it was asked for
@@ -478,8 +485,8 @@ class DiscoveryService:
         held_slugs.add(meta.slug)
 
     def _claim_and_ground_held(self, request: str, *, cards: list[str] | None, slug: str | None,
-                               perimeter: str | None, held: ExitStack, held_slugs: set[str]
-                               ) -> ClaimAndGround:
+                               perimeter: str | None, held: ExitStack, held_slugs: set[str],
+                               save_card: bool) -> ClaimAndGround:
         """`claim_and_ground`'s body, run under the guards it takes."""
         provider = self._need_provider()
         if perimeter is None:
@@ -537,9 +544,13 @@ class DiscoveryService:
 
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment
-        if judgment is None or judgment.decision is not ContextDecision.installed:
+        if judgment is None or judgment.decision is ContextDecision.none:
             return ClaimAndGround(meta, grounding, cards, routing)
-        narrowed = resolve_cards(judgment.cards)
+        if judgment.decision is ContextDecision.uncovered:
+            grounding, narrowed = self._write_the_missing_card(grounding, judgment.card, created=created,
+                                                               keep=save_card)
+        else:
+            narrowed = resolve_cards(judgment.cards)
         if cards or not created or not narrowed or narrowed == cards:
             return ClaimAndGround(meta, grounding, cards, routing)
 
@@ -549,7 +560,32 @@ class DiscoveryService:
         # `reclaim.meta.context_cards` is what the session records, landed or not; inferring the cards
         # from `created` mis-reported an idempotent re-entry (#601).
         self._guard_claim(reclaim.meta, created=reclaim.created, held=held, held_slugs=held_slugs)
+        if grounding.written is not None and not reclaim.landed:
+            grounding = grounding._replace(note=f"the card was written to {grounding.written}, but this "
+                                                "session had moved past revision 0 and keeps its cards")
         return ClaimAndGround(reclaim.meta, grounding, reclaim.meta.context_cards, routing)
+
+    def _write_the_missing_card(self, grounding: Grounding, card: GeneratedCard | None, *,
+                                created: bool, keep: bool) -> tuple[Grounding, list[str] | None]:
+        """Write an `uncovered` verdict's card, kept for later sessions only on consent, and narrow to it
+        alone (#598), under `installed`'s preconditions; a refused or failed write keeps every card and
+        says why, never costing the discovery. `test_an_uncovered_verdict_writes_its_card_and_reclaims_under_it_alone`."""
+        if card is None:  # only a provider that skipped the contract gets here
+            return grounding._replace(note="the verdict carried no card to write"), None
+        if not created:
+            return grounding._replace(note="this session was claimed by an earlier run, so no card "
+                                           "was written for it"), None
+        try:
+            written = write_generated_card(card, keep=keep)
+        # The store and card-root failures arrive wrapped; the judgment is paid, so they degrade too.
+        except (ValueError, OSError, SessionUnreadableError, ContextUnreadableError) as e:
+            return grounding._replace(note=f"the card was not written: {e}"), None
+        return grounding._replace(written=written, saved=keep), [written.stem]
+
+    def keep_card(self, stem: str) -> Path:
+        """Keep an unsaved written card for later sessions, the user's explicit act (#598); the sessions
+        selecting it keep their identity. Raises `ValueError`/`OSError` with the card left where it was."""
+        return keep_generated_card(stem)
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
                       perimeter: str = DEFAULT_PERIMETER):

@@ -48,6 +48,12 @@ def debug_root() -> Path:
     return store_root() / "debug"
 
 
+def card_draft_root() -> Path:
+    """Cards the engine wrote for this workspace's sessions and the user did not keep (#598), under
+    `store_root()` so the privacy `.gitignore` covers them."""
+    return store_root() / "cards"
+
+
 def output_root() -> Path:
     """The retired `./out` layout, read only by `requivo session migrate`; `REQUIVO_OUTPUT_DIR` overrides."""
     override = os.getenv("REQUIVO_OUTPUT_DIR")

@@ -7,10 +7,13 @@ one guarded read; `available_cards()` stays observational.
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
+from requivo.core.contracts import GeneratedCard
 from requivo.core.errors import (
     ContextUnreadableError,
     EmptySelectionError,
@@ -21,8 +24,9 @@ from requivo.core.errors import (
     UnsafeSelectorTokenError,
 )
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
+from requivo.core.persistence import ensure_store_dir
 from requivo.core.selectors import normalize_tokens
-from requivo.paths import CONTEXT, PROMPTS, user_context_dir
+from requivo.paths import CONTEXT, PROMPTS, card_draft_root, user_context_dir
 
 # Every refusal `load_context` can produce, so `check_selection` reports what the loader would raise.
 # `ContextUnreadableError` is absent ("could not look" is not a verdict); `UnsafeSelectorTokenError`
@@ -52,11 +56,11 @@ def is_no_context(only: Iterable[str] | None) -> bool:
     return len(tokens) == 1 and tokens[0].strip().lower() == NO_CONTEXT
 
 
-def _card_paths() -> dict[str, Path]:
-    """Loadable cards keyed by stem: bundled plus `user_context_dir()`, user winning on a stem clash,
-    `_`-prefixed files skipped, in sorted-stem order so the prompt cache holds."""
+def _cards_in(directories: Iterable[Path]) -> dict[str, Path]:
+    """Loadable cards keyed by stem, a later directory winning a stem clash, `_`-prefixed files
+    skipped, in sorted-stem order so the prompt cache holds."""
     paths: dict[str, Path] = {}
-    for directory in (CONTEXT, user_context_dir()):  # user dir second → its cards win on stem clash
+    for directory in directories:
         if not directory.exists():
             continue
         # `Path.glob` swallows `PermissionError` and yields nothing, which would read as an empty
@@ -75,13 +79,25 @@ def _card_paths() -> dict[str, Path]:
     return paths
 
 
-def _cards_for_selection() -> dict[str, Path]:
-    """`_card_paths()` with the empty-install guard applied: the one read every selector shares (#41,
+def _card_paths() -> dict[str, Path]:
+    """The installed cards: bundled plus `user_context_dir()`, the user's winning a stem clash."""
+    return _cards_in((CONTEXT, user_context_dir()))
+
+
+def _draft_paths() -> dict[str, Path]:
+    """Cards written for this workspace's sessions and not kept (#598): selectable by name only, never
+    in the every-card default nor offered to a judgment. `test_an_unsaved_card_grounds_its_session_alone`."""
+    return _cards_in((card_draft_root(),))
+
+
+def _cards_for_selection(*, drafts: bool = True) -> dict[str, Path]:
+    """The installed cards with the empty-install guard applied, plus the unsaved ones when a selection
+    names cards: the one read every selector shares (#41,
     `test_every_card_selector_reports_the_same_code_for_the_same_install`). `available_cards()` does
     not route through here: observing an empty install is its job."""
     paths = _card_paths()
     _require_any_card(paths)
-    return paths
+    return {**_draft_paths(), **paths} if drafts else paths
 
 
 class CardSummary(NamedTuple):
@@ -131,6 +147,65 @@ def card_byte_size(path: Path) -> int:
     """The bytes one card contributes to a prompt, not its size on disk (CRLF checkouts over-count):
     `test_a_card_weighs_the_same_whatever_its_line_endings`."""
     return len(path.read_text(encoding="utf-8").encode("utf-8"))
+
+
+def _user_card_root() -> Path:
+    """`user_context_dir()`, created on the first card the user keeps (#598); never the store."""
+    root = user_context_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _publish(root: Path, stem: str, text: str) -> bool:
+    """Write `<stem>.md` whole or not at all, through a no-clobber link: False when the name is taken."""
+    scratch = root / f".{stem}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"  # not `*.md`: never a card
+    try:
+        with scratch.open("x", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        os.link(scratch, root / f"{stem}.md")
+    except FileExistsError:
+        return False
+    finally:
+        scratch.unlink(missing_ok=True)
+    return True
+
+
+def write_generated_card(card: GeneratedCard, *, keep: bool) -> Path:
+    """Write an engine-authored card (#598): kept in `user_context_dir()` only on consent, otherwise
+    unsaved under the store, where only its session's selection finds it. Re-validated, since the
+    caller's instance may never have been; a taken name moves to `<stem>-2`…`-9`, never shadowing;
+    an identical unsaved card is reused, so one card is one identity.
+    `test_a_written_card_never_shadows_an_installed_one`."""
+    card = GeneratedCard.model_validate(card.model_dump())
+    text = card.markdown()
+    drafts = _draft_paths()
+    installed = {stem.lower() for stem in _card_paths()} | {NO_CONTEXT}
+    taken = installed | {stem.lower() for stem in drafts}
+    root = _user_card_root() if keep else ensure_store_dir(card_draft_root())
+    for stem in [card.stem, *(f"{card.stem}-{n}" for n in range(2, 10))]:
+        # An installed card wins the lookup, so a draft under its stem would not be what is read.
+        if (not keep and stem not in installed and stem in drafts
+                and drafts[stem].read_text(encoding="utf-8") == text):
+            return drafts[stem]
+        if stem not in taken and _publish(root, stem, text):
+            return root / f"{stem}.md"
+    raise ValueError(f"every name from {card.stem!r} to '{card.stem}-9' is already taken")
+
+
+def keep_generated_card(stem: str) -> Path:
+    """Copy an unsaved card into `user_context_dir()` under the same stem, so the sessions selecting it
+    keep their identity (#598); refused if an installed card took the name meanwhile. The draft stays:
+    installed wins the lookup with identical bytes, and a session reading it now never loses it.
+    `test_a_written_card_is_kept_only_on_consent`, `test_keeping_a_card_never_pulls_it_from_under_a_reader`."""
+    draft = _draft_paths().get(stem)
+    if draft is None:
+        raise ValueError(f"no unsaved card named {stem!r} in {card_draft_root()}")
+    if stem.lower() in {s.lower() for s in _card_paths()}:
+        raise ValueError(f"a card named {stem!r} is already installed; this one stays with its session")
+    root = _user_card_root()
+    if not _publish(root, stem, draft.read_text(encoding="utf-8")):
+        raise ValueError(f"a card named {stem!r} landed in {root} meanwhile; this one stays with its session")
+    return root / f"{stem}.md"
 
 
 def average_card_byte_size() -> int | None:
@@ -184,7 +259,7 @@ def load_context(only: list[str] | None = None) -> str:
     only = list(only) if only is not None else None
     if is_no_context(only):
         return NO_CONTEXT_TEXT
-    paths = _cards_for_selection()
+    paths = _cards_for_selection(drafts=only is not None)
     keep = _selection_keys(only, paths) if only is not None else None
     # Explicit encoding (invariant 16): `test_the_prompt_assembly_path_never_decodes_an_asset_with_the_locale_encoding`.
     cards = [f"## {stem}\n{paths[stem].read_text(encoding='utf-8')}"
@@ -237,7 +312,8 @@ def check_selection(only: list[str] | None) -> RequivoError | None:
     try:
         if is_no_context(only):
             return None
-        paths = _cards_for_selection()
+        # The loader's own condition (invariant 8): an unscoped session never reads the unsaved cards.
+        paths = _cards_for_selection(drafts=only is not None)
         if only is not None:
             _selection_keys(list(only), paths)
     except _SELECTION_REFUSALS as e:

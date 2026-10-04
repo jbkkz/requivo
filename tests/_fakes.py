@@ -45,6 +45,14 @@ def out(model) -> EngineOutput:
     return EngineOutput.model_validate(full_model(**model))
 
 
+def card(**overrides) -> dict:
+    """A valid `GeneratedCard` payload (#598) for an uncovered dental-billing domain, per-field overrides."""
+    return {"stem": "dental-billing", "title": "Dental billing", "business_domain": "dental practice billing in Spain",
+            "typical_users": "practice manager, dentist", "what_it_does": "bills treatments to patients and insurers",
+            "entities": ["Treatment", "Mutua"], "key_concepts": ["co-payment"], "regulatory": ["LOPDGDD"],
+            "recurring_traps": ["insurer tariffs change yearly"], **overrides}
+
+
 # ── a raw Anthropic-SDK-shaped client, so `AnthropicProvider` -> `_complete()` runs unmodified ──
 
 

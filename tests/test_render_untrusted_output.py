@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 import pytest
-from _fakes import StubProvider, full_model, out, printed, slot
+from _fakes import StubProvider, card, full_model, out, printed, slot
 
 from requivo.cli import converse
 from requivo.core.contracts import (
@@ -21,6 +21,7 @@ from requivo.core.contracts import (
     EngineOutput,
     Epic,
     EstimateDraft,
+    GeneratedCard,
     GoToMarketPlan,
     Leverage,
     Opportunity,
@@ -61,6 +62,9 @@ from requivo.services.discovery import DiscoveryService, Grounding
 
 # A newline, then a claim at column 0, then a screen clear.
 FORGED = "Real text.\nFORGED AT COLUMN ZERO\x1b[2J"
+
+# An `uncovered` verdict carries the card it writes (#598).
+_UNCOVERED = ContextJudgment(decision="uncovered", reason="dentistry", card=GeneratedCard(**card()))
 
 # Every character that can move a cursor or end a line.
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -209,7 +213,8 @@ def _forged_renders() -> dict[str, str]:
         "render_claims": printed(render_claims, claims_model, "software", forged_model),
         "render_docs_menu": printed(render_docs_menu, docs_menu_rows({"prd": ArtifactStatus(
             revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)})),
-        "render_context_judgment": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")),
+        "render_context_judgment": printed(render_context_judgment, Grounding(_UNCOVERED.model_copy(update={"reason": FORGED}), "",
+                                                                              Path(FORGED))),
     }
 
 
@@ -244,18 +249,28 @@ def test_ordinary_prose_renders_byte_for_byte_unchanged():
     assert "Product context" in printed(render_grounding, None), "the unnarrowed branch renders its own line"
 
 
-def test_the_four_grounding_outcomes_read_as_four_different_answers():
+def test_every_grounding_outcome_reads_as_a_different_answer():
     """The control for `render_context_judgment`, and the reason it exists at all (#492)."""
     texts = {
         "not asked": printed(render_context_judgment, Grounding(None, "this provider cannot")),
         "none": printed(render_context_judgment, Grounding(ContextJudgment(decision="none", reason="ordinary software"), "")),
         "installed": printed(render_context_judgment, Grounding(ContextJudgment(decision="installed", reason="finance",
                                                                                 cards=["financial-reporting"]), "")),
-        "uncovered": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason="dentistry"), "")),
+        "uncovered": printed(render_context_judgment, Grounding(_UNCOVERED, "", note="the card was not written: taken")),
+        "written": printed(render_context_judgment, Grounding(_UNCOVERED, "", Path("dental-billing.md"))),
+        "saved": printed(render_context_judgment, Grounding(_UNCOVERED, "", Path("dental-billing.md"), saved=True)),
+        "narrowed": printed(render_context_judgment, Grounding(ContextJudgment(
+            decision="installed", reason="finance", cards=["financial-reporting"]), ""), None, ["financial-reporting"]),
     }
-    assert len(set(texts.values())) == 4, texts
+    assert len(set(texts.values())) == 7, texts
+    # A narrowing that landed says so; one that did not never claims it (#598, the #593 line it replaced).
+    assert "alone" in texts["narrowed"] and "alone" not in texts["installed"] and "Narrow to it" in texts["installed"]
+    assert "not reused" in texts["written"] and "Saved for reuse" in texts["saved"]
     assert "not checked" in texts["not asked"] and "financial-reporting" in texts["installed"]
     assert "⚠" in texts["uncovered"] and "⚠" not in texts["none"], "the one outcome a reader must act on reads like the others"
+    assert "The card was not written: taken. Impact" in texts["uncovered"], "a refused card reads as a written one"
+    # #598: a written card is shown in full before the turn it grounds, and says it grounds it alone.
+    assert "- Business domain: dental practice billing in Spain" in texts["written"] and "alone" in texts["written"]
 
 
 # ── #331: a static sweep whose scan set is a file tree, not a list of modules ─────

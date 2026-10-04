@@ -130,6 +130,31 @@ that property. At a **first** discovery, the engine now also judges whether an i
 the request's domain (`decision: the-engine-writes-the-missing-card`) — a paid call, shown to you, not
 a preflight verdict. Narrowing afterwards is [`requivo session rescope`](#re-scoping-an-existing-sessions-cards).
 
+## A card the engine writes
+
+When that judgment finds a domain that carries real constraints — legislation, a licensed profession,
+money- or safety-critical obligations — and **no** installed card describes it, `requivo discover` and
+`requivo run` write the missing card (#598) and scope the new session to it alone:
+
+- **Unsaved by default:** the card is written to `.requivo/cards/<stem>.md` in this workspace, in the
+  template's sections. Only the sessions that selected it read it: it is not part of the every-card
+  default, `requivo context` does not list it, and no later judgment is offered it. It outlives a
+  deleted session and does not travel in `session export`.
+- **Kept only if you say so:** at a terminal `discover`/`run` ask *Save this card for reuse in later
+  sessions? [y/N]*; without one, or to skip the question, pass `--save-card`. A kept card is copied to
+  `REQUIVO_CONTEXT_DIR` (default `~/.config/requivo/context`) under the same name, so its sessions are
+  unchanged, and from then on it is an ordinary user card — listed, offered to later requests in that
+  domain, and loaded by every unscoped session, like any card you add. The workspace copy stays,
+  identical and unread while the kept one exists, so a session reading it mid-save never loses it.
+- **Shown first:** the card is printed in full, with its path, before the turn it grounds. It is the
+  engine's reading of an untrusted request, not a source — read it, and edit or delete the file if it
+  is wrong.
+- **Refused, not trimmed:** every value is one line and the card is size-capped. A name a card already
+  uses is never overwritten: the new card takes `<stem>-2` and so on. A card that cannot be written
+  leaves the session on every card, and the grounding line says why.
+- **Only on a fresh claim:** with `--context`, or on a session an earlier run already claimed, no card
+  is written. The Claude Code plugin's in-session path does not run the judgment at all.
+
 ## Re-scoping an existing session's cards
 
 `requivo session rescope <slug> --context <cards>` changes an existing session's selection. It

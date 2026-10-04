@@ -97,7 +97,8 @@ Each landed; what a hosted consumer relies on:
   worker is another process no context crosses, and an unbound root falling back to cwd is a silent
   data-placement hazard (the usage ledger is a `ContextVar` because "no ledger" is a safe no-op; "no
   root" is not). *Flagged remainder:* `user_context_dir()` (`REQUIVO_CONTEXT_DIR`) is still ambient,
-  until per-tenant cards are a real feature.
+  until per-tenant cards are a real feature — and so is `paths.card_draft_root()`, the workspace's
+  unsaved engine-written cards (#598), which a named selection reads beside it.
 - **The declared seam + `py.typed`** (#423), §2.
 - **The error-to-status table leaves `[web]`** (#422): `requivo/http.py`'s `http_status_for`, so a
   hosted API maps `revision_conflict` to 409 and `session_not_found` to 404 instead of a blanket 502.

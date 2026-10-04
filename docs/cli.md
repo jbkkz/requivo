@@ -61,8 +61,8 @@ as the automation contract underneath it (`decision: three-journey-verbs`).
 
 | Command | Does |
 |---|---|
-| `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery — both **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
-| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure, frozen at creation; omit it to let the router pick one or ask when more than one plausibly fits) |
+| `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery, `--save-card` as on `discover` — all **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
+| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure, frozen at creation; omit it to let the router pick one or ask when more than one plausibly fits; `--save-card` keeps a card written for an uncovered domain for later sessions without asking — see below) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status [slug]` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
 | `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate, the generated artifacts that go stale, and apart from them the types not generated yet that would rest on the change (no slots = full map), then the decisions derived from thinner evidence than the session now holds. `--json` for the same report (`stale_artifacts` is `null` for a bare `model.json`, which cannot say what was generated). Omit the slug to resolve the workspace's default session (#541). No network |
@@ -122,6 +122,14 @@ past it. Sessions already on disk keep the names they were created with; see
   failure part-way keeps the turns that ran — revision 1 with its questions open, as `--once`
   leaves it — and names the `requivo answer` that continues. Only a failure on the *first* turn
   leaves revision 0, where `discover` is still the right retry.
+
+**A card written for an uncovered domain is kept only if you say so** (#598). When the first
+discovery finds that no installed card describes the request's domain, it writes one, prints it, and
+reasons the new session against it alone. Unsaved, it lives in `.requivo/cards/` in this workspace
+and grounds only the sessions that selected it. At a terminal `discover` asks *Save this card for
+reuse in later sessions? [y/N]*; without a terminal it never saves unless `--save-card` is given,
+which also skips the question. A saved card is copied to `REQUIVO_CONTEXT_DIR` under the same name, so
+the session's selection is unchanged ([context-cards.md](context-cards.md#a-card-the-engine-writes)).
 
 ## Artifact generators (provider-backed)
 

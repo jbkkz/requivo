@@ -193,10 +193,11 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
             print(f"     → {slot_label(q.slot, perimeter)}")   # a schema-validated slot id, not free text
 
 
-def render_context_judgment(grounding, routing=None) -> None:
+def render_context_judgment(grounding, routing=None, cards: list[str] | None = None) -> None:
     """What the engine made of this request's grounding (#593) and, with `routing`, which perimeter
-    it routed to (#601), both shown before either influences anything. Four outcomes, four sentences:
-    *no card is needed* and *nobody asked* are different facts. `reason` goes through `display_text`."""
+    it routed to (#601), both shown before either influences anything. Each outcome its own sentence:
+    *no card is needed* and *nobody asked* are different facts, a narrowing is named only if `cards`
+    (the session's selection) shows it landed, and a written card (#598) is printed whole."""
     if routing is not None:
         _render_perimeter_route(routing)
     judgment = grounding.judgment
@@ -208,11 +209,26 @@ def render_context_judgment(grounding, routing=None) -> None:
     if judgment.decision is ContextDecision.installed:
         print(_labeled("Grounding", f"{', '.join(display_token(c) for c in judgment.cards)} "
                                     f"describes this domain — {reason}", lw=14))
+        if sorted(c.lower() for c in cards or []) == sorted(c.lower() for c in judgment.cards):
+            print(_labeled("", "This session reasons against it alone.", lw=14))
+            return
         print(_labeled("", f"Narrow to it with --context {','.join(judgment.cards)} on a fresh "
-                           f"discovery; this session reasons against every card.", lw=14))
+                           "discovery; this session keeps the cards it was claimed with.", lw=14))
     elif judgment.decision is ContextDecision.uncovered:
         print(_labeled("Grounding", f"⚠ no installed card describes this domain — {reason}", lw=14))
-        print(_labeled("", "Impact is being estimated against products this request has nothing to "
+        if grounding.written is not None and not grounding.note and judgment.card is not None:
+            # Shown in full before the turn it grounds (#598): it is untrusted, engine-written text.
+            kept = ("Saved for reuse in later sessions" if grounding.saved else
+                    "Kept in this workspace for this session only, not reused")
+            print(_labeled("", f"Wrote a card for it, and this session reasons against it alone. {kept}. "
+                               "It is the engine's reading of your request, not a source; correct the "
+                               "file, or remove it if it is wrong:", lw=14))
+            print(f"{'':17}{display_text(str(grounding.written))}")  # unwrapped, so it can be copied
+            for line in judgment.card.markdown().splitlines():
+                print(f"    {display_text(line)}")
+            return
+        note = f"{grounding.note[:1].upper()}{grounding.note[1:]}. " if grounding.note else ""
+        print(_labeled("", f"{note}Impact is being estimated against products this request has nothing to "
                            "do with, so the questions below are weaker than they look. Writing a "
                            "card for this domain is the lever (docs/context-cards.md).", lw=14))
     else:
