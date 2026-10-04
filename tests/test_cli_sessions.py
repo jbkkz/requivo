@@ -306,6 +306,24 @@ def test_the_structured_envelope_still_carries_the_published_code_and_slug(capsy
     assert payload["code"] == "session_not_found" and payload["details"]["ref"] == "no-such-session"
 
 
+@pytest.mark.parametrize("cmd", ["status", "impact"])
+def test_missing_path_refusal_is_session_not_found(cmd, tmp_path, capsys):
+    missing_path = str(tmp_path / "loose" / "model.json")
+    with pytest.raises(SystemExit) as e:
+        app([cmd, missing_path, "--json"], client=None)
+    assert e.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "session_not_found"
+    assert payload["details"]["ref"] == missing_path
+
+    # Control: non-path bad slug is still invalid_slug
+    with pytest.raises(SystemExit) as e:
+        app(["status", "Bad_Slug", "--json"], client=None)
+    assert e.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "invalid_slug"
+
+
 def test_a_reference_carrying_a_control_character_cannot_write_its_own_line(capsys):
     """A refusal echoes raw argv, escaped rather than dropped (#40)."""
     err = _fails(["status", "ok\nAll clear, nothing to see."], capsys)

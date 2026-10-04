@@ -249,6 +249,7 @@ missing a card exits 1, not 4.
 | The same closes for a bare directory argument on every `deterministic/` verb | #414 | `test_resolve_slug_refuses_a_directory_that_is_not_a_session`, `test_a_directory_reference_does_not_silently_use_an_unrelated_real_session` |
 | `run`, `status` and `impact` take an optional session positional, resolving against the workspace's most recently written session, or refusing `session_not_found` naming `run` — both moves off exit 2 onto 0/1, so compatible | #540, #541 | `test_several_sessions_default_to_the_most_recently_written`, `test_no_session_raises_and_names_run` |
 | `model diff` on a session that does not exist, or only in the retired `out/` layout (`details.legacy`), exits 1 (`session_not_found`), as `model apply` does, rather than 0 with a plan for a first apply nothing could carry out; on a session with no model yet it exits 0 with the revision-1 plan rather than 1 — the first move is off 0 on a path no correct invocation was on, the second onto 0, so compatible | #678 | `test_mutating_routes_to_a_missing_session_give_the_standard_sentence`, `test_a_session_only_in_the_retired_layout_gets_the_migrate_hint_on_every_write_route`, `test_model_diff_exits_zero_with_the_first_plan_on_a_session_with_no_model_yet` |
+| A non-existent path given to `status` or `impact` now answers `session_not_found` instead of `invalid_slug`, exit 1 both before and after | #761 | `test_missing_path_refusal_is_session_not_found` |
 
 ## Environment variables — **stable**, with one exception
 
