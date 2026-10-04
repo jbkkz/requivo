@@ -84,24 +84,31 @@ class SkewResult:
 # rather than raising over a suffix nobody asked this advisory check to understand.
 _VERSION_SHAPE_RE = re.compile(r"^\d+")
 
+# Where a suffix puts a build among its release's, in PEP 440's order: `.devN` before a pre-release
+# before the release (2, the default) before `.postN`. `main` carries `X.Y.Z.dev0` between releases
+# (#769), so a dev plugin must read as ahead of the release it follows and behind the one it becomes.
+_PHASES = (("dev", 0), ("rc", 1), ("a", 1), ("b", 1), ("post", 3))
+DEVELOPMENT = 0
+
 
 def _looks_like_a_version(value: str) -> bool:
     return bool(_VERSION_SHAPE_RE.match(value.strip()))
 
 
 def _parse_version(version: str):
-    """A dotted version string as a tuple of ints, tolerant of a non-numeric trailing component
-    (`.dev0`, `-rc1`) -- which parses as 0 rather than raising, so an unusual version string
-    degrades to 'compare what can be compared' instead of crashing an advisory preflight check.
+    """`(release, phase)`: the dotted release as a tuple of ints, and the suffix's rank in `_PHASES`.
+    An unrecognised suffix reads as the release itself, so an unusual string degrades to 'compare what
+    can be compared' instead of crashing an advisory preflight check.
 
     Callers must check `_looks_like_a_version` first (`check()` and `tested_against_version` both
-    do): this function alone cannot refuse "unreleased" -- it has no digit anywhere, so every chunk
-    parses to 0 and the result is indistinguishable from a real, very old version."""
-    parts = []
-    for chunk in re.split(r"[.\-+]", version.strip()):
-        match = re.match(r"\d+", chunk)
-        parts.append(int(match.group()) if match else 0)
-    return tuple(parts) if parts else (0,)
+    do): this function alone cannot refuse "unreleased" -- it has no digit anywhere, so it parses to
+    (0,) and the result is indistinguishable from a real, very old version."""
+    text = version.strip()
+    match = re.match(r"\d+(?:\.\d+)*", text)
+    release = tuple(int(part) for part in match.group().split(".")) if match else (0,)
+    suffix = text[match.end():].lower() if match else ""
+    phase = next((rank for word, rank in _PHASES if re.match(rf"[.\-_+]?{word}\d*", suffix)), 2)
+    return release, phase
 
 
 def tested_against_version(manifest_path: Path = MANIFEST) -> str:
@@ -131,15 +138,24 @@ def compare(cli_version: str, plugin_version: str) -> SkewResult:
     true prefix reads as smaller than what it is a prefix of ("1.3" == (1, 3) < (1, 3, 0) ==
     "1.3.0"), which would report BEHIND for two strings naming the same release (found in
     self-review; see the two version_skew tests it fixes)."""
-    cli_t, plugin_t = _parse_version(cli_version), _parse_version(plugin_version)
+    (cli_t, cli_phase), (plugin_t, plugin_phase) = _parse_version(cli_version), _parse_version(plugin_version)
     width = max(len(cli_t), len(plugin_t))
     cli_t = cli_t + (0,) * (width - len(cli_t))
     plugin_t = plugin_t + (0,) * (width - len(plugin_t))
-    if cli_t >= plugin_t:
+    if (cli_t, cli_phase) >= (plugin_t, plugin_phase):
         return SkewResult(
             IN_STEP,
             f"requivo {cli_version} is at or ahead of {plugin_version}, the version this plugin "
             f"was tested against. In step.",
+        )
+    if plugin_phase == DEVELOPMENT:
+        # No release carries what `main` documents yet, so an upgrade cannot close this gap (#769).
+        return SkewResult(
+            BEHIND,
+            f"This plugin is a development build (requivo {plugin_version}, from the repository's "
+            f"`main`), ahead of every release; the installed CLI reports {cli_version}. It may document "
+            f"a field or a flag that CLI rejects as an extra input or an unrecognized argument: drop "
+            f"it and run the command again. The next release brings the two level.",
         )
     return SkewResult(
         BEHIND,

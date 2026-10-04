@@ -12,7 +12,7 @@ from requivo.core.persistence import UnexaminableEntry
 from requivo.core.persistence.identifiers import _stat_exists
 from requivo.core.selectors import display_token
 from requivo.deterministic._shared import _NO_DETAIL, EXIT_DEGRADED, _read_source, _resolve_cards, print_json
-from requivo.paths import session_root
+from requivo.paths import session_root, workspace_flag
 from requivo.services.sessions import SessionService
 
 
@@ -33,7 +33,7 @@ def _cmd_session_init(a, client) -> None:
         return
     print(f"Created session '{meta.slug}' → {store.canonical_dir(meta.slug)}")
     print("  No model yet. Produce a proposal and run:")
-    print(f"    requivo model apply {meta.slug} proposal.json")
+    print(f"    requivo model apply {meta.slug}{workspace_flag()} proposal.json")
 
 
 

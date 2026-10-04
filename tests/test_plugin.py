@@ -86,6 +86,29 @@ def test_repo_is_a_marketplace_pointing_at_this_plugin():
     assert data["description"] and data["description"] != entry["description"]
 
 
+def _labelled_as_a_release(version: str, pending: list, last_release: str):
+    """Why a tree carrying unreleased fragments may not wear `version`, or None (#769)."""
+    dev = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)\.dev\d+", version)
+    if not pending or (dev and tuple(map(int, dev.groups())) > tuple(map(int, last_release.split(".")))):
+        return None
+    return (f"changelog.d/ holds {pending}, so this tree is past {last_release}, yet the plugin declares {version}: "
+            f"the marketplace serves it under that number (#769). Bump every version site to a `.dev0` above "
+            f"{last_release} -- the next patch's -- and let the release replace it.")
+
+
+def test_main_past_a_release_never_wears_a_release_version():
+    """#96, #769: the marketplace serves `main`, so a version past the tag must say so, or the skew check sees equals."""
+    last = re.search(r"^## \[(\d+\.\d+\.\d+)\]", (REPO / "CHANGELOG.md").read_text(encoding="utf-8"), re.MULTILINE)
+    pending = sorted(p.name for p in (REPO / "changelog.d").glob("*.md") if p.name != "README.md")
+    assert last, "CHANGELOG.md names no released section to compare against"
+    problem = _labelled_as_a_release(_manifest()["version"], pending, last.group(1))
+    assert problem is None, problem
+    for version, fragments, verdict in (("3.5.0", ["1.fixed.md"], False), ("3.5.0.dev0", ["1.fixed.md"], False),
+                                        ("3.6.0", ["1.fixed.md"], False), ("3.5.1.dev0", ["1.fixed.md"], True),
+                                        ("3.5.0", [], True)):   # must fire, and its release-commit twin must not
+        assert (_labelled_as_a_release(version, fragments, "3.5.0") is None) is verdict, (version, fragments)
+
+
 def test_the_plugin_readme_documents_the_namespaced_skills_and_what_the_generators_need():
     """The landing page, where the reader decides to run the command."""
     for name in EXPECTED_SKILLS:
@@ -169,7 +192,7 @@ def test_mutating_skills_apply_through_the_cli_and_state_a_recovery_path():
     """`run` changes the model: it MUST apply through the CLI on stdin, and emit the proposal once (#511)."""
     text = SKILLS["run"]
     assert "model apply <slug> - --expected-revision" in text, "run: must pass the proposal on stdin under the optimistic lock"
-    assert re.search(r"`code`\s*/\s*`details`", text), "run: must name the structured error fields a refused apply is fixed from"
+    assert re.search(r"`code`, `message`, `path`", text), "run: must name the structured error fields a refused apply is fixed from"
     assert "revision_conflict" in text, "run: must name the one refusal that is not about the proposal"
     for block in re.findall(r"```[a-z]*\n(.*?)```", text, re.DOTALL):
         assert "requivo model validate" not in block, "run: a dry run ahead of the apply costs a second emission of the model"
@@ -342,6 +365,40 @@ def test_the_pages_that_build_a_proposal_name_every_field_a_question_is_made_of(
     assert "run" in checked, f"only {checked} were found to build a proposal -- this guard is watching almost nothing"
 
 
+@pytest.mark.parametrize("perimeter", ["software", "go-to-market"])
+def test_the_printed_proposal_shape_is_the_one_apply_takes_and_the_pages_point_at_it(workspace, monkeypatch, perimeter):
+    """#770: `schema --proposal` is built from the contracts, so the pages point at it rather than restate it;
+    completed with its own `empty` record it applies, and its refusals carry the real envelope's fields."""
+    from _fakes import run_cli, run_cli_stdin
+
+    from requivo.core.contracts import Confidence, Summary, schema_slot_ids
+    from requivo.services.sessions import SessionService
+    text = run_cli(["schema", "--proposal", "--perimeter", perimeter])
+    proposal = json.loads(re.search(r"^\{\n.*?^\}$", text, re.DOTALL | re.MULTILINE).group(0))
+    refusals = [json.loads(line) for line in re.findall(r'^\{"code".*\}$', text, re.MULTILINE)]
+    assert {s["confidence"] for s in proposal["model"].values()} == {c.value for c in Confidence}
+    assert set(proposal["summary"]) == set(Summary.model_fields) and {"decisions", "thresholds"} <= set(proposal)
+    assert {r["code"] for r in refusals} == {"invalid_model", "missing_required_slot"}
+    assert all({"code", "message", "path"} <= set(r) <= {"code", "message", "path", "details"} for r in refusals)
+    empty = next(s for s in proposal["model"].values() if s["confidence"] == "empty")
+    proposal["model"] = {sid: proposal["model"].get(sid, empty) for sid in schema_slot_ids(perimeter)[0]}
+    slug = SessionService().create_session("A request", slug=f"shape-{perimeter}", perimeter=perimeter).slug
+    argv = ["model", "apply", slug, "-", "--expected-revision", "0", "--json"]
+    assert json.loads(run_cli_stdin(argv, json.dumps(proposal), monkeypatch))["revision"] == 1
+    reasoning, run = REASONING.read_text(encoding="utf-8"), SKILLS["run"]
+    for name, page in (("REASONING.md", reasoning), ("run", run)):
+        assert "schema --proposal" in page and "`testable`" in page, f"{name}: no pointer to the shape, or no `testable`"
+        assert re.search(r"`code`, `message`, `path`", page), f"{name}: names an error envelope the CLI does not print"
+    assert "`testable`" in _section(reasoning, r"^## Honesty rules.*$"), "REASONING.md: the honesty rules lack `testable`"
+
+
+def test_a_session_elsewhere_carries_its_workspace_through_every_command_the_preflight_included():
+    """#772: said once before the run skill's first command, and in the preflight, whose `doctor` described cwd."""
+    preflight = _section(REASONING.read_text(encoding="utf-8"), r"^##\s+.*preflight.*$", re.IGNORECASE | re.MULTILINE)
+    assert "`--workspace DIR`" in preflight, "REASONING.md: the preflight's doctor ignores the session's workspace"
+    assert "`--workspace DIR`" in SKILLS["run"].split("## 1.", 1)[0], "run: the workspace rule must precede the preflight"
+
+
 def test_skill_enum_placeholders_name_values_the_contracts_accept():
     """A `"field": "a|b|c"` placeholder is a prompt the deterministic CLI validates the answer to, so a wrong alternative is not a typo."""
     from requivo.core.contracts import Complexity, Confidence, Impact, Level, Leverage, Priority, ScenarioKind
@@ -421,7 +478,10 @@ def _doctor_json(version: str) -> str:
 
 @pytest.mark.parametrize(("cli", "plugin", "state"), [
     ("1.4.0", "1.3.0", IN_STEP), ("1.3.0", "1.3.0", IN_STEP), ("1.2.0", "1.3.0", BEHIND), ("1.3", "1.3.0", IN_STEP),
-], ids=["newer-cli-is-in-step", "equal-is-in-step", "older-cli-is-behind", "differing-precision-is-not-behind"])
+    ("1.3.0", "1.3.1.dev0", BEHIND), ("1.3.1.dev0", "1.3.1", BEHIND), ("1.3.1", "1.3.1.dev0", IN_STEP),
+    ("1.3.1.dev0", "1.3.1.dev0", IN_STEP),
+], ids=["newer-cli-is-in-step", "equal-is-in-step", "older-cli-is-behind", "differing-precision-is-not-behind",
+        "a-release-behind-a-dev-plugin", "a-dev-cli-behind-its-release", "the-release-past-its-dev", "both-dev"])
 def test_an_older_cli_is_behind_and_warns(cli, plugin, state):
     """Both directions, so `IN_STEP` cannot be returned no matter what; a true prefix is not smaller; behind never refuses."""
     result = compare(cli, plugin)
@@ -430,6 +490,12 @@ def test_an_older_cli_is_behind_and_warns(cli, plugin, state):
     if state == BEHIND:
         assert cli in result.message and plugin in result.message
         assert "refuse" not in result.message.lower() and "stop" not in result.message.lower()
+
+
+def test_a_development_plugin_beside_a_released_cli_says_so_rather_than_suggest_an_upgrade():
+    """#769: `main`'s plugin documents what no release has, so `pip install -U` cannot close the gap."""
+    message = compare("3.5.0", "3.5.1.dev0").message
+    assert "development build" in message and "pip install -U" not in message, message
 
 
 @pytest.mark.parametrize(("stdout", "error"), [

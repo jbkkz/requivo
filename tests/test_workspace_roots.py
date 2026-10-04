@@ -13,7 +13,7 @@ from requivo.core import persistence as store
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import Store
 from requivo.core.persistence import store as store_module
-from requivo.paths import workspace_root
+from requivo.paths import workspace_flag, workspace_root
 from requivo.services.discovery import DiscoveryService
 from requivo.services.repository import FileSessionRepository
 from requivo.services.sessions import SessionService
@@ -165,3 +165,15 @@ def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(tmp
     for _ in range(5):
         assert s._lock_key("s") == s._lock_key("s")
     assert calls == [], f"_lock_key resolved the root itself: {len(calls)} call(s)"
+
+
+def test_a_printed_next_step_names_the_workspace_only_when_it_is_not_the_cwd(tmp_path, monkeypatch):
+    """#772: a hint pasted from the cwd must find the session; quoted when a shell would split the path."""
+    spaced = tmp_path / "a b"
+    spaced.mkdir()
+    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
+    assert workspace_flag() == ""
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(spaced))
+    assert workspace_flag() == f' --workspace "{spaced.resolve()}"'
+    monkeypatch.chdir(spaced)
+    assert workspace_flag() == ""

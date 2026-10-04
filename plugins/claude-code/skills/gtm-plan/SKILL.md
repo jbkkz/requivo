@@ -122,11 +122,11 @@ JSON
 Emit all three every time, `[]` for an empty one: a new plan replaces the last plan's items, as the
 CLI's does, so a challenge this plan no longer raises is removed rather than left standing. Leave
 `decisions` and `opportunities` out: the plan does not speak to them, and an absent key keeps what is
-established (REASONING.md, *the reasoning layer*). On a refusal, read `code`/`details`, fix the
-proposal and apply again; a refused apply wrote nothing. A session older than one of the
-perimeter's slots is refused as `missing_required_slot` for a slot its model never had: add that slot
-as unknown (`confidence` `empty`, `completeness` 0, its `impact_default`, no value), never a value
-you guessed, and the plan names it as unresolved.
+established (REASONING.md, *the reasoning layer*). On a refusal, read `code`, `message`, `path`
+(and `details` when set), fix the proposal and apply again; a refused apply wrote nothing. A session
+older than one of the perimeter's slots is refused as `missing_required_slot` for a slot its model
+never had: add that slot as unknown (`confidence` `empty`, `completeness` 0, its `impact_default`,
+`value` `""`), never a value you guessed, and the plan names it as unresolved.
 
 Note the revision the apply returns — call it `M`.
 

@@ -7,19 +7,36 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, cast
+from enum import Enum
+from typing import Any, Optional, cast, get_args, get_origin
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from requivo.core.contracts import (
     MAX_INPUT_CHARS,
+    Challenge,
+    ClaimSource,
+    Confidence,
     Confirmation,
+    DesignDecision,
     EngineOutput,
+    Exclusion,
     ModelProposal,
+    Opportunity,
+    Summary,
+    Threshold,
     missing_required_slots,
+    schema_slot_ids,
+    schema_slots,
     unknown_slots,
 )
-from requivo.core.errors import InputTooLargeError, InvalidModelError, MissingRequiredSlotError, UnknownSlotError
+from requivo.core.errors import (
+    InputTooLargeError,
+    InvalidModelError,
+    MissingRequiredSlotError,
+    RequivoError,
+    UnknownSlotError,
+)
 from requivo.core.perimeters import DEFAULT_PERIMETER
 
 
@@ -111,3 +128,70 @@ def validate_proposal(data: dict[str, Any] | str, *, require_complete: bool = Tr
             error = MissingRequiredSlotError if gap.details.get("slots") else InvalidModelError
             raise error(gap.message, path=gap.path, details=gap.details)
     return out
+
+
+# What `schema --proposal` fills per grade, keyed by the enum so a new grade cannot go unshown (#770).
+_SLOT_EXAMPLES: dict[Confidence, dict[str, Any]] = {
+    Confidence.explicit: {
+        "completeness": 90, "impact": "high", "value": "<what the requester stated>", "evidence": "request: <their words>",
+        "claims": [{"text": "<one statement they can confirm on its own>", "source": ClaimSource.requester.value,
+                    "confirmation": Confirmation.open.value}]},
+    Confidence.inferred: {"completeness": 60, "impact": "medium", "value": "<your assumption>",
+                          "evidence": "proposed: <one-line rationale>"},
+    Confidence.empty: {"completeness": 0, "impact": "high", "value": "", "evidence": ""},
+    Confidence.testable: {"completeness": 30, "impact": "high", "value": "<the bet>", "evidence": "request: <their words>",
+                          "test_plan": "<the test or experiment that would settle it>"},
+}
+_SUMMARY_EXAMPLE = {"objective": "<one line: what this is for>", "scope": "<what is in, and what is out>",
+                    "assumptions": ["<an assumption the requester should review>"],
+                    "blind_spot": "<what nobody has looked at yet>"}
+_REASONING_KINDS: tuple[tuple[str, type[BaseModel]], ...] = (
+    ("decisions", DesignDecision), ("challenges", Challenge), ("opportunities", Opportunity),
+    ("exclusions", Exclusion), ("thresholds", Threshold))
+_EDGES = frozenset({"derived_from", "contests", "rests_on"})
+
+
+def _item_example(kind: type[BaseModel], slot: str) -> dict[str, Any]:
+    """One reasoning item from its contract's own fields: an edge names `slot`, an enum its first value."""
+    item: dict[str, Any] = {}
+    for name, info in kind.model_fields.items():
+        if name == "id":   # derived from the item's text (invariant 5), so never part of what is sent
+            continue
+        enums = [a for a in (get_args(info.annotation) or (info.annotation,)) if isinstance(a, type) and issubclass(a, Enum)]
+        if name in _EDGES:
+            item[name] = [slot]
+        elif enums:
+            item[name] = next(iter(enums[0])).value
+        else:
+            item[name] = [f"<{name}>"] if get_origin(info.annotation) is list else f"<{name}>"
+    return item
+
+
+def _refusal(data: dict[str, Any], **kwargs: Any) -> Optional[dict[str, Any]]:
+    try:
+        validate_proposal(data, **kwargs)
+    except RequivoError as e:
+        return e.to_dict()
+    return None
+
+
+def proposal_shape(perimeter: str = DEFAULT_PERIMETER) -> dict[str, Any]:
+    """The proposal `model apply` reads, built from the contracts (#770): a slot per confidence, the whole
+    summary and one item per reasoning kind, accepted by `ModelProposal` before it is returned; the schema's
+    required and optional slots; and the envelopes two broken copies of it really raise here."""
+    ids = [s["id"] for s in schema_slots(perimeter)]
+    _, required = schema_slot_ids(perimeter)
+    graded = dict(zip(ids, Confidence))
+    model = {sid: {"confidence": grade.value, **_SLOT_EXAMPLES[grade]} for sid, grade in graded.items()}
+    empty = next(sid for sid, grade in graded.items() if grade is Confidence.empty)
+    proposal: dict[str, Any] = {
+        "model": model,
+        "questions": [{"q": "<one decision, in the requester's words>", "slot": empty, "why": "<what the answer changes>"}],
+        "summary": {name: _SUMMARY_EXAMPLE[name] for name in Summary.model_fields},
+        **{key: [_item_example(kind, ids[0])] for key, kind in _REASONING_KINDS},
+    }
+    ModelProposal.model_validate(proposal, context={"perimeter": perimeter})   # a drifted example fails here
+    nulled = {**proposal, "model": {**model, empty: {**model[empty], "value": None}}}
+    refusals = (_refusal(nulled, require_complete=False, perimeter=perimeter), _refusal(proposal, perimeter=perimeter))
+    return {"perimeter": perimeter, "proposal": proposal, "required": [s for s in ids if s in required],
+            "optional": [s for s in ids if s not in required], "refusals": [r for r in refusals if r]}

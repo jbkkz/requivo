@@ -8,4 +8,4 @@ import logging
 # entry point that configures a real one. `test_default_run_leaves_the_conflict_refused_warning_off_every_stream`.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "3.5.0"
+__version__ = "3.5.1.dev0"

@@ -282,15 +282,17 @@ def render_perimeter_recap(out: EngineOutput, cards: list[str] | None) -> None:
         print(_labeled("Request, as read", " ".join(out.summary.objective.split()), lw=20))
 
 
-def next_command(payload: dict, provider: str | None = None) -> str | None:
+def next_command(payload: dict, provider: str | None = None, workspace: str = "") -> str | None:
     """The single next step for a status view, or None when there is not one (#246): open questions
     outrank a stale artifact, which outranks the missing primary artifact
     (`test_open_questions_point_at_answer`). None for a converged session with a fresh brief and for
-    a bare `model.json`. A projection over the payload, never a second computation."""
+    a bare `model.json`. A projection over the payload, never a second computation. `workspace` is
+    `paths.workspace_flag()`, repeated after the slug in every step (#772)."""
     slug = payload.get("slug")
     artifacts = payload.get("artifacts")
     if not slug or artifacts is None:
         return None                      # a bare model.json — no session behind it to point at
+    slug = f"{slug}{workspace}"          # each step names the session as this command reached it
     # A session tagged `claude-code` is driven keyless: a paid verb is never its only step, and a document
     # is `/requivo:docs`, never a skill name the wheel would have to know (#720, #739,
     # `test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb`).
@@ -315,9 +317,9 @@ def next_command(payload: dict, provider: str | None = None) -> str | None:
     return None
 
 
-def render_next_command(payload: dict, provider: str | None = None) -> None:
+def render_next_command(payload: dict, provider: str | None = None, workspace: str = "") -> None:
     """Print `next_command`'s answer, once, or nothing; the arrow matches `discover`'s and `answer`'s."""
-    line = next_command(payload, provider)
+    line = next_command(payload, provider, workspace)
     if line:
         print(f"\n→ {line}")
 

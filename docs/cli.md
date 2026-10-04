@@ -186,7 +186,7 @@ the n8n contract in [integrations.md](integrations.md).
 |---|---|
 | `requivo demo` | Replay a bundled run — no key, no network |
 | `requivo doctor [--json]` | Environment + install check (see [What `doctor` answers](#what-doctor-answers)) |
-| `requivo schema [--framework] [--perimeter ID]` | Print the slot schema (the model vocabulary + driver rule); `--framework` also prints the human elicitation spec; `--perimeter` selects which installed perimeter (default `software`) |
+| `requivo schema [--framework] [--proposal] [--perimeter ID]` | Print the slot schema (the model vocabulary + driver rule); `--framework` also prints the human elicitation spec; `--proposal` prints instead the proposal `model apply` reads — an example built from the contracts (a slot record per confidence, every `summary` field, one item of each reasoning kind), the required and optional slots, and two refusal envelopes the CLI really raises (#770); the two flags are exclusive; `--perimeter` selects which installed perimeter (default `software`) |
 | `requivo context [--list] [--context/--cards CARDS] [--session SLUG]` | Inspect available context cards. `--list` prints the stems only; `--session <slug>` scopes to exactly the cards that session uses |
 
 The deterministic verbs and `--json` outputs are what the Claude Code plugin drives — Claude reasons,
