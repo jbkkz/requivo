@@ -378,6 +378,14 @@ def test_impact_refuses_an_unknown_slot_naming_it_in_details():
     with pytest.raises(E.UnknownSlotError) as e:
         _session(full_model()).impact("s", ["not-a-real-slot"])
     assert e.value.details["unmatched"] == ["not-a-real-slot"]
+    assert "separate arguments" not in str(e.value)
+
+
+def test_impact_comma_separated_slot_hint():
+    with pytest.raises(E.UnknownSlotError) as e:
+        _session(full_model()).impact("s", ["workflow,reporting"])
+    assert e.value.details["unmatched"] == ["workflow,reporting"]
+    assert "separate arguments" in str(e.value)
 
 
 def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal():
