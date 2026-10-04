@@ -6,13 +6,14 @@ import re
 import pytest
 from _fakes import OBJECTIVE, out, printed, slot
 
-from requivo.core.analysis import slot_meta
+from requivo.core.analysis import information_value, model_status, pillar_completeness, ranked_questions, slot_meta
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
     Challenge,
     DesignDecision,
+    EngineOutput,
     Epic,
     Exclusion,
     GoToMarketPlan,
@@ -20,6 +21,7 @@ from requivo.core.contracts import (
     Opportunity,
     Question,
     ReleaseNotes,
+    Slot,
     Summary,
     Threshold,
 )
@@ -32,7 +34,14 @@ from requivo.render.markdown import (
     prd_markdown,
     release_markdown,
 )
-from requivo.render.terminal import render_brief, render_claims, render_defaults, render_perimeter_recap
+from requivo.render.terminal import (
+    render_brief,
+    render_claims,
+    render_defaults,
+    render_perimeter_recap,
+    render_turn,
+    render_turn_state,
+)
 
 _MODEL = {"problem": slot(80, "explicit", "high")}
 
@@ -235,6 +244,29 @@ def test_a_turn_that_removes_the_last_claim_still_names_it():
     text = printed(render_claims, out(_MODEL), "software", claimed)
     assert "CLAIMS" in text and '"5-10 h/week" (removed)' in text, text
     assert printed(render_claims, out(_MODEL), "software", out(_MODEL)) == ""
+
+
+def test_questions_are_ranked_by_information_value_and_show_it():
+    """#771: uncertainty × impact per question; the core orders by it, a tie keeping the provider's order,
+    and the terminal, `status --json` and the CLI loop all read that one order."""
+    model = out({"workflow": slot(0, "empty", "high"), "actors": slot(0, "empty", "high"),
+                 "permissions": slot(40, "inferred", "high"), "reporting": slot(0, "empty", "low")})
+    model.questions = [Question(q=f"About {sid}?", slot=sid, why="w") for sid in ("reporting", "permissions", "workflow", "actors")]
+    ranked = ranked_questions(model)
+    assert [q.slot for q in ranked] == ["workflow", "actors", "permissions", "reporting"]
+    assert [information_value(model, q.slot) for q in ranked] == [1.0, 1.0, 0.8, 0.33]
+    assert [(q["slot"], q["information_value"]) for q in model_status(model)["questions"]][2] == ("permissions", 0.8)
+    text = printed(render_turn, model)
+    assert text.index("1. About workflow?") < text.index("4. About reporting?") and "information value 0.33" in text
+
+
+def test_status_shows_per_pillar_completeness():
+    """#771: each pillar's mean completeness in schema order; an omitted required slot counts 0."""
+    model = EngineOutput(model={"problem": Slot(completeness=80, confidence="explicit", impact="high"),
+                                "actors": Slot(completeness=60, confidence="inferred", impact="high")}, summary=Summary())
+    assert pillar_completeness(model) == {"why": 27, "what": 15, "how": 0, "validate": 0}
+    assert model_status(model)["pillars"] == pillar_completeness(model)
+    assert "Progress  Why 27% · What 15% · How 0% · Validate 0%" in printed(render_turn_state, model)
 
 
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────

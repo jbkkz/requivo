@@ -8,7 +8,10 @@ from typing import NamedTuple
 from requivo.core.analysis import (
     blocking_reason,
     claims_below_slot_impact,
+    information_value,
     is_thin,
+    pillar_completeness,
+    ranked_questions,
     readiness_blockers,
     slot_label,
     state_of,
@@ -30,6 +33,7 @@ from requivo.core.contracts import (
 from requivo.core.dependencies import ARTIFACT_FILENAMES, diff_claims
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
+from requivo.core.recap import DocumentState, Recap
 from requivo.core.selectors import display_text, display_token
 from requivo.usage import CallRecord, UsageLedger
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
@@ -77,6 +81,12 @@ def render_understanding(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) 
             print(textwrap.fill(" · ".join(names), width=80, initial_indent=f"  {label}   ", subsequent_indent=" " * 15))
 
 
+def render_progress(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
+    """Per-pillar completeness, one line (#771): the discovery status the framework text promises."""
+    pillars = pillar_completeness(out, perimeter)
+    print(f"\n  Progress  {' · '.join(f'{p.capitalize()} {pct}%' for p, pct in pillars.items())}")
+
+
 def _named_blockers(out: EngineOutput, perimeter: str) -> list[str]:
     """Each blocker with why it blocks (#722, #739), one projection for every terminal surface:
     `test_a_thin_confirmed_slot_reads_the_same_on_every_surface`."""
@@ -109,6 +119,7 @@ def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     model the turn started from, so the defaults list shows only what the turn moved (#731)."""
     print()
     render_understanding(out, perimeter)
+    render_progress(out, perimeter)
     blockers = _named_blockers(out, perimeter)
     # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
@@ -188,10 +199,11 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     `answer`, `status`, `demo`)."""
     render_turn_state(out, perimeter, previous)
     if out.questions:
-        print("\nPRIORITY QUESTIONS")
-        for i, q in enumerate(out.questions, 1):
+        print("\nPRIORITY QUESTIONS  (ranked by information value = uncertainty × impact)")
+        for i, q in enumerate(ranked_questions(out, perimeter), 1):
             print(f"  {i}. {display_text(q.q)}")
-            print(f"     → {slot_label(q.slot, perimeter)}")   # a schema-validated slot id, not free text
+            # A schema-validated slot id, not free text, and the number it was ranked by (#771).
+            print(f"     → {slot_label(q.slot, perimeter)} · information value {information_value(out, q.slot, perimeter):.2f}")
 
 
 def render_context_judgment(grounding, routing=None) -> None:
@@ -400,6 +412,64 @@ def render_docs_menu(rows: list[DocRow]) -> None:
     for row in rows:
         print(f"  {row.number}. {row.label:<20} {row.state}")
         print(f"     {row.blurb}")
+
+
+def render_documents(artifacts: dict | None) -> None:
+    """Each generated document and whether it is current (#785), so `status` cannot show a stale one
+    as current. Reads the recorded `stale` flag (invariant 1); silent with none generated."""
+    present = artifacts or {}
+    rows = [(t, present[t]) for t in DOC_TYPES if t in present]
+    if not rows:
+        return
+    print("\nDOCUMENTS")
+    for doc_type, st in rows:
+        state = "⚠ needs updating, not current" if st.get("stale") else "up to date"
+        print(f"  {ARTIFACT_LABELS.get(doc_type, doc_type):<20} {state}  ({display_token(str(st.get('filename', '')))})")
+
+
+def _gist(text: str) -> str:
+    """A value on one line, cut at a word for a recap meant to be read in a minute; the model keeps it whole."""
+    return textwrap.shorten(" ".join(text.split()), width=110, placeholder=" …")
+
+
+def _document_line(doc: DocumentState) -> str:
+    where = f"{ARTIFACT_LABELS.get(doc.type, doc.type)} ({display_token(doc.filename)})"
+    if not doc.stale:
+        return f"{where}: up to date"
+    why = (doc.because or []) + (["the recorded reasoning"] if doc.reasoning_moved else [])
+    return f"{where}: ⚠ needs updating" + (f", moved since it was written: {', '.join(why)}" if why else "")
+
+
+def render_recap(slug: str, recap: Recap, next_line: str | None = None) -> None:
+    """`status --recap` (#785): where the session stands, short enough to act on in under a minute.
+    Topics by label and values in the model own words, never ids, percentages or confidence labels."""
+    print(f"WHERE WE STAND — {display_token(slug)}")
+    if recap.objective.strip():
+        print(textwrap.fill(display_text(_gist(recap.objective)), width=80, initial_indent="  ", subsequent_indent="  "))
+    print("  " + ("Ready to build from." if recap.ready else "Not ready to build from yet."))
+    print("\nDECIDED")
+    decided = [f"{d['topic']}: {_gist(d['value'])}" for d in recap.decided] + [_gist(d) for d in recap.decisions]
+    for line in decided or ["Nothing confirmed yet."]:
+        print(_bullet(line))
+    print("\nOPEN")
+    open_ = ([_gist(q) for q in recap.questions]
+             + [f"Assumed for you, to confirm — {a['topic']}: {_gist(a['value'])}" for a in recap.assumed]
+             + [f"Proposed for you to own — {_gist(p)}" for p in recap.proposed])
+    for line in open_ or ["Nothing open."]:
+        print(_bullet(line))
+    if recap.since_revision is not None:
+        print("\nCHANGED SINCE THE FIRST DOCUMENT WAS WRITTEN")
+        if recap.changed is None:
+            print("  Could not tell: the revision it was written from cannot be read.")
+        for c in recap.changed or []:
+            print(_bullet(f"{c['topic']}: {_gist(c['value']) or '(cleared)'}"))
+        if recap.changed == []:
+            print("  Nothing has moved since.")
+    print("\nDOCUMENTS")
+    for line in [_document_line(d) for d in recap.documents] or ["None generated yet."]:
+        print(_bullet(line))
+    if next_line:
+        print(f"\n→ {next_line}")
 
 
 def render_usage(ledger: UsageLedger) -> None:

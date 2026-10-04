@@ -38,6 +38,7 @@ from requivo.core.errors import ModelUnreadableError, RevisionConflictError, Ses
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.persistence.identifiers import _stat_exists
+from requivo.core.recap import Recap, build_recap
 from requivo.core.selectors import display_token
 from requivo.core.validation import require_input_within_bounds, validate_proposal
 from requivo.paths import workspace_root
@@ -692,6 +693,23 @@ class SessionService:
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,
         }
+
+    def recap(self, slug: str) -> Recap:
+        """Where the session stands on return (#785): the model, the meta and the revisions its
+        documents were written from, read under one lock (invariant 12) and handed to `build_recap`.
+        An unreadable revision is left out: its documents then name no topics, never wrong ones."""
+        if not self.repo.has_meta(slug):
+            raise self.no_session(slug)
+        with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            now = self.load_model(slug)
+            revisions: dict[int, EngineOutput] = {}
+            for rev in {st.revision for st in meta.artifact_status.values()}:
+                try:
+                    revisions[rev] = self.repo.load_revision(slug, rev)
+                except (SessionNotFoundError, ModelUnreadableError):
+                    continue
+        return build_recap(now, meta.artifact_status, revisions, resolve_perimeter(meta.perimeter))
 
     # ── the portable archive (#702): `services/archives.py` is its one implementation ──
     def export_archive(self, slug: str) -> bytes:

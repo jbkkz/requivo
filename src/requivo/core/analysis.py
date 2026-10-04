@@ -9,6 +9,7 @@ from requivo.core.contracts import (
     Confidence,
     EngineOutput,
     Impact,
+    Question,
     Slot,
     Stories,
     schema_slot_ids,
@@ -140,8 +141,11 @@ def model_status(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[
     return {
         "readiness": {"ready": not blockers, "blocking_slots": gaps},
         "understanding": understanding_view(out, perimeter),
-        "questions": [{"q": q.q, "slot": q.slot, "label": slot_label(q.slot, perimeter), "why": q.why}
-                      for q in out.questions],
+        # Ranked, each with its `information_value` (#771): nested and per-question, so additive.
+        "questions": [{"q": q.q, "slot": q.slot, "label": slot_label(q.slot, perimeter), "why": q.why,
+                       "information_value": information_value(out, q.slot, perimeter)}
+                      for q in ranked_questions(out, perimeter)],
+        "pillars": pillar_completeness(out, perimeter),
         "summary": out.summary.model_dump(),
         "remaining_gaps": gaps,
         "claims_below_slot_impact": claims_below_slot_impact(out),
@@ -164,3 +168,38 @@ def understanding_view(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
             "claims": [c.model_dump(mode="json") for c in s.claims],
         })
     return groups
+
+
+# ── the driver, shown (#771) ────────────────────────────────────────────────────
+# information_value = uncertainty × impact, both in [0, 1]: uncertainty = 1 − completeness/100 × the
+# confidence's weight below, impact = (IMPACT_RANK + 1) / 3. An omitted slot is wholly uncertain at its
+# schema baseline impact.
+_KNOWN_WEIGHT = {Confidence.explicit: 1.0, Confidence.inferred: 0.5, Confidence.testable: 0.5, Confidence.empty: 0.0}
+
+
+def information_value(out: EngineOutput, slot_id: str, perimeter: str = DEFAULT_PERIMETER) -> float:
+    """One slot's `uncertainty × impact`, rounded to two places: the number a question is ranked by."""
+    s = out.model.get(slot_id)
+    if s is None:
+        return round((IMPACT_RANK[_default_impacts(perimeter).get(slot_id, Impact.low)] + 1) / 3, 2)
+    uncertainty = 1 - s.completeness / 100 * _KNOWN_WEIGHT.get(s.confidence, 0.0)
+    return round(uncertainty * (IMPACT_RANK[s.impact] + 1) / 3, 2)
+
+
+def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[Question]:
+    """The turn's questions by descending information value, the order every surface asks and shows
+    them in (#771). `sorted` is stable, so a tie keeps the provider's order."""
+    return sorted(out.questions, key=lambda q: -information_value(out, q.slot, perimeter))
+
+
+def pillar_completeness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, int]:
+    """Mean completeness per pillar, in schema order (#771), over the pillar's required slots (an
+    omitted one counts 0) and any optional slot the model carries."""
+    pillars, _labels = slot_meta(perimeter)
+    _, required = schema_slot_ids(perimeter)
+    seen: dict[str, list[int]] = {}
+    for sid, pillar in pillars.items():
+        s = out.model.get(sid)
+        if s is not None or sid in required:
+            seen.setdefault(pillar, []).append(s.completeness if s is not None else 0)
+    return {pillar: round(sum(values) / len(values)) for pillar, values in seen.items()}

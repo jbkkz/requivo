@@ -30,6 +30,7 @@ from requivo.core.contracts import (
 )
 from requivo.core.dependencies import propagate, thinner_evidence
 from requivo.core.persistence import ArtifactStatus, RevisionRecord
+from requivo.core.recap import DocumentState, Recap
 from requivo.render.html import markdown_to_html
 from requivo.render.markdown import (
     brief_markdown,
@@ -47,12 +48,14 @@ from requivo.render.terminal import (
     render_defaults,
     render_dependency_map,
     render_docs_menu,
+    render_documents,
     render_estimate,
     render_evidence,
     render_grounding,
     render_impact,
     render_perimeter_fit,
     render_perimeter_recap,
+    render_recap,
     render_session_cost,
     render_stories,
     render_turn,
@@ -157,10 +160,11 @@ _NON_PROSE_RENDERERS = {
     "render_next_turn": "the caller's fixed lines, a slug and schema slot labels with their blocking reason (#784)",
     "render_stale": "artifact filenames from ARTIFACT_FILENAMES and schema slot labels, no model text",
     "render_usage": "the in-process usage ledger this run itself built -- never persisted, never read back off disk (#388)",
+    "render_progress": "schema pillar ids and integer percentages (#771), no model text",
 }
 
 # What each swept renderer must also have printed, proving the other rows rendered something to be forged through.
-_ALSO_RENDERED = {"render_session_cost": "2026-01-01", "render_docs_menu": "DOCUMENTS"}
+_ALSO_RENDERED = {"render_session_cost": "2026-01-01", "render_docs_menu": "DOCUMENTS", "render_documents": "needs updating"}
 
 
 def _evidence_report(model: EngineOutput):
@@ -213,6 +217,13 @@ def _forged_renders() -> dict[str, str]:
         "render_docs_menu": printed(render_docs_menu, docs_menu_rows({"prd": ArtifactStatus(
             revision=1, filename=FORGED, updated_at="2026-01-01T00:00:00Z", stale=False)})),
         "render_context_judgment": printed(render_context_judgment, Grounding(ContextJudgment(decision="uncovered", reason=FORGED), "")),
+        # #785: the recap restates model prose and disk filenames; `status` names each document.
+        "render_recap": printed(render_recap, FORGED, Recap(
+            objective=FORGED, ready=False, decided=[{"topic": "Real problem", "value": FORGED}], decisions=[FORGED],
+            questions=[FORGED], assumed=[{"topic": "Actors", "value": FORGED}], proposed=[FORGED], since_revision=1,
+            changed=[{"topic": "Actors", "value": FORGED}],
+            documents=[DocumentState(type="brief", filename=FORGED, stale=True, because=["Actors"])])),
+        "render_documents": printed(render_documents, {"prd": {"revision": 1, "filename": FORGED, "stale": True}}),
     }
 
 

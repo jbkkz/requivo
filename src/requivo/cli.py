@@ -16,6 +16,7 @@ from requivo.cli_support import (
     _display_url,
     _generator_service,
     _missing_extra_message,
+    _print_recap,
     _print_session_candidates,
     _render_usage_safely,
     _resolve_optional_session,
@@ -24,7 +25,7 @@ from requivo.cli_support import (
 )
 from requivo.core import persistence as store
 from requivo.core.adapters import epic_export_json, to_github_json, to_gitlab_json
-from requivo.core.analysis import model_status, slot_label
+from requivo.core.analysis import model_status, ranked_questions, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
 from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots, unknown_slots
@@ -49,6 +50,7 @@ from requivo.render.terminal import (
     render_context_judgment,
     render_dependency_map,
     render_docs_menu,
+    render_documents,
     render_estimate,
     render_evidence,
     render_grounding,
@@ -158,7 +160,7 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         if not out.questions:
             break
 
-        answers = _prompt_answers(out.questions, perimeter)
+        answers = _prompt_answers(ranked_questions(out, perimeter), perimeter)
         if answers is None:
             return Drafted(out, stopped=True)
     else:
@@ -478,6 +480,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     """`run <slug>` on a discovered session (#540): `answer` inside a loop, never a second discovery."""
     svc = disco.sessions
     perimeter = resolve_perimeter(svc.meta(slug).perimeter)
+    _print_recap(slug)   # where we stand, before the first checkpoint (#785)
     prev, out = None, svc.load_model(slug)   # a resume's first checkpoint lists every default (#731)
     for _turn in range(1, MAX_TURNS + 1):
         render_turn_state(out, perimeter, prev)
@@ -486,7 +489,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
             render_next_turn(out, perimeter, f"{slug}{workspace_flag()}", converged=f"\n✅ Discovery converged — run "
                              f"`requivo {primary} {slug}{workspace_flag()}` for the {_LABEL[primary]}." if primary else "\n✅ Discovery converged.")
             return
-        answers = _prompt_answers(out.questions, perimeter)
+        answers = _prompt_answers(ranked_questions(out, perimeter), perimeter)
         if answers is None:
             print(f"\nSaved session → {store.canonical_dir(slug)}")
             return
@@ -568,6 +571,8 @@ def _cmd_status(a, client) -> None:
     # `quiet=want_json`: no candidate listing beside a `--json` payload (#246).
     ref = _resolve_optional_session(SessionService(), a.session, quiet=want_json)
     out, payload = _status_payload(ref)
+    if getattr(a, "recap", False):   # where we stand on return (#785), `--json` or not
+        return _print_recap(payload["slug"], payload, as_json=want_json)
     if want_json:
         # `--json` gets no pointer (#246); `print_json` carries the `ensure_ascii` contract (#301).
         print_json(payload)
@@ -576,6 +581,7 @@ def _cmd_status(a, client) -> None:
     render_perimeter_fit(payload.get("perimeter_fit"), payload.get("perimeter_fit_reason"))   # #787
     # The grounding after the model (#492): evidence about the readout, not a preamble to it.
     render_grounding(payload.get("context_cards"))
+    render_documents(payload.get("artifacts"))   # a stale document is never shown as current (#785)
     # Cumulative cost from the provenance on provider-backed revisions (#292); silent when there is none.
     # A loose file has no revisions to price, so it never borrows a same-named session's (#681).
     slug = payload.get("slug")
@@ -1138,7 +1144,8 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
     model_cmd("answer", "fold the client's answers in and report what moved (API)",
               _cmd_answer, lambda sp: sp.add_argument("answers", help="the client's answers, as free text"))
     model_cmd("status", "show the understanding, open questions and readiness", _cmd_status,
-              lambda sp: sp.add_argument("--json", action="store_true", help=JSON_HELP),
+              lambda sp: (sp.add_argument("--json", action="store_true", help=JSON_HELP),
+                          sp.add_argument("--recap", action="store_true", help="where a session stands on return: decided, open, changed since the documents, which are stale and why, the next step")),
               accepts_path=True, session_required=False)
     model_cmd("impact", "show what a change to given topics would reach; no topics = full map",
               _cmd_impact, lambda sp: (sp.add_argument("slots", nargs="*",

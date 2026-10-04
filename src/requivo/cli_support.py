@@ -7,8 +7,10 @@ import os
 import sys
 
 from requivo.core import persistence as store
+from requivo.core.errors import RequivoError
 from requivo.core.selectors import display_token
-from requivo.render.terminal import render_perimeter_fit, render_usage
+from requivo.deterministic import print_json
+from requivo.render.terminal import next_command, render_perimeter_fit, render_recap, render_usage
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionResolution, SessionService
 from requivo.streams import safe_write
@@ -66,6 +68,22 @@ def _resolve_optional_session(svc: SessionService, ref: str | None, *, quiet: bo
     if resolution.candidates and not quiet:
         _print_session_candidates(resolution)
     return resolution.default
+
+
+def _print_recap(slug: str, payload: dict | None = None, *, as_json: bool = False) -> None:
+    """Where a session stands on return (#785), for `status --recap` and a resuming `run`. With the
+    status `payload` it closes on the one next step `status` names; `run` asks instead. A bare
+    model.json (no `artifacts` in its payload) has no history to recap and is refused."""
+    if payload is not None and "artifacts" not in payload:
+        raise RequivoError("`status --recap` reads a session's revision history, and a bare model.json has "
+                           "none: name the session's slug instead.")
+    svc = SessionService()
+    recap = svc.recap(slug)
+    next_line = next_command(payload, svc.meta(slug).provider) if payload is not None else None
+    if as_json:
+        print_json({"slug": slug, **recap.to_dict(), "next": next_line})
+        return
+    render_recap(slug, recap, next_line)
 
 
 def _wrote(slug: str, result, label: str) -> None:

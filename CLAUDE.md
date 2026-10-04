@@ -40,7 +40,7 @@ requivo/
   paths.py streams.py usage.py http.py   framework-free: roots, stdout encoding, spend ledger, error→HTTP status
   assets/          shipped in the wheel: prompts/, perimeters/<id>/ (model_schema.json, elicitation.md), context/, demo/
   core/            contracts (StrictModel; PersistedEngineOutput for what is read off disk), analysis, context,
-                   persistence/, validation, errors, dependencies (the DAG), integrity, adapters, perimeters
+                   persistence/, validation, errors, dependencies (the DAG), recap, integrity, adapters, perimeters
   providers/       base.py = the ReasoningProvider protocol; anthropic/ = client, pricing, completion, generators
   services/        sessions (SessionService), artifacts, repository (SessionRepository), discovery (DiscoveryService),
                    archives (the session zip, file-backed only)

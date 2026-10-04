@@ -139,6 +139,53 @@ def test_status_with_no_argument_and_several_sessions_lists_them_with_the_defaul
     assert json.loads(run_cli(["status", "--json"]))["slug"] == "newer"
 
 
+def _returning_session() -> None:
+    """#785: a brief and a PRD written at revision 2, then an answer on a topic only the brief rests on."""
+    model = {**full_model(problem=slot(80, "explicit", "high", "Approvals get lost in email"),
+                          workflow=slot(60, "inferred", "high", "Manager approves, then HR records")),
+             "questions": [{"q": "Who approves when the manager is away?", "slot": "permissions", "why": "w"}],
+             "decisions": [{"decision": "Log in through the HR portal", "derived_from": ["integrations"]},
+                           {"decision": "Half days count as leave", "derived_from": ["business_rules"], "source": "proposed"}]}
+    seed_session("leave")
+    SessionService().update_model("leave", json.dumps(model))
+    for doc in ("brief", "prd"):
+        ArtifactService().save("leave", doc, f"# {doc}", source_revision=2)
+    model["model"]["reporting"] = slot(70, "explicit", "low", "A monthly CSV for HR")
+    SessionService().update_model("leave", json.dumps(model))
+
+
+def test_status_never_shows_a_stale_document_as_current():
+    """#785: each generated document is named with its recorded flag (invariant 1), next to its name."""
+    _returning_session()
+    rows = {ln.split()[0]: ln for ln in run_cli(["status", "leave"]).split("DOCUMENTS")[1].splitlines() if ln.strip()}
+    assert "needs updating, not current" in rows["Decision"] and "up to date" in rows["PRD"], rows
+
+
+def test_the_recap_says_where_we_stand_in_plain_words():
+    """#785: decided, open, what moved since the documents and why each stale one is stale, then one next step;
+    values in the model's words, never slot ids, percentages or confidence labels. A bare model.json is refused."""
+    _returning_session()
+    text = run_cli(["status", "leave", "--recap"])
+    _, decided, opened, changed, docs = (" ".join(part.split()) for part in re.split(
+        r"\n(?:DECIDED|OPEN|CHANGED SINCE THE FIRST DOCUMENT WAS WRITTEN|DOCUMENTS)\n", text))
+    assert "Real problem: Approvals get lost in email" in decided and "Log in through the HR portal" in decided
+    assert "Half days" not in decided and "Proposed for you to own — Half days count as leave" in opened
+    assert "Who approves when the manager is away?" in opened and "Workflow / lifecycle: Manager approves" in opened
+    assert "Reporting & visibility: A monthly CSV for HR" in changed
+    assert "Decision brief (solution-assessment.md): ⚠ needs updating, moved since it was written: Reporting & visibility" in docs
+    assert "PRD (prd.md): up to date" in docs and text.rstrip().endswith('requivo answer leave "<your answers>"')
+    assert not any(w in text for w in ("%", "explicit", "inferred", "business_rules", "workflow:"))
+    payload = json.loads(run_cli(["status", "leave", "--recap", "--json"]))
+    assert payload["since_revision"] == 2 and [c["topic"] for c in payload["changed"]] == ["Reporting & visibility"]
+    assert [(d["type"], d["stale"], d["because"]) for d in payload["documents"]] == [
+        ("brief", True, ["Reporting & visibility"]), ("prd", False, None)]
+    (store.canonical_dir("leave") / "revisions" / "0002-model.json").write_text("{torn", encoding="utf-8")
+    torn = json.loads(run_cli(["status", "leave", "--recap", "--json"]))   # cannot tell, so names nothing
+    assert torn["changed"] is None and (torn["documents"][0]["stale"], torn["documents"][0]["because"]) == (True, None)
+    with _model_in_out("bare") as p:
+        assert run_cli_fails(["status", str(p), "--recap"])[0] == 1
+
+
 # ── `requivo demo` and the browsable examples (#223, #225) ───────────────────────
 
 
