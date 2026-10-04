@@ -188,7 +188,9 @@ _QUOTE = '"I have no strong view on roles, so you can decide."'
     ("Any staff member", "inferred", "Relaxed about roles.", _QUOTE, "Relaxed about roles."),   # a paraphrase
     ("Any staff member", "explicit", '"Yes, any staff."', '"Yes, any staff."', '"Yes, any staff."'),   # a confirmation
     ("Managers only", "explicit", '"Only managers."', '"Only managers."', '"Only managers."'),
-], ids=["back-reference", "empty", "unchanged-from", "same-value", "confirmed", "changed-value"])
+    ("Up to 300 EUR", "explicit", "As before, managers approve, but now only up to 300 EUR.",
+     "As before, managers approve, but now only up to 300 EUR.", "As before, managers approve, but now only up to 300 EUR."),
+], ids=["back-reference", "empty", "unchanged-from", "same-value", "confirmed", "changed-value", "opens-on-a-back-reference"])
 def test_a_restated_slot_keeps_the_client_words_unless_it_brings_its_own(value, confidence, evidence, settled, alone):
     """#781: the evidence is the only place the client's words survive; a back-reference is not provenance."""
     current = out({"actors": dict(slot(60, "inferred", "high", "Any staff member"), evidence=_QUOTE)})

@@ -322,10 +322,13 @@ class Summary(StrictModel):
     blind_spot: str = ""
 
 
-# Evidence that only points at an earlier turn (#781): short, and opening on the back-reference.
+# Evidence that is nothing but a pointer at an earlier turn (#781), punctuation aside: "Prior turn.",
+# "(unchanged from the previous turn)". One that goes on to say something is the client's, and kept.
+_REF = (r"(?:(?:prior|previous|earlier|last)\s+(?:turn|answer|round|revision)s?|as before|unchanged"
+        r"|see above|same as before)")
 _BACK_REFERENCE = re.compile(
-    r"^\W*(?:(?:per|from|see|as in|same as)\s+)?(?:the\s+)?(?:(?:prior|previous|earlier|last)\s+"
-    r"(?:turn|answer|round|revision)|as before|unchanged|see above|same as before)\b", re.IGNORECASE)
+    rf"\W*(?:(?:per|from|see|as in|same as)\s+)?(?:the\s+)?{_REF}"
+    rf"(?:\s+(?:from|since|as in|per|in)\s+(?:the\s+)?{_REF})?\W*", re.IGNORECASE)
 
 
 def _settle_evidence(stated: Slot, established: Optional[Slot]) -> Slot:
@@ -336,7 +339,7 @@ def _settle_evidence(stated: Slot, established: Optional[Slot]) -> Slot:
     said = stated.evidence.strip()
     same = (established is not None and stated.value.strip() == established.value.strip()
             and stated.confidence == established.confidence)
-    if not said or (len(said) <= 60 and _BACK_REFERENCE.match(said)) or (same and prior.strip()):
+    if not said or _BACK_REFERENCE.fullmatch(said) or (same and prior.strip()):
         return stated if stated.evidence == prior else stated.model_copy(update={"evidence": prior})
     return stated
 
