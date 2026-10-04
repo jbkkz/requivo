@@ -2,8 +2,7 @@
 
 > What Requivo promises not to break, what it may change, and what is on the way out.
 
-This page is a set of promise tables, one per public surface. Each row names the promise, the
-version it has held since, and the test that goes red if it stops holding. The *history* of how a
+This page is a set of promise tables, one per public surface. Each row names the promise, the version it has held since, and the test that goes red if it stops holding. The *history* of how a
 promise reached its current shape — which issue split a code, which release moved a status — lives
 in `CHANGELOG.md` and `docs/decisions/`; a row links to the changelog entry rather than retelling
 it, and where the two disagree the changelog is what shipped and this page is what's stale.
@@ -244,6 +243,7 @@ missing a card exits 1, not 4.
 | `requivo impact <slug> <unknown-slot>` exits 1 (invalid input), not 0 | #250 | `test_impact_refuses_an_unknown_slot_naming_it_in_details` |
 | `web --port` and `api serve --port` refuse a value outside 0-65535 at exit 2 (argparse) rather than a traceback out of `bind()` at exit 1; no correct invocation was on that path, so compatible | #665 | `test_port_out_of_range_is_a_usage_error` |
 | `session init` on a request over `MAX_INPUT_CHARS` (20,000) refuses before any provider call, at exit 1 | #255 | `test_an_oversized_request_is_refused_before_any_provider_call` |
+| `artifact save` refuses blank content with `invalid_model`, exit 1 instead of 0, before any file or status write; missing sessions and unowned types still take precedence, and no correct save used that path, so compatible | #763 | `test_a_blank_artifact_is_refused_without_a_file_or_freshness_record`, `test_blank_artifacts_preserve_the_missing_session_and_unowned_type_refusals` |
 | `discover -` reads stdin like its siblings and refuses an empty source before any provider call, rather than discovering on the literal text `-` | #360 | `test_a_dash_with_a_terminal_on_stdin_is_refused_rather_than_discovered_on` |
 | The eight write verbs (`brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release`, `answer`) no longer mine a `model.json`/`session.json` path for its parent directory's name — a path is opened or refused, never silently resolved to an unrelated same-named session | #402 | `test_resolve_slug_no_longer_mines_a_nonexistent_model_json_path`, `test_a_nonexistent_model_json_path_does_not_silently_use_an_unrelated_real_session` |
 | The same closes for a bare directory argument on every `deterministic/` verb | #414 | `test_resolve_slug_refuses_a_directory_that_is_not_a_session`, `test_a_directory_reference_does_not_silently_use_an_unrelated_real_session` |

@@ -504,6 +504,30 @@ def test_a_stated_source_revision_still_records_the_flag_it_always_did(art, move
     assert (stale.revision, stale.stale, fresh.revision, fresh.stale) == (1, True, 2, False)
 
 
+@pytest.mark.parametrize("content", ["", "  \n", "\t"])
+def test_a_blank_artifact_is_refused_without_a_file_or_freshness_record(art, moved, content):
+    """#763: empty output must not become an up-to-date document."""
+    with pytest.raises(E.InvalidModelError) as exc:
+        art.save(moved, "prd", content, source_revision=1)
+    assert exc.value.details == {"slug": moved, "type": "prd"}
+    prd = store.canonical_dir(moved) / "artifacts" / "prd.md"
+    assert not prd.exists() and "prd" not in store.read_meta(moved).artifact_status
+    art.save(moved, "prd", "# PRD", source_revision=1)
+    assert prd.read_text(encoding="utf-8") == "# PRD"
+    assert "prd" in store.read_meta(moved).artifact_status
+
+
+def test_blank_artifacts_preserve_the_missing_session_and_unowned_type_refusals(art, moved):
+    """#763: the session and perimeter checks still precede the new content refusal."""
+    with pytest.raises(E.SessionNotFoundError):
+        art.save("missing", "prd", "", source_revision=1)
+    SessionService().create_session("Plan a launch.", slug="launch", perimeter="go-to-market")
+    with pytest.raises(E.ArtifactTypeNotOwnedError):
+        art.save("launch", "prd", "", source_revision=1)
+    with pytest.raises(E.InvalidModelError):
+        art.save(moved, "prd", "")
+
+
 def test_an_omitted_source_revision_is_refused_rather_than_read_as_now(art, moved):
     """#6 F1: the save that used to be recorded `revision: 2, stale: false`; it writes nothing and says what to pass."""
     with pytest.raises(UnstatedSourceRevisionError) as e:
