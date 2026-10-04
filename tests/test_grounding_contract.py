@@ -239,7 +239,9 @@ def test_a_routing_verdict_survives_a_failed_grounding_call():
     narrowed = DiscoveryService(_RoutesThenGrounds(_NARROWS)).claim_and_ground("a billing request", cards=None, slug=None)
     assert retried.routing.judgment is None, "the retry routed again: the fixture no longer exercises the failure path"
     assert narrowed.cards == ["financial-reporting"], "the narrowing re-claim did not happen"
-    assert [SessionService().meta(c.meta.slug).perimeter_fit for c in (retried, narrowed)] == ["no_fit", "no_fit"]
+    # Persisted, and on the meta `claim_and_ground` returns, narrowed or not (second Codex review).
+    assert [(c.meta.perimeter_fit, SessionService().meta(c.meta.slug).perimeter_fit)
+            for c in (retried, narrowed)] == [("no_fit", "no_fit")] * 2
 
 
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict():

@@ -453,6 +453,7 @@ def test_the_routers_verdict_is_recorded_on_the_session_it_claimed():
                _claim(_Router(), "an order form", perimeter=SOFTWARE)]
     verdicts = [(m.perimeter_fit, m.perimeter_fit_reason) for m in (SessionService().meta(c.meta.slug) for c in claimed)]
     assert verdicts == [("no_fit", "A pricing decision."), ("fits", "r"), (None, None)]
+    assert [(c.meta.perimeter_fit, c.meta.perimeter_fit_reason) for c in claimed] == verdicts, "the returned meta lacks it"
 
 
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_routing_verdict():
