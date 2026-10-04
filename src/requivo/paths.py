@@ -6,6 +6,7 @@ resolves paths through here, never through its own `__file__`.
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 # Assets sit next to this file, inside the package; a wheel unpacks to the filesystem, so a plain Path works.
@@ -23,6 +24,16 @@ def workspace_root() -> Path:
     """The user's working area, where sessions are written: cwd, or `REQUIVO_WORKSPACE`. Evaluated per call."""
     override = os.getenv("REQUIVO_WORKSPACE")
     return Path(override) if override else Path.cwd()
+
+
+def workspace_flag() -> str:
+    """` --workspace <dir>` for a printed next step when sessions live outside the cwd, else "" (#772):
+    a hint is pasted where it was printed, and must still find the session the command read there. POSIX
+    single-quoted, so a pasted hint runs no `$(...)` its path holds (the plugin's shell is POSIX everywhere)."""
+    override = os.getenv("REQUIVO_WORKSPACE")
+    if not override or Path(override).resolve() == Path.cwd().resolve():
+        return ""
+    return f" --workspace {shlex.quote(str(Path(override).resolve()))}"
 
 
 def store_root() -> Path:

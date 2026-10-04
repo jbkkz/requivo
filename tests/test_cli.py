@@ -49,7 +49,7 @@ from requivo.core.dependencies import propagate
 from requivo.core.errors import RequivoError
 from requivo.core.persistence import load_model
 from requivo.deterministic import is_file_argument
-from requivo.paths import DEMO
+from requivo.paths import DEMO, workspace_flag
 from requivo.providers.anthropic.generators import _OP_PROMPTS
 from requivo.render.markdown import _stated
 from requivo.render.terminal import DRAFT_NOTE, docs_menu_rows, next_command, render_readiness
@@ -585,17 +585,25 @@ def test_open_questions_point_at_answer():
     assert next_command({"slug": "x", "questions": [], "readiness": {"ready": True}}) is None   # a bare model file
 
 
-def test_the_human_status_view_ends_with_exactly_one_pointer():
-    """The line is there once, at the end, and the `--json` payload is untouched by it."""
+def test_the_human_status_view_ends_with_exactly_one_pointer(tmp_path, monkeypatch):
+    """The line is there once, at the end, and the `--json` payload is untouched by it. Read from another
+    directory, it repeats the workspace, or pasted where it was printed it finds no session (#772)."""
     store.create_session(_SLUG, "A leave approval system")
     model = {**full_model(), "questions": [{"q": "How are approvals routed today?", "slot": "problem", "why": "w"}]}
     store.save_revision(_SLUG, EngineOutput.model_validate(model))
+    monkeypatch.chdir(tmp_path)
     text = run_cli(["status", _SLUG])
     pointers = [ln for ln in text.splitlines() if ln.lstrip().startswith("→ requivo")]
     assert pointers == [f'→ requivo answer {_SLUG} "<your answers>"'], text
     assert text.rstrip().endswith(pointers[0])
     raw = run_cli(["status", _SLUG, "--json"])
     assert "requivo answer" not in raw and set(json.loads(raw)) >= {"slug", "readiness", "understanding", "questions", "summary"}
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_path / "elsewhere")
+    assert workspace_flag().startswith(" --workspace ")
+    pointer = f'→ requivo answer {_SLUG}{workspace_flag()} "<your answers>"'
+    assert run_cli(["status", _SLUG]).rstrip().splitlines()[-1] == pointer
+    assert next_command(_payload(questions=1), "claude-code", " --workspace '/a b'").startswith(f"/requivo:run {_SLUG} --workspace '/a b'")
 
 
 def test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb():

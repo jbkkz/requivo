@@ -35,7 +35,7 @@ from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
 from requivo.deterministic._shared import JSON_HELP
-from requivo.paths import DEMO, workspace_root
+from requivo.paths import DEMO, workspace_flag, workspace_root
 
 # The only provider names this surface may take, each a surface concern (#77, #167); the list is
 # guarded both ways by `test_the_surfaces_reach_the_provider_only_through_the_named_surface_concerns`.
@@ -270,7 +270,7 @@ def _rescue_drafted(disco, request: str, e: DraftingFailed, *, cards, slug: str,
         print(f"\nTurn {e.turn} failed, so the {kept} turn(s) before it were saved rather than "
               f"discarded.", file=sys.stderr)
         print(f"Saved session → {store.canonical_dir(slug)}", file=sys.stderr)
-        print(f'Continue where you left off with:\n  requivo answer {slug} "<your answers>"',
+        print(f'Continue where you left off with:\n  requivo answer {slug}{workspace_flag()} "<your answers>"',
               file=sys.stderr)
     # Re-raised, not wrapped: `app()` decides the exit code and prints the usage tail (#206).
     raise e.cause
@@ -339,7 +339,7 @@ def _cmd_discover(a, client) -> None:
         render_turn(out, perimeter)
         _say_saved(slug)
         if out.questions:
-            print(f'\n→ Answer and refine: requivo answer {slug} "<your answers>"')
+            print(f'\n→ Answer and refine: requivo answer {slug}{workspace_flag()} "<your answers>"')
         return
 
     # Invariant 13's gate before the loop pays (#133):
@@ -372,7 +372,7 @@ def _cmd_discover(a, client) -> None:
         slug = disco.finalize_discovery(request, out, cards=only, slug=slug,
                                         brief=None, surface="cli-discover", perimeter=perimeter)
         _say_saved(slug)
-        print(f'\n→ Answer and refine: requivo answer {slug} "<your answers>"')
+        print(f'\n→ Answer and refine: requivo answer {slug}{workspace_flag()} "<your answers>"')
         return
 
     # The write comes before the last paid call (#202), so a failed assessment is one retryable call.
@@ -393,7 +393,7 @@ def _cmd_discover(a, client) -> None:
         # `KeyboardInterrupt` belongs here (#320): `test_an_interrupt_during_the_brief_reports_the_saved_session`.
         print(f"\nThe decision brief did not complete: {_why(e)}", file=sys.stderr)
         print(f"Your discovery is saved and nothing was lost — retry just this step with:\n"
-              f"  requivo brief {slug}", file=sys.stderr)
+              f"  requivo brief {slug}{workspace_flag()}", file=sys.stderr)
         # Re-raised, not wrapped: `app()` decides the exit code (#206).
         raise
     # `gen.model`, not `out`: the assessment's reasoning is absorbed into the model by now.
@@ -425,12 +425,12 @@ def _cmd_answer(a, client) -> None:
     reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
     if n_reasoning and reasoning_type:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
-        print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}`.")
+        print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}{workspace_flag()}`.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")
     if out.questions:
-        print(f'\n→ Keep going: requivo answer {slug} "<your answers>"')
+        print(f'\n→ Keep going: requivo answer {slug}{workspace_flag()} "<your answers>"')
     else:
-        print(f"\n✅ Discovery converged — run `requivo {reasoning_type} {slug}` for the {_LABEL[reasoning_type]}." if reasoning_type else "\n✅ Discovery converged.")
+        print(f"\n✅ Discovery converged — run `requivo {reasoning_type} {slug}{workspace_flag()}` for the {_LABEL[reasoning_type]}." if reasoning_type else "\n✅ Discovery converged.")
 
 
 def _is_existing_session(svc: SessionService, ref: str) -> bool:
@@ -482,7 +482,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
         render_turn_state(out, perimeter, prev)
         if not out.questions:
             primary = get_perimeter(perimeter).primary_artifact  # #609 -- was hardcoded "brief"
-            print(f"\n✅ Discovery converged — run `requivo {primary} {slug}` for the {_LABEL[primary]}."
+            print(f"\n✅ Discovery converged — run `requivo {primary} {slug}{workspace_flag()}` for the {_LABEL[primary]}."
                  if primary else "\n✅ Discovery converged.")
             return
         answers = _prompt_answers(out.questions, perimeter)
@@ -584,7 +584,7 @@ def _cmd_status(a, client) -> None:
             meta = svc.meta(slug)
             render_session_cost(meta.revisions)
             provider = meta.provider   # the footer follows the session's provider (#720)
-    render_next_command(payload, provider)
+    render_next_command(payload, provider, workspace_flag())
 
 
 DEMO_SLUG = "event-checkin-reconciliation"
@@ -885,7 +885,7 @@ def _cmd_docs(a, client) -> None:
     if type_tokens:
         type_tokens = _resolve_doc_types(type_tokens, owned_types)
     if meta.current_revision < 1:
-        print(f"Session '{display_token(slug)}' has no model yet -- run `requivo run {slug}` to "
+        print(f"Session '{display_token(slug)}' has no model yet -- run `requivo run {slug}{workspace_flag()}` to "
               "start the conversation before generating a document.")
         return
     if a.all:

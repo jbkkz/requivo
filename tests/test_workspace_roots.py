@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
+import subprocess
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +16,7 @@ from requivo.core import persistence as store
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import Store
 from requivo.core.persistence import store as store_module
-from requivo.paths import workspace_root
+from requivo.paths import workspace_flag, workspace_root
 from requivo.services.discovery import DiscoveryService
 from requivo.services.repository import FileSessionRepository
 from requivo.services.sessions import SessionService
@@ -165,3 +168,21 @@ def test_lock_key_resolves_the_root_once_at_construction_not_per_acquisition(tmp
     for _ in range(5):
         assert s._lock_key("s") == s._lock_key("s")
     assert calls == [], f"_lock_key resolved the root itself: {len(calls)} call(s)"
+
+
+def test_a_printed_next_step_names_the_workspace_only_when_it_is_not_the_cwd(tmp_path, monkeypatch):
+    """#772: a hint pasted from the cwd must find the session, and replaying it in a shell runs nothing its
+    path holds (Codex on #796: double quotes still let `$(...)` and backticks through)."""
+    hostile = tmp_path / "a b $(touch pwned) `touch pwned2` 'q' ;x"
+    hostile.mkdir()
+    monkeypatch.delenv("REQUIVO_WORKSPACE", raising=False)
+    assert workspace_flag() == ""
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(hostile))
+    flag = workspace_flag()
+    assert shlex.split(flag) == ["--workspace", str(hostile.resolve())]
+    if shutil.which("sh"):
+        replayed = subprocess.run(["sh", "-c", f"printf %s{flag.removeprefix(' --workspace')}"], cwd=tmp_path,
+                                  capture_output=True, text=True, encoding="utf-8", check=True)
+        assert replayed.stdout == str(hostile.resolve()) and not list(tmp_path.glob("pwned*"))
+    monkeypatch.chdir(hostile)
+    assert workspace_flag() == ""

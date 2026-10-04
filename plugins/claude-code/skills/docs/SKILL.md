@@ -13,6 +13,11 @@ matching generator skill's own steps for each pick. Read `${CLAUDE_PLUGIN_ROOT}/
 unless you already hold it from an earlier `/requivo:*` in this conversation — and read it again
 whenever you are unsure you still do.
 
+**Sessions outside the current directory (#772).** When `$ARGUMENTS` carries `--workspace DIR` (the
+`status` footer prints one when the session is not in the current directory), take both tokens out
+before step 2 reads the rest: they name where the session lives, never a document. Every `requivo`
+command below then takes that same `--workspace DIR` after the verb, the preflight `doctor` included.
+
 ## 1. Preflight
 Run the shared **preflight** from REASONING.md before anything else: `requivo doctor --json`,
 checking whether the command ran *at all* rather than what it reported. If it could not run, the

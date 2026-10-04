@@ -5,6 +5,7 @@ remedy hints live in `remedies.py`, shared with `session verify` (#556). No LLM,
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 
@@ -199,10 +200,45 @@ def _cmd_schema(a, client) -> None:
     `--perimeter` (#608) selects the installed perimeter, software by default."""
     from requivo.core.perimeters import get_perimeter
     perimeter = get_perimeter(getattr(a, "perimeter", None) or "software")
+    if getattr(a, "proposal", False):
+        _print_proposal_shape(perimeter.id)
+        return
     print(perimeter.schema_path.read_text(encoding="utf-8"))
     if a.framework:
         print(f"\n\n<!-- {perimeter.id} perimeter's elicitation.md (human spec) -->\n")
         print(perimeter.elicitation_path.read_text(encoding="utf-8"))
+
+
+def _print_proposal_shape(perimeter: str) -> None:
+    """`schema --proposal` (#770): `proposal_shape`'s example and rules, so a keyless caller reads the
+    contract instead of the source; the vocabulary in each line comes from the enums it names."""
+    from requivo.core.contracts import MAX_QUESTIONS, Confidence, Impact
+    from requivo.core.validation import proposal_shape
+    shape = proposal_shape(perimeter)
+    optional = f" Optional, may be left out: {', '.join(shape['optional'])}." if shape["optional"] else ""
+    grades, impacts = ", ".join(c.value for c in Confidence), ", ".join(i.value for i in Impact)
+    rows = [
+        ("model", f"one record per slot id. Required: {', '.join(shape['required'])}.{optional}"),
+        ("record", f"completeness 0-100; confidence one of {grades}; impact one of {impacts}; value, evidence "
+                   'and test_plan are strings, never null ("" when there is nothing to say).'),
+        ("testable", "unknown, and settled only by a real test, which test_plan names (required): it does not "
+                     "block readiness, and status shows it under To test."),
+        ("claims", "optional, on a slot that mixes provenance: one per independently confirmable statement."),
+        ("questions", f"at most {MAX_QUESTIONS}, each {{q, slot, why}}."),
+        ("summary", "objective is required, in one line; scope, assumptions and blind_spot complete it."),
+        ("reasoning", "decisions, challenges, opportunities, exclusions, thresholds: absent keeps what stands, "
+                      "[] deletes it, a list replaces it. An item's id derives from its text and is never sent."),
+    ]
+    print(f"# The proposal `requivo model apply <session> -` reads ({shape['perimeter']} perimeter)")
+    print("\nBuilt from the contracts `model apply` validates with, which accept it; every <...> is a placeholder.\n")
+    print_json(shape["proposal"])
+    print()
+    for label, text in rows:
+        print(f"{label:<10} {text}")
+    print("\nA refusal exits 1 and, under --json, prints one envelope: code and message always, path and "
+          "details when set. Two this CLI raises for broken copies of the example above:")
+    for envelope in shape["refusals"]:
+        print(json.dumps(envelope))
 
 
 def _cmd_context(a, client) -> None:
@@ -478,7 +514,10 @@ def register_doctor(sub) -> None:
 
     # schema / context — read-only knowledge for a reasoning caller (Claude Code)
     sc = sub.add_parser("schema", help="print the slot schema (the model vocabulary + driver rule)")
-    sc.add_argument("--framework", action="store_true", help="also print the human framework spec")
+    shape = sc.add_mutually_exclusive_group()
+    shape.add_argument("--framework", action="store_true", help="also print the human framework spec")
+    shape.add_argument("--proposal", action="store_true",
+                       help="print the proposal `model apply` reads instead: an example and its rules")
     sc.add_argument("--perimeter", default="software", metavar="ID",
                     help="which installed perimeter's schema to print (default: software)")
     sc.set_defaults(func=_cmd_schema)

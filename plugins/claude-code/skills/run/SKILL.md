@@ -14,6 +14,12 @@ trust boundary, honesty per slot, the apply loop — unless you already hold it 
 `/requivo:*` in this conversation, and read it again whenever you are unsure you still do (its
 opening rule says why, and which way to err).
 
+**Sessions outside the current directory (#772).** When `$ARGUMENTS` carries `--workspace DIR` (a
+`status` hint prints one when the session is not in the current directory), take it out of the
+arguments; then every `requivo` command this skill runs takes that same `--workspace DIR`, after the
+verb, the preflight `doctor` and `session init` included. So does every command after a `session
+init` you ran with `--workspace` in step 3. The commands below are shown without it.
+
 ## 1. Preflight, then check the install
 
 Start with the **preflight** in REASONING.md: run `requivo doctor --json` and check first whether the
@@ -228,6 +234,9 @@ first would re-present a list the user already answered instead of folding their
 - `requivo schema --perimeter <perimeter>` — the session's own vocabulary (`perimeter` from
   `session init`): the slot ids, each slot's impact default and signals, and the driver rule
   (`information_value = uncertainty × impact`).
+- `requivo schema --proposal --perimeter <perimeter>` — the proposal `model apply` reads, generated
+  from its contracts: a slot record per confidence, the `summary` fields, one item of each reasoning
+  kind, the required and optional slots, and the refusal envelope (#770). An older CLI refuses the flag.
 - `requivo context --session <slug>` — the product knowledge that grounds your impact estimates,
   narrowed to the cards this session was created with (all of them unless `--context` was given
   at init; with `--context none`, a statement that there is none, and impact starts from each
@@ -293,13 +302,16 @@ uncertain and high-impact. Nothing read, nothing to list.
 ### Reason → propose
 
 Build the model in your head from the request, the context and what the repository showed: for
-**every** schema slot, decide its `value`, `confidence` (explicit / inferred / empty), `completeness`
-(0–100), and `impact`, plus `claims` on a slot that mixes provenance. Follow the honesty rules —
-mark inferences as inferred, leave true unknowns empty, invent nothing the requester did not say, and
-bring your proposals and domain facts labelled (`proposed:`, `domain:`). Include a `summary` and,
-where information value is high, 3–6 `questions` — each one
-`{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text field is **`q`**; see the
-apply loop in REASONING.md for why that is worth reading before you emit six of them.
+every required slot, and each optional one you have something to say about, decide its `value`,
+`confidence` (explicit / inferred / empty / `testable`, the bet only a real test settles, named in
+its `test_plan`), `completeness` (0–100), and `impact`, plus `claims` on a slot that mixes
+provenance. Follow the honesty rules — mark inferences as inferred, leave true unknowns empty,
+invent nothing the requester did not say, and bring your proposals and domain facts labelled
+(`proposed:`, `domain:`). Include a `summary` — all four of `objective`, `scope`, `assumptions` and
+`blind_spot`, since `status` reads each back — and, where information value is high, 3–6
+`questions` — each one `{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text
+field is **`q`**; see the apply loop in REASONING.md for why that is worth reading before you emit
+six of them.
 
 **Acceptance is derived, not asked** (#734). Draft Given/When/Then criteria from the slots the user
 has confirmed (rules, workflow, edge cases, the success measure) into `acceptance`, where the
@@ -317,12 +329,12 @@ JSON
 `N` is the revision from creating the session, above. On a new session that is `0`, which asserts what
 you assumed: nothing had been applied while you were reasoning.
 
-If it fails, read the error `code`/`details`, fix the proposal, and apply again
-(`missing_required_slot` → emit every required slot; `unknown_slot` → correct the id). A refused apply
-wrote nothing — no revision, no `model.json` — so there is nothing to undo and `N` is still current;
-see the apply loop in REASONING.md. `revision_conflict` is the one error that is not about your
-proposal: someone else wrote to the session first, so re-read the model and continue this
-conversation against the current state instead of overwriting it.
+If it fails, read the error's `code`, `message`, `path` (and `details` when set), fix the proposal,
+and apply again (`missing_required_slot` → emit every required slot; `unknown_slot` → correct the
+id). A refused apply wrote nothing — no revision, no `model.json` — so there is nothing to undo and
+`N` is still current; see the apply loop in REASONING.md. `revision_conflict` is the one error that
+is not about your proposal: someone else wrote to the session first, so re-read the model and
+continue this conversation against the current state instead of overwriting it.
 
 Do not validate first and then apply the same JSON. That emits the whole model twice — the largest
 block of context a turn spends — and `model apply` runs the identical validation before it writes
@@ -443,8 +455,9 @@ requivo model apply <slug> - --expected-revision N --json <<'JSON'
 { … the full updated model … }
 JSON
 ```
-On any error, read `code`/`details`, fix the proposal and apply again (see the apply loop in
-REASONING.md). A refused apply wrote nothing, so `N` is still current and there is nothing to undo.
+On any error, read its `code`, `message`, `path` (and `details` when set), fix the proposal and apply
+again (see the apply loop in REASONING.md). A refused apply wrote nothing, so `N` is still current and
+there is nothing to undo.
 
 Do not validate first and then apply the same JSON: `model apply` runs the identical validation
 before it writes, so the dry run buys nothing and makes you emit the whole model twice — per turn,

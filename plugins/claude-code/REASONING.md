@@ -25,6 +25,10 @@ The probe is one command — offline, deterministic, and it changes nothing:
 requivo doctor --json
 ```
 
+When the session lives outside the current directory, pass its `--workspace DIR` here too, as every
+command does (see *Sessions outside the current directory*), or the report's `workspace` and
+`sessions` describe this directory's `.requivo/` instead of the session's.
+
 `doctor` is also the binary in question, and that is the trap: **what you are checking is whether the
 command ran at all, not what it reported.** Two different failures wear the same red.
 
@@ -153,13 +157,18 @@ below, and doubles as a standalone diagnostic outside this session.)
 Three outcomes, and the third is the one to get right:
 
 1. **`requivo_version` is equal to or newer than the plugin's `version`.** Say nothing — this is the
-   healthy, expected state, and flagging it on every single run would be noise nobody reads.
+   healthy, expected state, and flagging it on every single run would be noise nobody reads. A `.dev`
+   build is older than the release it becomes, and newer than the one before it.
 2. **`requivo_version` is older.** Warn and continue — do **not** refuse or stop the skill. Tell the
    user, once, in one line: *"This plugin was tested against requivo `<plugin version>`; you have
    `<requivo_version>` installed. Most commands still work across a minor version — if one fails
    with an argparse error about an unrecognized argument, that is why: `pip install -U requivo` (or
    `uv tool install --force requivo`)."* Then carry on with the skill as normal; the plugin is
    keyless and most verbs are unaffected by a minor skew, so proceeding is the right default.
+   **When the plugin's `version` carries a `.dev` suffix** it is a development build from `main`,
+   ahead of every release (#769), and an upgrade cannot catch the CLI up. Say that instead, once: it
+   may document a field or a flag the installed CLI rejects as an extra input or an unrecognized
+   argument; drop that one and run the command again.
 3. **You could not determine one or both numbers** — `requivo_version` was missing from the doctor
    JSON, the JSON did not parse, or the manifest could not be read. This is a third state, never
    "assume they match": say plainly that the skew check could not run and why, then continue the
@@ -201,6 +210,10 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   a session's card selection is held constant across its turns, and reading every card on a later
   turn means reasoning from a wider context than the model was built on.
 - Every slot you emit MUST be a schema slot id. A typo or invented slot is rejected by validation.
+- Get the exact proposal shape with `requivo schema --proposal --perimeter <id>` (#770): the envelope,
+  a slot record per confidence, every `summary` field, one item of each reasoning kind, which slots
+  are required, and the refusal envelope, all built from the contracts `model apply` validates with.
+  Read it before your first apply rather than guessing a field; a CLI older than the flag refuses it.
 - The **driver** is `information_value = uncertainty × impact`. Ask (and probe) where information value
   is high; leave empty-but-low-impact slots alone. Impact is estimated from the product context.
 
@@ -210,6 +223,10 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   - `explicit` — the request states it outright, or the user confirmed it in an answer.
   - `inferred` — you reasonably assumed it from context. Say so; never present an assumption as a fact.
   - `empty` — genuinely unknown. Do **not** invent a value to fill it.
+  - `testable` — unknown, and **not** answerable by asking: only a real test or experiment settles it
+    (will anyone pay, does the volume hold). Name that test in `test_plan`, which `testable` requires.
+    It does not block readiness and shows as *to test*; an untested bet graded `inferred` keeps
+    blocking readiness on a question no answer can settle.
 - **An ambiguous phrase is a question, not an inference** (#733). When the requester's own words admit
   two or more readings that would change the solution, do not pick one as `inferred`: leave the slot
   `empty`, quote the phrase, and ask which reading they meant.
@@ -282,6 +299,15 @@ Every document, tagged or not, keeps the requester's words apart from what was i
 role, constraint or number they did not give is a proposal, presented as one, never as fact; and
 where an answer admits more than one reading, the document says which reading it took.
 
+## Sessions outside the current directory
+
+A session lives under its workspace's `.requivo/`: the current directory, unless `--workspace DIR`
+or `REQUIVO_WORKSPACE` names another. When it is another (the skill's arguments carry
+`--workspace DIR`, or the session was created with one), every `requivo` command you run takes that
+same `--workspace DIR`, placed after the verb (`requivo status <slug> --json --workspace DIR`) so
+the skill's grant still covers it. The skills' examples omit it. A next-step hint the CLI prints
+already carries it (#772).
+
 ## The revision contract (every skill, no exceptions)
 
 A session is versioned, and you are not its only writer. The same session can be open in Requivo Web,
@@ -290,6 +316,8 @@ you think. So **every skill states the revision it reasoned from, and lets Core 
 still true**:
 
 1. **Read the revision** before you reason: `requivo status <session> --json` → the `revision` field.
+   A session at revision `0` holds no model yet and `status` refuses it, so there `N` is the `revision`
+   that `session init` (or the `session list` row) gave you, with no `status` call in between.
 2. **Reason** from the model at that revision.
 3. **Apply** with the precondition: `requivo model apply <session> - --expected-revision <N>`.
 4. **Save artifacts** against the revision they were reasoned from:
@@ -312,7 +340,8 @@ what the change touched: an artifact whose dependencies moved is recorded stale 
 Every skill that changes the model follows the same loop. **Pass content on stdin with `-`** — no temp
 files anywhere:
 
-1. **Read the current revision**: `requivo status <session> --json` → `revision`. Call it `N`.
+1. **Read the current revision** as the revision contract says (`status --json`, or `session init`
+   at revision `0`). Call it `N`.
 2. Reason, then feed the proposal straight in — never edit `model.json` directly:
    ```bash
    requivo model apply <session> - --expected-revision N --json <<'JSON'
@@ -322,10 +351,11 @@ files anywhere:
    A question is `{ "q": …, "slot": …, "why": … }` — **the text field is `q`**, not `question`, the
    natural guess. The contract is `extra="forbid"`, so the guess costs a whole apply cycle: two
    errors per question (#489).
-3. If it fails, read the JSON error (`code`, `message`, `details`), **fix your proposal**, and apply
-   again. Repeat until it lands. Common codes: `unknown_slot` (a slot id isn't in the schema),
-   `missing_required_slot` (you dropped a required slot — emit every one), `invalid_model`
-   (shape/JSON). On `revision_conflict`, see the revision contract above.
+3. If it fails, read the JSON error (`code`, `message`, `path`, and `details` when it is set), **fix
+   your proposal**, and apply again. Repeat until it lands. Common codes: `unknown_slot` (a slot id
+   isn't in the schema), `missing_required_slot` (you dropped a required slot — emit every one),
+   `invalid_model` (shape/JSON: the `message` names the field). On `revision_conflict`, see the
+   revision contract above.
 4. Read back the structured result (revision, changed_slots, changed_claims, changed_decisions,
    changed_challenges, changed_opportunities, changed_exclusions, changed_thresholds,
    stale_artifacts, readiness) and relay it.

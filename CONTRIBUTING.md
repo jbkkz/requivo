@@ -147,6 +147,16 @@ This limit is stated rather than closed, deliberately. A `push:` trigger on `mai
 permanently red default branch, which is a worse lie than the one it fixes. If you push directly to
 `main`, add the fragment in that same commit; nothing will remind you.
 
+### Between releases, `main` carries a `.dev0` version
+
+The plugin marketplace serves `plugins/claude-code` from `main`, so whatever version `main` declares
+is the version a user's installed plugin reports. A release commit sets every site in `.oss.json`'s
+`version_sites` to `X.Y.Z`, and the first pull request that lands a `changelog.d/` fragment after it
+sets them to the next patch's `X.Y.(Z+1).dev0`, whatever the next release turns out to be (#769).
+Then the plugin's preflight sees a development build beside a released CLI instead of two equal
+numbers. `test_plugin.py`'s `test_main_past_a_release_never_wears_a_release_version` goes red on a
+fragment under a release number, and the release replaces the `.dev0` with the number it cuts.
+
 ### The guards that read your source and your prose
 
 A share of this suite does not test the product at all: it tests the repository's *form* — an import,
@@ -164,6 +174,7 @@ read the guard to appease it.
 | renames or deletes a test | `test_source_form.py` | **grep for the old name first** — see the coupling below |
 | adds a decision record under `docs/decisions/` | `test_source_form.py` | give it a `**Slug:**` line, and leave a `` `decision: <slug>` `` pointer, on one line, at whatever the record explains |
 | adds a file that declares the project version | `test_version_sites.py` | make it agree with the others, and register the path in `.oss.json`'s `version_sites` |
+| adds the first `changelog.d/` fragment after a release | `test_plugin.py` | bump every version site to the next patch's `.dev0` (see above) |
 | edits a heading in `docs/compatibility.md` | `test_cli_flag_names.py`, `test_cli_degraded_listing.py` | the page is parsed as data — see the coupling below |
 | adds a `--json` output, or changes a payload's shape | `test_cli_flag_names.py`, `test_public_payload_shapes.py` | add the row to `docs/compatibility.md`'s promise table and update the payload pin in the same change |
 | edits a prompt's `# Output format` example | `test_prompt_contracts.py` | the example must validate against the contract that operation actually parses replies with |
