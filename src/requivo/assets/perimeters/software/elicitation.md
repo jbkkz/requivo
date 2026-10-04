@@ -82,7 +82,16 @@ surface the decision early, while it's still cheap to make.
 
 Everything is a render of the same model. While the discovery is still open, each turn shows a
 **discovery status** (per-pillar progress, a readiness verdict) and the **priority questions** —
-ordered by information value, each with the reason it's being asked.
+ordered by information value, which is shown with each one (`requivo status --json` adds the reason
+it is asked). The order is computed from the target slot, not taken from the reasoning: uncertainty
+from its completeness and confidence, impact from its impact (the one-line formula is in
+`core/analysis.py`), ties keeping the order the turn proposed.
+
+A turn may propose more questions than a checkpoint asks (`MAX_QUESTIONS` against the CLI's
+`QUESTIONS_PER_CHECKPOINT`, which the Claude Code skill follows). A checkpoint asks the leading ones by
+information value, one at a time; the rest are not queued. The next turn derives its own questions
+against the updated model, so one that is still worth asking comes back, ranked against what the
+answers changed.
 
 When nothing high-value is left to ask, it produces the deliverable: a **Decision brief**. Alongside
 the objective and the assumptions still to confirm, the brief adds a consultant's read — what the

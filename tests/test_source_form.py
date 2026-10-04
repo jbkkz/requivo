@@ -348,7 +348,7 @@ _SURFACE_STORAGE_ALLOWLIST = {
     ("cli.py", "canonical_dir"): "prints where a session landed after discover/answer -- no repository path exists to route it through.",
     ("cli_support.py", "artifact_path"): "prints a generated artifact's path (moved out of cli.py by #550); a printed path is a disclosure like any other (#36).",
     ("cli.py", "write_artifact_file"): "writes the three neutral epic exports -- untracked extra views of an already-saved artifact, not a second artifact-list row. Carries its own source_revision since #274.",
-    ("cli.py", "load_model"): "reads a bare model.json the user named on the command line -- not a session, no repository method can reach it.",
+    ("cli_support.py", "load_model"): "`_resolve_ref` reads a bare model.json the user named, or the demo's -- not a session, no repository method can reach it.",
     ("deterministic/sessions/lifecycle.py", "canonical_dir"): "session init reports where the session landed. See the cli.py entry.",
     ("deterministic/sessions/archives.py", "canonical_dir"): "restore needs the directory it copies into, and import reports where the session landed; the archive itself is services/archives.py's (#702).",
     ("deterministic/sessions/verify.py", "canonical_dir"): "the restore remedy line searches this session's own revisions/ before telling the reader session restore would do anything.",

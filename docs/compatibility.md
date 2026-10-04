@@ -95,11 +95,10 @@ of each value, nothing nested — is recorded and pinned per verb by
 forms (#717):** named slots give the API's `/impact` report plus `slug`, no slots `{slug, map,
 evidence}`. `model show --json` is the model document the bare verb prints.
 
-**`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`,
-`summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `perimeter_fit`, `perimeter_fit_reason`,
-`context_cards` and `artifacts` are added only for a canonical session, because a bare `model.json` has no
-session to read them from. Both forms are public. Pinned by
-`test_status_and_impact_still_open_a_model_json_path_directly`.
+**`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`, `summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `perimeter_fit`, `perimeter_fit_reason`,
+`context_cards` and `artifacts` are added only when the reference resolves to a canonical session, because a bare `model.json` has no session to read them from. Both forms are public. Pinned by
+`test_status_and_impact_still_open_a_model_json_path_directly`. **`status --recap --json` (#785)** is a third form, a session's only: `{slug, objective, ready, decided, decisions, questions, assumed,
+proposed, to_test, blocking, since, since_revision, changed, reasoning_changed, documents, next}` (`since` is the oldest current document, `{type, revision}`), pinned by `test_the_recap_says_where_we_stand_in_plain_words`.
 
 **A code carries one fact, and one `details` shape** — the rule that makes "assert on the code, never
 the message" safe to follow. Where a single code used to answer for more than one condition, it was
@@ -150,6 +149,7 @@ choice, as `opaque_origin`/`origin_mismatch` do (`test_the_two_provenance_refusa
 | the status payload's `reason` on each `readiness.blocking_slots` and `remaining_gaps` entry | `unconfirmed`, `thin` or `unknown`, nested one level down; readiness decides exactly as before | #722 | `test_the_status_screen_has_one_meaning_of_confirmed` |
 | `model apply`/`model diff`'s `changed_decisions`, `_challenges`, `_opportunities`, `_exclusions`, `_thresholds` | filled on a first apply with what the proposal introduced, as `changed_slots` already was, where they were always empty; the populated meaning moved, so it is named here | #723 | `test_a_first_apply_reports_the_reasoning_it_introduced` |
 | `model apply`/`model diff`'s `changed_claims`, `status`'s `claims_below_slot_impact` and each `understanding` entry's `claims` | `{slot, claim, text, change}` per claim that moved (`added`, `removed`, or `source`/`confirmation`/`answered_by`/`impact`/`test_plan` on a kept id; an answerer that moves with its confirmation is reported once, as `confirmation`); the count of claims rated below their slot's impact; the slot's claims, `[]` when none | #751 | `test_status_labels_claims_and_counts_the_downgraded`, `test_every_public_json_payload_keeps_its_recorded_top_level_shape` |
+| `status`'s `pillars` and each `questions` entry's `information_value`; the order of `questions` | `{pillar: mean completeness 0-100}` in schema order; `uncertainty × impact` in [0, 1] (formula in `core/analysis.py`); `questions` is now ranked by that value (stable, ties in the turn's own order) rather than the turn's order, a populated meaning that moved, so it is named here | #771 | `test_questions_are_ranked_by_information_value_and_show_it` |
 | `sessions.total` | `null`, not `0`, when the session root itself could not be read | #34-family | `test_doctor_tells_an_empty_workspace_from_an_unreadable_one` |
 | `sessions.non_sessions[]` | what is under the session root and is not a session; `slug_shaped` asks the read-time reserved-name rule, so a `con` directory now reads `true` | #67, #408 | `test_doctor_names_what_is_under_the_session_root_and_is_not_a_session`, `test_a_reserved_name_directory_that_is_not_a_session_is_reported_as_taken` |
 | `sessions.unexaminable[]` | names under the session root whose examination raised; distinct from `non_sessions` and excluded from `total` | #80 | `test_an_unexaminable_entry_alone_earns_the_warning_glyph_not_the_clean_tick` |

@@ -48,7 +48,7 @@ _UPDATE_RESULT = _keys("status revision:int readiness:dict", **{k: "list" for k 
 _IMPACT = _keys("slug changed:list decisions:list challenges:list exclusions:list thresholds:list artifacts:list "
                 "stale_artifacts:list evidence:dict")
 _STATUS_BARE = _keys("slug readiness:dict understanding:dict questions:list summary:dict remaining_gaps:list "
-                     "claims_below_slot_impact:int")   # #751
+                     "claims_below_slot_impact:int pillars:dict")   # #751, #771
 
 # The recorded shapes, keyed by verb; `context_cards` is `list|null` wherever a session may select every card.
 # `session delete` is last by necessity: every case above operates on slug "s", and it removes it.
@@ -78,7 +78,10 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
         ("status <slug> --json", ("status", "s", "--json"),
          _keys("revision:int context_cards:list|null artifacts:dict perimeter perimeter_fit:str|null "
                "perimeter_fit_reason:str|null", **_STATUS_BARE)),   # #787 the router's verdict
-        ("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), _STATUS_BARE)],
+        ("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), _STATUS_BARE),
+        ("status <slug> --recap --json", ("status", "s", "--recap", "--json"), _keys(   # #785
+            "slug objective ready:bool decided:list decisions:list questions:list assumed:list proposed:list to_test:list "
+            "blocking:list since:dict|null since_revision:int|null changed:list|null reasoning_changed:list|null documents:list next:str|null"))],
     "session show": [("session show --json", ("session", "show", "s", "--json"), _keys(
         "format_version:int requivo_version session_id slug created_at updated_at provider:str|null "
         "model_name:str|null context_cards:list|null request_hash schema_version:int current_revision:int "

@@ -216,6 +216,15 @@ def test_the_checkpoint_window_fits_inside_the_contract_cap():
     assert folded.count(ARROW) == QUESTIONS_PER_CHECKPOINT and len(folded.splitlines()) == QUESTIONS_PER_CHECKPOINT
 
 
+def test_the_checkpoint_asks_the_highest_information_value_first():
+    """#771: the window takes the core's ranked order, so what falls past it is the least worth asking."""
+    asking = _model(objective="one", questions=[Question(q=f"About {s}?", slot=s, why="w")
+                                                for s in ("reporting", "problem", "workflow", "actors", "permissions")])
+    prompts: list[str] = []
+    _converse(_provider(asking, _model(objective="two")), "a request", ["a"] * QUESTIONS_PER_CHECKPOINT, prompts=prompts)
+    assert [p.split("About ")[1].split("?")[0] for p in prompts] == ["workflow", "actors", "permissions", "reporting"]
+
+
 def test_the_golden_harness_answers_a_turn_in_exactly_the_words_this_loop_does():
     """The golden harness drives `draft_turn` off an answer sheet rather than a TTY, in the loop's own words."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -398,7 +407,7 @@ def test_run_on_a_refined_session_resumes_through_answer_never_rediscovers(monke
 def test_a_first_run_opens_with_the_perimeter_recap_and_a_resume_does_not_repeat_it(monkeypatch, argv_tail,
                                                                                       first_question):
     """#709: the cards precede the first question on both first-run paths, and only there; the defaults
-    list (#731) closes the recap, and a resume's first checkpoint lists it again in full."""
+    list (#731) closes the recap, and a resume's first checkpoint lists it again in full, after where we stand (#785)."""
     _at_a_terminal(monkeypatch, "q")
     reply = json.loads(_ASKING_REPLY)
     reply["model"]["actors"] = slot(60, "inferred", "high", "Line managers approve")
@@ -407,6 +416,8 @@ def test_a_first_run_opens_with_the_perimeter_recap_and_a_resume_does_not_repeat
     assert [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
     resumed = run_cli(["run", _sessions()[0].slug], client=FakeClient())
     assert "Enter skips" in resumed and "GROUNDED ON" not in resumed and "Line managers approve" in resumed
+    assert resumed.index("WHERE WE STAND") < resumed.index("UNDERSTANDING") < resumed.index("Enter skips"), resumed
+    assert "\nOPEN\n" not in resumed and "Not ready to build" not in resumed, "the short recap repeats the checkpoint"
 
 
 _ACTORS = {**slot(60, "inferred", "high", "Line managers"), "evidence": "the request\nnames them"}

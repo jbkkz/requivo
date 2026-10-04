@@ -5,10 +5,16 @@ from __future__ import annotations
 import ipaddress
 import os
 import sys
+from pathlib import Path
 
 from requivo.core import persistence as store
+from requivo.core.contracts import EngineOutput
+from requivo.core.errors import RequivoError, SessionNotFoundError
+from requivo.core.persistence import load_model
 from requivo.core.selectors import display_token
-from requivo.render.terminal import render_perimeter_fit, render_usage
+from requivo.deterministic import print_json
+from requivo.paths import workspace_flag
+from requivo.render.terminal import next_command, render_perimeter_fit, render_recap, render_usage
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionResolution, SessionService
 from requivo.streams import safe_write
@@ -66,6 +72,40 @@ def _resolve_optional_session(svc: SessionService, ref: str | None, *, quiet: bo
     if resolution.candidates and not quiet:
         _print_session_candidates(resolution)
     return resolution.default
+
+
+def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
+    """`status` and `impact`: a model.json path or a session slug to (model, slug). The refusal widens
+    its noun and nothing else (#243)."""
+    p = Path(ref)
+    if p.is_file():
+        return load_model(p), p.parent.name
+    svc = SessionService()
+    if svc.exists(ref):
+        slug = svc.resolve_slug(ref)
+        try:
+            return svc.load_model(slug), slug
+        except SessionNotFoundError:
+            # The session exists but was never discovered: the narrower case, under the same code (#250).
+            raise svc.no_model(slug) from None
+    raise svc.no_session(ref, what="model file or session", details={"ref": ref})
+
+
+def _print_recap(slug: str, payload: dict | None = None, *, as_json: bool = False, short: bool = False) -> None:
+    """Where a session stands on return (#785), for `status --recap` and, `short`, a resuming `run`. With
+    the status `payload` it closes on the one next step `status` names; `run` asks instead. A bare
+    model.json (no `artifacts` in its payload) has no history to recap and is refused."""
+    if payload is not None and "artifacts" not in payload:
+        raise RequivoError("`status --recap` reads a session's revision history, and a bare model.json has "
+                           "none: name the session's slug instead.")
+    svc = SessionService()
+    recap = svc.recap(slug)
+    # The same step `status` names, `--workspace` carried where the sessions live elsewhere (#772).
+    next_line = next_command(payload, svc.meta(slug).provider, workspace_flag()) if payload is not None else None
+    if as_json:
+        print_json({"slug": slug, **recap.to_dict(), "next": next_line})
+        return
+    render_recap(slug, recap, next_line, short=short)
 
 
 def _wrote(slug: str, result, label: str) -> None:
