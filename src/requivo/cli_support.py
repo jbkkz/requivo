@@ -9,7 +9,7 @@ from pathlib import Path
 
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput
-from requivo.core.errors import AmbiguousPerimeterError, InvalidLanguageError, RequivoError, SessionNotFoundError
+from requivo.core.errors import AmbiguousPerimeterError, InvalidLanguageError, RequivoError
 from requivo.core.language import language_name, normalize_language
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_text, display_token
@@ -141,11 +141,7 @@ def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
         raise svc.no_session(ref, what="model file or session", details={"ref": ref})
     if svc.exists(ref):
         slug = svc.resolve_slug(ref)
-        try:
-            return svc.load_model(slug), slug
-        except SessionNotFoundError:
-            # The session exists but was never discovered: the narrower case, under the same code (#250).
-            raise svc.no_model(slug) from None
+        return svc.load_model(slug), slug   # a session never discovered is `session_has_no_model` (#250, #720)
     raise svc.no_session(ref, what="model file or session", details={"ref": ref})
 
 

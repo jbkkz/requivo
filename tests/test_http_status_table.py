@@ -90,6 +90,9 @@ def test_every_error_code_has_an_explicit_http_status():
     # #101.
     ("invalid_archive", 400, "the caller handed us this archive — the same answer its two siblings "
                              "on the import path already give"),
+    # #720.
+    ("session_has_no_model", 409, "the session exists, so not a 404; its state refuses the read, and the "
+                                  "remedy is a first apply, as with revision_conflict"),
     # #702.
     ("unsupported_repository", 501, "the injected backing does not implement the session archive; nothing "
                                     "the caller sent is wrong, and no retry will change it"),
