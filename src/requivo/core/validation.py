@@ -65,9 +65,12 @@ def unearned_confirmation(out: ModelProposal | EngineOutput) -> Incompleteness |
 def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT_CHARS) -> None:
     """Refuse `text` over `limit` characters before a provider call or a persist (invariant 3, never
     truncate; invariant 14, the service is the boundary, #255). `field` names what to shorten."""
-    if len(text) > limit:
+    length = len(text)
+    if length > limit:
         raise InputTooLargeError(
-            f"{field} exceeds {limit:,} characters", details={"limit": limit, "field": field})
+            f"{field} is {length:,} characters, {length - limit:,} over the {limit:,}-character limit. "
+            "Nothing was truncated: summarise it or split it, then try again.",
+            details={"limit": limit, "field": field, "length": length})
 
 
 def validate_proposal(data: dict[str, Any] | str, *, require_complete: bool = True,
