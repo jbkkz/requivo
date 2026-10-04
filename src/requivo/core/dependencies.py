@@ -271,8 +271,8 @@ def introduced_reasoning(new: EngineOutput) -> ReasoningDiff:
                          thresholds=_diff_items([], new.thresholds))
 
 
-# What a kept claim id can move on (#751); its evidence, like a slot's, is not material.
-_CLAIM_FIELDS = ("source", "confirmation", "impact", "test_plan")
+# What a kept claim id can move on (#751), who answered it included; its evidence, like a slot's, is not material.
+_CLAIM_FIELDS = ("source", "confirmation", "answered_by", "impact", "test_plan")
 
 
 def _claim_changes(sid: str, old: Optional[Slot], new: Optional[Slot]) -> list[dict[str, str]]:
@@ -280,8 +280,10 @@ def _claim_changes(sid: str, old: Optional[Slot], new: Optional[Slot]) -> list[d
     after = dict((c.id, c) for c in (new.claims if new else []))
     moves = [(c, "added") for i, c in after.items() if i not in before]
     moves += [(c, "removed") for i, c in before.items() if i not in after]
-    moves += [(c, f) for i, c in after.items() if i in before for f in _CLAIM_FIELDS
-              if getattr(before[i], f) != getattr(c, f)]
+    for i, c in after.items():
+        moved = [f for f in _CLAIM_FIELDS if i in before and getattr(before[i], f) != getattr(c, f)]
+        # A confirmation always names its answerer, so the answerer moves alone or not at all.
+        moves += [(c, f) for f in moved if not (f == "answered_by" and "confirmation" in moved)]
     return [dict(slot=sid, claim=c.id, text=c.text, change=change) for c, change in moves]
 
 

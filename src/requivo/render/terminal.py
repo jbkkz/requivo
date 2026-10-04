@@ -129,7 +129,9 @@ def render_claims(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     """Each slot's claim mix, the count rated below their slot's impact (#751, decision 6) and, with
     `previous`, the claims the turn moved. Silent with no claims: `test_status_labels_claims_and_counts_the_downgraded`."""
     rows = [(sid, s) for sid, s in out.model.items() if s.claims]
-    if not rows:
+    # A turn that removes the last claim still names it: `test_a_turn_that_removes_the_last_claim_still_names_it`.
+    moves = diff_claims(previous, out) if previous is not None else []
+    if not rows and not moves:
         return
     print("\nCLAIMS  (informational: readiness reads each topic as a whole)")
     for sid, s in rows:
@@ -138,7 +140,7 @@ def render_claims(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     below = claims_below_slot_impact(out)
     if below:
         print(f"  {below} claim(s) rated below their topic's impact.")
-    for move in diff_claims(previous, out) if previous is not None else []:
+    for move in moves:
         print(_bullet("moved: " + claim_move(move, perimeter)))
 
 

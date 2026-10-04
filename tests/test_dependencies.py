@@ -153,6 +153,8 @@ def test_a_moved_claim_is_a_material_change():
     assert diff_models(before, confirmed) == ["constraints"] and diff_models(before, _m(dict(stated, evidence="the call"))) == []
     moves = diff_claims(before, confirmed)
     assert [(m["slot"], m["change"], m["text"]) for m in moves] == [("constraints", "confirmation", "5-10 h/week")]
+    by_agent = _m(dict(stated, confirmation="confirmed", answered_by="agent"))
+    assert [m["change"] for m in diff_claims(by_agent, confirmed)] == ["answered_by"] and diff_models(by_agent, confirmed) == ["constraints"]
     assert [m["change"] for m in diff_claims(before, _m())] == ["removed"]
     assert [m["change"] for m in diff_claims(None, before)] == ["added"]
 

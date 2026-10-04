@@ -30,7 +30,7 @@ from requivo.render.markdown import (
     prd_markdown,
     release_markdown,
 )
-from requivo.render.terminal import render_brief, render_defaults, render_perimeter_recap
+from requivo.render.terminal import render_brief, render_claims, render_defaults, render_perimeter_recap
 
 _MODEL = {"problem": slot(80, "explicit", "high")}
 
@@ -211,6 +211,14 @@ def test_the_defaults_worth_a_veto_are_the_inferred_values_that_move_the_solutio
     assert [text.index(m) for m in marks] == sorted(text.index(m) for m in marks), text
     assert not any(s in text for s in ("Approvals get lost", "Permissions", "Half days", "overturn"))
     assert printed(render_defaults, out(_MODEL)) == "", "nothing assumed, no section"
+
+
+def test_a_turn_that_removes_the_last_claim_still_names_it():
+    """#751: the checkpoint is silent only when there is no claim and none moved."""
+    claimed = out({"constraints": dict(slot(80, "inferred", "high", "5-10 h/week"), claims=[{"text": "5-10 h/week", "source": "requester"}])})
+    text = printed(render_claims, out(_MODEL), "software", claimed)
+    assert "CLAIMS" in text and '"5-10 h/week" (removed)' in text, text
+    assert printed(render_claims, out(_MODEL), "software", out(_MODEL)) == ""
 
 
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────
