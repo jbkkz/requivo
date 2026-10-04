@@ -328,3 +328,18 @@ def test_every_surface_asks_the_same_readiness_question():
     markdown = brief_markdown(model, Brief(complexity="low"))
     assert "ARE WE READY?" in terminal and "READY FOR IMPLEMENTATION?" not in terminal
     assert BRIEF_READINESS_HEADING in markdown and "Ready to estimate?" not in markdown
+
+
+def test_a_thin_confirmed_slot_reads_the_same_on_every_surface():
+    """#739: the brief's readiness block and the web say why each blocker blocks, as the terminal status
+    does, and neither counts a confirmed-but-thin slot as resolved."""
+    model = out({"problem": slot(55, "explicit", "high"), "workflow": slot(60, "inferred", "high"),
+                 "actors": slot(0, "empty", "high"), "integrations": slot(90, "explicit", "low")})
+    block = " ".join(printed(render_readiness, model).split())
+    assert "Real problem (too thin)" in block and "Confirm real problem" not in block
+    assert "Workflow / lifecycle (unconfirmed)" in block and "Actors & roles (unknown)" in block
+    web = readiness_view(model_status(model))
+    assert web["resolved"] == 1, "a thin confirmed slot is counted as resolved"
+    assert {(b["label"], b["reason"]) for b in web["blocking_rows"]} == {
+        ("Real problem", "known, not yet precise enough"), ("Workflow / lifecycle", "assumed, not confirmed"),
+        ("Actors & roles", "open question")}

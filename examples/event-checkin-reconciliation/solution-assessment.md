@@ -158,9 +158,11 @@ RECOMMENDED NEXT STEPS
 
 ARE WE READY?
   Status               Not ready
-  Blocking decision    Confirm success criteria, actors & roles, business rules,
-                       workflow / lifecycle, permissions, constraints, reporting
-                       & visibility, risks & rollout
+  Blocking decision    Success criteria (too thin), Actors & roles
+                       (unconfirmed), Business rules (unknown), Workflow /
+                       lifecycle (unconfirmed), Permissions (unconfirmed),
+                       Constraints (too thin), Reporting & visibility
+                       (unconfirmed), Risks & rollout (unconfirmed)
   Remaining gaps       Business objects, Integrations & notifications, Config vs
                        customization, Edge cases, Acceptance criteria
 ```

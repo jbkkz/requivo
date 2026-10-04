@@ -8,7 +8,7 @@ from typing import Any
 
 from requivo.core.analysis import slot_labels
 from requivo.core.perimeters import DEFAULT_PERIMETER
-from requivo.web.viewmodels.labels import artifact_labels
+from requivo.web.viewmodels.labels import BLOCKING_REASON_LABELS, artifact_labels
 
 # The four understanding states the Core emits (evidence, not coverage), each with its tag and dot colour.
 UNDERSTANDING_STATES = [
@@ -29,7 +29,8 @@ def readiness_view(status: dict) -> dict:
     blocking = rd.get("blocking_slots", [])
     groups = status.get("understanding", {})
     total = sum(len(v) for v in groups.values())
-    resolved = len(groups.get("confirmed", []))
+    # A thin confirmed topic still blocks, so it is not resolved (#739): the Core `thin` flag, read.
+    resolved = sum(1 for e in groups.get("confirmed", []) if not e.get("thin"))
     ready = rd.get("ready", False)
     return {
         "ready": ready,
@@ -39,6 +40,8 @@ def readiness_view(status: dict) -> dict:
         "lead": ("The main workflow, integrations, roles and blocking business rules are sufficiently "
                  "covered." if ready else "Still unresolved:"),
         "blocking_labels": [b["label"] for b in blocking],
+        "blocking_rows": [{"label": b["label"], "reason": BLOCKING_REASON_LABELS.get(b.get("reason", ""), "")}
+                          for b in blocking],
         "resolved": resolved,
         "total": total,
     }

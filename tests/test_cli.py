@@ -599,9 +599,14 @@ def test_the_human_status_view_ends_with_exactly_one_pointer():
 
 
 def test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb():
-    """#720: a `claude-code` session is driven keyless, so `requivo answer` is never its only next step."""
+    """#720, #739: a `claude-code` session is driven keyless, so no paid verb is ever its only next step;
+    a document is pointed at `/requivo:docs`, never a per-type skill name the wheel would have to know."""
     keyless = next_command(_payload(questions=2), provider="claude-code")
     assert keyless is not None and keyless.startswith(f"/requivo:run {_SLUG}") and "requivo answer" in keyless
+    for payload in (_payload(artifacts=_STALE_BRIEF), _payload()):
+        line = next_command(payload, provider="claude-code") or ""
+        assert line.startswith(f"/requivo:docs {_SLUG}") and f"with a key: requivo brief {_SLUG}" in line, line
+    assert "solution-assessment.md" in (next_command(_payload(artifacts=_STALE_BRIEF), provider="claude-code") or "")
     assert next_command(_payload(questions=2), provider="anthropic") == f'requivo answer {_SLUG} "<your answers>"'
     store.create_session("plugin", "A leave approval system", provider="claude-code")
     model = {**full_model(), "questions": [{"q": "How are approvals routed today?", "slot": "problem", "why": "w"}]}

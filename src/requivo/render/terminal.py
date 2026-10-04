@@ -65,14 +65,21 @@ def render_understanding(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) 
             print(textwrap.fill(" · ".join(names), width=80, initial_indent=f"  {label}   ", subsequent_indent=" " * 15))
 
 
+def _named_blockers(out: EngineOutput, perimeter: str) -> list[str]:
+    """Each blocker with why it blocks (#722, #739), one projection for every terminal surface:
+    `test_a_thin_confirmed_slot_reads_the_same_on_every_surface`."""
+    return [f"{slot_label(b, perimeter)} ({_BLOCKING_REASONS[blocking_reason(out.model.get(b))]})"
+            for b in readiness_blockers(out, perimeter)]
+
+
 def render_readiness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> None:
     # One boolean, never the length of the blocker list (#165): `test_readiness_renders_as_one_boolean_on_every_surface`.
     print("ARE WE READY?")
-    blockers = [slot_label(b, perimeter) for b in readiness_blockers(out, perimeter)]
+    blockers = _named_blockers(out, perimeter)
     status = "Not ready" if blockers else "Ready"
     print(f"  {'Status':<20} {status}")
     if blockers:
-        print(_labeled("Blocking decision", "Confirm " + ", ".join(b.lower() for b in blockers), lw=20))
+        print(_labeled("Blocking decision", ", ".join(blockers), lw=20))
     gaps = [
         slot_label(sid, perimeter)
         for sid, s in out.model.items()
@@ -90,9 +97,7 @@ def render_turn_state(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     model the turn started from, so the defaults list shows only what the turn moved (#731)."""
     print()
     render_understanding(out, perimeter)
-    # Each blocker says why it blocks (#722): `test_the_status_screen_has_one_meaning_of_confirmed`.
-    blockers = [f"{slot_label(b, perimeter)} ({_BLOCKING_REASONS[blocking_reason(out.model.get(b))]})"
-                for b in readiness_blockers(out, perimeter)]
+    blockers = _named_blockers(out, perimeter)
     # Same rule as `render_readiness`: the blockers are named on the line already.
     verdict = "⛔ Not ready" if blockers else "✅ Ready"
     print(f"\n  Ready?  {verdict}" + (f"  → {', '.join(blockers)}" if blockers else ""))
@@ -240,24 +245,27 @@ def next_command(payload: dict, provider: str | None = None) -> str | None:
     artifacts = payload.get("artifacts")
     if not slug or artifacts is None:
         return None                      # a bare model.json — no session behind it to point at
-    if payload.get("questions"):
-        # A session tagged `claude-code` is driven keyless: the paid verb is never its only step (#720,
-        # `test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb`).
+    # A session tagged `claude-code` is driven keyless: a paid verb is never its only step, and a document
+    # is `/requivo:docs`, never a skill name the wheel would have to know (#720, #739,
+    # `test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb`).
+    def step(paid: str, skill: str, note: str = "") -> str:
         if provider == "claude-code":
-            return (f'/requivo:run {slug}   (in Claude Code, no API key; with a key: '
-                    f'requivo answer {slug} "<your answers>")')
-        return f'requivo answer {slug} "<your answers>"'
+            return f"{skill} {slug}   (in Claude Code, no API key{'; ' + note if note else ''}; with a key: {paid})"
+        return f"{paid}   ({note})" if note else paid
+
+    if payload.get("questions"):
+        return step(f'requivo answer {slug} "<your answers>"', "/requivo:run")
     # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
         if status.get("stale"):
-            return (f"requivo {artifact_type} {slug}   (regenerates {status['filename']}; "
-                    f"requivo impact {slug} shows what else moved)")
+            return step(f"requivo {artifact_type} {slug}", "/requivo:docs",
+                        f"regenerates {status['filename']}; requivo impact {slug} shows what else moved")
     # Gated on ownership, read off `Perimeter.primary_artifact` rather than a `"brief"` literal (#609):
     # a go-to-market session's primary is `gtm_plan`.
     perimeter = payload.get("perimeter") or DEFAULT_PERIMETER
     primary = get_perimeter(perimeter).primary_artifact
     if primary and primary not in artifacts:
-        return f"requivo {primary} {slug}"
+        return step(f"requivo {primary} {slug}", "/requivo:docs")
     return None
 
 

@@ -81,8 +81,8 @@
       {{ s.readiness.headline }}
     </p>
     <p>{{ s.readiness.lead }}</p>
-    {% if s.readiness.blocking_labels %}
-    <ul class="clean tight">{% for b in s.readiness.blocking_labels %}<li>{{ b }}</li>{% endfor %}</ul>
+    {% if s.readiness.blocking_rows %}
+    <ul class="clean tight">{% for b in s.readiness.blocking_rows %}<li>{{ b.label }}{% if b.reason %} <span class="muted">— {{ b.reason }}</span>{% endif %}</li>{% endfor %}</ul>
     {% endif %}
   </div>
 

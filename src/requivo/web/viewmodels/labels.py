@@ -61,6 +61,15 @@ def unreadable_hint(error: str | None) -> str:
     return UNREADABLE_HINT
 
 
+# Why a topic still blocks readiness: `blocking_reason` in this vocabulary (#739), the same three states
+# the terminal names, in the known, assumed and open words this surface already uses.
+BLOCKING_REASON_LABELS: dict[str, str] = {
+    "thin": "known, not yet precise enough",
+    "unconfirmed": "assumed, not confirmed",
+    "unknown": "open question",
+}
+
+
 def artifact_label(artifact_type: str) -> str:
     return ARTIFACT_LABELS.get(artifact_type, artifact_type)
 
