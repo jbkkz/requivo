@@ -29,7 +29,7 @@ parser binds cannot ship undocumented. Why a check exists is on the issue it cit
 
 - **Start here** — `demo`, `run`, `docs`, `status`, `web` — the first screen, each with its own
   help line and the `(API)` marker where it applies.
-- **For scripts and integrations** — `discover`, `answer`, `brief`, `prd`, `stories`, `estimate`,
+- **For scripts and integrations** — `discover`, `answer`, `brief`, `gtm_plan`, `prd`, `stories`, `estimate`,
   `criteria`, `epic`, `release`, `impact` — the automation contract this page documents, listed by
   name only; `requivo <verb> --help` still shows each one's own usage.
 - **Plumbing** — `doctor`, `schema`, `context`, `session`, `model`, `artifact`, `api`, `mcp` — session/
@@ -62,7 +62,7 @@ as the automation contract underneath it (`decision: three-journey-verbs`).
 | Command | Does |
 |---|---|
 | `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery — both **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
-| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure — default `software`, frozen at creation) |
+| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure, frozen at creation; omit it to let the router pick one or ask when more than one plausibly fits) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status [slug]` | Understanding checklist + readiness, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
 | `requivo impact [slug] [slots…]` | What rests on given slots — decisions to re-validate, the generated artifacts that go stale, and apart from them the types not generated yet that would rest on the change (no slots = full map), then the decisions derived from thinner evidence than the session now holds. `--json` for the same report (`stale_artifacts` is `null` for a bare `model.json`, which cannot say what was generated). Omit the slug to resolve the workspace's default session (#541). No network |
@@ -130,6 +130,7 @@ Each is a view of the saved model: `requivo <verb> <slug>`.
 | Command | Produces |
 |---|---|
 | `requivo brief <slug>` | The decision brief — what to review before estimating |
+| `requivo gtm_plan <slug>` | Go-to-market plan (the go-to-market perimeter's generator) |
 | `requivo prd <slug>` | Product Requirements Document |
 | `requivo stories <slug>` | User stories (`stories.md`) |
 | `requivo criteria <slug>` | Given/When/Then acceptance criteria |

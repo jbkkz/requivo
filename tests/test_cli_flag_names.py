@@ -14,7 +14,7 @@ import httpx
 import pytest
 from _fakes import FakeMessages
 
-from requivo.cli import _build_parser, app
+from requivo.cli import _HELP_GROUP_SCRIPTS, _build_parser, app
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput, _schema_order, schema_slot_ids
 
@@ -416,3 +416,16 @@ def test_every_real_flag_is_documented_in_the_cli_reference():
             missing.append((verb or "(top level)", action.option_strings))
     assert checked >= 30, f"the parser walk looks blind: only {checked} flag(s) found"
     assert not missing, f"flags real but undocumented in docs/cli.md under their own `requivo <verb>`: {missing}"
+
+
+def test_the_cli_reference_scripts_group_matches_the_help_group():
+    """#685: perimeter generators must not disappear from the documented scripts tier."""
+    text = (DOCS / "cli.md").read_text(encoding="utf-8")
+    bullet = text.split("- **For scripts and integrations**", 1)[1].split("\n- **Plumbing**", 1)[0]
+    assert set(re.findall(r"`([a-z_]+)`", bullet)) == set(_HELP_GROUP_SCRIPTS)
+
+
+def test_schema_help_uses_the_documented_perimeter_metavar():
+    """#685: schema and discover use the same public perimeter placeholder."""
+    code, out, err = _run_capturing(["schema", "--help"], client=None)
+    assert code == 0 and "--perimeter ID" in out and err == ""
