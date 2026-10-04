@@ -173,9 +173,11 @@ def test_the_recap_says_where_we_stand_in_plain_words():
     assert "Who approves when the manager is away?" in opened and "Workflow / lifecycle: Manager approves" in opened
     assert "Reporting & visibility: A monthly CSV for HR" in changed
     assert "Decision brief (solution-assessment.md): ⚠ needs updating, moved since it was written: Reporting & visibility" in docs
-    assert "PRD (prd.md): up to date" in docs and text.rstrip().endswith('requivo answer leave "<your answers>"')
+    step = f'requivo answer leave{workspace_flag()} "<your answers>"'   # the step `status` names, --workspace and all (#772)
+    assert "PRD (prd.md): up to date" in docs and text.rstrip().endswith(step)
     assert not any(w in text for w in ("%", "explicit", "inferred", "business_rules", "workflow:"))
     payload = json.loads(run_cli(["status", "leave", "--recap", "--json"]))
+    assert payload["next"] == step
     assert payload["since"] == {"type": "brief", "revision": 2} == {**payload["since"], "revision": payload["since_revision"]}
     assert [c["topic"] for c in payload["changed"]] == ["Reporting & visibility"]
     assert [(d["type"], d["stale"], d["because"]) for d in payload["documents"]] == [

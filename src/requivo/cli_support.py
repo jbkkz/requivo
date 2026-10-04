@@ -13,6 +13,7 @@ from requivo.core.errors import RequivoError, SessionNotFoundError
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_token
 from requivo.deterministic import print_json
+from requivo.paths import workspace_flag
 from requivo.render.terminal import next_command, render_perimeter_fit, render_recap, render_usage
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionResolution, SessionService
@@ -99,7 +100,8 @@ def _print_recap(slug: str, payload: dict | None = None, *, as_json: bool = Fals
                            "none: name the session's slug instead.")
     svc = SessionService()
     recap = svc.recap(slug)
-    next_line = next_command(payload, svc.meta(slug).provider) if payload is not None else None
+    # The same step `status` names, `--workspace` carried where the sessions live elsewhere (#772).
+    next_line = next_command(payload, svc.meta(slug).provider, workspace_flag()) if payload is not None else None
     if as_json:
         print_json({"slug": slug, **recap.to_dict(), "next": next_line})
         return
