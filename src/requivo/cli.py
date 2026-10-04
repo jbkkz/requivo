@@ -896,9 +896,8 @@ def _cmd_web(a, client) -> None:
         # `EngineError` (`provider_unavailable`) is a published payload:
         # `test_the_missing_web_extra_keeps_its_published_error_code`.
         raise EngineError(_missing_extra_message("web", e)) from e
-    # The process is ours from here, so logging is configured here and never at import (#291);
-    # under `--reload` uvicorn's worker re-imports the app and stays on `lastResort`.
-    # `test_the_web_verb_configures_the_logger_before_it_serves`.
+    # The process is ours from here, so logging is set here, never at import (#291); `--reload`'s worker
+    # re-imports the app and stays on `lastResort`: `test_the_web_verb_configures_the_logger_before_it_serves`.
     configure_web_logging()
     url = _display_url(host, port)
     print(f"\nRequivo Web → {url}")
