@@ -220,7 +220,7 @@ first would re-present a list the user already answered instead of folding their
    **6. Fold in an answer**. Do not present the questions back to them first; they already answered.
 2. Otherwise, if `readiness.ready` is `true`, or `questions` is empty: go straight to
    **8. Stop, and say which** with `N` as the current revision — there is no high-value question left
-   to derive, and step 8 asks whatever is still open before closing.
+   to derive, and step 8 asks whatever is still open before closing, `readiness.blocking_slots` first.
 3. Otherwise — `readiness.ready` is `false` and `questions` is non-empty, and the user has not
    answered yet: present those questions (numbered, verbatim — the question format of the perimeter
    recap below) with the recap's defaults list, and go to **7. Wait for the reply**. There is a model
@@ -481,7 +481,7 @@ From the `model apply` JSON, tell the user in plain language:
 - **what I will assume unless you object** (#731) — the defaults list, as in the perimeter recap,
   the `inferred` values this turn added or changed in full, drafted acceptance criteria included, and
   one line counting the earlier ones still standing,
-- the next single question, verbatim, or that discovery has converged.
+- the next single question, verbatim — or, with none left, the blockers step 8 asks about next.
 
 Go to **8. Stop, and say which** to check whether one of the three stop conditions has been reached;
 if not, present the next questions and go to **7. Wait for the reply** again.
@@ -499,11 +499,20 @@ reply, go there.
 Three conditions end the loop, and no others do. Check them in this order, and say which one fired:
 
 1. **`ready`** — the last `status`/apply JSON's `readiness.ready` is `true`.
-2. **No high-value question left** — `readiness.ready` is `false`, but the last turn's `questions`
-   came back empty: discovery has converged on what it can, and nothing left is both uncertain and
-   high-impact enough to ask about.
+2. **No high-value question left** — `readiness.ready` is `false`, the last turn's `questions`
+   came back empty, and no entry of `readiness.blocking_slots` (from `requivo status <slug> --json`)
+   still waits on the user: each was settled below, or the user declined it.
 3. **The user says stop** — in their own words, at any point, whether or not the loop above has
    converged.
+
+**An empty question list with blockers left is not convergence** (#784): never say discovery
+converged while an entry of `readiness.blocking_slots` still waits on the user. For each blocker,
+restate its current value in plain words (its `reason` says why it blocks: assumed, or known but too
+thin) and ask the user to confirm it, complete it, or delegate it ("you decide"), batched in one
+message. Fold the reply in with one more apply: a confirmed slot is `explicit` with `completeness` at
+least 70; a delegated one is the same, with `evidence` beginning `Client delegated:` and the default
+you chose, so it stops blocking and stays visible as a choice made on the user's behalf. Then check
+the conditions again.
 
 **Before closing on 1 or 2, ask what is still open** (#736). Every slot still `empty` and every fork a
 value leaves undecided is an open question the documents will print, low-impact or not: the driver
