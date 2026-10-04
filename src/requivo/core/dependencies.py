@@ -101,8 +101,10 @@ def resolve_slots(tokens: list[str], perimeter: str = DEFAULT_PERIMETER) -> tupl
 
 def unknown_slots(unmatched: list[str]) -> UnknownSlotError:
     """The one refusal for an `impact` token naming no slot, by the service and `impact --json` (#717)."""
-    return UnknownSlotError(f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word "
-                            "(e.g. 'permissions', 'workflow', 'reporting').", details={"unmatched": unmatched})
+    msg = f"Unknown slot(s): {', '.join(unmatched)} -- use a slot id or a label word (e.g. 'permissions', 'workflow', 'reporting')."
+    if any("," in token for token in unmatched):
+        msg += " Slots are separate arguments, not one comma-separated list: requivo impact <slug> workflow reporting."
+    return UnknownSlotError(msg, details={"unmatched": unmatched})
 
 
 @dataclass
