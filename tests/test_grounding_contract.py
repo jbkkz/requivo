@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from conftest import FakeProvider
 from requivo.core import context as context_mod
 from requivo.core.context import CardSummary, available_cards, check_selection, load_context, resolve_cards
-from requivo.core.contracts import ContextJudgment
+from requivo.core.contracts import ContextJudgment, PerimeterJudgment
 from requivo.core.errors import (
     EmptySelectorTokenError,
     NoContextCardsError,
@@ -212,6 +212,34 @@ def test_a_narrowing_verdict_reclaims_under_the_narrowed_identity():
     assert cards == ["financial-reporting"] and meta.context_cards == ["financial-reporting"]
     assert grounding.judgment.decision.value == "installed"
     assert len(SessionService().list_sessions()) == 1, "the widened claim was left behind"
+
+
+class _RoutesThenGrounds(_Judge):
+    """Routes `none`, then grounds as `_Judge` does, or fails: the #787 failure path."""
+
+    def __init__(self, judgment=None, fail=False):
+        super().__init__(judgment)
+        self.fail = fail
+
+    def judge_perimeter(self, request, *, perimeters):
+        return PerimeterJudgment(decision="none", reason="A pricing decision.")
+
+    def judge_context(self, request, *, cards):
+        if self.fail:
+            raise ProviderOutputError("the grounding reply was not JSON")
+        return super().judge_context(request, cards=cards)
+
+
+def test_a_routing_verdict_survives_a_failed_grounding_call():
+    """#787 (Codex review): the verdict is written before grounding, since a retry finds the session and
+    never routes again; and a narrowing re-claim carries it onto the session it recreates."""
+    with pytest.raises(ProviderOutputError):
+        DiscoveryService(_RoutesThenGrounds(fail=True)).claim_and_ground("raise prices", cards=None, slug=None)
+    retried = DiscoveryService(_RoutesThenGrounds()).claim_and_ground("raise prices", cards=None, slug=None)
+    narrowed = DiscoveryService(_RoutesThenGrounds(_NARROWS)).claim_and_ground("a billing request", cards=None, slug=None)
+    assert retried.routing.judgment is None, "the retry routed again: the fixture no longer exercises the failure path"
+    assert narrowed.cards == ["financial-reporting"], "the narrowing re-claim did not happen"
+    assert [SessionService().meta(c.meta.slug).perimeter_fit for c in (retried, narrowed)] == ["no_fit", "no_fit"]
 
 
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict():
