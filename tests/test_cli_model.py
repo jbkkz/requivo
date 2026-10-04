@@ -15,6 +15,7 @@ from _fakes import (
     full_model,
     run_cli,
     run_cli_exit,
+    run_cli_fails,
     run_cli_json,
     run_cli_stdin,
     simulate_py314_denied_path,
@@ -25,7 +26,8 @@ from requivo import cli, deterministic
 from requivo.cli import _build_parser, app
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput
-from requivo.core.errors import SessionNotFoundError
+from requivo.core.errors import InvalidModelError, SessionNotFoundError
+from requivo.deterministic import read_user_text
 from requivo.services.sessions import SessionService
 
 pytestmark = pytest.mark.usefixtures("workspace")
@@ -320,6 +322,73 @@ def test_a_missing_document_path_is_an_error_not_content(monkeypatch):
 
     monkeypatch.setattr("sys.stdin", _Tty(""))
     assert run_cli_exit(["model", "apply", "s", "-", "--json"])[1] != 0
+
+
+@pytest.mark.parametrize("failure, reason", [
+    (PermissionError(13, "Permission denied"), "Permission denied"),
+    (OSError("read failed"), "read failed"),
+    (OSError(), "no further detail"),
+    (OSError(None), "no further detail"),
+    (OSError(None, "reason\nFORGED"), "'reason\\nFORGED'"),
+], ids=["permission", "generic-oserror", "empty-oserror", "none-oserror", "newline-oserror"])
+def test_a_user_file_read_failure_is_named_without_a_traceback(monkeypatch, tmp_path, failure, reason):
+    """#760: a filesystem refusal at the user-file boundary is a clean invalid-model error."""
+    brief = tmp_path / "locked\n.json"
+    real_read_text = Path.read_text
+
+    def deny_read(path, *args, **kwargs):
+        if path == brief:
+            raise failure
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny_read)
+    with pytest.raises(InvalidModelError) as ei:
+        read_user_text(brief)
+    message = str(ei.value)
+    assert f"could not be read: {reason}" in message and "locked\\n.json" in message
+    assert "\n" not in message
+    assert ei.value.details == {"path": str(brief)} and ei.value.__cause__ is None
+
+
+@pytest.mark.parametrize("route", [
+    ["model", "validate"],
+    ["model", "apply", "lockedreq"],
+    ["artifact", "save", "lockedreq", "--type", "prd", "--revision", "0", "--file"],
+    ["session", "init", "--slug", "lockedreq"],
+], ids=["model-validate", "model-apply", "artifact-save", "session-init"])
+def test_all_user_file_read_routes_refuse_a_permission_error_cleanly(monkeypatch, tmp_path, route):
+    """#760: each public route shares the read boundary and keeps its terminal/JSON error shape."""
+    brief = tmp_path / "locked.json"
+    brief.write_text("{}", encoding="utf-8")
+    real_read_text = Path.read_text
+
+    def deny_read(path, *args, **kwargs):
+        if path == brief:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny_read)
+    monkeypatch.chdir(tmp_path)
+    for flags in ([], ["--json"]):
+        argv = route + [str(brief), *flags]
+        if flags:
+            out, code = run_cli_exit(argv)
+            err = ""
+            payload = json.loads(out)
+            assert code == 1 and payload["code"] == "invalid_model"
+            assert payload["details"] == {"path": str(brief)}
+        else:
+            code, err = run_cli_fails(argv)
+            out = ""
+            assert code == 1 and "could not be read: Permission denied" in err
+        assert "Traceback" not in out + err
+
+
+def test_a_document_directory_is_reported_as_a_directory(tmp_path):
+    """#760: document paths distinguish an existing directory from a missing file."""
+    code, err = run_cli_fails(["model", "validate", str(tmp_path)])
+    assert code == 1 and "is a directory, not a file" in err and str(tmp_path) in err
+    assert "Traceback" not in err
 
 
 def test_the_three_no_llm_journey_verbs_still_live_in_cli_py():

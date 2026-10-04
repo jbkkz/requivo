@@ -43,6 +43,12 @@ def read_user_text(path: Path) -> str:
             f"UTF-8 and try again.",
             details={"path": str(path), "expected_encoding": "utf-8", "position": e.start},
         ) from None
+    except OSError as e:
+        raw_reason = e.strerror or (str(e) if e.args and e.args[0] is not None else "") or _NO_DETAIL
+        raise InvalidModelError(
+            f"{display_token(str(path))} could not be read: {display_token(raw_reason)}",
+            details={"path": str(path)},
+        ) from None
 
 
 def is_file_argument(arg: str) -> bool:
@@ -84,6 +90,9 @@ def _read_document(arg: str) -> str:
     if arg == "-":
         return read_stdin()
     p = Path(arg)
+    if p.is_dir():
+        raise InvalidModelError(f"{display_token(arg)} is a directory, not a file (use '-' to read from stdin)",
+                                details={"path": arg})
     if not p.is_file():
         raise InvalidModelError(f"no such file: {display_token(arg)} (use '-' to read from stdin)",
                                 details={"path": arg})
