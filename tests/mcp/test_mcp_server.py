@@ -136,6 +136,16 @@ def test_a_keyless_tool_works_with_no_key_and_never_builds_the_provider(monkeypa
     assert not failed and [s["slug"] for s in listed["sessions"]] == ["leave"]
 
 
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+def test_a_blank_mcp_request_is_refused_without_creating_a_session(workspace, blank):
+    """#762: the tool shares the service's refusal, including when no slug is supplied."""
+    err, failed = call("create_session", request=blank)
+    assert failed and err["code"] == "invalid_model"
+    assert not (workspace / ".requivo" / "sessions").exists()
+    created, failed = call("create_session", request="A leave approval system.")
+    assert not failed and created["current_revision"] == 0
+
+
 def test_a_service_refusal_is_a_tool_error_carrying_the_structured_envelope():
     err, failed = call("get_status", slug="missing")
     assert failed and err["code"] and err["message"]

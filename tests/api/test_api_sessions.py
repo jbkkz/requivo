@@ -143,6 +143,15 @@ def test_impact_refuses_a_bad_selector(client, params, code):
 # ── writes ──────────────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+def test_a_blank_api_request_is_refused_before_a_session_is_written(client, workspace, blank):
+    """#762: the shared service refuses blank requests; meaningful requests still create sessions."""
+    refused(client.post(SESSIONS, json={"request": blank, "slug": "blank-api"}), 400, "invalid_model")
+    assert not (workspace / ".requivo" / "sessions" / "blank-api").exists()
+    assert SessionService().list_sessions() == []
+    assert client.post(SESSIONS, json={**REQUEST, "slug": "nonblank-api"}).status_code == 201
+
+
 def test_create_session_is_201_fresh_200_on_the_same_identity_and_409_on_another(client):
     """Idempotent by identity (invariant 11): the same request and card selection is the same session."""
     first = client.post(SESSIONS, json={**REQUEST, "slug": "leave-approval"})
