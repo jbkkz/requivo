@@ -221,7 +221,8 @@ def _forged_renders() -> dict[str, str]:
         "render_recap": printed(render_recap, FORGED, Recap(
             objective=FORGED, ready=False, decided=[{"topic": "Real problem", "value": FORGED}], decisions=[FORGED],
             questions=[FORGED], assumed=[{"topic": "Actors", "value": FORGED}], proposed=[FORGED], since_revision=1,
-            changed=[{"topic": "Actors", "value": FORGED}],
+            changed=[{"topic": "Actors", "value": FORGED}], to_test=[{"topic": "Actors", "test_plan": FORGED}],
+            reasoning_changed=[{"item": FORGED, "change": "added"}],
             documents=[DocumentState(type="brief", filename=FORGED, stale=True, because=["Actors"])])),
         "render_documents": printed(render_documents, {"prd": {"revision": 1, "filename": FORGED, "stale": True}}),
     }

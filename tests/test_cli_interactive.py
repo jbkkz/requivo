@@ -417,6 +417,7 @@ def test_a_first_run_opens_with_the_perimeter_recap_and_a_resume_does_not_repeat
     resumed = run_cli(["run", _sessions()[0].slug], client=FakeClient())
     assert "Enter skips" in resumed and "GROUNDED ON" not in resumed and "Line managers approve" in resumed
     assert resumed.index("WHERE WE STAND") < resumed.index("UNDERSTANDING") < resumed.index("Enter skips"), resumed
+    assert "\nOPEN\n" not in resumed and "Not ready to build" not in resumed, "the short recap repeats the checkpoint"
 
 
 _ACTORS = {**slot(60, "inferred", "high", "Line managers"), "evidence": "the request\nnames them"}

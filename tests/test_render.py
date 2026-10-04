@@ -25,6 +25,8 @@ from requivo.core.contracts import (
     Summary,
     Threshold,
 )
+from requivo.core.persistence import ArtifactStatus
+from requivo.core.recap import build_recap
 from requivo.render.html import _BULLET, _INLINE_MARKUP, _INLINE_TAGS, _ORDERED, _inline, _list_items, markdown_to_html
 from requivo.render.markdown import (
     brief_markdown,
@@ -39,6 +41,7 @@ from requivo.render.terminal import (
     render_claims,
     render_defaults,
     render_perimeter_recap,
+    render_recap,
     render_turn,
     render_turn_state,
 )
@@ -267,6 +270,28 @@ def test_status_shows_per_pillar_completeness():
     assert pillar_completeness(model) == {"why": 27, "what": 15, "how": 0, "validate": 0}
     assert model_status(model)["pillars"] == pillar_completeness(model)
     assert "Progress  Why 27% · What 15% · How 0% · Validate 0%" in printed(render_turn_state, model)
+
+
+def test_the_recap_never_calls_a_session_with_unresolved_bets_closed():
+    """#785 review: with no question proposed, the bets, the checkpoint defaults and the blockers stay open."""
+    now = out({"problem": slot(80, "explicit", "high", "Approvals get lost"),
+               "success_metrics": slot(30, "testable", "medium", test_plan="Pilot with one team"),
+               "permissions": slot(40, "inferred", "medium", "Managers approve"), "actors": slot(0, "empty", "high")})
+    text = printed(render_recap, "leave", build_recap(now, {}, {}))
+    opened = " ".join(text.split("\nOPEN\n")[1].split("\nDOCUMENTS\n")[0].split())
+    assert "Nothing open" not in opened and "To test — Success criteria: Pilot with one team" in opened
+    assert "Assumed for you, to confirm — Permissions: Managers approve" in opened and "Still blocking — Actors & roles (unknown)" in opened
+
+
+def test_the_recap_names_a_reasoning_change_rather_than_saying_nothing_moved():
+    """#785 review: a decision added with no slot moved is a change, as the stale brief beside it says."""
+    then = out(_MODEL)
+    now = then.model_copy(update={"decisions": [DesignDecision(decision="Log in through the HR portal", derived_from=["problem"])]})
+    brief = ArtifactStatus(revision=1, filename="solution-assessment.md", updated_at="2026-01-01T00:00:00Z", stale=True)
+    recap = build_recap(now, {"brief": brief}, {1: then})
+    assert recap.changed == [] and recap.reasoning_changed == [{"item": "Log in through the HR portal", "change": "added"}]
+    text = printed(render_recap, "leave", recap)
+    assert "Nothing has moved" not in text and "Reasoning (added): Log in through the HR portal" in text
 
 
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────

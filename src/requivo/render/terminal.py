@@ -440,31 +440,43 @@ def _document_line(doc: DocumentState) -> str:
     return f"{where}: ⚠ needs updating" + (f", moved since it was written: {', '.join(why)}" if why else "")
 
 
-def render_recap(slug: str, recap: Recap, next_line: str | None = None) -> None:
+def _open_lines(recap: Recap) -> list[str]:
+    """Everything still open, never only the questions: a turn can propose none while bets stand."""
+    return ([_gist(q) for q in recap.questions]
+            + [f"Assumed for you, to confirm — {a['topic']}: {_gist(a['value'])}" for a in recap.assumed]
+            + [f"Proposed for you to own — {_gist(p)}" for p in recap.proposed]
+            + [f"To test — {t['topic']}: {_gist(t['test_plan'])}" for t in recap.to_test]
+            + [f"Still blocking — {b['topic']} ({_BLOCKING_REASONS.get(b['reason'], b['reason'])})" for b in recap.blocking])
+
+
+def _changed_lines(recap: Recap) -> list[str]:
+    moved = [f"{c['topic']}: {_gist(c['value']) or '(cleared)'}" for c in recap.changed or []]
+    return moved + [f"Reasoning ({m['change']}): {_gist(m['item'])}" for m in recap.reasoning_changed or []]
+
+
+def render_recap(slug: str, recap: Recap, next_line: str | None = None, *, short: bool = False) -> None:
     """`status --recap` (#785): where the session stands, short enough to act on in under a minute.
-    Topics by label and values in the model own words, never ids, percentages or confidence labels."""
+    Topics by label and values in the model own words, never ids, percentages or confidence labels.
+    `short` (a resuming `run`) leaves out the verdict and what is open: its checkpoint prints them next."""
     print(f"WHERE WE STAND — {display_token(slug)}")
     if recap.objective.strip():
         print(textwrap.fill(display_text(_gist(recap.objective)), width=80, initial_indent="  ", subsequent_indent="  "))
-    print("  " + ("Ready to build from." if recap.ready else "Not ready to build from yet."))
+    if not short:
+        print("  " + ("Ready to build from." if recap.ready else "Not ready to build from yet."))
     print("\nDECIDED")
     decided = [f"{d['topic']}: {_gist(d['value'])}" for d in recap.decided] + [_gist(d) for d in recap.decisions]
     for line in decided or ["Nothing confirmed yet."]:
         print(_bullet(line))
-    print("\nOPEN")
-    open_ = ([_gist(q) for q in recap.questions]
-             + [f"Assumed for you, to confirm — {a['topic']}: {_gist(a['value'])}" for a in recap.assumed]
-             + [f"Proposed for you to own — {_gist(p)}" for p in recap.proposed])
-    for line in open_ or ["Nothing open."]:
-        print(_bullet(line))
+    if not short:
+        print("\nOPEN")
+        for line in _open_lines(recap) or ["Nothing open."]:
+            print(_bullet(line))
     if recap.since_revision is not None:
         print("\nCHANGED SINCE THE FIRST DOCUMENT WAS WRITTEN")
         if recap.changed is None:
             print("  Could not tell: the revision it was written from cannot be read.")
-        for c in recap.changed or []:
-            print(_bullet(f"{c['topic']}: {_gist(c['value']) or '(cleared)'}"))
-        if recap.changed == []:
-            print("  Nothing has moved since.")
+        for line in _changed_lines(recap) or ([] if recap.changed is None else ["Nothing has moved since."]):
+            print(_bullet(line))
     print("\nDOCUMENTS")
     for line in [_document_line(d) for d in recap.documents] or ["None generated yet."]:
         print(_bullet(line))

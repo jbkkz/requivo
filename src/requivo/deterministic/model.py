@@ -28,7 +28,7 @@ def _cmd_model_show(a, client) -> None:
     try:
         model = svc.load_model(slug)
     except SessionNotFoundError:
-        # The narrower "claimed but never discovered" case, the one refusal `_resolve_ref` in `cli.py` also raises (#250, #720).
+        # The narrower "claimed but never discovered" case, the one refusal `_resolve_ref` in `cli_support.py` also raises (#250, #720).
         raise svc.no_model(slug) from None
     if a.json:
         print_json(model.model_dump(mode="json"))   # #717: the same document, under the ensure_ascii contract

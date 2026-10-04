@@ -9,8 +9,15 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-from requivo.core.analysis import ranked_questions, readiness_blockers, slot_label, slot_meta
-from requivo.core.contracts import Confidence, DecisionSource, EngineOutput, Impact
+from requivo.core.analysis import (
+    blocking_reason,
+    ranked_questions,
+    readiness_blockers,
+    slot_label,
+    slot_meta,
+    veto_defaults,
+)
+from requivo.core.contracts import Confidence, DecisionSource, EngineOutput
 from requivo.core.dependencies import ARTIFACT_FILENAMES, diff_models, diff_reasoning, propagate
 from requivo.core.perimeters import DEFAULT_PERIMETER
 from requivo.core.persistence.models import ArtifactStatus
@@ -34,10 +41,13 @@ class Recap:
     decided: list[dict[str, str]] = field(default_factory=list[dict[str, str]])   # {topic, value}
     decisions: list[str] = field(default_factory=list[str])
     questions: list[str] = field(default_factory=list[str])                      # ranked (#771)
-    assumed: list[dict[str, str]] = field(default_factory=list[dict[str, str]])  # inferred, high impact
+    assumed: list[dict[str, str]] = field(default_factory=list[dict[str, str]])  # the checkpoint defaults
     proposed: list[str] = field(default_factory=list[str])   # decisions proposed for the client to own
+    to_test: list[dict[str, str]] = field(default_factory=list[dict[str, str]])   # {topic, test_plan}
+    blocking: list[dict[str, str]] = field(default_factory=list[dict[str, str]])  # {topic, reason}, not assumed
     since_revision: Optional[int] = None     # the oldest document source revision; None: no document
     changed: Optional[list[dict[str, str]]] = None   # {topic, value}; None: no document, or unreadable
+    reasoning_changed: Optional[list[dict[str, str]]] = None   # {item, change}; None as `changed`
     documents: list[DocumentState] = field(default_factory=list[DocumentState])
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,6 +58,24 @@ def _moved(then: EngineOutput, now: EngineOutput, perimeter: str) -> list[str]:
     """The slots `diff_models` reports, in schema order."""
     moved = set(diff_models(then, now))
     return [sid for sid in slot_meta(perimeter)[1] if sid in moved]
+
+
+# The text each reasoning collection is read by, for a moved item named in plain words.
+_REASONING_TEXT = {"decisions": "decision", "challenges": "headline", "opportunities": "text",
+                   "exclusions": "option", "thresholds": "condition"}
+
+
+def _reasoning_moves(then: EngineOutput, now: EngineOutput) -> list[dict[str, str]]:
+    """Each reasoning item `diff_reasoning` reports, as `{item, change}`: added, edited or removed."""
+    diff = diff_reasoning(then, now).to_dict()
+    moves: list[dict[str, str]] = []
+    for collection, attr in _REASONING_TEXT.items():
+        before: dict[str, Any] = {i.id: i for i in getattr(then, collection)}
+        after: dict[str, Any] = {i.id: i for i in getattr(now, collection)}
+        for rid in diff[collection]:
+            change = "added" if rid not in before else "removed" if rid not in after else "edited"
+            moves.append({"item": str(getattr(after.get(rid) or before[rid], attr)), "change": change})
+    return moves
 
 
 def build_recap(now: EngineOutput, artifacts: Mapping[str, ArtifactStatus],
@@ -63,10 +91,16 @@ def build_recap(now: EngineOutput, artifacts: Mapping[str, ArtifactStatus],
                  if s.confidence is Confidence.explicit and s.value.strip()],
         decisions=[d.decision for d in now.decisions if d.source is not DecisionSource.proposed],
         questions=[q.q for q in ranked_questions(now, perimeter)],
-        assumed=[{"topic": slot_label(sid, perimeter), "value": s.value} for sid, s in slots
-                 if s.confidence is Confidence.inferred and s.impact is Impact.high and s.value.strip()],
+        # Open is never only the questions: a turn may propose none while bets, defaults and blockers stand.
+        assumed=[{"topic": slot_label(sid, perimeter), "value": now.model[sid].value}
+                 for sid in veto_defaults(now, perimeter)],
         proposed=[d.decision for d in now.decisions if d.source is DecisionSource.proposed],
+        to_test=[{"topic": slot_label(sid, perimeter), "test_plan": s.test_plan} for sid, s in slots
+                 if s.confidence is Confidence.testable],
     )
+    assumed = set(veto_defaults(now, perimeter))
+    recap.blocking = [{"topic": slot_label(sid, perimeter), "reason": blocking_reason(now.model.get(sid))}
+                      for sid in readiness_blockers(now, perimeter) if sid not in assumed]
     if artifacts:
         recap.since_revision = min(st.revision for st in artifacts.values())
         base = revisions.get(recap.since_revision)
@@ -74,6 +108,7 @@ def build_recap(now: EngineOutput, artifacts: Mapping[str, ArtifactStatus],
             recap.changed = [{"topic": slot_label(sid, perimeter),
                               "value": now.model[sid].value if sid in now.model else ""}
                              for sid in _moved(base, now, perimeter)]
+            recap.reasoning_changed = _reasoning_moves(base, now)
     # The documents in their one display order (ARTIFACT_FILENAMES), never the key order on disk.
     for doc_type in [t for t in ARTIFACT_FILENAMES if t in artifacts]:
         st = artifacts[doc_type]

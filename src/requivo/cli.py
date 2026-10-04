@@ -20,6 +20,7 @@ from requivo.cli_support import (
     _print_session_candidates,
     _render_usage_safely,
     _resolve_optional_session,
+    _resolve_ref,
     _wrote,
     _wrote_file,
 )
@@ -31,7 +32,6 @@ from requivo.core.contracts import EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots, unknown_slots
 from requivo.core.errors import AmbiguousPerimeterError, InvalidSlugError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
-from requivo.core.persistence import load_model
 from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
@@ -480,7 +480,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     """`run <slug>` on a discovered session (#540): `answer` inside a loop, never a second discovery."""
     svc = disco.sessions
     perimeter = resolve_perimeter(svc.meta(slug).perimeter)
-    _print_recap(slug)   # where we stand, before the first checkpoint (#785)
+    _print_recap(slug, short=True)   # what the checkpoint below cannot show (#785)
     prev, out = None, svc.load_model(slug)   # a resume's first checkpoint lists every default (#731)
     for _turn in range(1, MAX_TURNS + 1):
         render_turn_state(out, perimeter, prev)
@@ -525,23 +525,6 @@ def _cmd_run(a, client) -> None:
         return
     a.request = ref
     _cmd_discover(a, client)
-
-
-def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
-    """Resolve a model.json path or a session slug to (model, slug). The refusal widens its noun
-    and nothing else (#243)."""
-    p = Path(ref)
-    if p.is_file():
-        return load_model(p), p.parent.name
-    svc = SessionService()
-    if svc.exists(ref):
-        slug = svc.resolve_slug(ref)
-        try:
-            return svc.load_model(slug), slug
-        except SessionNotFoundError:
-            # The session exists but was never discovered: the narrower case, under the same code (#250).
-            raise svc.no_model(slug) from None
-    raise svc.no_session(ref, what="model file or session", details={"ref": ref})
 
 
 def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
@@ -613,7 +596,7 @@ def _cmd_demo(a, client) -> None:
     # The frozen payload ships in the package; the visitor is pointed at the browsable copy under examples/.
     demo = DEMO
     request = (demo / "request.md").read_text(encoding="utf-8").strip()
-    out = load_model(demo / "model.json")
+    out, _ = _resolve_ref(str(demo / "model.json"))   # a file path, so never a session
     assessment = _fenced_text((demo / "solution-assessment.md").read_text(encoding="utf-8"))
 
     bar = "═" * 72
