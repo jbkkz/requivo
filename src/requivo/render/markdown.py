@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from requivo.core.analysis import readiness_blockers, slot_label, slot_meta
+from requivo.core.analysis import is_thin, readiness_blockers, slot_label, slot_meta
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -19,6 +19,7 @@ from requivo.core.contracts import (
     ReleaseNotes,
     ScenarioKind,
     Stories,
+    schema_slots,
 )
 from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET
 
@@ -58,14 +59,69 @@ def _block_line(text: str) -> str:
 
 
 def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """The topics carrying a stated value at a given provenance, in schema order, as `**Label** —
-    value`: read off the model, never restated by the provider (Voice rule). `perimeter` (#609)
-    selects the labels."""
+    """The values stated at a given provenance, in `perimeter`'s schema order, as business statements:
+    read off the model, never restated by the provider, never framed by a slot label (#783, Voice rule)."""
     order = slot_meta(perimeter)[1]
-    return [f"- **{slot_label(sid, perimeter)}** — {_line(out.model[sid].value)}"
+    return [f"- {_line(out.model[sid].value)}"
             for sid in order
             if sid in out.model and out.model[sid].confidence is confidence
             and out.model[sid].value.strip()]
+
+
+def _in_words(out: EngineOutput, sid: str, perimeter: str) -> str:
+    """What a readiness blocker leaves to decide, in the client's words (#783): the session's own question
+    on it, else its stated value to confirm or detail, else the schema's probe; never the slot label."""
+    s = out.model.get(sid)
+    asked = next((q.q for q in out.questions if q.slot == sid), "")
+    if not asked and s is not None and s.confidence is not Confidence.empty and s.value.strip():
+        asked = f"{'More detail needed on' if is_thin(s) else 'Confirm'}: {s.value}"
+    probe = next((p.get("probe", "") for p in schema_slots(perimeter) if p["id"] == sid), "")
+    return asked or (probe.split("?", 1)[0] + "?" if "?" in probe else probe) or slot_label(sid, perimeter)
+
+
+def _unresolved(out: EngineOutput, open_decisions: list[str], perimeter: str) -> list[str]:
+    """The open decisions, then each readiness blocker in plain words on its own line (#783), then the
+    least explored area: the one list the readiness verdict points at."""
+    items = [f"- {_line(d)}" for d in open_decisions]
+    items += [f"- {_line(_in_words(out, sid, perimeter))}" for sid in readiness_blockers(out, perimeter)]
+    if out.summary.blind_spot:
+        items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
+    return items
+
+
+def _verdict(blocked: bool, open_decisions: bool, settle: str) -> str:
+    """Not a second readiness question (#165): the blockers alone decide ready or not, and open decisions
+    only word the ready side, so it never says Ready beside one (#783).
+    `test_the_brief_never_says_ready_beside_an_open_decision`."""
+    if blocked:
+        return ("**Not ready.** Points that can still change the solution are open; they are listed under "
+                f"*Unresolved questions*. Settle them {settle}.")
+    if open_decisions:
+        return ("**Decisions to make first.** Everything that could change the solution is known, but the "
+                f"decisions listed under *Unresolved questions* remain to be settled {settle}.")
+    return "**Ready.** Nothing that could change the solution is still open."
+
+
+def boundary_note(reason: str) -> str:
+    """The note atop every document of a session the router found no clear perimeter for (#787): the
+    boundary said where the document is read, its reason flattened (`_line`)."""
+    said = _line(reason)
+    said += "" if said.endswith((".", "!", "?")) else "."
+    return ("> **Outside what Requivo scopes.** When this request arrived, Requivo found no clear fit for it "
+            f"among the kinds of work it scopes: {said} It continued as software scoping anyway, so this "
+            "document answers as if a software build were wanted. Check that before acting on it.")
+
+
+def with_boundary_note(document: str, reason: str) -> str:
+    """`document` with `boundary_note(reason)` under its title, or atop it with none; once, so a document
+    read back and saved again does not carry it twice (#787)."""
+    note = boundary_note(reason)
+    if note in document:
+        return document
+    title, _, body = document.partition("\n")
+    if not title.startswith("# "):
+        return f"{note}\n\n{document}"
+    return f"{title}\n\n{note}\n" + (body if body.startswith("\n") else f"\n{body}")
 
 
 def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
@@ -106,8 +162,8 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     """Render the decision brief: what is settled and what is assumed first, then the judgment.
     Half of it is deterministic: the confirmed, assumed, excluded, threshold and blocking sections are
     projected off the model, because a restatement can drift and a projection cannot. No slot ids or
-    confidence labels in either half (Voice rule)."""
-    blockers = [slot_label(sid) for sid in readiness_blockers(out)]
+    confidence labels in either half (Voice rule), nor slot labels framing a value (#783)."""
+    blockers = readiness_blockers(out)
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Decision Brief{draft}", "",
                      "> What to review before committing to the scope — generated by Requivo", ""]
@@ -164,12 +220,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
-    open_items = [f"- {_line(d)}" for d in brief.open_decisions]
-    if blockers:
-        open_items.append(f"- Unresolved and blocking: {' · '.join(blockers)}")
-    if out.summary.blind_spot:
-        open_items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
-    section("Unresolved questions", open_items)
+    section("Unresolved questions", _unresolved(out, brief.open_decisions, DEFAULT_PERIMETER))
 
     section("Opportunities", [
         f"- **{_line(o.text)}** (leverage: {o.leverage.value})"
@@ -177,10 +228,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
         for o in brief.opportunities])
 
     # Not a second readiness question (#165): `test_every_surface_asks_the_same_readiness_question`.
-    section("Are we ready?",
-            [f"**Not ready.** This brief is a draft: these topics are still unconfirmed and can move "
-             f"the solution — {' · '.join(blockers)}." if blockers
-             else "**Ready.** No high-impact topic is still unresolved."])
+    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before estimating")])
     section("Recommended next steps", [f"- {_line(s)}" for s in brief.next_steps])
 
     return "\n".join(md).rstrip() + "\n"
@@ -189,7 +237,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     """Render the go-to-market perimeter's one artifact (#609): `brief_markdown`'s split, over its own
     slots, every projection called with `GO_TO_MARKET` explicitly."""
-    blockers = [slot_label(sid, GO_TO_MARKET) for sid in readiness_blockers(out, GO_TO_MARKET)]
+    blockers = readiness_blockers(out, GO_TO_MARKET)
     draft = " — Draft: unresolved topics remain" if blockers else ""
     md: list[str] = [f"# Go-to-Market Plan{draft}", "",
                      "> What to review before committing to this push — generated by Requivo", ""]
@@ -227,18 +275,9 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     section("Assumptions worth contesting", _challenges(brief.challenges))
     section("Main risks", [f"- {_line(r)}" for r in brief.risks])
 
-    open_items = [f"- {_line(d)}" for d in brief.open_decisions]
-    if blockers:
-        open_items.append(f"- Unresolved and blocking: {' · '.join(blockers)}")
-    if out.summary.blind_spot:
-        open_items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
-    section("Unresolved questions", open_items)
-
+    section("Unresolved questions", _unresolved(out, brief.open_decisions, GO_TO_MARKET))
     # Not a second readiness question, as in `brief_markdown`.
-    section("Are we ready?",
-            [f"**Not ready.** This plan is a draft: these topics are still unconfirmed and can move "
-             f"it — {' · '.join(blockers)}." if blockers
-             else "**Ready.** No high-impact topic is still unresolved."])
+    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before committing to the plan")])
 
     return "\n".join(md).rstrip() + "\n"
 

@@ -188,6 +188,13 @@ Which perimeters an install has is itself observable: `requivo doctor` (`--json`
 lists them, and `requivo schema --perimeter <id>` prints any one of their schemas. A keyless caller
 names one at creation with `requivo session init --perimeter <id>` (#719).
 
+**The router's verdict sits beside it** (#787): `perimeter_fit` is `fits` or `no_fit`, and
+`perimeter_fit_reason` the router's own words, written once when `discover` routes a new session.
+Both are `null` when no router was asked: a session from before #787, one made by `session init`, or
+one whose perimeter was named with `--perimeter`. Unlike `perimeter` they are carried, not
+interpreted: `no_fit` changes no routing, only what `status`, the generator verbs and the saved
+documents say about the session.
+
 ## Slugs
 
 A slug names the session directory, so it is validated in the Core: strict kebab-case

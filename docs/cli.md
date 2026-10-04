@@ -122,6 +122,10 @@ past it. Sessions already on disk keep the names they were created with; see
   failure part-way keeps the turns that ran — revision 1 with its questions open, as `--once`
   leaves it — and names the `requivo answer` that continues. Only a failure on the *first* turn
   leaves revision 0, where `discover` is still the right retry.
+- **The router's verdict is remembered** (#787): `session.json` records `perimeter_fit` (`fits` or
+  `no_fit`) and its reason. On `no_fit` the session still continues under `software`, and it says
+  so afterwards: one `Perimeter` line in `status` (`perimeter_fit` in `--json`), a warning on stderr
+  before every generator verb (never a refusal), and a note under the title of every saved document.
 
 ## Artifact generators (provider-backed)
 

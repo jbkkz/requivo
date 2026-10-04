@@ -467,6 +467,16 @@ class DiscoveryService:
             return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
                                                held=held, held_slugs={base})
 
+    def _record_route(self, meta, routing: Routing):
+        """Remember the router's verdict on the claim (#787) before the fallible grounding call, since a
+        retry finds the session and never routes again; returns the meta carrying it, `meta` itself when
+        there is no verdict. `test_a_routing_verdict_survives_a_failed_grounding_call`."""
+        verdict = routing.judgment
+        if verdict is None:
+            return meta
+        fit = "fits" if verdict.decision is PerimeterDecision.fits else "no_fit"
+        return self.sessions.record_perimeter_fit(meta.slug, fit, verdict.reason)
+
     def _guard_claim(self, meta, *, created: bool, held: ExitStack, held_slugs: set[str]) -> None:
         """Hold the guard on the slug the claim *landed* on, not only the base name it was asked for
         (#656): `test_a_discovery_racing_a_claim_on_a_suffixed_slug_is_refused_not_settled`."""
@@ -537,6 +547,7 @@ class DiscoveryService:
                         f"session was already claimed under {claim_perimeter!r} and could not be "
                         f"moved there")
 
+        meta = self._record_route(meta, routing)
         grounding = self.judge_grounding(request, cards=cards)
         judgment = grounding.judgment
         if judgment is None or judgment.decision is not ContextDecision.installed:
@@ -551,7 +562,8 @@ class DiscoveryService:
         # `reclaim.meta.context_cards` is what the session records, landed or not; inferring the cards
         # from `created` mis-reported an idempotent re-entry (#601).
         self._guard_claim(reclaim.meta, created=reclaim.created, held=held, held_slugs=held_slugs)
-        return ClaimAndGround(reclaim.meta, grounding, reclaim.meta.context_cards, routing)
+        landed = self._record_route(reclaim.meta, routing)   # a re-claim recreated the session: carry the verdict
+        return ClaimAndGround(landed, grounding, landed.context_cards, routing)
 
     def claim_session(self, request: str, *, cards: list[str] | None, slug: str | None,
                       perimeter: str = DEFAULT_PERIMETER):

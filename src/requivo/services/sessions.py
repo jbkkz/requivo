@@ -523,6 +523,16 @@ class SessionService:
                     d.decision, d.id, unreadable or "recorded in no frozen revision"))
         return report
 
+    def record_perimeter_fit(self, slug: str, fit: str, reason: str) -> SessionMeta:
+        """Remember the router's verdict on a claimed session (#787), a metadata write under the lock that
+        mints no revision; `fit` is `fits` or `no_fit`. Returns the metadata as written.
+        `test_a_no_fit_verdict_is_remembered_and_said`."""
+        with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            meta.perimeter_fit, meta.perimeter_fit_reason = fit, reason
+            self.repo.write_meta(slug, meta)
+            return meta
+
     def rescope(self, slug: str, context_cards: list[str] | None) -> RescopeResult:
         """Re-scope a session's context-card selection (`session rescope`, #168): a metadata write
         at revision 0, its own revision once a model exists; no artifact goes stale (invariant 1);
@@ -675,6 +685,9 @@ class SessionService:
             "slug": slug,
             "revision": meta.current_revision if meta else None,
             "perimeter": perimeter,
+            # The router's verdict (#787), `null` when none was asked; `null` too with no session.json.
+            "perimeter_fit": meta.perimeter_fit if meta else None,
+            "perimeter_fit_reason": meta.perimeter_fit_reason if meta else None,
             **model_status(model, perimeter),
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,

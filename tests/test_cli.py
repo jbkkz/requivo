@@ -99,6 +99,25 @@ def test_status_json_payload_is_rich_enough_for_a_client():
     assert any(e["slot"] == "business_rules" for grp in st["understanding"].values() for e in grp if e["thin"])
 
 
+def test_a_no_fit_verdict_is_remembered_and_said(capsys):
+    """#787: `status` says a remembered `no_fit` (text and `--json`), a generator verb warns on stderr before
+    it pays, and every saved document carries the note under its title, once; `fits` says nothing."""
+    from requivo.cli_support import _generator_service
+    seed_session("raise-prices", **_PROBLEM)
+    seed_session("a-portal", **_PROBLEM)
+    svc, docs = SessionService(), ArtifactService()
+    svc.record_perimeter_fit("raise-prices", "no_fit", "A pricing decision.")
+    svc.record_perimeter_fit("a-portal", "fits", "A portal.")
+    docs.save("raise-prices", "prd", "# PRD\n\n> generated\n", source_revision=1)
+    docs.save("raise-prices", "prd", docs.show("raise-prices", "prd"), source_revision=1)   # read back, saved again
+    prd = docs.show("raise-prices", "prd")
+    assert prd.startswith("# PRD\n\n> **Outside what Requivo scopes.**") and prd.count("A pricing decision.") == 1, prd
+    _generator_service(argparse.Namespace(session="raise-prices"), None)
+    assert "no clear fit — A pricing decision." in capsys.readouterr().err
+    assert "no clear fit" in run_cli(["status", "raise-prices"]) and "no clear fit" not in run_cli(["status", "a-portal"])
+    assert json.loads(run_cli(["status", "raise-prices", "--json"]))["perimeter_fit"] == "no_fit"
+
+
 @pytest.mark.parametrize("verb", ["status", "impact"])
 def test_status_with_no_argument_matches_the_explicit_slug_when_there_is_one_session(verb):
     """#541: no session -> exit 1 naming `run` (a plumbing verb keeps its slug, exit 2); one -> the identical payload."""
@@ -183,10 +202,11 @@ def test_the_leave_approval_brief_still_projects_its_own_model():
 
     def section(heading):
         body = brief.split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0]
-        return [ln for ln in body.splitlines() if ln.startswith("- **")]
+        return [ln for ln in body.splitlines() if ln.startswith("- ")]
 
+    assumed = _stated(out, Confidence.inferred)   # then the summary's own assumptions (#783: values, no labels)
     assert section("What is confirmed") == _stated(out, Confidence.explicit)
-    assert section("Important assumptions") == _stated(out, Confidence.inferred)
+    assert section("Important assumptions")[:len(assumed)] == assumed
     draft = " — Draft: unresolved topics remain" if readiness_blockers(out) else ""
     assert brief.splitlines()[0] == f"# Decision Brief{draft}"
     assert f"**Objective:** {out.summary.objective}" in brief

@@ -16,24 +16,24 @@ A Leave/Absence request lifecycle: submitted → manager review → HR review (m
 
 ## What is confirmed
 
-- **Real problem** — Today, leave requests are approved (or not) informally by email; messages get lost or sit unanswered for weeks, so employees end up taking leave that was never formally approved, and HR only discovers the gap at payroll. The real need is a decision that is always traceable and always happens — not a friendlier request form.
-- **Current process (as-is)** — Fully manual, ad hoc email chain between employee and manager; no enforced response, no record HR can rely on, discrepancies surface only at payroll time.
-- **Success criteria** — Pilot success = every leave request reaches an explicit, recorded decision (no silent drops), zero unresolved balance mismatches at month end, median approval turnaround under 2 working days, full manager adoption (no email approvals) in pilot scope.
-- **Actors & roles** — Employee (requester, can cancel), Manager (base approver, can delegate to a named substitute for a date range), HR (mandatory sign-off above 10 days and for over-balance requests, override authority, escalation target, resolves nightly mismatches each morning), works council (external compliance stakeholder), legacy HR tool (balance source of truth during pilot).
-- **Business rules** — Manager approves by default; HR sign-off mandatory when duration >10 working days OR when the request exceeds the employee's available balance (over-balance allowed but flagged, cannot be manager-approved alone). Cancellations restore balance automatically, no HR confirmation needed.
-- **Workflow / lifecycle** — States: submitted → manager review → HR review if >10 days or over-balance → approved/rejected; employee can cancel while submitted or up to 48h before start if approved, restoring balance automatically same night. No named backup approver + 3 working-day stall → escalates to HR. New requests during an open mismatch are processed normally against last-known balance, flagged at-risk rather than blocked. Every request resolves to an explicit, recorded decision — no silent drop.
-- **Integrations & notifications** — Legacy HR tool remains source of truth for balances during the pilot. Bidirectional nightly sync; approvals and cancellations write back the same night. Balance disagreements raise a mismatch queued for HR the next morning; requests during that window proceed against last-known balance, flagged at-risk.
-- **Permissions** — Approval follows the reporting line; HR can override any decision and must confirm over-balance requests; a manager can delegate approval to a named substitute for a specific date range.
-- **Config vs customization** — One shared workflow and rule set for the pilot; no per-department/country configuration needed yet.
-- **Constraints** — Full audit trail must be retained 5 years for works-council compliance; French labor law (paid leave/RTT) and GDPR on HR data apply; legacy tool remains authoritative during the pilot, creating a dual-system dependency.
-- **Edge cases** — Over-balance requests: allowed, flagged, require HR confirmation. Requests during an unresolved mismatch: processed against last-known balance, flagged at-risk, never blocked. Cancellations after approval: automatic same-night balance restoration, no HR confirmation required.
-- **Reporting & visibility** — Full audit trail required: who approved, overrode, escalated or cancelled each request and when; every request must resolve to a recorded decision (nothing silently lost); retained 5 years for works-council compliance.
+- Today, leave requests are approved (or not) informally by email; messages get lost or sit unanswered for weeks, so employees end up taking leave that was never formally approved, and HR only discovers the gap at payroll. The real need is a decision that is always traceable and always happens — not a friendlier request form.
+- Fully manual, ad hoc email chain between employee and manager; no enforced response, no record HR can rely on, discrepancies surface only at payroll time.
+- Pilot success = every leave request reaches an explicit, recorded decision (no silent drops), zero unresolved balance mismatches at month end, median approval turnaround under 2 working days, full manager adoption (no email approvals) in pilot scope.
+- Employee (requester, can cancel), Manager (base approver, can delegate to a named substitute for a date range), HR (mandatory sign-off above 10 days and for over-balance requests, override authority, escalation target, resolves nightly mismatches each morning), works council (external compliance stakeholder), legacy HR tool (balance source of truth during pilot).
+- Manager approves by default; HR sign-off mandatory when duration >10 working days OR when the request exceeds the employee's available balance (over-balance allowed but flagged, cannot be manager-approved alone). Cancellations restore balance automatically, no HR confirmation needed.
+- States: submitted → manager review → HR review if >10 days or over-balance → approved/rejected; employee can cancel while submitted or up to 48h before start if approved, restoring balance automatically same night. No named backup approver + 3 working-day stall → escalates to HR. New requests during an open mismatch are processed normally against last-known balance, flagged at-risk rather than blocked. Every request resolves to an explicit, recorded decision — no silent drop.
+- Legacy HR tool remains source of truth for balances during the pilot. Bidirectional nightly sync; approvals and cancellations write back the same night. Balance disagreements raise a mismatch queued for HR the next morning; requests during that window proceed against last-known balance, flagged at-risk.
+- Approval follows the reporting line; HR can override any decision and must confirm over-balance requests; a manager can delegate approval to a named substitute for a specific date range.
+- One shared workflow and rule set for the pilot; no per-department/country configuration needed yet.
+- Full audit trail must be retained 5 years for works-council compliance; French labor law (paid leave/RTT) and GDPR on HR data apply; legacy tool remains authoritative during the pilot, creating a dual-system dependency.
+- Over-balance requests: allowed, flagged, require HR confirmation. Requests during an unresolved mismatch: processed against last-known balance, flagged at-risk, never blocked. Cancellations after approval: automatic same-night balance restoration, no HR confirmation required.
+- Full audit trail required: who approved, overrode, escalated or cancelled each request and when; every request must resolve to a recorded decision (nothing silently lost); retained 5 years for works-council compliance.
 
 ## Important assumptions
 
-- **Business objects** — Leave/Absence request: employee, dates, duration, status, approver chain, balance reference synced nightly with legacy tool, over-balance flag, at-risk (mismatch) flag.
-- **Acceptance criteria** — Pilot passes if: (a) 100% of requests reach an explicit recorded decision, no silent drops; (b) zero unresolved balance mismatches at month end; (c) median turnaround <2 working days; (d) full manager adoption; (e) audit trail complete for a sample of requests including at-risk and cancellation cases.
-- **Risks & rollout** — Main residual risk is adoption — the tool only solves the email-chain problem if managers stop approving by email in practice; secondary risk is the at-risk flag on mismatch-window requests being ignored or mismanaged by HR each morning.
+- Leave/Absence request: employee, dates, duration, status, approver chain, balance reference synced nightly with legacy tool, over-balance flag, at-risk (mismatch) flag.
+- Pilot passes if: (a) 100% of requests reach an explicit recorded decision, no silent drops; (b) zero unresolved balance mismatches at month end; (c) median turnaround <2 working days; (d) full manager adoption; (e) audit trail complete for a sample of requests including at-risk and cancellation cases.
+- Main residual risk is adoption — the tool only solves the email-chain problem if managers stop approving by email in practice; secondary risk is the at-risk flag on mismatch-window requests being ignored or mismanaged by HR each morning.
 - Acceptance testing will be based on the stated success metrics (100% recorded decisions, zero month-end mismatches, <2-day turnaround, full adoption, complete audit trail) even though not yet phrased as formal test scenarios.
 - GDPR and French labor-law obligations apply to HR data as standard, beyond the explicitly named works-council retention requirement.
 - The detailed field list of the Leave/Absence object follows the platform's standard model and hasn't been itemized beyond what the workflow requires.
@@ -111,7 +111,7 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 
 ## Are we ready?
 
-**Ready.** No high-impact topic is still unresolved.
+**Decisions to make first.** Everything that could change the solution is known, but the decisions listed under *Unresolved questions* remain to be settled before estimating.
 
 ## Recommended next steps
 

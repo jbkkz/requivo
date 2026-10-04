@@ -76,12 +76,13 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
     "artifact list": [("artifact list --json", ("artifact", "list", "s", "--json"), _keys("slug artifacts:dict"))],
     "status": [   # two cases: the payload is genuinely conditional
         ("status <slug> --json", ("status", "s", "--json"),
-         _keys("revision:int context_cards:list|null artifacts:dict perimeter", **_STATUS_BARE)),
+         _keys("revision:int context_cards:list|null artifacts:dict perimeter perimeter_fit:str|null "
+               "perimeter_fit_reason:str|null", **_STATUS_BARE)),   # #787 the router's verdict
         ("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), _STATUS_BARE)],
     "session show": [("session show --json", ("session", "show", "s", "--json"), _keys(
         "format_version:int requivo_version session_id slug created_at updated_at provider:str|null "
         "model_name:str|null context_cards:list|null request_hash schema_version:int current_revision:int "
-        "revisions:list artifact_status:dict perimeter:str|null"))],
+        "revisions:list artifact_status:dict perimeter:str|null perimeter_fit:str|null perimeter_fit_reason:str|null"))],
     # `notes` (#260) is a sibling of `problems` that moves neither `ok` nor the exit code.
     "session verify": [("session verify --json", ("session", "verify", "s", "--json"),
                         _keys("slug ok:bool session:dict problems:list notes:list context_cards:dict"))],

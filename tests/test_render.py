@@ -6,6 +6,7 @@ import re
 import pytest
 from _fakes import OBJECTIVE, out, printed, slot
 
+from requivo.core.analysis import slot_meta
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -17,6 +18,7 @@ from requivo.core.contracts import (
     GoToMarketPlan,
     Leverage,
     Opportunity,
+    Question,
     ReleaseNotes,
     Summary,
     Threshold,
@@ -146,12 +148,12 @@ def test_a_newline_in_a_slot_value_or_an_opportunity_module_cannot_open_a_forged
     brief = Brief(problem="P", solution="S", complexity="low",
                   opportunities=[Opportunity(text="o", leverage="high", modules=[forged])])
     md = brief_markdown(model, brief)
-    assert "\n# FORGED" not in md and md.count("FORGED") == 3
+    assert "\n# FORGED" not in md and md.count("FORGED") == 4   # the inferred blocker's value twice (#783)
     # the go-to-market brief reads its own slot ids, which the default-schema `out()` refuses
     model.model["objective"] = model.model["problem"].model_copy()
     model.model["icp"] = model.model["actors"].model_copy()
     gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"]))
-    assert "\n# FORGED" not in gtm and gtm.count("FORGED") == 2
+    assert "\n# FORGED" not in gtm and gtm.count("FORGED") == 3
 
 
 @pytest.mark.parametrize("field, item, heading, line", [
@@ -188,6 +190,20 @@ def test_the_decision_brief_projects_the_models_own_words_rather_than_restating_
 def test_the_decision_briefs_english_anchor_covers_the_judgment_the_provider_wrote():
     md = _bilingual_brief()
     assert "**Problem:** Leave approvals are inconsistent." in md and "**Solution:** A single approval workflow." in md
+
+
+def test_the_decision_brief_states_values_and_names_what_blocks_in_plain_words():
+    """#783: no slot label frames a value or a blocker; a blocker reads as the session's question on it,
+    its value to confirm, or its schema probe."""
+    model = out({"problem": slot(90, "explicit", "high", "Approvals get lost in email."),
+                 "actors": slot(60, "inferred", "high", "Employees and line managers."),
+                 "workflow": slot(0, "empty", "high"), "permissions": slot(0, "empty", "high")})
+    model.questions = [Question(q="Who approves when the manager is away?", slot="workflow", why="w")]
+    md = brief_markdown(model, Brief(complexity="low"))
+    for line in ("- Approvals get lost in email.", "- Confirm: Employees and line managers.",
+                 "- Who approves when the manager is away?", "- Who sees what, who can do what?"):
+        assert line in md, line
+    assert " · " not in md and not [label for label in slot_meta()[1].values() if f"**{label}**" in md], md
 
 
 # ── the perimeter recap a first discovery opens with (#709) ──────────────────────

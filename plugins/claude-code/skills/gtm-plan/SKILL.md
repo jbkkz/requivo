@@ -149,11 +149,11 @@ with, so a plan reads the same wherever it was reasoned. Labels come from step 2
 
 ## What is confirmed
 
-- **<Label>** — <value>
+- <value>
 
 ## Important assumptions
 
-- **<Label>** — <value>
+- <value>
 - <an assumption from the summary>
 
 _Each of these was inferred, not stated. Confirm the ones that would change the plan._
@@ -191,19 +191,21 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 ## Unresolved questions
 
 - <open decision>
-- Unresolved and blocking: <Labels>
+- <one line per blocking topic: the session's question on it, else "Confirm: <value>", else its schema probe>
 - Least explored: <the summary's blind spot>
 
 ## Are we ready?
 
-**Not ready.** This plan is a draft: these topics are still unconfirmed and can move it — <Labels>.
+**Not ready.** Points that can still change the solution are open; they are listed under *Unresolved questions*. Settle them before committing to the plan.
 ```
 
-Read off the model, never restated: *What is confirmed* lists the slots stated outright (`explicit`),
-*Important assumptions* the `inferred` ones, *Out of scope* and *Decision thresholds* the exclusions
-and thresholds as applied in step 4, and the blocking topics come from that apply's `readiness`. The
-title carries "— Draft: unresolved topics remain" only while something blocks; with nothing blocking,
-*Are we ready?* reads **Ready.** No high-impact topic is still unresolved.
+Read off the model, never restated: *What is confirmed* lists the values of the slots stated outright
+(`explicit`), *Important assumptions* the `inferred` ones, each as the value alone, never under its
+label (#783); *Out of scope* and *Decision thresholds* the exclusions and thresholds as applied in
+step 4, and the blocking topics come from that apply's `readiness`. The title carries "— Draft:
+unresolved topics remain" only while something blocks. With nothing blocking, *Are we ready?* reads
+**Ready.** Nothing that could change the solution is still open. — unless an open decision is listed,
+when it reads **Decisions to make first.** and points at them: never Ready beside an open decision.
 
 ## 6. Save it as a tracked artifact
 ```bash
