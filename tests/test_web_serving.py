@@ -14,6 +14,7 @@ from _surfaces import SURFACES
 
 from requivo.api.auth import API_TOKEN_ENV, ApiTokenRequiredError
 from requivo.cli import _build_parser, _cmd_api_serve, _cmd_web, app
+from requivo.cli_support import _display_url
 from requivo.core.errors import RequivoError
 from requivo.providers.errors import EngineError
 from requivo.web.config import provider_status
@@ -251,3 +252,54 @@ def test_port_out_of_range_is_a_usage_error(argv, bad):
 def test_port_in_range_is_accepted(argv, good):
     """A valid `--port` still parses to an int; the parse never reaches the command, so no socket is bound (#665)."""
     assert _build_parser().parse_args([*argv, "--port", good]).port == int(good)
+
+
+@pytest.fixture
+def _restore_web_logger():
+    """#684: CLI startup configures the process-global web logger; restore it for later tests."""
+    logger = logging.getLogger("requivo.web")
+    before = (list(logger.handlers), logger.level, logger.propagate)
+    yield
+    logger.handlers, logger.level, logger.propagate = before
+
+
+@pytest.mark.parametrize("host, url", [("::1", "http://[::1]:8765"), ("127.0.0.1", "http://127.0.0.1:8765")])
+@pytest.mark.parametrize("reload", [False, True])
+def test_web_displays_and_opens_the_url_without_changing_the_bind_host(monkeypatch, capsys, host, url, reload, _restore_web_logger):
+    """#684: the browser and banner need URL brackets; the server needs the raw bind address."""
+    import threading
+    import webbrowser
+
+    calls = _stub_uvicorn(monkeypatch)
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    monkeypatch.setattr(threading, "Timer", lambda delay, callback: types.SimpleNamespace(start=callback))
+    with pytest.raises(_RunCalled):
+        _cmd_web(argparse.Namespace(host=host, port=8765, no_open=False, reload=reload), None)
+    out, err = capsys.readouterr()
+    assert f"Requivo Web → {url}" in out
+    assert opened == [url]
+    assert calls[0][1]["host"] == host and calls[0][1]["port"] == 8765
+    assert err == "" and HOSTS_ENV not in os.environ
+
+
+def test_api_displays_ipv6_banner_and_docs_without_changing_the_bind_host(monkeypatch, capsys):
+    """#684: both printed API URLs must be valid IPv6 URLs, with the same loopback bind policy."""
+    calls = _serve(monkeypatch, host="::1", port=8765)
+    out, err = capsys.readouterr()
+    assert "Requivo API → http://[::1]:8765   (docs: http://[::1]:8765/docs)" in out
+    assert calls[0][1] == {"host": "::1", "port": 8765}
+    assert err == "" and HOSTS_ENV not in os.environ
+
+
+@pytest.mark.parametrize("host, expected", [
+    ("::1", "http://[::1]:8765"),
+    ("::", "http://[::]:8765"),
+    ("2001:db8::1", "http://[2001:db8::1]:8765"),
+    ("::ffff:127.0.0.1", "http://[::ffff:127.0.0.1]:8765"),
+    ("127.0.0.1", "http://127.0.0.1:8765"),
+    ("localhost", "http://localhost:8765"),
+])
+def test_display_url_formats_bind_addresses(host, expected):
+    """#684: raw IPv6 bind literals need brackets; IPv4 and hostnames retain their URLs."""
+    assert _display_url(host, 8765) == expected

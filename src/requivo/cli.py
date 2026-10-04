@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from requivo import __version__
 from requivo.cli_support import (
     _announce_bind,
+    _display_url,
     _generator_service,
     _missing_extra_message,
     _print_session_candidates,
@@ -926,7 +927,7 @@ def _cmd_web(a, client) -> None:
     # under `--reload` uvicorn's worker re-imports the app and stays on `lastResort`.
     # `test_the_web_verb_configures_the_logger_before_it_serves`.
     configure_web_logging()
-    url = f"http://{host}:{port}"
+    url = _display_url(host, port)
     print(f"\nRequivo Web → {url}")
     print("  Sessions stay local under .requivo/sessions/. An Anthropic key (server env) is needed only")
     print("  for provider actions (discovery, generation); consulting existing sessions needs none.\n")
@@ -962,7 +963,7 @@ def _cmd_api_serve(a, client) -> None:
     # Same placement as `configure_web_logging()` in `_cmd_web` (#291).
     # `test_the_api_serve_verb_configures_the_logger_before_it_serves`.
     configure_surface_logging(API_LOGGER)
-    url = f"http://{host}:{port}"
+    url = _display_url(host, port)
     print(f"\nRequivo API → {url}   (docs: {url}/docs)")
     print("  Sessions stay local under .requivo/sessions/. An Anthropic key (server env) is needed only")
     print("  for provider actions (discovery, generation); reading existing sessions needs none.")
