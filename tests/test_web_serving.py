@@ -254,9 +254,18 @@ def test_port_in_range_is_accepted(argv, good):
     assert _build_parser().parse_args([*argv, "--port", good]).port == int(good)
 
 
+@pytest.fixture
+def _restore_web_logger():
+    """#684: CLI startup configures the process-global web logger; restore it for later tests."""
+    logger = logging.getLogger("requivo.web")
+    before = (list(logger.handlers), logger.level, logger.propagate)
+    yield
+    logger.handlers, logger.level, logger.propagate = before
+
+
 @pytest.mark.parametrize("host, url", [("::1", "http://[::1]:8765"), ("127.0.0.1", "http://127.0.0.1:8765")])
 @pytest.mark.parametrize("reload", [False, True])
-def test_web_displays_and_opens_the_url_without_changing_the_bind_host(monkeypatch, capsys, host, url, reload):
+def test_web_displays_and_opens_the_url_without_changing_the_bind_host(monkeypatch, capsys, host, url, reload, _restore_web_logger):
     """#684: the browser and banner need URL brackets; the server needs the raw bind address."""
     import threading
     import webbrowser
