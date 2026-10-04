@@ -133,23 +133,28 @@ def test_a_claim_is_refused_rather_than_repaired(claims):
     assert DesignDecision(decision="Approve-first", source="requester").id == DesignDecision(decision="Approve-first").id
 
 
+def _settled(confirmation: str) -> dict:
+    return full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"),
+                                       claims=[dict(_CLAIM, confirmation=confirmation, answered_by="requester")]))
+
+
 @pytest.mark.parametrize("confirmation", ["confirmed", "let_stand"])
 def test_a_first_model_cannot_carry_a_claim_nobody_answered(confirmation):
-    """#751: on a first model nothing has been asked, so stated is not confirmed; the provider's retry hook
-    and the services' first apply share the rule, and a later turn may settle the same claim."""
-    from requivo.core.errors import InvalidModelError
-    from requivo.core.validation import validate_proposal
+    """#751: the provider's first call has asked nothing, so stated is not confirmed; it rides the retry loop."""
     from requivo.providers.anthropic.generators import _require_complete_model
-    settled = dict(_CLAIM, confirmation=confirmation, answered_by="requester")
-    proposal = full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"), claims=[settled]))
-    with pytest.raises(InvalidModelError):
-        validate_proposal(proposal, first=True)
     with pytest.raises(ValueError, match="nothing has been asked yet"):
-        _require_complete_model(ModelProposal.model_validate(proposal), first=True)
-    _require_complete_model(ModelProposal.model_validate(proposal))
-    assert validate_proposal(proposal).model["constraints"].claims[0].confirmation.value == confirmation
-    opening = full_model(constraints=dict(slot(80, "inferred", "high", "5-10 h/week"), claims=[_CLAIM]))
-    assert validate_proposal(opening, first=True).model["constraints"].claims[0].confirmation.value == "open"
+        _require_complete_model(ModelProposal.model_validate(_settled(confirmation)), first=True)
+    _require_complete_model(ModelProposal.model_validate(_settled(confirmation)))
+
+
+def test_a_first_apply_may_carry_a_claim_answered_in_the_conversation(tmp_path, monkeypatch):
+    """#751: the interactive loop lands revision 0 after answered turns, so the services judge no first-claim rule."""
+    from requivo.services.sessions import SessionService
+    monkeypatch.setenv("REQUIVO_WORKSPACE", str(tmp_path))
+    svc = SessionService()
+    svc.create_session("We need flexible hours.", slug="answered")
+    svc.update_model("answered", _settled("confirmed"))
+    assert svc.load_model("answered").model["constraints"].claims[0].confirmation.value == "confirmed"
 
 
 # ── reasoning items and their ids (invariant 5) ────────────────────────────────

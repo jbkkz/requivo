@@ -564,7 +564,7 @@ class SessionService:
             current = self.load_model(slug) if meta.current_revision > 0 else None
         perimeter = resolve_perimeter(meta.perimeter)
         new = validate_proposal(proposal, require_complete=require_complete, current=current,
-                                first=current is None, perimeter=perimeter)
+                                perimeter=perimeter)
         return self._plan(slug, current, new, apply=False, perimeter=perimeter, before=meta)
 
     def update_model(self, slug: str, proposal: dict | str, *, require_complete: bool = True,
@@ -580,7 +580,7 @@ class SessionService:
             perimeter = resolve_perimeter(meta.perimeter)
             current = self.load_model(slug) if meta.current_revision > 0 else None
             new = validate_proposal(proposal, require_complete=require_complete, current=current,
-                                    first=current is None, perimeter=perimeter)
+                                    perimeter=perimeter)
             return self._plan(slug, current, new, apply=True, perimeter=perimeter,
                               expected_revision=expected_revision, provenance=provenance, before=meta)
 

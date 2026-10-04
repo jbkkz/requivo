@@ -48,9 +48,9 @@ def completeness_gap(out: ModelProposal, perimeter: str = DEFAULT_PERIMETER) -> 
 
 
 def unearned_confirmation(out: ModelProposal | EngineOutput) -> Incompleteness | None:
-    """A first model has asked nothing, so no claim in it can be `let_stand` or `confirmed`: words the
-    request states are `source: requester`, still `open` (#751). Provenance is real or absent:
-    `test_a_first_model_cannot_carry_a_claim_nobody_answered`."""
+    """A turn no answer has reached can settle no claim (#751): what the request states is `source: requester`,
+    still `open`. Judged on the provider's first call, the one place that knows no answer exists — revision 0
+    cannot tell (`test_a_first_model_cannot_carry_a_claim_nobody_answered`)."""
     for sid, s in out.model.items():
         for c in s.claims:
             if c.confirmation in (Confirmation.let_stand, Confirmation.confirmed):
@@ -71,12 +71,12 @@ def require_input_within_bounds(text: str, *, field: str, limit: int = MAX_INPUT
 
 
 def validate_proposal(data: dict[str, Any] | str, *, require_complete: bool = True,
-                      current: EngineOutput | None = None, first: bool = False,
+                      current: EngineOutput | None = None,
                       perimeter: str = DEFAULT_PERIMETER) -> EngineOutput:
     """Validate a proposed model (dict or JSON string) into an `EngineOutput`, raising a structured
     `RequivoError`. `require_complete` gates the completeness boundary; the vocabulary check always
     runs. `current` is the model being refined, which makes the reasoning tri-state real (`ModelProposal`).
-    `first` says this is a session's first model, which can confirm no claim (`unearned_confirmation`)."""
+    No claim rule here: revision 0 can land after answered turns (`test_a_first_apply_may_carry_a_claim_answered_in_the_conversation`)."""
     parsed: object = data
     if isinstance(data, str):
         try:
@@ -110,7 +110,4 @@ def validate_proposal(data: dict[str, Any] | str, *, require_complete: bool = Tr
         if gap is not None:
             error = MissingRequiredSlotError if gap.details.get("slots") else InvalidModelError
             raise error(gap.message, path=gap.path, details=gap.details)
-    unearned = unearned_confirmation(out) if first else None
-    if unearned is not None:
-        raise InvalidModelError(unearned.message, path=unearned.path, details=unearned.details)
     return out
