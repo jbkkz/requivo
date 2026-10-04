@@ -7,7 +7,13 @@ from __future__ import annotations
 import logging
 
 from requivo.core.dependencies import ARTIFACT_FILENAMES, REASONING_CONSUMERS, diff_models, diff_reasoning, propagate
-from requivo.core.errors import ArtifactTypeNotOwnedError, InvalidSessionError, RequivoError, SessionNotFoundError
+from requivo.core.errors import (
+    ArtifactTypeNotOwnedError,
+    InvalidModelError,
+    InvalidSessionError,
+    RequivoError,
+    SessionNotFoundError,
+)
 from requivo.core.perimeters import get_perimeter, resolve_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.services.repository import SessionRepository, default_repository
@@ -75,6 +81,11 @@ class ArtifactService:
             meta = self.repo.read_meta(slug)
             perimeter = resolve_perimeter(meta.perimeter)
             require_owned_artifact_type(perimeter, artifact_type)
+            if not content.strip():
+                raise InvalidModelError(
+                    f"refusing to save an empty '{artifact_type}' for session '{slug}': "
+                    "a blank document would be reported as up to date",
+                    details={"slug": slug, "type": artifact_type})
             if source_revision is None:
                 # Before any write: a refused save leaves neither a file nor a status row.
                 raise UnstatedSourceRevisionError(
