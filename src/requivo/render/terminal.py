@@ -313,6 +313,11 @@ def next_command(payload: dict, provider: str | None = None, workspace: str = ""
 
     if payload.get("questions"):
         return step(f'requivo answer {slug} "<your answers>"', "/requivo:run")
+    # #784: no question left while readiness still blocks is a step to take, never a silent "Not ready".
+    blocking = [b.get("label", b.get("slot")) for b in (payload.get("readiness") or {}).get("blocking_slots") or []]
+    if blocking:
+        return step(f'requivo answer {slug} "<confirm each, or say you decide>"', "/requivo:run",
+                    f"no question is left, but readiness still blocks on: {', '.join(blocking)}")
     # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
         if status.get("stale"):
@@ -325,6 +330,18 @@ def next_command(payload: dict, provider: str | None = None, workspace: str = ""
     if primary and primary not in artifacts:
         return step(f"requivo {primary} {slug}", "/requivo:docs")
     return None
+
+
+def render_next_turn(out: EngineOutput, perimeter: str, slug: str, *, ask: str = "", converged: str = "") -> None:
+    """A turn's last line: `ask` while questions remain, `converged` when nothing blocks, and otherwise
+    the topics still blocking with how to settle them (#784): never a silent "Not ready" with nothing to do.
+    `slug` is as the hint must be pasted, `--workspace` included (#772)."""
+    blockers = [] if out.questions else _named_blockers(out, perimeter)
+    line = ask if out.questions else converged if not blockers else (
+        f"\n⚠  No question is left, but readiness still blocks on: {', '.join(blockers)}.\n"
+        f'→ Confirm each, or say "you decide" to delegate it: requivo answer {slug} "<your answers>"')
+    if line:
+        print(line)
 
 
 def render_next_command(payload: dict, provider: str | None = None, workspace: str = "") -> None:

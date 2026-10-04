@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
+from requivo.core.contracts import SOFT_COMPLETENESS
 from requivo.core.errors import (
     ContextUnreadableError,
     EmptySelectionError,
@@ -270,8 +271,9 @@ class SystemPrompt(NamedTuple):
 
 def build_system_prompt(name: str, only: list[str] | None = None, *,
                         perimeter: str = DEFAULT_PERIMETER) -> SystemPrompt:
-    """Load a prompt file, inject the schema, the product context (optionally a subset of cards) and
-    `{{PERIMETER_GUIDANCE}}` for `perimeter` (#608, software by default), split at the shared block.
+    """Load a prompt file, inject the schema, the product context (optionally a subset of cards),
+    `{{PERIMETER_GUIDANCE}}` for `perimeter` (#608, software by default) and readiness's own
+    `{{SOFT_COMPLETENESS}}` (#784), split at the shared block.
     A template that does not open with `SHARED_PROMPT_HEAD` is refused, not sent:
     `test_a_template_whose_leading_block_is_perturbed_is_refused_not_sent`."""
     perimeter_assets = get_perimeter(perimeter)
@@ -290,7 +292,8 @@ def build_system_prompt(name: str, only: list[str] | None = None, *,
     specific = (template[len(SHARED_PROMPT_HEAD):]
                 .replace("{{SCHEMA}}", schema)
                 .replace("{{CONTEXT}}", cards)
-                .replace("{{PERIMETER_GUIDANCE}}", guidance))
+                .replace("{{PERIMETER_GUIDANCE}}", guidance)
+                .replace("{{SOFT_COMPLETENESS}}", str(SOFT_COMPLETENESS)))
     return SystemPrompt(shared, specific)
 
 

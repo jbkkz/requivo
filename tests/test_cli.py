@@ -605,6 +605,16 @@ def test_open_questions_point_at_answer():
     assert next_command({"slug": "x", "questions": [], "readiness": {"ready": True}}) is None   # a bare model file
 
 
+def test_a_turn_that_asks_nothing_while_still_blocked_says_how_to_settle_it():
+    """#784: no question while readiness blocks printed "converged", and `status` pointed past it."""
+    with _model_in_out("clitest-stall") as p:
+        reply = {"model": {"problem": slot(50, "explicit", "high")}, "questions": [], "summary": {"objective": "o"}}
+        text = run_cli(["answer", p.parent.name, "No strong view."], client=FakeClient(json.dumps(reply)))
+        assert "converged" not in text and "Real problem (too thin)" in text and f'requivo answer {p.parent.name} "' in text
+    blocked = {**_payload(artifacts=_STALE_BRIEF), "readiness": {"ready": False, "blocking_slots": [{"slot": "problem", "label": "Real problem"}]}}
+    assert next_command(blocked).startswith(f'requivo answer {_SLUG} "') and "Real problem" in next_command(blocked)
+
+
 def test_the_human_status_view_ends_with_exactly_one_pointer(tmp_path, monkeypatch):
     """The line is there once, at the end, and the `--json` payload is untouched by it. Read from another
     directory, it repeats the workspace, or pasted where it was printed it finds no session (#772)."""

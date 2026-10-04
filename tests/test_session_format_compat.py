@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import typing
+import warnings
 
 import pytest
 from _fakes import FakeClient, full_model, slot
@@ -202,6 +203,13 @@ def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unre
     assert loaded.model["workflow"].confidence == "measured"
     from requivo.core.analysis import readiness_blockers
     assert "workflow" in readiness_blockers(loaded)   # tolerated, never promoted to "confirmed"
+    store.save_revision("future-confidence", loaded)
+    with warnings.catch_warnings():                    # #780: a turn that leaves it unstated carries it, unread
+        warnings.simplefilter("error")
+        SessionService().update_model("future-confidence", {"model": {"problem": slot(80, "explicit", "high")}, "summary": {"objective": "o"}})
+        reply = json.dumps({"model": {"problem": slot(90, "explicit", "high")}, "summary": {"objective": "o"}})
+        DiscoveryService(provider=AnthropicProvider(client=FakeClient(reply))).answer("future-confidence", "Yes.")   # the paid turn
+    assert store.load_session_model("future-confidence").model["workflow"].confidence == "measured"
 
 
 def test_a_claim_value_this_version_does_not_know_round_trips():
@@ -247,6 +255,10 @@ def test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save():
     d = store.canonical_dir("refined")
     (d / "model.json").write_text(json.dumps(_model_from_the_future(), indent=2), encoding="utf-8")
     store.save_revision("refined", store.load_session_model("refined"))   # now at revision 1
+
+    # #780: a turn that leaves `workflow` unstated carries it, unknown key included.
+    SessionService().update_model("refined", {"model": {"problem": slot(80, "explicit", "high")}, "summary": {"objective": "o"}})
+    assert json.loads((d / "model.json").read_text(encoding="utf-8"))["model"]["workflow"]["provenance"] == "interview-3"
 
     # An ordinary refinement turn: the full slot set and a new objective.
     SessionService().update_model("refined", {**full_model(), "summary": {"objective": "Refined"}})

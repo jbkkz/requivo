@@ -54,6 +54,7 @@ from requivo.render.terminal import (
     render_grounding,
     render_impact,
     render_next_command,
+    render_next_turn,
     render_perimeter_fit,
     render_perimeter_recap,
     render_session_cost,
@@ -339,8 +340,8 @@ def _cmd_discover(a, client) -> None:
         render_perimeter_recap(out, only)
         render_turn(out, perimeter)
         _say_saved(slug)
-        if out.questions:
-            print(f'\n→ Answer and refine: requivo answer {slug}{workspace_flag()} "<your answers>"')
+        ref = f"{slug}{workspace_flag()}"
+        render_next_turn(out, perimeter, ref, ask=f'\n→ Answer and refine: requivo answer {ref} "<your answers>"')
         return
 
     # Invariant 13's gate before the loop pays (#133):
@@ -428,10 +429,9 @@ def _cmd_answer(a, client) -> None:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
         print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}{workspace_flag()}`.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")
-    if out.questions:
-        print(f'\n→ Keep going: requivo answer {slug}{workspace_flag()} "<your answers>"')
-    else:
-        print(f"\n✅ Discovery converged — run `requivo {reasoning_type} {slug}{workspace_flag()}` for the {_LABEL[reasoning_type]}." if reasoning_type else "\n✅ Discovery converged.")
+    ref = f"{slug}{workspace_flag()}"
+    render_next_turn(out, perimeter, ref, ask=f'\n→ Keep going: requivo answer {ref} "<your answers>"',
+                     converged=f"\n✅ Discovery converged — run `requivo {reasoning_type} {ref}` for the {_LABEL[reasoning_type]}." if reasoning_type else "\n✅ Discovery converged.")
 
 
 def _is_existing_session(svc: SessionService, ref: str) -> bool:
@@ -483,8 +483,8 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
         render_turn_state(out, perimeter, prev)
         if not out.questions:
             primary = get_perimeter(perimeter).primary_artifact  # #609 -- was hardcoded "brief"
-            print(f"\n✅ Discovery converged — run `requivo {primary} {slug}{workspace_flag()}` for the {_LABEL[primary]}."
-                 if primary else "\n✅ Discovery converged.")
+            render_next_turn(out, perimeter, f"{slug}{workspace_flag()}", converged=f"\n✅ Discovery converged — run "
+                             f"`requivo {primary} {slug}{workspace_flag()}` for the {_LABEL[primary]}." if primary else "\n✅ Discovery converged.")
             return
         answers = _prompt_answers(out.questions, perimeter)
         if answers is None:

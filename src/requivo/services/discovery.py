@@ -679,8 +679,12 @@ class DiscoveryService:
             out = self._need_provider().analyze(
                 snap.request, current_model=model, answers=answers, only=snap.context_cards,
                 perimeter=snap.perimeter)
+        # Only what the turn moved is re-sent (#780); the apply carries the rest from this same revision,
+        # so a carried slot a newer Requivo wrote never meets the strict parse (invariant 8).
+        proposal = {**out.model_dump(mode="json"),
+                    "model": {sid: s.model_dump(mode="json") for sid, s in out.model.items() if model.model.get(sid) != s}}
         return self.sessions.update_model(
-            slug, out.model_dump_json(),
+            slug, proposal,
             expected_revision=expected_revision if expected_revision is not None else snap.revision,
             provenance=self._provenance("analyze", cards=snap.context_cards, surface=surface,
                                         usage=_usage_since(before), perimeter=snap.perimeter))

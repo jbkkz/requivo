@@ -275,8 +275,11 @@ payload was the bare inner map before #107; see [compatibility.md](compatibility
 
 ### What `model apply` takes
 
-A proposal replaces the model, so it carries the **complete** slot set and a non-empty
-`summary.objective`. The five reasoning collections are the exception, and they are tri-state: leave
+A first proposal carries the **complete** slot set and a non-empty `summary.objective`. After that,
+slots are tri-state (#780): a refinement states only the slots it changes, and every slot it leaves
+out is carried verbatim, so only what consumes the changed slots goes stale; a complete proposal is
+still accepted. A restated slot whose `evidence` is empty or only a back-reference ("Prior turn")
+keeps the evidence it had (#781). The five reasoning collections are tri-state as well: leave
 `decisions`, `challenges`, `opportunities`, `exclusions` or `thresholds` out and the established ones
 stand; send `[]` and they are deleted (and what rested on them goes stale); send a list and it
 replaces. A refinement normally says nothing about them. To check a partial projection without
