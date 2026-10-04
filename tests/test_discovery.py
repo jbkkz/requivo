@@ -16,6 +16,7 @@ from requivo.core import persistence as store
 from requivo.core.contracts import MAX_INPUT_CHARS
 from requivo.core.errors import InputTooLargeError, InvalidSlugError, RevisionConflictError, SessionLockedError
 from requivo.core.persistence import ensure_store_dir
+from requivo.core.validation import require_input_within_bounds
 from requivo.providers.errors import EngineError
 from requivo.services.artifacts import ArtifactService
 from requivo.services.discovery import DiscoveryService, _discovery_guard_path, fcntl
@@ -315,6 +316,18 @@ def test_a_reserved_slug_the_sweep_one_commit_later_missed_reaches_the_discovery
 
 
 # ── the input ceiling lives in the service (#255, invariant 3) ──────────────────
+
+
+@pytest.mark.parametrize("field", ["request", "answers"])
+def test_an_oversized_input_names_its_length_overshoot_and_recovery(field):
+    """#759: a refusal tells the caller how much to shorten without changing the ceiling."""
+    with pytest.raises(InputTooLargeError) as exc:
+        require_input_within_bounds("x" * (MAX_INPUT_CHARS + 1), field=field)
+    assert "20,001" in exc.value.message and "1 over" in exc.value.message
+    assert "Nothing was truncated" in exc.value.message and "summarise it or split it" in exc.value.message
+    assert exc.value.code == "input_too_large"
+    assert exc.value.details == {"limit": MAX_INPUT_CHARS, "field": field, "length": MAX_INPUT_CHARS + 1}
+    require_input_within_bounds("x" * MAX_INPUT_CHARS, field=field)
 
 
 @pytest.mark.parametrize("entry", ["start", "create_only", "draft_turn"])
