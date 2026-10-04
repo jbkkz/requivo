@@ -74,8 +74,8 @@ that test cites.
    `test_a_session_written_by_an_older_requivo_still_loads`.
 9. A compound mutation runs under `repo.lock(slug)`, held outside the session directory:
    `test_racing_applies_conflict_cleanly_instead_of_crashing`.
-10. A proposal is not a model: slots replace, reasoning lists are tri-state, and `resolve(current)`
-    is the only place they collapse: `test_reasoning_merely_omitted_by_a_turn_is_preserved`.
+10. A proposal is not a model: slots and reasoning lists are tri-state, and `resolve(current)` is
+    the only place they collapse: `test_reasoning_merely_omitted_by_a_turn_is_preserved`.
 11. Creating a session is one atomic rename onto its slug, never a preceding existence check:
     `test_racing_creations_of_one_session_all_agree_on_it`.
 12. A provider call reasons from one `snapshot()`:

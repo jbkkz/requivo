@@ -57,6 +57,7 @@ def test_the_built_prompts_share_one_identical_leading_block_split_exactly_at_it
     for name, p in built.items():
         assert p.text == p.shared + p.specific == build_prompt(name, None)
         assert p.shared == expected_head and p.shared.endswith("\n\n") and not p.specific.startswith("\n")
+        assert "{{" not in p.specific, f"{name} sends a placeholder unsubstituted"   # #784: {{SOFT_COMPLETENESS}}
 
 
 def test_a_narrowed_card_selection_still_yields_one_shared_block_across_operations():

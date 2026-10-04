@@ -8,11 +8,12 @@ import threading
 from pathlib import Path
 
 import pytest
-from _fakes import full_model, simulate_py314_denied_path, slot
+from _fakes import full_model, out, simulate_py314_denied_path, slot
 
 from conftest import blind_to_dangling_links, healthy_session, symlink_or_skip
 from requivo.core import persistence as store
 from requivo.core.context import check_selection
+from requivo.core.contracts import ModelProposal
 from requivo.core.errors import InvalidSessionError, InvalidSlugError, RequivoError
 from requivo.core.integrity import check_session, inspect_session, newest_readable_revision, readable_revision
 from requivo.core.persistence import lock as store_lock
@@ -157,6 +158,46 @@ def test_reasoning_explicitly_emptied_is_a_deletion_that_invalidates(key):
     result = svc.update_model("s", {**full_model(), key: []})
     assert getattr(svc.load_model("s"), key) == [] and len(getattr(result, f"changed_{key}")) == 1
     assert "prd" in result.stale_artifacts and art.list("s")["prd"]["stale"] is True
+
+
+def test_a_refinement_stating_two_slots_moves_only_those_and_what_consumes_them():
+    """#780: an unstated slot is carried verbatim, so one answered fact no longer stales every document."""
+    svc, art = _session()
+    svc.update_model("s", full_model(workflow=slot(60, "inferred", "high", "draft"), risks=slot(50, "inferred", "medium", "adoption")))
+    for artifact in ("prd", "stories", "release"):
+        art.save("s", artifact, "# doc\n", source_revision=1)
+    before = svc.load_model("s").model
+    stated = {"business_rules": slot(80, "explicit", "high", "Finance approves above 300 EUR"),
+              "permissions": slot(75, "explicit", "high", "managers approve")}
+    result = svc.update_model("s", {"model": stated, "summary": {"objective": "Refined"}})
+    after = svc.load_model("s").model
+    assert sorted(result.changed_slots) == sorted(stated) and list(after) == list(before)
+    assert {sid: s for sid, s in after.items() if sid not in stated} == {sid: s for sid, s in before.items() if sid not in stated}
+    assert sorted(result.stale_artifacts) == ["prd", "stories"]          # `release` consumes neither slot
+    with pytest.raises(RequivoError, match="missing required slots"):   # a first model has nothing to carry
+        _session("t")[0].update_model("t", {"model": stated, "summary": {"objective": "First"}})
+
+
+_QUOTE = '"I have no strong view on roles, so you can decide."'
+
+
+@pytest.mark.parametrize("value, confidence, evidence, settled, alone", [
+    ("Any staff member", "inferred", "Prior turn.", _QUOTE, ""),
+    ("Managers only", "explicit", "  ", _QUOTE, ""),                      # a changed value with nothing new to cite
+    ("Managers only", "explicit", "(unchanged from the previous turn)", _QUOTE, ""),
+    ("Any staff member", "inferred", "Relaxed about roles.", _QUOTE, "Relaxed about roles."),   # a paraphrase
+    ("Any staff member", "explicit", '"Yes, any staff."', '"Yes, any staff."', '"Yes, any staff."'),   # a confirmation
+    ("Managers only", "explicit", '"Only managers."', '"Only managers."', '"Only managers."'),
+    ("Up to 300 EUR", "explicit", "As before, managers approve, but now only up to 300 EUR.",
+     "As before, managers approve, but now only up to 300 EUR.", "As before, managers approve, but now only up to 300 EUR."),
+], ids=["back-reference", "empty", "unchanged-from", "same-value", "confirmed", "changed-value", "opens-on-a-back-reference"])
+def test_a_restated_slot_keeps_the_client_words_unless_it_brings_its_own(value, confidence, evidence, settled, alone):
+    """#781: the evidence is the only place the client's words survive; a back-reference is not provenance."""
+    current = out({"actors": dict(slot(60, "inferred", "high", "Any staff member"), evidence=_QUOTE)})
+    turn = ModelProposal.model_validate(
+        {"model": {"actors": dict(slot(80, confidence, "high", value), evidence=evidence)}, "summary": {"objective": "o"}})
+    assert turn.resolve(current).model["actors"].evidence == settled
+    assert turn.resolve(None).model["actors"].evidence == alone   # with nothing to point back at, it is absent
 
 
 def test_a_repeated_reasoning_item_is_refused_rather_than_deduplicated():

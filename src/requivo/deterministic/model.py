@@ -56,8 +56,8 @@ def _cmd_model_validate(a, client) -> None:
 
 
 def _cmd_model_apply(a, client) -> None:
-    """Apply a proposal as a new revision, always the complete slot set: `apply` *replaces* the model,
-    and `--allow-partial` used to read as if it merged."""
+    """Apply a proposal as a new revision: a slot it omits is carried from the current model (#780),
+    so a first model owes every slot and a refinement states only the slots it changes."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
     data = _read_document(a.proposal)
@@ -121,7 +121,8 @@ def register_model(sub) -> None:
                        help="check against this installed perimeter's slots (default: software)")
     mv.add_argument("--allow-partial", action="store_true",
                     help="check a partial projection for well-formedness only — `apply` and `diff` "
-                         "always require the full slot set, because applying replaces the model")
+                         "carry an omitted slot from the session's current model, and a first model "
+                         "needs every slot")
     mv.add_argument("--json", action="store_true", help=JSON_HELP)
     mv.set_defaults(func=_cmd_model_validate)
 

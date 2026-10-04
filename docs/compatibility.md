@@ -200,7 +200,7 @@ than implied since 0.9.6:
 
 | Promise | Since | Test |
 |---|---|---|
-| `model` is the complete slot set; an apply **replaces**, never merges, so a partial one is refused (check a projection with `model validate --allow-partial` instead) | 0.9.6 | `test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one` |
+| A first `model` is the complete slot set, a partial one refused. Since #780 slots are **tri-state** against a session's current model too: an omitted slot is carried verbatim, a stated one replaces it, and a full proposal is accepted as before. A stated slot whose `evidence` is empty or only points back at an earlier turn ("Prior turn"), or that restates the same value and confidence, keeps the evidence it had (#781) | 0.9.6, #780, #781 | `test_apply_carries_the_slots_a_refinement_omits_and_refuses_a_partial_first_model`, `test_a_restated_slot_keeps_the_client_words_unless_it_brings_its_own` |
 | `summary.objective` must say something, or the proposal is refused as incomplete | 0.9.6 | `test_validate_rejects_a_complete_model_with_no_objective` |
 | `decisions`/`challenges`/`opportunities` are **tri-state**: an omitted key leaves them untouched, `[]` deletes them, a list replaces them | 0.9.6 | `test_reasoning_merely_omitted_by_a_turn_is_preserved` |
 | `exclusions` — an option considered and deliberately ruled out — is a fourth tri-state reasoning collection, added as a free field (no `format_version` bump); each item carries a content-derived id and `rests_on` (slot ids), the same DAG edge `derived_from` is for a decision | #599 | `test_reasoning_items_carry_a_stable_content_derived_id`, `test_propagate_flags_dependent_decisions_and_artifacts` |
@@ -385,7 +385,7 @@ distro packager verifying the built artifact should run the wheel, not the sdist
 
 | What | Status | Since | Removal | Instead | Test |
 |---|---|---|---|---|---|
-| `model apply --allow-partial`, `model diff --allow-partial` | Removed — it merged nothing, it replaced | 0.9.6 | gone | `model validate --allow-partial` to check a projection | `test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one` |
+| `model apply --allow-partial`, `model diff --allow-partial` | Removed — it merged nothing, it replaced | 0.9.6 | gone | a plain `model apply` carries an omitted slot since #780; `model validate --allow-partial` checks a projection | `test_apply_carries_the_slots_a_refinement_omits_and_refuses_a_partial_first_model` |
 | Legacy flag CLI (`python src/engine.py "…" --prd`) | Removed | deprecated 0.9.2 | 0.9.8 | `requivo discover` + `requivo prd` | — |
 | `pc` command alias | Removed | deprecated 0.7.0 | 0.9.8 | `requivo` | — |
 | Implicit `out/<slug>/` fallback | Removed — migration is explicit | deprecated 0.8.0 | 0.9.8 | `requivo session migrate`, then `.requivo/sessions/` | — |

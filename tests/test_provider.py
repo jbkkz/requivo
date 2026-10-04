@@ -110,6 +110,15 @@ def test_run_rejects_a_model_missing_required_slots(workspace):
     assert exc.value.details["attempts"] == 3
 
 
+def test_a_refinement_reply_states_only_the_slots_it_changes():
+    """#780: an answer turn's partial reply is completed from the model it refines, with no retry."""
+    model = out({"problem": slot(40, "inferred", "high", "lost"), "workflow": slot(40, "inferred", "high", "draft")})
+    fake = FakeClient(_INCOMPLETE_REPLY)                   # states `problem` alone
+    refined = answer_turn(fake, model, "leave approval", "A")
+    assert len(fake.calls) == 1 and list(refined.model) == list(model.model)
+    assert refined.model["workflow"] == model.model["workflow"] and refined.model["problem"].confidence.value == "explicit"
+
+
 def test_run_self_heals_when_a_retry_completes_the_model():
     fake = FakeClient(_INCOMPLETE_REPLY, _ENGINE_REPLY)
     assert run(fake, _USER).model["problem"].completeness == 80

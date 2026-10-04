@@ -438,6 +438,11 @@ def test_run_pins_its_three_stop_conditions_and_never_asks_mid_loop():
                           (r"user says stop|says to stop", "the user saying stop"), (r"say which", "saying which condition ended the loop"),
                           (r"[Nn]ever suggest running[\s\S]{0,20}/requivo:run", "never handing back into the loop")):
         assert re.search(pattern, section, re.IGNORECASE), f"run: the stop section must name {what}"
+    # #784: an empty question list with blockers left is settled with the user, as engine.md delegates.
+    from requivo.core.contracts import SOFT_COMPLETENESS
+    flat = " ".join(section.split())
+    for needle in ("readiness.blocking_slots", "never say discovery converged", "Client delegated:", f"at least {SOFT_COMPLETENESS}"):
+        assert needle in flat, f"run: the stop section must settle blockers with no question left ({needle!r})"
     assert re.search(r"[Nn]ever ask.{0,80}slug", text), "run: must state it never asks the user for a slug mid-loop"
     assert re.search(r"never.{0,120}/requivo:\*", text) or re.search(r"never.{0,120}another `/requivo:", text), \
         "run: must state it never tells the user to run another /requivo:* command mid-loop"

@@ -154,6 +154,7 @@ _NON_PROSE_RENDERERS = {
     "render_understanding": "labels are schema slot ids (via slot_label), not model-authored prose",
     "render_readiness": "a fixed verdict string plus schema slot id labels",
     "render_next_command": "a fixed command template plus a slug and an artifact type, no model text",
+    "render_next_turn": "the caller's fixed lines, a slug and schema slot labels with their blocking reason (#784)",
     "render_stale": "artifact filenames from ARTIFACT_FILENAMES and schema slot labels, no model text",
     "render_usage": "the in-process usage ledger this run itself built -- never persisted, never read back off disk (#388)",
 }

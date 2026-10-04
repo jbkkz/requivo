@@ -84,13 +84,15 @@ def test_model_validate_checks_a_proposal_against_the_vocabulary_it_is_told(tmp_
     assert code("--perimeter", "nowhere") == "unknown_perimeter"
 
 
-def test_apply_refuses_a_partial_model_instead_of_replacing_the_whole_one(tmp_path):
-    """`--allow-partial` on `apply` read as "apply a patch"; it merged nothing."""
-    _init("s", full_model(), tmp_path)
-    before = len(SessionService().load_model("s").model)
+def test_apply_carries_the_slots_a_refinement_omits_and_refuses_a_partial_first_model(tmp_path):
+    """#780: the keyless refinement states only the slots it changes; a first model still owes every slot."""
     partial = _write(tmp_path / "partial.json", {"model": {"workflow": slot(80, "explicit", "high", "scan")}, "summary": {"objective": "Something"}})
-    assert run_cli_exit(["model", "apply", "s", partial, "--json"])[1] == 1
-    assert len(SessionService().load_model("s").model) == before   # the model is untouched
+    _init("s")
+    assert json.loads(run_cli_exit(["model", "apply", "s", partial, "--json"])[0])["code"] == "missing_required_slot"
+    run_cli(["model", "apply", "s", _write(tmp_path / "full.json", full_model())])
+    applied = run_cli_json(["model", "apply", "s", partial, "--json"])
+    assert applied["changed_slots"] == ["workflow"] and len(SessionService().load_model("s").model) == len(full_model()["model"])
+    assert run_cli_json(["model", "apply", "s", _write(tmp_path / "full.json", full_model()), "--json"])["revision"] == 3
     assert run_cli_json(["model", "validate", partial, "--allow-partial", "--json"])["slots"] == 1
 
 

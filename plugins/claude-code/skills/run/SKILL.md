@@ -220,7 +220,7 @@ first would re-present a list the user already answered instead of folding their
    **6. Fold in an answer**. Do not present the questions back to them first; they already answered.
 2. Otherwise, if `readiness.ready` is `true`, or `questions` is empty: go straight to
    **8. Stop, and say which** with `N` as the current revision — there is no high-value question left
-   to derive, and step 8 asks whatever is still open before closing.
+   to derive, and step 8 asks whatever is still open before closing, `readiness.blocking_slots` first.
 3. Otherwise — `readiness.ready` is `false` and `questions` is non-empty, and the user has not
    answered yet: present those questions (numbered, verbatim — the question format of the perimeter
    recap below) with the recap's defaults list, and go to **7. Wait for the reply**. There is a model
@@ -431,11 +431,15 @@ every ordinary answer to an open question takes this path.
 ### Reason → propose the refinement
 
 Start from the current model. For each slot the answers touch: raise `completeness`, flip `inferred` →
-`explicit` where the client confirmed it, and update `value`. Leave untouched slots as they are. Keep
-**every** required slot present. Add follow-up `questions` only where information value is still high —
-each one `{ "q": …, "slot": …, "why": … }`, the text field being **`q`** — and
-emit `[]` when nothing is both uncertain and high-impact (discovery has converged). Pass the client's
-answers through faithfully — do not embellish them.
+`explicit` where the client confirmed it, and update `value`. State only the slots the answers touch
+and leave the rest out: `model apply` carries an omitted slot verbatim (#780), so an untouched slot is
+never reworded and never marks a document stale. (A CLI from before #780 refuses that with
+`missing_required_slot`; then send every required slot, the unchanged ones copied exactly.) When you
+restate a slot, keep the client's quotes in its `evidence` and add the new one — never replace them
+with "Prior turn" or "as before" (#781). Add follow-up `questions` only where information value is
+still high — each one `{ "q": …, "slot": …, "why": … }`, the text field being **`q`** — and
+emit `[]` when nothing is both uncertain and high-impact (step 8 then settles any blocker left). Pass
+the client's answers through faithfully — do not embellish them.
 
 A default the user overturned is an answer: fold it in like one (#731). A default they confirmed in
 words is `explicit`; one they let stand stays `inferred`. When an answer widens what an existing system
@@ -449,10 +453,10 @@ hold", which is a real deletion and marks what rested on them stale.
 
 ### Apply → fix → re-apply
 
-Feed the full updated model in on stdin — no temp file, and **once**:
+Feed the refinement in on stdin — no temp file, and **once**:
 ```bash
 requivo model apply <slug> - --expected-revision N --json <<'JSON'
-{ … the full updated model … }
+{ … the slots this turn changed, the questions and the summary … }
 JSON
 ```
 On any error, read its `code`, `message`, `path` (and `details` when set), fix the proposal and apply
@@ -481,7 +485,7 @@ From the `model apply` JSON, tell the user in plain language:
 - **what I will assume unless you object** (#731) — the defaults list, as in the perimeter recap,
   the `inferred` values this turn added or changed in full, drafted acceptance criteria included, and
   one line counting the earlier ones still standing,
-- the next single question, verbatim, or that discovery has converged.
+- the next single question, verbatim — or, with none left, the blockers step 8 asks about next.
 
 Go to **8. Stop, and say which** to check whether one of the three stop conditions has been reached;
 if not, present the next questions and go to **7. Wait for the reply** again.
@@ -499,11 +503,20 @@ reply, go there.
 Three conditions end the loop, and no others do. Check them in this order, and say which one fired:
 
 1. **`ready`** — the last `status`/apply JSON's `readiness.ready` is `true`.
-2. **No high-value question left** — `readiness.ready` is `false`, but the last turn's `questions`
-   came back empty: discovery has converged on what it can, and nothing left is both uncertain and
-   high-impact enough to ask about.
+2. **No high-value question left** — `readiness.ready` is `false`, the last turn's `questions`
+   came back empty, and no entry of `readiness.blocking_slots` (from `requivo status <slug> --json`)
+   still waits on the user: each was settled below, or the user declined it.
 3. **The user says stop** — in their own words, at any point, whether or not the loop above has
    converged.
+
+**An empty question list with blockers left is not convergence** (#784): never say discovery
+converged while an entry of `readiness.blocking_slots` still waits on the user. For each blocker,
+restate its current value in plain words (its `reason` says why it blocks: assumed, or known but too
+thin) and ask the user to confirm it, complete it, or delegate it ("you decide"), batched in one
+message. Fold the reply in with one more apply: a confirmed slot is `explicit` with `completeness` at
+least 70; a delegated one is the same, with `evidence` beginning `Client delegated:` and the default
+you chose, so it stops blocking and stays visible as a choice made on the user's behalf. Then check
+the conditions again.
 
 **Before closing on 1 or 2, ask what is still open** (#736). Every slot still `empty` and every fork a
 value leaves undecided is an open question the documents will print, low-impact or not: the driver

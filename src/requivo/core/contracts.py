@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 from enum import Enum
 from typing import Annotated, Any, Optional, TypeVar, Union, cast
 
@@ -12,6 +13,7 @@ from pydantic import (
     Field,
     SerializeAsAny,
     SerializerFunctionWrapHandler,
+    ValidationError,
     ValidationInfo,
     field_validator,
     model_serializer,
@@ -320,17 +322,48 @@ class Summary(StrictModel):
     blind_spot: str = ""
 
 
+# Evidence that is nothing but a pointer at an earlier turn (#781), punctuation aside: "Prior turn.",
+# "(unchanged from the previous turn)". One that goes on to say something is the client's, and kept.
+_REF = (r"(?:(?:prior|previous|earlier|last)\s+(?:turn|answer|round|revision)s?|as before|unchanged"
+        r"|see above|same as before)")
+_BACK_REFERENCE = re.compile(
+    rf"\W*(?:(?:per|from|see|as in|same as)\s+)?(?:the\s+)?{_REF}"
+    rf"(?:\s+(?:from|since|as in|per|in)\s+(?:the\s+)?{_REF})?\W*", re.IGNORECASE)
+
+
+def _settle_evidence(stated: Slot, established: Optional[Slot]) -> Slot:
+    """A restated slot keeps the client's words (#781, invariant 6: provenance is real or absent). An
+    empty or back-reference evidence takes the established one, as does a slot restated with the same
+    value and confidence; a changed value or a confirmation brings its own."""
+    prior = established.evidence if established is not None else ""
+    said = stated.evidence.strip()
+    same = (established is not None and stated.value.strip() == established.value.strip()
+            and stated.confidence == established.confidence)
+    if not said or _BACK_REFERENCE.fullmatch(said) or (same and prior.strip()):
+        return stated if stated.evidence == prior else stated.model_copy(update={"evidence": prior})
+    return stated
+
+
+def _strictly_readable(s: Slot) -> bool:
+    """Whether the strict contract reads `s` as it is: False for a slot carrying a newer Requivo's key or value."""
+    try:
+        return type(s) is Slot or bool(Slot.model_validate(s.model_dump()))
+    except ValidationError:
+        return False
+
+
 class ModelProposal(StrictModel):
     """A *proposed* model: a discovery reply, a Claude Code proposal file, a Web form. Identical to
-    the `EngineOutput` it resolves into, except that the five reasoning collections are tri-state:
+    the `EngineOutput` it resolves into, except that its slots and five reasoning collections are
+    tri-state against the model it refines:
 
-        absent   the proposal says nothing about them; the established reasoning stands
-        []       an explicit removal
+        absent   the proposal says nothing about them; the established slot or reasoning stands
+        []       an explicit removal (reasoning only: a slot is never removed)
         [ … ]    a replacement
 
-    A refinement turn answers a question and does not re-derive the brief, so read as a whole
-    `EngineOutput` it silently deleted every decision (invariant 10). `resolve()` collapses the
-    three states, once, for every surface."""
+    A refinement turn answers a question; read as a whole `EngineOutput` it deleted every decision
+    and paraphrased every slot (invariant 10, #780). `resolve()` collapses the states, once, for
+    every surface; a first model has nothing to carry, so it owes every slot."""
 
     # protected_namespaces=() keeps the field literally named `model`; extra="forbid" restated for visibility.
     model_config = ConfigDict(protected_namespaces=(), extra="forbid")
@@ -355,16 +388,19 @@ class ModelProposal(StrictModel):
         An unknown top-level key of `current` is carried too (#14), so the result is a
         `PersistedEngineOutput` re-admitted through `model_dump()`:
         `test_an_unknown_key_survives_a_refinement_turn_and_not_only_a_re_save`. `perimeter` (#608)
-        is threaded as validation context. Slots, summary and questions are replaced wholesale."""
+        is threaded as validation context. An unstated slot is carried verbatim, a stated one replaces
+        with its evidence settled (#780, #781); summary and questions are replaced wholesale."""
         prior = current or EngineOutput(model={}, summary=Summary())
 
         # Annotated (#78): unannotated, pyright infers one return type across the call sites.
         def keep(stated: Optional[list[_Item]], established: list[_Item]) -> list[_Item]:
             return list(established) if stated is None else list(stated)
 
+        stated = {sid: _settle_evidence(s, prior.model.get(sid)) for sid, s in self.model.items()}
+        slots = {**{sid: stated.get(sid, s) for sid, s in prior.model.items()}, **stated}
         resolved = EngineOutput.model_validate(
             {
-                "model": self.model,
+                "model": slots,
                 "questions": self.questions,
                 "summary": self.summary,
                 "decisions": keep(self.decisions, prior.decisions),
@@ -376,10 +412,12 @@ class ModelProposal(StrictModel):
             context={"perimeter": perimeter},
         )
         carried: dict[str, Any] = getattr(prior, "__pydantic_extra__", None) or {}
-        if not carried:
+        # A slot carried off disk keeps what this build cannot read (invariant 8), so it is dumped by its own class.
+        if not carried and all(_strictly_readable(s) for s in slots.values()):
             return resolved
         return PersistedEngineOutput.model_validate(
-            {**resolved.model_dump(), **carried}, context={"perimeter": perimeter})
+            {**resolved.model_dump(exclude={"model"}), "model": {sid: s.model_dump() for sid, s in slots.items()},
+             **carried}, context={"perimeter": perimeter})
 
     @model_validator(mode="after")
     def _validate_slot_vocabulary(self, info: ValidationInfo):
@@ -793,7 +831,7 @@ EngineOutput.model_rebuild()
 # What an LLM fills is `extra="forbid"` (invariant 4: a retry can put it right); what is read off disk
 # is `extra="allow"` (invariant 8: a newer Requivo's key must survive a round-trip, #14). Reading
 # permissively is half of it: `resolve()` carries the keys so a writer preserves them too. An apply
-# still supersedes slots, summary and questions (invariant 10), and an unknown *slot id* is still
+# still supersedes stated slots, summary and questions (invariant 10), and an unknown *slot id* is still
 # refused (`schema_version`'s frontier). The mirror is written class by class so it greps; a nested
 # contract nobody twinned is caught by `test_the_persisted_contract_is_permissive_all_the_way_down`.
 
