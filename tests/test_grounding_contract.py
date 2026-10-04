@@ -30,6 +30,7 @@ from requivo.core.errors import (
     NoContextCardsError,
     ProviderOutputError,
     RequivoError,
+    SessionUnreadableError,
     UnknownContextCardError,
     UnsafeSelectorTokenError,
 )
@@ -350,6 +351,29 @@ def test_a_written_card_never_shadows_an_installed_one(user_cards, monkeypatch):
     assert write_generated_card(GeneratedCard(**card()), keep=False) == drafts / "dental-billing-2.md"
     assert drafts.joinpath("dental-billing.md").read_text(encoding="utf-8") == "someone else's card"
     assert not [p for p in drafts.iterdir() if p.suffix == ".tmp"], "scratch was left behind"
+
+
+def test_an_identical_draft_is_not_reused_once_an_installed_card_owns_its_stem(user_cards):
+    """Installed cards win the lookup, so reusing that draft would show one card and reason on another (#765)."""
+    drafted = write_generated_card(GeneratedCard(**card()), keep=False)
+    user_cards.mkdir()
+    user_cards.joinpath("dental-billing.md").write_text("- Business domain: someone else's", encoding="utf-8")
+    again = write_generated_card(GeneratedCard(**card()), keep=False)
+    assert again == drafted.with_name("dental-billing-2.md")
+    assert "dental practice billing in Spain" in load_context([again.stem])
+
+
+def _denied(_path):
+    raise SessionUnreadableError("could not create the card root: denied")
+
+
+def test_a_card_root_the_store_cannot_create_keeps_every_card_rather_than_failing(monkeypatch):
+    """`ensure_store_dir` wraps the denial; after a paid judgment it must degrade, not abort (#765)."""
+    monkeypatch.setattr(context_mod, "ensure_store_dir", _denied)
+    meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    assert cards is None and meta.context_cards is None and grounding.written is None
+    assert "not written" in grounding.note and "denied" in grounding.note
 
 
 def test_an_uncovered_verdict_on_a_session_this_call_did_not_create_writes_nothing(user_cards):

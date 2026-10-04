@@ -179,10 +179,13 @@ def write_generated_card(card: GeneratedCard, *, keep: bool) -> Path:
     card = GeneratedCard.model_validate(card.model_dump())
     text = card.markdown()
     drafts = _draft_paths()
-    taken = {stem.lower() for stem in {**_card_paths(), **drafts}} | {NO_CONTEXT}
+    installed = {stem.lower() for stem in _card_paths()} | {NO_CONTEXT}
+    taken = installed | {stem.lower() for stem in drafts}
     root = _user_card_root() if keep else ensure_store_dir(card_draft_root())
     for stem in [card.stem, *(f"{card.stem}-{n}" for n in range(2, 10))]:
-        if not keep and stem in drafts and drafts[stem].read_text(encoding="utf-8") == text:
+        # An installed card wins the lookup, so a draft under its stem would not be what is read.
+        if (not keep and stem not in installed and stem in drafts
+                and drafts[stem].read_text(encoding="utf-8") == text):
             return drafts[stem]
         if stem not in taken and _publish(root, stem, text):
             return root / f"{stem}.md"

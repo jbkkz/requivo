@@ -39,6 +39,7 @@ from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import (
     AmbiguousPerimeterError,
     ArtifactWriteFailedError,
+    ContextUnreadableError,
     RequivoError,
     RevisionConflictError,
     SessionLockedError,
@@ -590,7 +591,8 @@ class DiscoveryService:
                                            "was written for it"), None
         try:
             written = write_generated_card(card, keep=keep)
-        except (ValueError, OSError) as e:
+        # The store and card-root failures arrive wrapped; the judgment is paid, so they degrade too.
+        except (ValueError, OSError, SessionUnreadableError, ContextUnreadableError) as e:
             return grounding._replace(note=f"the card was not written: {e}"), None
         return grounding._replace(written=written, saved=keep), [written.stem]
 
