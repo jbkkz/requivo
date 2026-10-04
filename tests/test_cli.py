@@ -603,7 +603,7 @@ def test_the_human_status_view_ends_with_exactly_one_pointer(tmp_path, monkeypat
     assert workspace_flag().startswith(" --workspace ")
     pointer = f'→ requivo answer {_SLUG}{workspace_flag()} "<your answers>"'
     assert run_cli(["status", _SLUG]).rstrip().splitlines()[-1] == pointer
-    assert next_command(_payload(questions=1), "claude-code", ' --workspace "/a b"').startswith(f'/requivo:run {_SLUG} --workspace "/a b"')
+    assert next_command(_payload(questions=1), "claude-code", " --workspace '/a b'").startswith(f"/requivo:run {_SLUG} --workspace '/a b'")
 
 
 def test_a_keyless_session_points_at_the_plugin_loop_before_the_paid_verb():

@@ -393,10 +393,18 @@ def test_the_printed_proposal_shape_is_the_one_apply_takes_and_the_pages_point_a
 
 
 def test_a_session_elsewhere_carries_its_workspace_through_every_command_the_preflight_included():
-    """#772: said once before the run skill's first command, and in the preflight, whose `doctor` described cwd."""
+    """#772: the preflight passes it, and every skill that reads `$ARGUMENTS` or that a footer names strips it
+    before its first command, or `docs` reads `--workspace` as a document type (Codex on #796)."""
+    from requivo.render.terminal import next_command
     preflight = _section(REASONING.read_text(encoding="utf-8"), r"^##\s+.*preflight.*$", re.IGNORECASE | re.MULTILINE)
     assert "`--workspace DIR`" in preflight, "REASONING.md: the preflight's doctor ignores the session's workspace"
-    assert "`--workspace DIR`" in SKILLS["run"].split("## 1.", 1)[0], "run: the workspace rule must precede the preflight"
+    payloads = ({"slug": "s", "questions": [{}], "artifacts": {}}, {"slug": "s", "questions": [], "artifacts": {}})
+    named = {(next_command(p, "claude-code") or "").split()[0].removeprefix("/requivo:") for p in payloads}
+    readers = {n for n, t in SKILLS.items() if "$ARGUMENTS" in t} | named
+    assert {"run", "docs"} <= readers, readers
+    for name in sorted(readers):
+        head = SKILLS[name].split("---", 2)[2].split("\n## ", 1)[0]
+        assert "`--workspace DIR`" in head, f"{name}: the workspace rule must precede its preflight"
 
 
 def test_skill_enum_placeholders_name_values_the_contracts_accept():

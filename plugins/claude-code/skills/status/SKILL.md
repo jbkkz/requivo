@@ -9,6 +9,10 @@ allowed-tools: Bash(requivo doctor:*), Bash(requivo session list:*), Bash(requiv
 Report where a session stands. This is a **deterministic read** — do not re-analyse the request with
 Claude; just run the command and translate the result.
 
+When `$ARGUMENTS` carries `--workspace DIR`, take both tokens out first: every `requivo` command here
+then takes that same `--workspace DIR` after the verb, the preflight `doctor` included (REASONING.md,
+*Sessions outside the current directory*, #772).
+
 ## Preflight
 This is often the first Requivo command a new user runs, and the `requivo` CLI is a **separate
 install** from the plugin. So start with the shared **preflight** in
