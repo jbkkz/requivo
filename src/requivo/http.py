@@ -12,6 +12,7 @@ from requivo.providers.errors import EngineError
 # Every code needs an explicit row, or it defaults below and misreports a server fault as the caller's (#34).
 STATUS_BY_CODE = {
     "session_not_found": 404,
+    "session_has_no_model": 409,  # the session exists; its revision-0 state refuses the read (#720)
     "invalid_slug": 400,
     "invalid_request": 400,
     "invalid_model": 400,

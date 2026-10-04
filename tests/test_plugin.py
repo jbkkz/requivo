@@ -293,7 +293,7 @@ def test_a_session_at_revision_zero_is_routed_by_its_list_row_because_status_ref
     run_cli(["session", "init", "A leave approval system.", "--slug", "bare", "--json"])
     for argv in (["model", "show", "bare", "--json"], ["status", "bare", "--json"]):
         out, code = run_cli_exit(argv)
-        assert code == 1 and json.loads(out)["code"] == "session_not_found" and "/requivo:run bare" in json.loads(out)["message"]
+        assert code == 1 and json.loads(out)["code"] == "session_has_no_model" and "/requivo:run bare" in json.loads(out)["message"]
     assert [r["revision"] for r in run_cli_json(["session", "list", "--json"])["sessions"]] == [0]
     shown, root = run_cli_json(["session", "show", "bare", "--json"]), run_cli_json(["session", "list", "--json"])["session_root"]
     assert "perimeter" in shown and "A leave approval system." not in json.dumps(shown), "session show carries no request text"

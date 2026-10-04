@@ -86,8 +86,9 @@ Failure semantics, verified:
   idempotency guard: a duplicate trigger cannot double-spend or overwrite refinement work.
 
 Distinguish the two cases by what `status <slug> --json` answers: the refined session answers with
-its state; the claimed-but-unanalysed one answers with an error envelope (there is no model yet to
-report on). `status --json` is defined from revision 1 onward.
+its state; the claimed-but-unanalysed one answers with the `session_has_no_model` error envelope, exit
+1 (there is no model yet to report on; `session_not_found` before 4.0.0). `status --json` is defined
+from revision 1 onward.
 
 ### The state read: `status <slug> --json`
 

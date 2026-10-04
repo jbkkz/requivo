@@ -4,7 +4,6 @@ The decision is never taken here: `validate_proposal` and `SessionService.update
 
 from __future__ import annotations
 
-from requivo.core.errors import SessionNotFoundError
 from requivo.core.perimeters import resolve_perimeter
 from requivo.core.validation import validate_proposal
 from requivo.deterministic._shared import JSON_HELP, _read_document, print_json
@@ -14,15 +13,11 @@ from requivo.services.sessions import SessionService
 def _cmd_model_show(a, client) -> None:
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
-    # `resolve_slug` does not check existence, and `load_model` raises the same code for a missing
-    # directory and a claimed-but-empty session; checked here so the two messages differ (#250).
+    # `resolve_slug` does not check existence; a missing session is `session_not_found` with the root
+    # named, a claimed-but-empty one `session_has_no_model` from `load_model` (#250, #720).
     if not svc.exists(slug):
         raise svc.no_session(slug)
-    try:
-        model = svc.load_model(slug)
-    except SessionNotFoundError:
-        # The narrower "claimed but never discovered" case, the one refusal `_resolve_ref` in `cli.py` also raises (#250, #720).
-        raise svc.no_model(slug) from None
+    model = svc.load_model(slug)
     if a.json:
         print_json(model.model_dump(mode="json"))   # #717: the same document, under the ensure_ascii contract
         return

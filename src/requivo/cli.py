@@ -532,11 +532,7 @@ def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
     svc = SessionService()
     if svc.exists(ref):
         slug = svc.resolve_slug(ref)
-        try:
-            return svc.load_model(slug), slug
-        except SessionNotFoundError:
-            # The session exists but was never discovered: the narrower case, under the same code (#250).
-            raise svc.no_model(slug) from None
+        return svc.load_model(slug), slug   # a session never discovered is `session_has_no_model` (#250, #720)
     raise svc.no_session(ref, what="model file or session", details={"ref": ref})
 
 

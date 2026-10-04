@@ -196,6 +196,14 @@ class SessionNotFoundError(RequivoError):
     code = "session_not_found"
 
 
+class SessionHasNoModelError(SessionNotFoundError):
+    """The session exists and holds no model yet: revision 0, right after `session init` (#720). `details`:
+    `{slug}`. Its own code since 4.0.0; a subclass, so `except SessionNotFoundError` still catches it.
+    409, not 404: the session is there, and its state is what refuses the read."""
+
+    code = "session_has_no_model"
+
+
 class InvalidSlugError(RequivoError):
     """A slug is not a safe session identifier -- must be strict kebab-case, or it could escape the store (directory traversal)."""
 

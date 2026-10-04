@@ -158,10 +158,12 @@ def test_status_and_model_show_agree_on_a_revision_zero_session():
     for argv in (["status", "rev0"], ["model", "show", "rev0"]):
         err = _fails(argv)
         assert "requivo discover" in err and "apply a proposal first" not in err, (argv, err)
-        # #720: the keyless step beside the API one, never the retired /requivo:discover; the code stays.
+        # #720: the keyless step beside the API one, never the retired /requivo:discover.
         assert "requivo model apply rev0" in err and "/requivo:run rev0" in err and "/requivo:discover" not in err, err
         envelope, code = run_cli_exit([*argv, "--json"])
-        assert code == 1 and json.loads(envelope)["code"] == "session_not_found"
+        # 4.0.0, breaking: a code of its own, no longer `session_not_found`; the exit stays 1.
+        assert code == 1 and json.loads(envelope)["code"] == "session_has_no_model"
+    assert json.loads(run_cli_exit(["model", "show", "no-such-slug-at-all", "--json"])[0])["code"] == "session_not_found"
     err = _fails(["model", "show", "no-such-slug-at-all"])
     assert "only the request was captured" not in err and "requivo session list" in err
 

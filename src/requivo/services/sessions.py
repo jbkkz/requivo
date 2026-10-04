@@ -33,7 +33,13 @@ from requivo.core.dependencies import (
     thinner_evidence,
     unknown_slots,
 )
-from requivo.core.errors import ModelUnreadableError, RevisionConflictError, SessionExistsError, SessionNotFoundError
+from requivo.core.errors import (
+    ModelUnreadableError,
+    RevisionConflictError,
+    SessionExistsError,
+    SessionHasNoModelError,
+    SessionNotFoundError,
+)
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.persistence.identifiers import _stat_exists
@@ -249,10 +255,10 @@ class SessionService:
                                     details=details if details is not None else {"slug": ref})
 
     @staticmethod
-    def no_model(slug: str) -> SessionNotFoundError:
-        """A claimed session with no model yet (#250), naming the keyless step beside the API one
-        (#720); still `session_not_found`, since moving the code is breaking (docs/compatibility.md)."""
-        return SessionNotFoundError(
+    def no_model(slug: str) -> SessionHasNoModelError:
+        """A claimed session with no model yet (#250), naming the keyless step beside the API one; its own
+        code, `session_has_no_model`, since 4.0.0 (#720)."""
+        return SessionHasNoModelError(
             f"session '{slug}' has no model yet — only the request was captured. Keyless, apply the "
             f"first model with `requivo model apply {slug} -` (in Claude Code, /requivo:run {slug} "
             f"does it for you); with an API key, run `requivo discover` on the same request.",
@@ -376,8 +382,15 @@ class SessionService:
         return self.repo.read_meta(slug)
 
     def load_model(self, slug: str) -> EngineOutput:
-        """The current model, falling back to a legacy `out/<slug>/` model for read-only operations."""
-        return self.repo.load_model(slug)
+        """The current model, falling back to a legacy `out/<slug>/` model for read-only operations. A
+        session with no model is `no_model` on every backing, whatever it raised (#720):
+        `test_a_session_with_no_model_has_a_code_of_its_own_on_every_backing`."""
+        try:
+            return self.repo.load_model(slug)
+        except SessionNotFoundError as e:
+            if isinstance(e, SessionHasNoModelError) or self.repo.has_meta(slug):
+                raise self.no_model(slug) from None
+            raise
 
     def exists_meta(self, slug: str) -> bool:
         """True if the session is in the mutation-backed store, i.e. `meta()` will succeed."""

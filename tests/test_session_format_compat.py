@@ -52,7 +52,16 @@ SESSION_JSON_0_8_2 = """{
 
 
 def test_a_session_written_by_an_older_requivo_still_loads():
-    """Invariant 8, the backward half: adding a field is free (#286)."""
+    """Invariant 8, the backward half: adding a field is free (#286). A revision-0 session an older Requivo
+    wrote still loads too; only its read refusal moved code, in 4.0.0 (#720), with the format untouched."""
+    captured = {**json.loads(SESSION_JSON_0_8_2), "slug": "captured", "current_revision": 0, "revisions": [],
+                "artifact_status": {}}
+    store.canonical_dir("captured").mkdir(parents=True)
+    (store.canonical_dir("captured") / "session.json").write_text(json.dumps(captured), encoding="utf-8")
+    assert store.read_meta("captured").current_revision == 0
+    with pytest.raises(RequivoError) as refusal:
+        SessionService().status("captured")
+    assert refusal.value.code == "session_has_no_model", "was `session_not_found` before 4.0.0 (#720)"
     d = store.canonical_dir("leave-approval")
     d.mkdir(parents=True, exist_ok=True)
     (d / "session.json").write_text(SESSION_JSON_0_8_2, encoding="utf-8")

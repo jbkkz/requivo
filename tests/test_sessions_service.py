@@ -340,6 +340,23 @@ def test_answer_refuses_a_session_that_has_no_model_yet(call):
     assert provider.calls == 0 and "discover" in str(e.value) and "requivo answer" not in str(e.value)
 
 
+@pytest.mark.parametrize("backing", ["file", "memory"])
+def test_a_session_with_no_model_has_a_code_of_its_own_on_every_backing(backing):
+    """#720 (4.0.0, breaking): a model-less session is `session_has_no_model` whatever its backing raised, and
+    stays a `SessionNotFoundError` subclass so a Python `except` still catches it; a missing one keeps its code."""
+    from _fakes import InMemorySessionRepository
+    svc = SessionService(InMemorySessionRepository() if backing == "memory" else None)
+    svc.create_session("A leave approval system", slug="bare")
+    for read in (svc.load_model, svc.status, lambda slug: svc.impact(slug, [])):
+        with pytest.raises(E.SessionHasNoModelError) as e:
+            read("bare")
+        assert e.value.code == "session_has_no_model" and e.value.details == {"slug": "bare"}
+        assert isinstance(e.value, E.SessionNotFoundError) and "/requivo:run bare" in str(e.value)
+    with pytest.raises(E.SessionNotFoundError) as missing:
+        svc.load_model("nowhere")
+    assert missing.value.code == "session_not_found"
+
+
 # ── freshness, impact, and locked reads ──────────────────────────────────────────
 
 

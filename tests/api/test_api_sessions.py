@@ -48,9 +48,12 @@ def test_openapi_docs_are_on_and_carry_the_experimental_notice(client):
     ("/no-such-session", 404, "session_not_found"),                   # a RequivoError
     ("/some-slug/revisions/not-a-number", 400, "invalid_request"),     # FastAPI's own 422
     ("/leave-approval/revisions/99", 404, "session_not_found"),        # out of range on a real session
-], ids=["missing", "not-a-number", "out-of-range"])
+    ("/bare/model", 409, "session_has_no_model"),                      # #720 (4.0.0): a real session, no model yet
+    ("/bare/status", 409, "session_has_no_model"),
+], ids=["missing", "not-a-number", "out-of-range", "no-model", "no-model-status"])
 def test_a_refusal_is_reported_as_the_one_json_envelope(client, path, status, code):
     seed_session()
+    store.create_session("bare", "A leave approval request")
     refused(client.get(f"{SESSIONS}{path}"), status, code)
 
 
