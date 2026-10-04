@@ -3,16 +3,29 @@ missing session (#243) and `resolve_default_session` (#541)."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
-from _fakes import full_model, run_cli, run_cli_exit, run_cli_json, run_cli_stdin, seed_session, slot
+from _fakes import (
+    _model_in_out,
+    full_model,
+    run_cli,
+    run_cli_exit,
+    run_cli_fails,
+    run_cli_json,
+    run_cli_stdin,
+    seed_session,
+    slot,
+)
 
 from requivo.cli import app
 from requivo.core import persistence as store
 from requivo.core.context import NO_CONTEXT_TEXT
 from requivo.core.errors import SessionNotFoundError
 from requivo.core.persistence import _REPLACE_ATTEMPTS, SESSION_FORMAT_VERSION, canonical_dir
+from requivo.paths import workspace_flag
+from requivo.services.artifacts import ArtifactService
 from requivo.services.sessions import SessionService
 
 pytestmark = pytest.mark.usefixtures("workspace")
@@ -577,3 +590,56 @@ def test_session_restore_does_not_touch_the_revision_log(tmp_path):
     assert after.current_revision == before.current_revision == 2
     assert [r.model_dump() for r in after.revisions] == [r.model_dump() for r in before.revisions]
     assert sorted(p.name for p in (d / "revisions").glob("*.json")) == files_before
+
+
+# ── `status --recap`: where we stand, on return (#785) ──────────────────────────────
+
+
+def _returning_session() -> None:
+    """#785: a brief and a PRD written at revision 2, then an answer on a topic only the brief rests on."""
+    model = {**full_model(problem=slot(80, "explicit", "high", "Approvals get lost in email"),
+                          workflow=slot(60, "inferred", "high", "Manager approves, then HR records")),
+             "questions": [{"q": "Who approves when the manager is away?", "slot": "permissions", "why": "w"}],
+             "decisions": [{"decision": "Log in through the HR portal", "derived_from": ["integrations"]},
+                           {"decision": "Half days count as leave", "derived_from": ["business_rules"], "source": "proposed"}]}
+    seed_session("leave")
+    SessionService().update_model("leave", json.dumps(model))
+    for doc in ("brief", "prd"):
+        ArtifactService().save("leave", doc, f"# {doc}", source_revision=2)
+    model["model"]["reporting"] = slot(70, "explicit", "low", "A monthly CSV for HR")
+    SessionService().update_model("leave", json.dumps(model))
+
+
+def test_status_never_shows_a_stale_document_as_current():
+    """#785: each generated document is named with its recorded flag (invariant 1), next to its name."""
+    _returning_session()
+    rows = {ln.split()[0]: ln for ln in run_cli(["status", "leave"]).split("DOCUMENTS")[1].splitlines() if ln.strip()}
+    assert "needs updating, not current" in rows["Decision"] and "up to date" in rows["PRD"], rows
+
+
+def test_the_recap_says_where_we_stand_in_plain_words():
+    """#785: decided, open, what moved since the documents and why each stale one is stale, then one next step;
+    values in the model's words, never slot ids, percentages or confidence labels. A bare model.json is refused."""
+    _returning_session()
+    text = run_cli(["status", "leave", "--recap"])
+    _, decided, opened, changed, docs = (" ".join(part.split()) for part in re.split(
+        r"\n(?:DECIDED|OPEN|CHANGED SINCE THE DECISION BRIEF WAS LAST GENERATED \(revision 2\)|DOCUMENTS)\n", text))
+    assert "Real problem: Approvals get lost in email" in decided and "Log in through the HR portal" in decided
+    assert "Half days" not in decided and "Proposed for you to own — Half days count as leave" in opened
+    assert "Who approves when the manager is away?" in opened and "Workflow / lifecycle: Manager approves" in opened
+    assert "Reporting & visibility: A monthly CSV for HR" in changed
+    assert "Decision brief (solution-assessment.md): ⚠ needs updating, moved since it was written: Reporting & visibility" in docs
+    step = f'requivo answer leave{workspace_flag()} "<your answers>"'   # the step `status` names, --workspace and all (#772)
+    assert "PRD (prd.md): up to date" in docs and text.rstrip().endswith(step)
+    assert not any(w in text for w in ("%", "explicit", "inferred", "business_rules", "workflow:"))
+    payload = json.loads(run_cli(["status", "leave", "--recap", "--json"]))
+    assert payload["next"] == step
+    assert payload["since"] == {"type": "brief", "revision": 2} == {**payload["since"], "revision": payload["since_revision"]}
+    assert [c["topic"] for c in payload["changed"]] == ["Reporting & visibility"]
+    assert [(d["type"], d["stale"], d["because"]) for d in payload["documents"]] == [
+        ("brief", True, ["Reporting & visibility"]), ("prd", False, None)]
+    (store.canonical_dir("leave") / "revisions" / "0002-model.json").write_text("{torn", encoding="utf-8")
+    torn = json.loads(run_cli(["status", "leave", "--recap", "--json"]))   # cannot tell, so names nothing
+    assert torn["changed"] is None and (torn["documents"][0]["stale"], torn["documents"][0]["because"]) == (True, None)
+    with _model_in_out("bare") as p:
+        assert run_cli_fails(["status", str(p), "--recap"])[0] == 1
