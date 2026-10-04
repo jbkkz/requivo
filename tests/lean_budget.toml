@@ -34,7 +34,8 @@ total_max_lines = 2908
 # Alternatives; the longest (0004, the HTTP API facade, eight numbered sub-decisions) measured 80.
 # `compatibility_max_lines` raised 418 -> 419 by #751: claims are a new public field, a row each place it shows.
 # Raised 419 -> 420 by #787: the router's verdict is a new session.json and `--json` field, one row for all three.
-compatibility_max_lines = 420
+# Raised 420 -> 421 by #598: `--save-card` is a new flag on discover and run, one row.
+compatibility_max_lines = 421
 decision_record_max_lines = 84
 
 [scripts]
