@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import textwrap
 from collections import Counter
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from requivo.core.analysis import (
@@ -538,7 +539,8 @@ def render_stories(s: Stories) -> None:
             print(f"  ↳ from: {', '.join(st.slots)}")
 
 
-def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str) -> None:
+def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str,
+                    uncovered: Sequence[str] = ()) -> None:
     total_low = sum(i.days_low for i in draft.items)
     total_high = sum(i.days_high for i in draft.items)
     print(f"\n=== ESTIMATE (from the model)   Confidence: {confidence.upper()} ===")
@@ -553,6 +555,8 @@ def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str) -> N
     print(f"{'TOTAL':<44} {'':<5} {total_low:g}–{total_high:g} d")
     if soft:
         print(f"\nSpread driven by unresolved slots: {', '.join(slot_label(s) for s in soft)}")
+    if uncovered:  # #782
+        print(f"Not covered by any story (outside the total): {', '.join(slot_label(s) for s in uncovered)}")
     if draft.risks:
         print("Risks / unknowns:")
         for r in draft.risks:

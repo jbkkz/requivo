@@ -13,6 +13,7 @@ from requivo.core.analysis import (
     readiness_blockers,
     soft_slots,
     state_of,
+    uncovered_slots,
     understanding_view,
 )
 from requivo.core.contracts import (
@@ -268,6 +269,17 @@ def test_soft_slots_are_medium_or_high_and_unresolved():
 
 def test_estimate_confidence_tiers():
     assert [estimate_confidence(n) for n in (0, 1, 3, 5)] == ["high", "high", "medium", "low"]
+    assert [estimate_confidence(n, 1) for n in (0, 1, 3, 5)] == ["medium", "medium", "medium", "low"]
+
+
+def test_a_high_impact_slot_no_story_traces_to_is_uncovered():
+    """#782: an estimate missing a stated What/How area cannot read `high`; Why, empty and traced slots are not uncovered."""
+    model = out({"workflow": slot(90, "explicit", "high", "submit → approve"), "integrations": slot(90, "explicit", "high", "SAP"),
+                 "permissions": slot(90, "explicit", "high", "HR only"), "problem": slot(90, "explicit", "high", "lost mail"),
+                 "actors": slot(0, "empty", "high"), "business_objects": slot(90, "explicit", "medium", "a request")})
+    stories = Stories(stories=[Story(id="S1", title="Submit", slots=["workflow", "permissions"])])
+    assert uncovered_slots(model, stories) == ["integrations"]
+    assert uncovered_slots(model, Stories(stories=[Story(id="S1", title="T", slots=["workflow", "permissions", "integrations"])])) == []
 
 
 @pytest.mark.parametrize("overrides, blocked, cleared", [

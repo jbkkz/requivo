@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
+from requivo.core.analysis import uncovered_slots
 from requivo.core.context import card_summaries, resolve_cards
 from requivo.core.contracts import (
     PRD,
@@ -75,10 +76,10 @@ try:  # Windows
 except ImportError:  # pragma: no cover - POSIX
     msvcrt = None  # type: ignore[assignment]
 
-def _estimate_document(estimate: tuple[EstimateDraft, list[str], str]) -> str:
-    """The estimate's writer over the `(draft, soft, confidence)` triple, so the registry stays one-argument."""
-    draft, soft, confidence = estimate
-    return estimate_markdown(draft, soft, confidence)
+def _estimate_document(estimate: tuple[EstimateDraft, list[str], str, list[str]]) -> str:
+    """The estimate's writer over the `(draft, soft, confidence, uncovered)` tuple, so the registry stays one-argument."""
+    draft, soft, confidence, uncovered = estimate
+    return estimate_markdown(draft, soft, confidence, uncovered)
 
 
 # artifact type → the writer that turns its contract into the saved Markdown, in the order a user meets
@@ -108,6 +109,7 @@ class SavedEstimate:
     draft: EstimateDraft
     soft: list[str]
     confidence: str
+    uncovered: list[str]  # high-impact slots no story covers (#782)
     stories: Stories
     stories_status: ArtifactStatus
 
@@ -684,8 +686,8 @@ class DiscoveryService:
         model = _require_a_model(snap.slug, snap)
         self._check_spend()
         with self._provider_call(artifact_type):
-            return self._need_provider().generate(artifact_type, model, only=snap.context_cards,
-                                                  **kwargs)
+            return self._need_provider().generate(artifact_type, model, request=snap.request,
+                                                  only=snap.context_cards, **kwargs)
 
     # `generate()`'s public signature is these overloads: `Literal`-keyed per type, plus a plain `str`
     # for a name held in a variable. `decision: typed-generation-seam`. `estimate`'s `on_stories` is
@@ -738,7 +740,7 @@ class DiscoveryService:
             before = len(ledger.calls) if ledger is not None else 0
             self._check_spend()
             with self._provider_call(artifact_type):
-                brief = provider.generate(artifact_type, out, only=cards)
+                brief = provider.generate(artifact_type, out, request=snap.request, only=cards)
             spec.absorb(out, brief)
             usage = _usage_since(before)
             # Without the precondition, a revision that landed during the call would be discarded.
@@ -777,7 +779,8 @@ class DiscoveryService:
             return Generated(status=status, artifact=brief, model=out)
 
         if artifact_type == "estimate":
-            return self._generate_estimate(slug, out, cards, source_revision, provider, **kwargs)
+            return self._generate_estimate(slug, out, snap.request, cards, source_revision, provider,
+                                           **kwargs)
 
         try:
             writer = _WRITERS[artifact_type]
@@ -785,11 +788,11 @@ class DiscoveryService:
             raise ValueError(f"{artifact_type!r} has no saveable document — use `reason()`") from e
         self._check_spend()
         with self._provider_call(artifact_type):
-            artifact = provider.generate(artifact_type, out, only=cards, **kwargs)
+            artifact = provider.generate(artifact_type, out, request=snap.request, only=cards, **kwargs)
         status = self._save_generated(slug, artifact_type, writer(artifact), source_revision)
         return Generated(status=status, artifact=artifact, model=out)
 
-    def _generate_estimate(self, slug: str, out: EngineOutput, cards: list[str] | None,
+    def _generate_estimate(self, slug: str, out: EngineOutput, request: str, cards: list[str] | None,
                            source_revision: int, provider, *,
                            on_stories: Callable[[Stories], None] | None = None,
                            **kwargs) -> Generated[SavedEstimate]:
@@ -805,20 +808,22 @@ class DiscoveryService:
                 "estimate over stories you already hold.")
         self._check_spend()
         with self._provider_call("stories"):
-            stories = cast(Stories, provider.generate("stories", out, only=cards))
+            stories = cast(Stories, provider.generate("stories", out, request=request, only=cards))
         stories_status = self._save_generated(slug, "stories", _WRITERS["stories"](stories),
                                               source_revision)
         if on_stories is not None:
             on_stories(stories)
         self._check_spend()
         with self._provider_call("estimate"):
-            estimate = provider.generate("estimate", out, only=cards, stories=stories)
-        status = self._save_generated(slug, "estimate", _WRITERS["estimate"](estimate),
-                                      source_revision)
-        draft, soft, confidence = estimate
+            draft, soft, confidence = provider.generate("estimate", out, request=request, only=cards,
+                                                        stories=stories)
+        uncovered = uncovered_slots(out, stories)  # #782: named beside the provider's confidence
+        status = self._save_generated(
+            slug, "estimate", _WRITERS["estimate"]((draft, soft, confidence, uncovered)), source_revision)
         return Generated(status=status, model=out,
                          artifact=SavedEstimate(draft=draft, soft=soft, confidence=confidence,
-                                                stories=stories, stories_status=stories_status))
+                                                uncovered=uncovered, stories=stories,
+                                                stories_status=stories_status))
 
     def _save_generated(self, slug: str, artifact_type: str, content: str, source_revision: int):
         """Save a generated artifact against the revision it was produced from; the staleness check

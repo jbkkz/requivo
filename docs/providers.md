@@ -103,7 +103,7 @@ A provider implements the `ReasoningProvider` protocol in `providers/base.py`:
 |---|---|
 | `name` | an attribute — short identity of the implementation (`"anthropic"`), stamped on the session |
 | `analyze(request, current_model=…, answers=…, only=…, reuse_system=…)` | a validated `EngineOutput` — one discovery turn |
-| `generate(artifact_type, model, only=…, **kwargs)` | the typed contract for that artifact |
+| `generate(artifact_type, model, request=…, only=…, **kwargs)` | the typed contract for that artifact, reasoned beside the session's request (#782) |
 | `model_name()` | the reasoning model, recorded on the session |
 | `provenance(op, only=…)` | provider / model / prompt identity, recorded on each revision |
 

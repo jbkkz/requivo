@@ -8,7 +8,7 @@ import json
 import pytest
 from _fakes import FakeClient, StubProvider, _model_in_out, out, run_cli, slot
 
-from requivo.core.contracts import Brief, EstimateDraft, EstimateItem, Stories, Story
+from requivo.core.contracts import PRD, Brief, EstimateDraft, EstimateItem, Stories, Story
 from requivo.core.dependencies import ARTIFACT_FILENAMES
 from requivo.core.errors import ArtifactWriteFailedError, RevisionConflictError
 from requivo.core.persistence import RevisionRecord
@@ -54,9 +54,9 @@ class _ConflictingBrief(StubProvider):
         super().__init__(artifacts={"brief": _BRIEF})
         self.sessions, self.slug = sessions, slug
 
-    def generate(self, artifact_type, model, *, only=None, **kwargs):
+    def generate(self, artifact_type, model, *, request, only=None, **kwargs):
         self.sessions.update_model(self.slug, out({"problem": slot(95, "inferred", "high")}).model_dump_json())
-        return super().generate(artifact_type, model, only=only, **kwargs)
+        return super().generate(artifact_type, model, request=request, only=only, **kwargs)
 
 
 def test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded():
@@ -227,6 +227,14 @@ def test_estimate_markdown_says_when_nothing_widens_the_range():
     """The must-fire pair for the spread section: a sentence, not an absent heading."""
     md = estimate_markdown(_draft(), [], "high")
     assert "No unresolved topic widens these ranges" in md and "Spread driven by" not in md
+    assert "Not covered by any story" not in md
+
+
+def test_estimate_markdown_names_the_areas_no_story_covers():
+    """#782: an area outside the total is named by its label, never silently absent."""
+    md = estimate_markdown(_draft(), [], "medium", ["integrations"])
+    assert "## Not covered by any story" in md and "- Integrations & notifications" in md
+    assert "**Confidence:** medium" in md and "- integrations" not in md
 
 
 def test_a_newline_inside_a_provider_field_cannot_open_a_new_heading():
@@ -253,24 +261,25 @@ class _AnalysisProvider(StubProvider):
         self.seen: list[tuple[str, dict]] = []
         self.stories = _stories()
 
-    def generate(self, artifact_type, model, *, only=None, **kwargs):
+    def generate(self, artifact_type, model, *, request, only=None, **kwargs):
         self.seen.append((artifact_type, kwargs))
+        self.generate_requests.append(request)
         if artifact_type == "stories":
             return self.stories
         if artifact_type == "estimate":
-            return _draft(), ["workflow"], "high"
+            return _draft(), ["workflow"], "medium"
         raise AssertionError(f"unexpected generate({artifact_type!r})")
 
 
-def _session_with_a_model():
+def _session_with_a_model(**slots):
     provider = _AnalysisProvider()
     sessions = SessionService()
-    slug = _seeded(sessions, workflow=slot(60, "inferred", "high"))
+    slug = _seeded(sessions, workflow=slot(60, "inferred", "high"), **slots)
     return slug, sessions, DiscoveryService(provider=provider, sessions=sessions), provider
 
 
 def test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_one_snapshot():
-    slug, sessions, disco, provider = _session_with_a_model()
+    slug, sessions, disco, provider = _session_with_a_model(permissions=slot(90, "explicit", "high", "HR only"))
     seen = []
     result = disco.generate(slug, "estimate", on_stories=seen.append)
 
@@ -285,9 +294,20 @@ def test_generating_the_estimate_saves_the_stories_it_was_reasoned_against_from_
     assert result.status.filename == "estimate.md" and result.status.revision == 1
     assert result.artifact.stories_status.filename == "stories.md" and result.artifact.stories_status.revision == 1
     assert result.artifact.draft.items[0].story_id == "S1"
-    assert result.artifact.soft == ["workflow"] and result.artifact.confidence == "high"
+    assert result.artifact.soft == ["workflow"] and result.artifact.confidence == "medium"
+    assert result.artifact.uncovered == ["permissions"], "#782: a stated high-impact area no story traces to"
+    assert provider.generate_requests == [REQUEST, REQUEST], "#782: both calls reason beside the client's request"
     assert sessions.repo.load_artifact(slug, "stories.md") == stories_markdown(provider.stories)
-    assert sessions.repo.load_artifact(slug, "estimate.md") == estimate_markdown(_draft(), ["workflow"], "high")
+    assert sessions.repo.load_artifact(slug, "estimate.md") == estimate_markdown(_draft(), ["workflow"], "medium", ["permissions"])
+
+
+@pytest.mark.parametrize("artifact_type", ["brief", "prd"])
+def test_every_generation_reasons_beside_the_sessions_own_request(artifact_type):
+    """#782: the request is the snapshot's, threaded by the service; the assessment and the document paths alike."""
+    provider = StubProvider(artifacts={"brief": _BRIEF, "prd": PRD(title="T", problem="P")})
+    sessions, disco = _disco(provider)
+    disco.generate(_seeded(sessions), artifact_type)
+    assert provider.generate_requests == [REQUEST]
 
 
 def test_generating_the_stories_alone_saves_them_like_every_other_artifact():

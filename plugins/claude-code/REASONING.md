@@ -277,6 +277,11 @@ each by its `source` (`artifact` is `[repo]`). The model keeps one confidence pe
 (`decision: claims-carry-provenance`): the tags are a render of it, and not the confidence labels the
 voice rules keep out of the prose.
 
+Every document, tagged or not, keeps the requester's words apart from what was inferred (#782): an
+`inferred` slot reads as an assumption; the requester's silence never confirms anything; an actor,
+role, constraint or number they did not give is a proposal, presented as one, never as fact; and
+where an answer admits more than one reading, the document says which reading it took.
+
 ## The revision contract (every skill, no exceptions)
 
 A session is versioned, and you are not its only writer. The same session can be open in Requivo Web,
