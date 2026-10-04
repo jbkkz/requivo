@@ -167,7 +167,7 @@ def test_the_recap_says_where_we_stand_in_plain_words():
     _returning_session()
     text = run_cli(["status", "leave", "--recap"])
     _, decided, opened, changed, docs = (" ".join(part.split()) for part in re.split(
-        r"\n(?:DECIDED|OPEN|CHANGED SINCE THE FIRST DOCUMENT WAS WRITTEN|DOCUMENTS)\n", text))
+        r"\n(?:DECIDED|OPEN|CHANGED SINCE THE DECISION BRIEF WAS LAST GENERATED \(revision 2\)|DOCUMENTS)\n", text))
     assert "Real problem: Approvals get lost in email" in decided and "Log in through the HR portal" in decided
     assert "Half days" not in decided and "Proposed for you to own — Half days count as leave" in opened
     assert "Who approves when the manager is away?" in opened and "Workflow / lifecycle: Manager approves" in opened
@@ -176,7 +176,8 @@ def test_the_recap_says_where_we_stand_in_plain_words():
     assert "PRD (prd.md): up to date" in docs and text.rstrip().endswith('requivo answer leave "<your answers>"')
     assert not any(w in text for w in ("%", "explicit", "inferred", "business_rules", "workflow:"))
     payload = json.loads(run_cli(["status", "leave", "--recap", "--json"]))
-    assert payload["since_revision"] == 2 and [c["topic"] for c in payload["changed"]] == ["Reporting & visibility"]
+    assert payload["since"] == {"type": "brief", "revision": 2} == {**payload["since"], "revision": payload["since_revision"]}
+    assert [c["topic"] for c in payload["changed"]] == ["Reporting & visibility"]
     assert [(d["type"], d["stale"], d["because"]) for d in payload["documents"]] == [
         ("brief", True, ["Reporting & visibility"]), ("prd", False, None)]
     (store.canonical_dir("leave") / "revisions" / "0002-model.json").write_text("{torn", encoding="utf-8")

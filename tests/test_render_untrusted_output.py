@@ -220,7 +220,7 @@ def _forged_renders() -> dict[str, str]:
         # #785: the recap restates model prose and disk filenames; `status` names each document.
         "render_recap": printed(render_recap, FORGED, Recap(
             objective=FORGED, ready=False, decided=[{"topic": "Real problem", "value": FORGED}], decisions=[FORGED],
-            questions=[FORGED], assumed=[{"topic": "Actors", "value": FORGED}], proposed=[FORGED], since_revision=1,
+            questions=[FORGED], assumed=[{"topic": "Actors", "value": FORGED}], proposed=[FORGED], since={"type": "brief", "revision": 1},
             changed=[{"topic": "Actors", "value": FORGED}], to_test=[{"topic": "Actors", "test_plan": FORGED}],
             reasoning_changed=[{"item": FORGED, "change": "added"}],
             documents=[DocumentState(type="brief", filename=FORGED, stale=True, because=["Actors"])])),

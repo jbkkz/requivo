@@ -294,6 +294,19 @@ def test_the_recap_names_a_reasoning_change_rather_than_saying_nothing_moved():
     assert "Nothing has moved" not in text and "Reasoning (added): Log in through the HR portal" in text
 
 
+def test_the_recap_names_the_document_its_change_summary_compares_against():
+    """#785 review: a regeneration moves a document's recorded revision, so the summary names the oldest
+    current document and its revision rather than claiming to reach back to the first one ever written."""
+    then, now = out(_MODEL), out({"problem": slot(90, "explicit", "high", "Approvals get lost in email")})
+    def status(rev, stale=False):
+        return ArtifactStatus(revision=rev, filename="f.md", updated_at="2026-01-01T00:00:00Z", stale=stale)
+    regenerated = build_recap(now, {"brief": status(2)}, {1: then, 2: now})
+    assert (regenerated.since, regenerated.changed) == ({"type": "brief", "revision": 2}, [])
+    assert "CHANGED SINCE THE DECISION BRIEF WAS LAST GENERATED (revision 2)" in printed(render_recap, "leave", regenerated)
+    older_prd = build_recap(now, {"brief": status(2), "prd": status(1, stale=True)}, {1: then, 2: now})
+    assert older_prd.since == {"type": "prd", "revision": 1} and [c["topic"] for c in older_prd.changed or []] == ["Real problem"]
+
+
 # ── Markdown → HTML: the dialect the generators emit (#235) ──────────────────────
 
 # Anything a browser would run, fetch or lay out from bytes it did not choose.

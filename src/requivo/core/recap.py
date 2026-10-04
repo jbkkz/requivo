@@ -45,7 +45,10 @@ class Recap:
     proposed: list[str] = field(default_factory=list[str])   # decisions proposed for the client to own
     to_test: list[dict[str, str]] = field(default_factory=list[dict[str, str]])   # {topic, test_plan}
     blocking: list[dict[str, str]] = field(default_factory=list[dict[str, str]])  # {topic, reason}, not assumed
-    since_revision: Optional[int] = None     # the oldest document source revision; None: no document
+    # What the change summary compares against: the oldest *current* document (a regeneration moves it),
+    # `{type, revision}`, and that revision again; None: no document.
+    since: Optional[dict[str, Any]] = None
+    since_revision: Optional[int] = None
     changed: Optional[list[dict[str, str]]] = None   # {topic, value}; None: no document, or unreadable
     reasoning_changed: Optional[list[dict[str, str]]] = None   # {item, change}; None as `changed`
     documents: list[DocumentState] = field(default_factory=list[DocumentState])
@@ -101,8 +104,11 @@ def build_recap(now: EngineOutput, artifacts: Mapping[str, ArtifactStatus],
     assumed = set(veto_defaults(now, perimeter))
     recap.blocking = [{"topic": slot_label(sid, perimeter), "reason": blocking_reason(now.model.get(sid))}
                       for sid in readiness_blockers(now, perimeter) if sid not in assumed]
-    if artifacts:
-        recap.since_revision = min(st.revision for st in artifacts.values())
+    # `min` keeps the first of a tie, so the display order (ARTIFACT_FILENAMES) names it.
+    oldest = min((t for t in ARTIFACT_FILENAMES if t in artifacts), key=lambda t: artifacts[t].revision, default=None)
+    if oldest is not None:
+        recap.since = {"type": oldest, "revision": artifacts[oldest].revision}
+        recap.since_revision = artifacts[oldest].revision
         base = revisions.get(recap.since_revision)
         if base is not None:
             recap.changed = [{"topic": slot_label(sid, perimeter),

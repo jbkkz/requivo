@@ -471,8 +471,9 @@ def render_recap(slug: str, recap: Recap, next_line: str | None = None, *, short
         print("\nOPEN")
         for line in _open_lines(recap) or ["Nothing open."]:
             print(_bullet(line))
-    if recap.since_revision is not None:
-        print("\nCHANGED SINCE THE FIRST DOCUMENT WAS WRITTEN")
+    if recap.since is not None:   # the oldest *current* document: a regeneration moves it (#785)
+        label = str(ARTIFACT_LABELS.get(recap.since["type"]) or recap.since["type"])
+        print(f"\nCHANGED SINCE THE {label.upper()} WAS LAST GENERATED (revision {recap.since['revision']})")
         if recap.changed is None:
             print("  Could not tell: the revision it was written from cannot be read.")
         for line in _changed_lines(recap) or ([] if recap.changed is None else ["Nothing has moved since."]):

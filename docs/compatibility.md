@@ -98,7 +98,7 @@ evidence}`. `model show --json` is the model document the bare verb prints.
 **`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`, `summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `perimeter_fit`, `perimeter_fit_reason`,
 `context_cards` and `artifacts` are added only when the reference resolves to a canonical session, because a bare `model.json` has no session to read them from. Both forms are public. Pinned by
 `test_status_and_impact_still_open_a_model_json_path_directly`. **`status --recap --json` (#785)** is a third form, a session's only: `{slug, objective, ready, decided, decisions, questions, assumed,
-proposed, to_test, blocking, since_revision, changed, reasoning_changed, documents, next}`, pinned by `test_the_recap_says_where_we_stand_in_plain_words`.
+proposed, to_test, blocking, since, since_revision, changed, reasoning_changed, documents, next}` (`since` is the oldest current document, `{type, revision}`), pinned by `test_the_recap_says_where_we_stand_in_plain_words`.
 
 **A code carries one fact, and one `details` shape** — the rule that makes "assert on the code, never
 the message" safe to follow. Where a single code used to answer for more than one condition, it was

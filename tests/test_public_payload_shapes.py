@@ -81,7 +81,7 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
         ("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), _STATUS_BARE),
         ("status <slug> --recap --json", ("status", "s", "--recap", "--json"), _keys(   # #785
             "slug objective ready:bool decided:list decisions:list questions:list assumed:list proposed:list to_test:list "
-            "blocking:list since_revision:int|null changed:list|null reasoning_changed:list|null documents:list next:str|null"))],
+            "blocking:list since:dict|null since_revision:int|null changed:list|null reasoning_changed:list|null documents:list next:str|null"))],
     "session show": [("session show --json", ("session", "show", "s", "--json"), _keys(
         "format_version:int requivo_version session_id slug created_at updated_at provider:str|null "
         "model_name:str|null context_cards:list|null request_hash schema_version:int current_revision:int "
