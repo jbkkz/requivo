@@ -7,7 +7,13 @@ from __future__ import annotations
 import logging
 
 from requivo.core.dependencies import ARTIFACT_FILENAMES, REASONING_CONSUMERS, diff_models, diff_reasoning, propagate
-from requivo.core.errors import ArtifactTypeNotOwnedError, InvalidSessionError, RequivoError, SessionNotFoundError
+from requivo.core.errors import (
+    ArtifactTypeNotOwnedError,
+    InvalidModelError,
+    InvalidSessionError,
+    RequivoError,
+    SessionNotFoundError,
+)
 from requivo.core.perimeters import get_perimeter, resolve_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.render.markdown import with_boundary_note
@@ -89,6 +95,11 @@ class ArtifactService:
                              "current_revision": meta.current_revision,
                              # `cause` present and null: the shared `details` shape (#57, #35).
                              "cause": None})
+            if not content.strip():
+                raise InvalidModelError(
+                    f"refusing to save an empty '{artifact_type}' for session '{slug}': "
+                    "a blank document would be reported as up to date",
+                    details={"slug": slug, "type": artifact_type})
             stale = self._stale_since(slug, artifact_type, source_revision, meta.current_revision,
                                       perimeter)
             if meta.perimeter_fit == "no_fit":
