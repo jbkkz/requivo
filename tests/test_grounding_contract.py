@@ -331,11 +331,31 @@ def test_a_written_card_is_kept_only_on_consent(user_cards):
     disco = DiscoveryService(_Judge(_uncovered(stem="dental-claims")))
     meta, unsaved, _c, _r = disco.claim_and_ground("a dental claims request", cards=None, slug=None)
     kept = disco.keep_card(unsaved.written.stem)
-    assert kept == user_cards / "dental-claims.md" and not unsaved.written.exists()
+    assert kept == user_cards / "dental-claims.md"
+    assert kept.read_text(encoding="utf-8") == unsaved.written.read_text(encoding="utf-8"), "kept a different card"
     assert SessionService().meta(meta.slug).context_cards == ["dental-claims"], "keeping moved the session"
     assert "## dental-claims" in load_context(["dental-claims"])
-    with pytest.raises(ValueError, match="no unsaved card"):
+    with pytest.raises(ValueError, match="already installed"):
         disco.keep_card("dental-claims")
+    with pytest.raises(ValueError, match="no unsaved card"):
+        disco.keep_card("dental-nothing")
+
+
+def test_keeping_a_card_never_pulls_it_from_under_a_reader(user_cards):
+    """A session that looked the card up before it was kept still reads it after (#765): the draft stays."""
+    disco = DiscoveryService(_Judge(_uncovered()))
+    disco.claim_and_ground("a dental billing request", cards=None, slug=None)
+    looked_up = context_mod._cards_for_selection()  # a concurrent turn, between its lookup and its read
+    disco.keep_card("dental-billing")
+    assert "dental practice billing in Spain" in looked_up["dental-billing"].read_text(encoding="utf-8")
+    assert load_context(["dental-billing"]).count("## dental-billing") == 1, "the kept card loads twice"
+
+
+def test_an_unreadable_unsaved_card_root_does_not_flag_an_unscoped_session():
+    """Invariant 8: `load_context(None)` never reads `.requivo/cards`, so neither does its diagnostic (#765)."""
+    card_draft_root().parent.mkdir(parents=True, exist_ok=True)
+    card_draft_root().write_text("not a directory", encoding="utf-8")
+    assert load_context(None) and check_selection(None) is None
 
 
 def test_a_written_card_never_shadows_an_installed_one(user_cards, monkeypatch):
@@ -412,7 +432,7 @@ def test_a_written_card_is_kept_only_on_consent_at_the_cli(user_cards, monkeypat
     client = FakeClient(_ROUTING_REPLY, _UNCOVERED_REPLY, _ENGINE_REPLY)
     run_cli(["discover", "a dental billing request", "--once", *argv_tail], client=client)
     assert user_cards.joinpath("dental-billing.md").exists() is kept
-    assert card_draft_root().joinpath("dental-billing.md").exists() is not kept
+    assert kept or card_draft_root().joinpath("dental-billing.md").exists(), "a declined card was not written"
     assert len(asked) == (1 if answer is not None else 0) and all("[y/N]" in p for p in asked)
     assert [s.context_cards for s in SessionService().list_sessions()] == [["dental-billing"]]
 

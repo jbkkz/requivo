@@ -193,9 +193,10 @@ def write_generated_card(card: GeneratedCard, *, keep: bool) -> Path:
 
 
 def keep_generated_card(stem: str) -> Path:
-    """Move an unsaved card into `user_context_dir()` under the same stem, so the sessions selecting it
-    keep their identity (#598); refused if an installed card took the name meanwhile.
-    `test_a_written_card_is_kept_only_on_consent`."""
+    """Copy an unsaved card into `user_context_dir()` under the same stem, so the sessions selecting it
+    keep their identity (#598); refused if an installed card took the name meanwhile. The draft stays:
+    installed wins the lookup with identical bytes, and a session reading it now never loses it.
+    `test_a_written_card_is_kept_only_on_consent`, `test_keeping_a_card_never_pulls_it_from_under_a_reader`."""
     draft = _draft_paths().get(stem)
     if draft is None:
         raise ValueError(f"no unsaved card named {stem!r} in {card_draft_root()}")
@@ -204,7 +205,6 @@ def keep_generated_card(stem: str) -> Path:
     root = _user_card_root()
     if not _publish(root, stem, draft.read_text(encoding="utf-8")):
         raise ValueError(f"a card named {stem!r} landed in {root} meanwhile; this one stays with its session")
-    draft.unlink()
     return root / f"{stem}.md"
 
 
@@ -312,7 +312,8 @@ def check_selection(only: list[str] | None) -> RequivoError | None:
     try:
         if is_no_context(only):
             return None
-        paths = _cards_for_selection()
+        # The loader's own condition (invariant 8): an unscoped session never reads the unsaved cards.
+        paths = _cards_for_selection(drafts=only is not None)
         if only is not None:
             _selection_keys(list(only), paths)
     except _SELECTION_REFUSALS as e:

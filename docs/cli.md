@@ -134,7 +134,7 @@ discovery finds that no installed card describes the request's domain, it writes
 reasons the new session against it alone. Unsaved, it lives in `.requivo/cards/` in this workspace
 and grounds only the sessions that selected it. At a terminal `discover` asks *Save this card for
 reuse in later sessions? [y/N]*; without a terminal it never saves unless `--save-card` is given,
-which also skips the question. A saved card moves to `REQUIVO_CONTEXT_DIR` under the same name, so
+which also skips the question. A saved card is copied to `REQUIVO_CONTEXT_DIR` under the same name, so
 the session's selection is unchanged ([context-cards.md](context-cards.md#a-card-the-engine-writes)).
 
 ## Artifact generators (provider-backed)

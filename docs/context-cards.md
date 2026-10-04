@@ -141,10 +141,11 @@ money- or safety-critical obligations — and **no** installed card describes it
   default, `requivo context` does not list it, and no later judgment is offered it. It outlives a
   deleted session and does not travel in `session export`.
 - **Kept only if you say so:** at a terminal `discover`/`run` ask *Save this card for reuse in later
-  sessions? [y/N]*; without one, or to skip the question, pass `--save-card`. A kept card moves to
+  sessions? [y/N]*; without one, or to skip the question, pass `--save-card`. A kept card is copied to
   `REQUIVO_CONTEXT_DIR` (default `~/.config/requivo/context`) under the same name, so its sessions are
   unchanged, and from then on it is an ordinary user card — listed, offered to later requests in that
-  domain, and loaded by every unscoped session, like any card you add.
+  domain, and loaded by every unscoped session, like any card you add. The workspace copy stays,
+  identical and unread while the kept one exists, so a session reading it mid-save never loses it.
 - **Shown first:** the card is printed in full, with its path, before the turn it grounds. It is the
   engine's reading of an untrusted request, not a source — read it, and edit or delete the file if it
   is wrong.

@@ -39,12 +39,12 @@ the sequence (invariant 14).
 `.requivo/cards/`, a third directory of the one card lookup, and the session is re-claimed selecting
 it alone under the four conditions above: a written card is selection, not provenance. That directory
 answers a named selection only — never the every-card default, never a judgment — so every verb that
-loads a session's cards resolves it unchanged, and nothing else sees it. Keeping it is the user's act:
-asked at a terminal, default No, or `--save-card`; it then moves to `user_context_dir()` under the same
-stem, so its sessions keep their identity, and a later judgment is offered it. A taken stem moves to
-`-2`…`-9`; an identical unsaved card is reused, so one card is one identity. Costs left: unsaved cards
-read the ambient workspace, as `decision: debug-dump-ambient-root` does, so a repository rooted
-elsewhere does not see them; they outlive a deleted session and do not travel in `session export`.
+loads a session's cards resolves it unchanged, and nothing else sees it. Keeping it is the user's act —
+asked at a terminal, default No, or `--save-card` — and copies it to `user_context_dir()` under the same
+stem: its sessions keep their identity, a later judgment is offered it, and the shadowed draft stays so
+no reader mid-turn loses it. A taken stem moves to `-2`…`-9`; an identical unsaved card is reused only
+while no installed card owns its stem. Costs left: unsaved cards read the ambient workspace, as
+`decision: debug-dump-ambient-root` does, so a repository rooted elsewhere does not see them.
 
 **The trust boundary widens**: a card authored from an untrusted request lands in the system block of
 every later call. What holds it: the engine fills fields, never Markdown; every value is one line (C0,
