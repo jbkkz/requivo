@@ -235,7 +235,7 @@ def test_the_bulk_migrate_command_degrades_a_bad_session_rather_than_aborting(br
 def test_an_interrupted_migration_is_reported_distinctly_from_already_present():
     """#262: a revision-0 shell whose request matches the legacy one is the crash window, not a taken slug."""
     _legacy("half-done", "NEVER-COPIED")
-    SessionService().create_session("", slug="half-done")   # `migrate_legacy`'s own fallback request text
+    store.create_session("half-done", "")   # `migrate_legacy`'s own fallback request text
     out, code = _migrate()
     assert (code, out["migrated"], out["skipped_already_present"], out["interrupted"]) == (EXIT_DEGRADED, [], [], ["half-done"])
     assert SessionService().repo.read_meta("half-done").current_revision == 0

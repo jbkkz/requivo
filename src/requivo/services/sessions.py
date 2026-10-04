@@ -34,7 +34,13 @@ from requivo.core.dependencies import (
     thinner_evidence,
     unknown_slots,
 )
-from requivo.core.errors import ModelUnreadableError, RevisionConflictError, SessionExistsError, SessionNotFoundError
+from requivo.core.errors import (
+    InvalidModelError,
+    ModelUnreadableError,
+    RevisionConflictError,
+    SessionExistsError,
+    SessionNotFoundError,
+)
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.persistence.identifiers import _stat_exists
@@ -299,6 +305,8 @@ class SessionService:
         201/200 off it, #425) and, with `strict_slug`, a 409 `session_exists` when an explicit slug
         is taken by a different identity. The default keeps the hash-suffixed fallback every other
         caller relies on (`test_a_taken_session_name_is_suffixed_rather_than_refused` pins it)."""
+        if not request.strip():
+            raise InvalidModelError("a session needs a request, and this one is empty")
         require_input_within_bounds(request, field="request")
         context_cards = resolve_cards(context_cards) if context_cards else None
         # Resolved once, so "no perimeter named" and an explicit `software` compare equal below.
