@@ -479,7 +479,7 @@ def register_doctor(sub) -> None:
     # schema / context — read-only knowledge for a reasoning caller (Claude Code)
     sc = sub.add_parser("schema", help="print the slot schema (the model vocabulary + driver rule)")
     sc.add_argument("--framework", action="store_true", help="also print the human framework spec")
-    sc.add_argument("--perimeter", default="software",
+    sc.add_argument("--perimeter", default="software", metavar="ID",
                     help="which installed perimeter's schema to print (default: software)")
     sc.set_defaults(func=_cmd_schema)
 
