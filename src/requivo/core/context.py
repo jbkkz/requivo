@@ -7,11 +7,13 @@ one guarded read; `available_cards()` stays observational.
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
-from requivo.core.contracts import SOFT_COMPLETENESS
+from requivo.core.contracts import SOFT_COMPLETENESS, GeneratedCard
 from requivo.core.errors import (
     ContextUnreadableError,
     EmptySelectionError,
@@ -132,6 +134,31 @@ def card_byte_size(path: Path) -> int:
     """The bytes one card contributes to a prompt, not its size on disk (CRLF checkouts over-count):
     `test_a_card_weighs_the_same_whatever_its_line_endings`."""
     return len(path.read_text(encoding="utf-8").encode("utf-8"))
+
+
+def write_generated_card(card: GeneratedCard) -> Path:
+    """Write an engine-authored card (#598) into `user_context_dir()`, where every selector finds it.
+    Re-validated, since the caller's instance may never have been; a stem an installed card answers to
+    is refused, never shadowed; published by a no-clobber link, so the file is whole or absent.
+    `test_a_written_card_never_shadows_an_installed_one`."""
+    card = GeneratedCard.model_validate(card.model_dump())
+    if card.stem in {stem.lower() for stem in _card_paths()} | {NO_CONTEXT}:
+        raise ValueError(f"a card named {card.stem!r} is already installed, and a written card never "
+                         "replaces one")
+    root = user_context_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{card.stem}.md"
+    scratch = root / f".{card.stem}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"  # not `*.md`: never a card
+    try:
+        with scratch.open("x", encoding="utf-8", newline="") as fh:
+            fh.write(card.markdown())
+        os.link(scratch, path)
+    except FileExistsError:
+        raise ValueError(f"a card named {card.stem!r} landed in {root} while this one was being "
+                         "written; it was left as it is") from None
+    finally:
+        scratch.unlink(missing_ok=True)
+    return path
 
 
 def average_card_byte_size() -> int | None:

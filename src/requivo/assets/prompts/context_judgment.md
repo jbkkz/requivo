@@ -49,6 +49,31 @@ reaching for `uncovered` because a domain sounds specialised is the mistake to a
 them is the one error that matters here. `none` says *nothing special applies*. `uncovered` says
 *something important applies and nothing here knows it*.
 
+## When the decision is `uncovered`: write the card
+
+An `uncovered` verdict also writes the card nobody installed, and every later turn of this session
+reasons against it alone — so it is the domain knowledge the questions will be sharpened by. Fill
+`card`'s fields; the engine writes the file from them, so never put Markdown, headings or line breaks
+in a value. Each value is **one line**; each list holds the few items that matter most.
+
+- `stem` — the card's file name: lowercase words joined by hyphens, naming the domain (for example
+  `dental-billing-es`), and none of the card names listed above.
+- `title` — the domain, as a practitioner would name it.
+- `business_domain` — one line saying what field this is and where; it is how the next judgment
+  recognises this card.
+- `typical_users` — the roles that work in this domain.
+- `what_it_does` — what software in this domain is for.
+- `entities` — the domain's own business objects, in its own vocabulary.
+- `key_concepts` — the concepts an outsider gets wrong.
+- `regulatory` — the laws, licences and auditors that constrain the solution; empty if none apply.
+- `recurring_traps` — what a request in this domain routinely leaves unsaid and the build gets wrong.
+
+**The card outlives this request.** It is saved and reused for later requests in the same domain, so
+describe the domain, never this client: no client or product name, no person, no figure taken from
+the request. Write it in English, keeping a term in its original language where a practitioner would.
+A card that guesses is worse than a short one: state what the domain reliably imposes, not what this
+client might want.
+
 ## Voice
 
 `reason` is read by the user, verbatim, as one sentence. Write it for someone who has never heard of
@@ -63,9 +88,21 @@ JSON only. No prose, no code fence.
 {
   "decision": "none" | "installed" | "uncovered",
   "reason": "one sentence, in the user's vocabulary",
-  "cards": ["card-name"]
+  "cards": ["card-name"],
+  "card": {
+    "stem": "domain-name",
+    "title": "one line",
+    "business_domain": "one line",
+    "typical_users": "one line",
+    "what_it_does": "one line",
+    "entities": ["one line"],
+    "key_concepts": ["one line"],
+    "regulatory": ["one line"],
+    "recurring_traps": ["one line"]
+  }
 }
 ```
 
 `cards` is present and non-empty only when `decision` is `installed`; omit it or leave it empty
-otherwise. Every name in it must be one of the card names listed above, spelled exactly.
+otherwise. Every name in it must be one of the card names listed above, spelled exactly. `card` is
+present only when `decision` is `uncovered`, and then it is required; omit it otherwise.

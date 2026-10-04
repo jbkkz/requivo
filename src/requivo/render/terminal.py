@@ -208,8 +208,9 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
 
 def render_context_judgment(grounding, routing=None) -> None:
     """What the engine made of this request's grounding (#593) and, with `routing`, which perimeter
-    it routed to (#601), both shown before either influences anything. Four outcomes, four sentences:
-    *no card is needed* and *nobody asked* are different facts. `reason` goes through `display_text`."""
+    it routed to (#601), both shown before either influences anything. Each outcome its own sentence:
+    *no card is needed* and *nobody asked* are different facts, and a written card (#598) is printed
+    whole. `reason` and the card go through `display_text`."""
     if routing is not None:
         _render_perimeter_route(routing)
     judgment = grounding.judgment
@@ -225,7 +226,17 @@ def render_context_judgment(grounding, routing=None) -> None:
                            f"discovery; this session reasons against every card.", lw=14))
     elif judgment.decision is ContextDecision.uncovered:
         print(_labeled("Grounding", f"⚠ no installed card describes this domain — {reason}", lw=14))
-        print(_labeled("", "Impact is being estimated against products this request has nothing to "
+        if grounding.written is not None and not grounding.note and judgment.card is not None:
+            # Shown in full before the turn it grounds (#598): it is untrusted, engine-written text.
+            print(_labeled("", "Wrote a card for it, and this session reasons against it alone. It is "
+                               "the engine's reading of your request, not a source; correct the file, "
+                               "or remove it if it is wrong:", lw=14))
+            print(f"{'':17}{display_text(str(grounding.written))}")  # unwrapped, so it can be copied
+            for line in judgment.card.markdown().splitlines():
+                print(f"    {display_text(line)}")
+            return
+        note = f"{grounding.note[:1].upper()}{grounding.note[1:]}. " if grounding.note else ""
+        print(_labeled("", f"{note}Impact is being estimated against products this request has nothing to "
                            "do with, so the questions below are weaker than they look. Writing a "
                            "card for this domain is the lever (docs/context-cards.md).", lw=14))
     else:

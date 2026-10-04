@@ -8,13 +8,21 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
-from _fakes import FakeClient, StubProvider, full_model, run_cli
+from _fakes import _ENGINE_REPLY, _ROUTING_REPLY, FakeClient, StubProvider, card, full_model, run_cli
 from fastapi.testclient import TestClient
 
 from conftest import FakeProvider
 from requivo.core import context as context_mod
-from requivo.core.context import CardSummary, available_cards, check_selection, load_context, resolve_cards
-from requivo.core.contracts import ContextJudgment, PerimeterJudgment
+from requivo.core.context import (
+    CardSummary,
+    available_cards,
+    card_summaries,
+    check_selection,
+    load_context,
+    resolve_cards,
+    write_generated_card,
+)
+from requivo.core.contracts import ContextJudgment, GeneratedCard, PerimeterJudgment
 from requivo.core.errors import (
     EmptySelectorTokenError,
     NoContextCardsError,
@@ -269,6 +277,87 @@ def test_a_session_that_moved_off_revision_zero_during_the_judgment_is_left_alon
     assert svc.exists(meta.slug), "a session with a model in it was deleted on a verdict"
     assert cards is None, "the narrowing went ahead over a session that had moved on"
     assert svc.list_sessions()[0].current_revision == 1, "the concurrent write was lost"
+
+
+# ── the missing card (#598, `decision: the-engine-writes-the-missing-card`) ────
+
+
+@pytest.fixture
+def user_cards(tmp_path, monkeypatch):
+    """The user card root a written card lands in, never the developer's own."""
+    user = tmp_path / "user-cards"
+    monkeypatch.setenv("REQUIVO_CONTEXT_DIR", str(user))
+    return user
+
+
+def _uncovered(**overrides) -> ContextJudgment:
+    return ContextJudgment(decision="uncovered", reason="dental billing", card=GeneratedCard(**card(**overrides)))
+
+
+def test_an_uncovered_verdict_writes_its_card_and_reclaims_under_it_alone(user_cards):
+    """The card lands where every selector finds it, and the session is re-claimed on it (invariant 11)."""
+    meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    assert cards == ["dental-billing"] and meta.context_cards == ["dental-billing"]
+    assert grounding.written == user_cards / "dental-billing.md" and not grounding.note
+    assert grounding.written.read_text(encoding="utf-8") == grounding.judgment.card.markdown()
+    assert "## dental-billing" in load_context(cards), "the written card does not reach the prompt"
+    assert len(SessionService().list_sessions()) == 1, "the every-card claim was left behind"
+    # Reusable: the next judgment is offered it, by the domain line the writer wrote.
+    assert CardSummary("dental-billing", "dental practice billing in Spain") in card_summaries()
+    again, _g, _c, _r = DiscoveryService(_Judge(ContextJudgment(
+        decision="installed", reason="dental billing", cards=["dental-billing"]))).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    assert again.slug == meta.slug and len(SessionService().list_sessions()) == 1, "a re-run forked the session"
+
+
+def test_a_written_card_never_shadows_an_installed_one(user_cards, monkeypatch):
+    """A stem any installed card answers to is refused, the discovery kept on every card, and said so."""
+    meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered(stem=CARD))).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    assert cards is None and meta.context_cards is None and grounding.written is None
+    assert "already installed" in grounding.note and not user_cards.joinpath(f"{CARD}.md").exists()
+    # A card landing between the check and the write is left whole, not replaced.
+    user_cards.mkdir()
+    user_cards.joinpath("dental-billing.md").write_text("someone else's card", encoding="utf-8")
+    monkeypatch.setattr(context_mod, "_card_paths", dict)
+    with pytest.raises(ValueError, match="left as it is"):
+        write_generated_card(GeneratedCard(**card()))
+    assert user_cards.joinpath("dental-billing.md").read_text(encoding="utf-8") == "someone else's card"
+    assert sorted(p.name for p in user_cards.iterdir()) == ["dental-billing.md"], "scratch was left behind"
+
+
+def test_an_uncovered_verdict_on_a_session_this_call_did_not_create_writes_nothing(user_cards):
+    """`installed`'s preconditions hold for the write too: a card is only written for the session it narrows."""
+    first = SessionService().create_session("a dental billing request")
+    meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    assert meta.slug == first.slug and cards is None and grounding.written is None
+    assert "earlier run" in grounding.note and not user_cards.exists()
+
+
+def test_a_first_discover_shows_the_written_card_then_reasons_against_it_alone(user_cards):
+    """#598's done-when: an off-domain first run writes a card, shows it, and reasons the turn on it alone."""
+    uncovered = json.dumps({"decision": "uncovered", "reason": "dental billing in Spain", "card": card()})
+    client = FakeClient(_ROUTING_REPLY, uncovered, _ENGINE_REPLY)
+    text = run_cli(["discover", "a dental billing request", "--once"], client=client)
+    assert "- Business domain: dental practice billing in Spain" in text and str(user_cards) in text
+    system = client.calls[2]["system"]
+    prompt = system if isinstance(system, str) else "".join(b["text"] for b in system)
+    assert "## dental-billing" in prompt and f"## {CARD}" not in prompt, "the turn was not scoped to the card"
+    assert [s.context_cards for s in SessionService().list_sessions()] == [["dental-billing"]]
+
+
+def test_a_judgment_writing_a_card_over_an_installed_stem_rides_the_retry_loop():
+    """The provider refuses the collision before the service has to (#598)."""
+    cards = [CardSummary(stem="b2b-platform", domain="enterprise management")]
+    taken = json.dumps({"decision": "uncovered", "reason": "r", "card": card(stem="b2b-platform")})
+    client = FakeClient(taken, taken, taken)
+    with pytest.raises(ProviderOutputError):
+        judge_context(client, "a request", cards)
+    assert len(client.calls) == 3, "the correction did not ride the retry loop"
+    good = json.dumps({"decision": "uncovered", "reason": "r", "card": card()})
+    assert judge_context(FakeClient(good), "a request", cards).card.stem == "dental-billing"
 
 
 # ── every surface names the cards (#492) ───────────────────────────────────────
