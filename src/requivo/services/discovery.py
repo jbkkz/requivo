@@ -464,8 +464,14 @@ class DiscoveryService:
         base = slug or self.sessions.slug_hint(request)
         with ExitStack() as held:
             held.enter_context(_discovery_guard(base, self._store_for_repo()))
-            return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
-                                               held=held, held_slugs={base})
+            claimed = self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
+                                                  held=held, held_slugs={base})
+            # Recorded on the claim it landed on, after any re-claim (#787); no verdict, nothing written.
+            verdict = claimed.routing.judgment
+            if verdict is not None:
+                fit = "fits" if verdict.decision is PerimeterDecision.fits else "no_fit"
+                self.sessions.record_perimeter_fit(claimed.meta.slug, fit, verdict.reason)
+            return claimed
 
     def _guard_claim(self, meta, *, created: bool, held: ExitStack, held_slugs: set[str]) -> None:
         """Hold the guard on the slug the claim *landed* on, not only the base name it was asked for

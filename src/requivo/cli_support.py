@@ -8,7 +8,7 @@ import sys
 
 from requivo.core import persistence as store
 from requivo.core.selectors import display_token
-from requivo.render.terminal import render_usage
+from requivo.render.terminal import render_perimeter_fit, render_usage
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionResolution, SessionService
 from requivo.streams import safe_write
@@ -34,6 +34,8 @@ def _generator_service(a, client) -> tuple[str, DiscoveryService]:
     slug = svc.resolve_slug(a.session, accept_path=False)
     if not svc.exists(slug):
         raise svc.no_session(slug)
+    meta = svc.meta(slug)   # a warning, never a refusal (#787): the boundary named before the document is paid for
+    render_perimeter_fit(meta.perimeter_fit, meta.perimeter_fit_reason, sys.stderr)
     return slug, DiscoveryService(client=client, sessions=svc)
 
 

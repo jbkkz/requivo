@@ -10,6 +10,7 @@ from requivo.core.dependencies import ARTIFACT_FILENAMES, REASONING_CONSUMERS, d
 from requivo.core.errors import ArtifactTypeNotOwnedError, InvalidSessionError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import get_perimeter, resolve_perimeter
 from requivo.core.persistence import ArtifactStatus
+from requivo.render.markdown import with_boundary_note
 from requivo.services.repository import SessionRepository, default_repository
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,9 @@ class ArtifactService:
                              "cause": None})
             stale = self._stale_since(slug, artifact_type, source_revision, meta.current_revision,
                                       perimeter)
+            if meta.perimeter_fit == "no_fit":
+                # Every saved document of such a session says so at its top, whoever wrote it (#787).
+                content = with_boundary_note(content, meta.perimeter_fit_reason or "")
             result = self.repo.save_artifact(slug, artifact_type, filename, content,
                                              source_revision=source_revision, stale=stale)
             logger.info("artifact saved: slug=%s type=%s source_revision=%d stale=%s",

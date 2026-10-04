@@ -113,6 +113,10 @@ class SessionMeta(BaseModel):
     # The session's perimeter (#608), half of identity (invariant 11); `None` reads as software, and
     # an unrecognised name is refused in `migrate_session`: a perimeter is interpreted, not carried.
     perimeter: Optional[str] = None
+    # The router's verdict on that perimeter (#787): "fits" or "no_fit" with its reason; `None` when no
+    # router was asked (an older session, `session init`, `--perimeter`). It routes nothing; it is said.
+    perimeter_fit: Optional[str] = None
+    perimeter_fit_reason: Optional[str] = None
     # A session-level `prompt_versions` map lived here and is retired (`_RETIRED_KEYS`).
     current_revision: int = 0            # 0 == session created but no model applied yet
     revisions: list[RevisionRecord] = Field(default_factory=list[RevisionRecord])  # provenance log, one per applied revision

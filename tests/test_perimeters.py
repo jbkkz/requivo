@@ -446,6 +446,15 @@ def test_a_none_verdict_continues_under_the_default_perimeter_named():
     assert meta.perimeter == SOFTWARE and routing.judgment.decision.value == "none"
 
 
+def test_the_routers_verdict_is_recorded_on_the_session_it_claimed():
+    """#787: `none` is remembered as `no_fit` with its reason, `fits` as `fits`; no router asked, nothing."""
+    claimed = [_claim(_Router(PerimeterJudgment(decision="none", reason="A pricing decision.")), "raise prices"),
+               _claim(_Router(PerimeterJudgment(decision="fits", reason="r", perimeter=SOFTWARE)), "a portal"),
+               _claim(_Router(), "an order form", perimeter=SOFTWARE)]
+    verdicts = [(m.perimeter_fit, m.perimeter_fit_reason) for m in (SessionService().meta(c.meta.slug) for c in claimed)]
+    assert verdicts == [("no_fit", "A pricing decision."), ("fits", "r"), (None, None)]
+
+
 def test_a_session_this_call_did_not_create_is_never_deleted_by_a_routing_verdict():
     """The mirror of #593's own `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict`."""
     svc = SessionService()

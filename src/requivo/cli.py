@@ -6,7 +6,7 @@ import re
 import sys
 import textwrap
 from pathlib import Path
-from typing import Callable, NamedTuple, NoReturn
+from typing import Any, Callable, NamedTuple, NoReturn
 
 from dotenv import load_dotenv
 
@@ -54,6 +54,7 @@ from requivo.render.terminal import (
     render_grounding,
     render_impact,
     render_next_command,
+    render_perimeter_fit,
     render_perimeter_recap,
     render_session_cost,
     render_stale,
@@ -553,7 +554,7 @@ def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
     if meta is not None:
         payload["revision"] = meta.current_revision
         payload["context_cards"] = meta.context_cards
-        payload["perimeter"] = perimeter
+        payload.update(perimeter=perimeter, perimeter_fit=meta.perimeter_fit, perimeter_fit_reason=meta.perimeter_fit_reason)  # #787
         # Freshness is the explicit stale flag only — revision is provenance, not an invalidation rule.
         payload["artifacts"] = {
             t: {"revision": st.revision, "filename": st.filename, "stale": st.stale}
@@ -572,6 +573,7 @@ def _cmd_status(a, client) -> None:
         print_json(payload)
         return
     render_turn(out, payload.get("perimeter") or DEFAULT_PERIMETER)
+    render_perimeter_fit(payload.get("perimeter_fit"), payload.get("perimeter_fit_reason"))   # #787
     # The grounding after the model (#492): evidence about the readout, not a preamble to it.
     render_grounding(payload.get("context_cards"))
     # Cumulative cost from the provenance on provider-backed revisions (#292); silent when there is none.
@@ -755,21 +757,14 @@ def _render_estimate(slug: str, result) -> None:
     _wrote_file(slug, est.stories_status, "user stories")
 
 
-def _render_criteria(slug: str, result) -> None:
-    print(display_document(criteria_markdown(result.artifact)))  # #449, see `_render_prd`
-
-
-def _render_epic(slug: str, result) -> None:
-    print(display_document(epic_markdown(result.artifact)))  # #449, see `_render_prd`
-
-
-def _render_release(slug: str, result) -> None:
-    print(display_document(release_markdown(result.artifact)))  # #449, see `_render_prd`
+def _plain_document(writer: Callable[[Any], str]) -> Callable[[str, Any], None]:
+    """`_render_prd`'s pattern (#449) for a writer over the artifact alone: criteria, epic, release."""
+    return lambda slug, result: print(display_document(writer(result.artifact)))
 
 
 # type → the terminal rendering of a fresh result, before `_wrote` prints where the file went.
 _RENDER: dict[str, Callable[[str, object], None]] = {
-    "brief": _render_brief, "gtm_plan": _render_gtm_plan, "prd": _render_prd, "stories": _render_stories, "estimate": _render_estimate, "criteria": _render_criteria, "epic": _render_epic, "release": _render_release,
+    "brief": _render_brief, "gtm_plan": _render_gtm_plan, "prd": _render_prd, "stories": _render_stories, "estimate": _render_estimate, "criteria": _plain_document(criteria_markdown), "epic": _plain_document(epic_markdown), "release": _plain_document(release_markdown),
 }
 
 # type → the label `_wrote` prints; the type, verb and filename stay `brief` (#166).

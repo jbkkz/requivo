@@ -41,8 +41,9 @@ REASONING.md's *Source tags*:
 
 1. **Request and objective** — the underlying problem, what is being built, complexity and its cost driver.
 2. **Current understanding** — the scope in a short paragraph.
-3. **What is confirmed** — the topics the client actually stated, each with its value.
-4. **Important assumptions** — the topics that were *inferred*, each marked as needing confirmation,
+3. **What is confirmed** — what the client actually stated, as business statements: the values, never
+   a topic label in bold before each one (#783).
+4. **Important assumptions** — what was *inferred*, the same way, each marked as needing confirmation,
    your proposals and domain facts among them under their own tags.
 5. **Evidence and its limits** — each source the request rests on (its own words, the data or threads
    it cites, the repository, domain knowledge): what it says, and what it cannot tell you.
@@ -53,8 +54,10 @@ REASONING.md's *Source tags*:
    that would settle it, and the result that kills or reshapes the plan.
 10. **What would make me stop** — the signals, from the table and the challenges, that end the case.
 11. **Scope implications**, **main risks**, **opportunities**.
-12. **Open questions that block the decision** — only those whose answer could change go / no-go or the scope.
-13. **Are we ready?** — ready, or the topics still unconfirmed that can move the solution — then the
+12. **Open questions that block the decision** — only those whose answer could change go / no-go or the
+    scope, each said as what has to be decided, never as a list of topic labels.
+13. **Are we ready?** — ready, or not ready and pointing at the open points above; never *Ready* while
+    section 12 lists an open decision: say they remain to be settled before estimating (#783). Then the
     **recommended next steps**.
 
 Sections 3 and 4 are read off the model: a topic whose evidence is `explicit` is confirmed, one that

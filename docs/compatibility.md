@@ -96,8 +96,8 @@ forms (#717):** named slots give the API's `/impact` report plus `slug`, no slot
 evidence}`. `model show --json` is the model document the bare verb prints.
 
 **`requivo status --json` is conditional.** `slug`, `readiness`, `understanding`, `questions`,
-`summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `context_cards` and `artifacts` are
-added only when the reference resolves to a canonical session, because a bare `model.json` has no
+`summary` and `remaining_gaps` are always present; `revision`, `perimeter`, `perimeter_fit`, `perimeter_fit_reason`,
+`context_cards` and `artifacts` are added only for a canonical session, because a bare `model.json` has no
 session to read them from. Both forms are public. Pinned by
 `test_status_and_impact_still_open_a_model_json_path_directly`.
 
@@ -144,6 +144,7 @@ choice, as `opaque_origin`/`origin_mismatch` do (`test_the_two_provenance_refusa
 | Field | Promise | Since | Test |
 |---|---|---|---|
 | `doctor`'s `perimeters.schemas` | Per-installed-ID `{ok, slots, error}`; a load failure has `slots: null` and does not hide other rows. Legacy `schema` and perimeter-discovery fields retain their meanings | #623 | `test_doctor_reports_each_perimeters_schema_health`, `test_doctor_isolates_a_broken_perimeter_schema` |
+| `session.json`'s, `session show`'s and `status`'s `perimeter_fit` / `perimeter_fit_reason` | the router's verdict on a session `discover` routed, `fits` or `no_fit` with the router's reason; `null` for every session written before, by `session init`, or with `--perimeter`. Carried, never interpreted: `no_fit` routes nothing, it adds a `status` line, a generator warning and a note atop each saved document | #787 | `test_a_no_fit_verdict_is_remembered_and_said`, `test_every_public_json_payload_keeps_its_recorded_top_level_shape` |
 | `session init`'s `perimeter` | the session's resolved perimeter id, `software` when none was named; `--perimeter` refuses an unknown id as `unknown_perimeter` | #719 | `test_session_init_records_a_perimeter_and_refuses_an_unknown_one` |
 | the impact report's `stale_artifacts` (`impact --json`, `/impact`, MCP `get_impact`) | the generated subset of `artifacts`, which keeps its meaning; `null` for a bare `model.json` | #717 | `test_impact_splits_what_goes_stale_from_what_would_rest_on` |
 | the status payload's `reason` on each `readiness.blocking_slots` and `remaining_gaps` entry | `unconfirmed`, `thin` or `unknown`, nested one level down; readiness decides exactly as before | #722 | `test_the_status_screen_has_one_meaning_of_confirmed` |

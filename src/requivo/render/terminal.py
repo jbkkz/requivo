@@ -236,6 +236,16 @@ def _render_perimeter_route(routing) -> None:
                                     f"{display_token(DEFAULT_PERIMETER)} — {reason}", lw=14))
 
 
+def render_perimeter_fit(fit: str | None, reason: str | None, stream=None) -> None:
+    """The router's remembered `no_fit` (#787), said by `status` and before a generator runs; silent on
+    `fits` and on no verdict. `test_a_no_fit_verdict_is_remembered_and_said`."""
+    if fit == "no_fit":
+        said = reason or "no reason was recorded."
+        print(_labeled("Perimeter", f"⚠ no clear fit — {said} This session continued under "
+                                    f"{DEFAULT_PERIMETER}, so its documents scope a software build the "
+                                    "request may not call for.", lw=14), file=stream)
+
+
 def render_grounding(cards: list[str] | None) -> None:
     """The cards this session's impact estimates were scored against: a naming, never a verdict
     (#492; relevance is not decidable offline, so the human is the detector, until a third measured

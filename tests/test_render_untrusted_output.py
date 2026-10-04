@@ -51,6 +51,7 @@ from requivo.render.terminal import (
     render_evidence,
     render_grounding,
     render_impact,
+    render_perimeter_fit,
     render_perimeter_recap,
     render_session_cost,
     render_stories,
@@ -203,6 +204,7 @@ def _forged_renders() -> dict[str, str]:
         "render_evidence": printed(render_evidence, _evidence_report(forged_model)),
         "render_session_cost": printed(render_session_cost, [_revision(1, "2026-01-01"), _revision(2, FORGED)]),
         "render_grounding": printed(render_grounding, [FORGED]),
+        "render_perimeter_fit": printed(render_perimeter_fit, "no_fit", FORGED),   # the router's reason, persisted (#787)
         "render_perimeter_recap": printed(render_perimeter_recap, recap, [FORGED]),
         "render_defaults": printed(render_defaults, recap),   # an inferred value, its evidence, an assumption (#731)
         "render_turn_state": printed(render_turn_state, recap),
