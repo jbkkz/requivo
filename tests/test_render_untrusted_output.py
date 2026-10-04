@@ -273,8 +273,14 @@ def test_every_grounding_outcome_reads_as_a_different_answer():
                                                                                 cards=["financial-reporting"]), "")),
         "uncovered": printed(render_context_judgment, Grounding(_UNCOVERED, "", note="the card was not written: taken")),
         "written": printed(render_context_judgment, Grounding(_UNCOVERED, "", Path("dental-billing.md"))),
+        "saved": printed(render_context_judgment, Grounding(_UNCOVERED, "", Path("dental-billing.md"), saved=True)),
+        "narrowed": printed(render_context_judgment, Grounding(ContextJudgment(
+            decision="installed", reason="finance", cards=["financial-reporting"]), ""), None, ["financial-reporting"]),
     }
-    assert len(set(texts.values())) == 5, texts
+    assert len(set(texts.values())) == 7, texts
+    # A narrowing that landed says so; one that did not never claims it (#598, the #593 line it replaced).
+    assert "alone" in texts["narrowed"] and "alone" not in texts["installed"] and "Narrow to it" in texts["installed"]
+    assert "not reused" in texts["written"] and "Saved for reuse" in texts["saved"]
     assert "not checked" in texts["not asked"] and "financial-reporting" in texts["installed"]
     assert "⚠" in texts["uncovered"] and "⚠" not in texts["none"], "the one outcome a reader must act on reads like the others"
     assert "The card was not written: taken. Impact" in texts["uncovered"], "a refused card reads as a written one"

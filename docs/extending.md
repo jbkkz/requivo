@@ -67,4 +67,4 @@ For an install without a checkout, drop cards in `REQUIVO_CONTEXT_DIR` (default
 `~/.config/requivo/context`); user cards win over bundled ones on a stem clash. Every card is
 concatenated into every prompt by default, so a card that helps its target request can cost a
 neighbour: measure through the golden harness. `docs/context-cards.md` covers scoping a session,
-and the card a first discovery writes there for an uncovered domain (#598).
+and the card a first discovery writes for an uncovered domain, kept there only on consent (#598).

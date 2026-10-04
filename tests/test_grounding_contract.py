@@ -2,8 +2,10 @@
 judgment rides the claim seam (#593), and every surface names the cards (#492)."""
 from __future__ import annotations
 
+import builtins
 import io
 import json
+import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -31,6 +33,7 @@ from requivo.core.errors import (
     UnknownContextCardError,
     UnsafeSelectorTokenError,
 )
+from requivo.paths import card_draft_root
 from requivo.providers.anthropic.generators import judge_context
 from requivo.render.terminal import render_grounding
 from requivo.services.discovery import DiscoveryService
@@ -295,36 +298,58 @@ def _uncovered(**overrides) -> ContextJudgment:
 
 
 def test_an_uncovered_verdict_writes_its_card_and_reclaims_under_it_alone(user_cards):
-    """The card lands where every selector finds it, and the session is re-claimed on it (invariant 11)."""
+    """Unsaved, the card stays in the workspace and grounds its session alone (invariant 11)."""
     meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
         "a dental billing request", cards=None, slug=None)
     assert cards == ["dental-billing"] and meta.context_cards == ["dental-billing"]
-    assert grounding.written == user_cards / "dental-billing.md" and not grounding.note
+    assert grounding.written == card_draft_root() / "dental-billing.md" and not grounding.saved
     assert grounding.written.read_text(encoding="utf-8") == grounding.judgment.card.markdown()
-    assert "## dental-billing" in load_context(cards), "the written card does not reach the prompt"
+    assert not user_cards.exists(), "a card left the workspace without consent"
     assert len(SessionService().list_sessions()) == 1, "the every-card claim was left behind"
-    # Reusable: the next judgment is offered it, by the domain line the writer wrote.
-    assert CardSummary("dental-billing", "dental practice billing in Spain") in card_summaries()
-    again, _g, _c, _r = DiscoveryService(_Judge(ContextJudgment(
-        decision="installed", reason="dental billing", cards=["dental-billing"]))).claim_and_ground(
+    # A re-run writing the same card lands on the same session: one card, one identity.
+    again, _g, _c, _r = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
         "a dental billing request", cards=None, slug=None)
     assert again.slug == meta.slug and len(SessionService().list_sessions()) == 1, "a re-run forked the session"
 
 
+def test_an_unsaved_card_grounds_its_session_alone(user_cards):
+    """Every consumer resolves it through the one lookup; the every-card default and a judgment never see it."""
+    DiscoveryService(_Judge(_uncovered())).claim_and_ground("a dental billing request", cards=None, slug=None)
+    assert "## dental-billing" in load_context(["dental-billing"]) and check_selection(["dental-billing"]) is None
+    assert resolve_cards(["dental-billing"]) == ["dental-billing"], "rescope and session init cannot name it"
+    assert "## dental-billing" not in load_context(None), "an unsaved card diluted the every-card default"
+    assert "dental-billing" not in available_cards() and all(c.stem != "dental-billing" for c in card_summaries())
+
+
+def test_a_written_card_is_kept_only_on_consent(user_cards):
+    """`save_card` writes to the user root; keeping an unsaved one later moves it without moving its sessions."""
+    _meta, grounding, cards, _r = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None, save_card=True)
+    assert grounding.saved and grounding.written == user_cards / "dental-billing.md" and cards == ["dental-billing"]
+    assert CardSummary("dental-billing", "dental practice billing in Spain") in card_summaries(), "kept, not reusable"
+    disco = DiscoveryService(_Judge(_uncovered(stem="dental-claims")))
+    meta, unsaved, _c, _r = disco.claim_and_ground("a dental claims request", cards=None, slug=None)
+    kept = disco.keep_card(unsaved.written.stem)
+    assert kept == user_cards / "dental-claims.md" and not unsaved.written.exists()
+    assert SessionService().meta(meta.slug).context_cards == ["dental-claims"], "keeping moved the session"
+    assert "## dental-claims" in load_context(["dental-claims"])
+    with pytest.raises(ValueError, match="no unsaved card"):
+        disco.keep_card("dental-claims")
+
+
 def test_a_written_card_never_shadows_an_installed_one(user_cards, monkeypatch):
-    """A stem any installed card answers to is refused, the discovery kept on every card, and said so."""
+    """A taken name moves to the next free suffix; nothing installed or already written is replaced."""
     meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered(stem=CARD))).claim_and_ground(
         "a dental billing request", cards=None, slug=None)
-    assert cards is None and meta.context_cards is None and grounding.written is None
-    assert "already installed" in grounding.note and not user_cards.joinpath(f"{CARD}.md").exists()
-    # A card landing between the check and the write is left whole, not replaced.
-    user_cards.mkdir()
-    user_cards.joinpath("dental-billing.md").write_text("someone else's card", encoding="utf-8")
-    monkeypatch.setattr(context_mod, "_card_paths", dict)
-    with pytest.raises(ValueError, match="left as it is"):
-        write_generated_card(GeneratedCard(**card()))
-    assert user_cards.joinpath("dental-billing.md").read_text(encoding="utf-8") == "someone else's card"
-    assert sorted(p.name for p in user_cards.iterdir()) == ["dental-billing.md"], "scratch was left behind"
+    assert cards == [f"{CARD}-2"] and grounding.written.name == f"{CARD}-2.md"
+    assert f"## {CARD}-2" in load_context(cards) and "on-site event operations" not in load_context(cards)
+    # A different card already written under the name, even one landing after the check, is left whole.
+    drafts = card_draft_root()
+    drafts.joinpath("dental-billing.md").write_text("someone else's card", encoding="utf-8")
+    monkeypatch.setattr(context_mod, "_draft_paths", dict)
+    assert write_generated_card(GeneratedCard(**card()), keep=False) == drafts / "dental-billing-2.md"
+    assert drafts.joinpath("dental-billing.md").read_text(encoding="utf-8") == "someone else's card"
+    assert not [p for p in drafts.iterdir() if p.suffix == ".tmp"], "scratch was left behind"
 
 
 def test_an_uncovered_verdict_on_a_session_this_call_did_not_create_writes_nothing(user_cards):
@@ -333,18 +358,38 @@ def test_an_uncovered_verdict_on_a_session_this_call_did_not_create_writes_nothi
     meta, grounding, cards, _routing = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
         "a dental billing request", cards=None, slug=None)
     assert meta.slug == first.slug and cards is None and grounding.written is None
-    assert "earlier run" in grounding.note and not user_cards.exists()
+    assert "earlier run" in grounding.note and not user_cards.exists() and not card_draft_root().exists()
+
+
+_UNCOVERED_REPLY = json.dumps({"decision": "uncovered", "reason": "dental billing in Spain", "card": card()})
 
 
 def test_a_first_discover_shows_the_written_card_then_reasons_against_it_alone(user_cards):
     """#598's done-when: an off-domain first run writes a card, shows it, and reasons the turn on it alone."""
-    uncovered = json.dumps({"decision": "uncovered", "reason": "dental billing in Spain", "card": card()})
-    client = FakeClient(_ROUTING_REPLY, uncovered, _ENGINE_REPLY)
+    client = FakeClient(_ROUTING_REPLY, _UNCOVERED_REPLY, _ENGINE_REPLY)
     text = run_cli(["discover", "a dental billing request", "--once"], client=client)
-    assert "- Business domain: dental practice billing in Spain" in text and str(user_cards) in text
+    assert "- Business domain: dental practice billing in Spain" in text and str(card_draft_root()) in text
     system = client.calls[2]["system"]
     prompt = system if isinstance(system, str) else "".join(b["text"] for b in system)
     assert "## dental-billing" in prompt and f"## {CARD}" not in prompt, "the turn was not scoped to the card"
+    assert [s.context_cards for s in SessionService().list_sessions()] == [["dental-billing"]]
+    assert not user_cards.exists() and "Save this card" not in text, "no terminal, no flag: never kept"
+
+
+@pytest.mark.parametrize("answer, argv_tail, kept", [
+    ("y", [], True), ("", [], False), (None, ["--save-card"], True),
+], ids=["yes-at-a-terminal", "default-no", "flag-without-a-terminal"])
+def test_a_written_card_is_kept_only_on_consent_at_the_cli(user_cards, monkeypatch, answer, argv_tail, kept):
+    """The question is the CLI's, asked before the turn; the flag answers it where nobody can (#598)."""
+    asked: list[str] = []
+    if answer is not None:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(builtins, "input", lambda prompt="": asked.append(prompt) or answer)
+    client = FakeClient(_ROUTING_REPLY, _UNCOVERED_REPLY, _ENGINE_REPLY)
+    run_cli(["discover", "a dental billing request", "--once", *argv_tail], client=client)
+    assert user_cards.joinpath("dental-billing.md").exists() is kept
+    assert card_draft_root().joinpath("dental-billing.md").exists() is not kept
+    assert len(asked) == (1 if answer is not None else 0) and all("[y/N]" in p for p in asked)
     assert [s.context_cards for s in SessionService().list_sessions()] == [["dental-billing"]]
 
 

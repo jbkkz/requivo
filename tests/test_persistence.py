@@ -96,7 +96,7 @@ def test_no_store_directory_is_created_outside_ensure_store_dir():
     """The guard behind #211: fixing every call site leaves the next one."""
     src = Path(__file__).resolve().parent.parent / "src" / "requivo"
     exempt = {("core/persistence/store.py", "create_session"), ("core/persistence/store.py", "ensure_store_dir"),
-              ("core/context.py", "write_generated_card")}  # the user card root (#598) is not the store
+              ("core/context.py", "_user_card_root")}  # the user card root (#598) is not the store
     seen, offenders, modules = set(), [], sorted(src.rglob("*.py"))
     for path in modules:
         rel = path.relative_to(src).as_posix()

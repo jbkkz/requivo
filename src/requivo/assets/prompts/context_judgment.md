@@ -68,7 +68,7 @@ in a value. Each value is **one line**; each list holds the few items that matte
 - `regulatory` — the laws, licences and auditors that constrain the solution; empty if none apply.
 - `recurring_traps` — what a request in this domain routinely leaves unsaid and the build gets wrong.
 
-**The card outlives this request.** It is saved and reused for later requests in the same domain, so
+**The card can outlive this request.** The user may keep it for later requests in the same domain, so
 describe the domain, never this client: no client or product name, no person, no figure taken from
 the request. Write it in English, keeping a term in its original language where a practitioner would.
 A card that guesses is worse than a short one: state what the domain reliably imposes, not what this
