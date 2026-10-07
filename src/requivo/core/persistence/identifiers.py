@@ -52,8 +52,17 @@ def derive_slug(text: str) -> str:
     request lands on `discovery-<hash>`: `test_a_non_latin_request_still_derives_the_documented_discovery_fallback`.
     A session on disk keeps its name; the alphabet is `[a-z0-9-]`."""
     # A request title names the session; provenance below it does not (#774).
-    heading = re.search(r"(?m)^ {0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", text)
-    title = heading.group(1) if heading else text
+    title = text
+    for line in text.splitlines():
+        heading = re.match(r" {0,3}#{1,6}[ \t]", line)
+        if heading:
+            candidate = line[heading.end():].strip(" \t")
+            without_hashes = candidate.rstrip("#")
+            if without_hashes.endswith((" ", "\t")):
+                candidate = without_hashes.rstrip(" \t")
+            if candidate:
+                title = candidate
+                break
     folded = unicodedata.normalize(
         "NFKD", title.lower().translate(_LATIN_EXPANSIONS)).encode("ascii", "ignore").decode("ascii")
     tokens = re.findall(r"[a-z0-9]+", folded)
