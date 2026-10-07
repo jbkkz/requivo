@@ -151,7 +151,7 @@ You already have what you need from the preflight above: the doctor report carri
 which is the release this plugin build was tested against. Read it live rather than trusting a
 number written into this paragraph: a copy here could drift from the manifest the day someone bumps
 it and forgets the second site, and the manifest is the one file a release is guaranteed to touch.
-(`plugins/claude-code/scripts/version_skew.py` is the tested reference for the exact comparison
+(`scripts/version_skew.py`, relative to `${CLAUDE_PLUGIN_ROOT}`, is the tested reference for the exact comparison
 below, and doubles as a standalone diagnostic outside this session.)
 
 Three outcomes, and the third is the one to get right:
