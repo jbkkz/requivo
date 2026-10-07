@@ -39,7 +39,9 @@ install has no cards) or `unreadable` (they could not be read at all). On anythi
 user what `context.error` or the card count says and stop rather than reasoning without them.
 
 **`ok` means present and readable. It does not mean relevant, and there is no status that does.**
-The shipped cards describe B2B enterprise domains, and impact is estimated against whatever cards a
+`doctor` lists both shipped cards and user cards from `~/.config/requivo/context`. Select a
+user card by name in the same way as a shipped card, using `requivo context`. The shipped
+cards describe B2B enterprise domains, and impact is estimated against whatever cards a
 session holds — so a request from outside that domain is scored against a product it has nothing to
 do with, produces a model, reaches `ready`, and says nothing on screen about it. That is the same
 shape the `empty` case is warned about above, one level up, and it is currently unguarded: name the
@@ -253,7 +255,8 @@ holds `.git` (a directory, or a file in a worktree): a session started in `repo/
 Neither → the recap says *no repository found at `<working directory>` or above* — what was checked,
 never a bare "there is no repository" — and you reason from the request alone.
 
-Read narrowly, with `Glob`, `Grep` and `Read` — never a shell command:
+Read narrowly, preferring `Glob`, `Grep` and `Read`. When those tools are unavailable,
+use shell equivalents only with the same path restrictions and file budget:
 - the top level first: the README, the manifests, any agent instruction file (`CLAUDE.md`,
   `AGENTS.md`) — what this codebase is, and what it is built with;
 - then the surfaces the session's perimeter reads its slots from (#730), found by `Glob` on file names
@@ -271,6 +274,12 @@ Read narrowly, with `Glob`, `Grep` and `Read` — never a shell command:
   content match prints the matching line, and the line holding `STRIPE_SECRET_KEY=` is exactly what a
   request about Stripe finds — with a `glob` or `type` narrowed to source files and a `head_limit` of
   about twenty paths. A matched path on the never-open list below is not opened; it goes on that list.
+
+For a shell search fallback, `grep -rl --include='*.py' -- 'request noun' src/ | head -n 20`
+prints paths only; narrow the extension and directory to the repository in front of you. Never
+use content-mode `grep`, search a forbidden tree, or open a matched path before checking the
+never-open list below. Read only the individually checked files with a shell reader when
+`Read` is unavailable; this fallback does not grant new tool permissions.
 
 About a dozen files is the budget, not the tree, and the `Grep` cap above is separate from it. Never
 open `.env*`, key or credential files, `.requivo/` (except that one session's `request.md`, read in
