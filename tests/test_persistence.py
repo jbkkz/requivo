@@ -625,3 +625,14 @@ def test_a_denied_session_file_is_not_called_missing_on_py314(monkeypatch, kind)
             store.load_revision_model(slug, 1)
         else:
             store.session_request(slug)
+
+
+@pytest.mark.parametrize("request_text", [
+    "# Invoice export\n\n_Drawn by a fictional tool from ten threads._\nExport invoices monthly.",
+    "\n## Invoice export ##\n\n_Drawn by a fictional tool._",
+    "# \t\t\n# Invoice export\n\n_Drawn by a fictional tool._",
+    "#" + "\t" * 100_000 + "\n# Invoice export\n",
+], ids=["provenance", "closing-marker", "empty-heading", "long-whitespace"])
+def test_request_heading_names_the_session_instead_of_provenance(request_text):
+    """A short title does not borrow words from the provenance below it (#774)."""
+    assert derive_slug(request_text) == "invoice-export"
