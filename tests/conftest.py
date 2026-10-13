@@ -6,13 +6,7 @@ from pathlib import Path
 
 import pytest
 from _credentials import _CREDENTIAL_ENV, SINKHOLE_BASE_URL
-from _fakes import (  # noqa: F401  (re-exported for the suites)
-    FakeMessages,
-    StubProvider,
-    _FakeResponse,
-    full_model,
-    slot,
-)
+from _fakes import FakeMessages, StubProvider, _FakeResponse, full_model, slot  # noqa: F401  (re-exported for the suites)
 
 from requivo.core import persistence as _persistence_store
 from requivo.core.contracts import EngineOutput

@@ -24,17 +24,7 @@ from golden_lib import (  # noqa: E402
     turn_lens,
 )
 
-from requivo.core.contracts import (  # noqa: E402
-    Brief,
-    Challenge,
-    Confidence,
-    EngineOutput,
-    Impact,
-    Level,
-    Question,
-    Slot,
-    Summary,
-)
+from requivo.core.contracts import Brief, Challenge, Confidence, EngineOutput, Impact, Level, Question, Slot, Summary  # noqa: E402
 from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
 
 # ── builders ─────────────────────────────────────────────────────────────────────────────────────

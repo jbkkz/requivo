@@ -8,13 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _fakes import (  # noqa: F401  (re-exported for the web suite)
-    FakeClient,
-    Spend,
-    engine_reply,
-    full_slots,
-    seed_session,
-)
+from _fakes import FakeClient, Spend, engine_reply, full_slots, seed_session  # noqa: F401  (re-exported for the web suite)
 from fastapi.testclient import TestClient
 
 from requivo.core.persistence import canonical_dir
