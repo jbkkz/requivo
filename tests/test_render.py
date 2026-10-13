@@ -266,6 +266,20 @@ def test_the_client_brief_is_sendable_as_is(perimeter):
     assert md.count("Employees and line managers") == 1 and md.lower().count("escalation owner") == 1, md
 
 
+def test_a_mixed_slot_is_split_claim_by_claim_between_confirmed_and_defaults():
+    """#809 review: claims carry mixed provenance (#751), so one let-stand claim moves only itself; the
+    stated claim beside it stays confirmed."""
+    stated = Claim(text="Budget capped at 20k.", source="requester")
+    let_stand = Claim(text="Consent is recorded for GDPR.", source="proposed", confirmation="let_stand", answered_by="requester")
+    model = out({"problem": slot(90, "explicit", "high", "Approvals get lost in email.")})
+    model.model["constraints"] = Slot(completeness=80, confidence="explicit", impact="high", claims=[stated, let_stand],
+                                      value="Budget capped at 20k; consent is recorded for GDPR.")
+    md = brief_markdown(model, Brief(complexity="low"))
+    confirmed, defaults = _section(md, "What is confirmed"), _section(md, "Defaults chosen on your behalf")
+    assert "- Budget capped at 20k." in confirmed and "GDPR" not in confirmed, md
+    assert "- Consent is recorded for GDPR. _(proposed, and you let it stand)_" in defaults and "20k" not in defaults, md
+
+
 # ── the perimeter recap a first discovery opens with (#709) ──────────────────────
 
 

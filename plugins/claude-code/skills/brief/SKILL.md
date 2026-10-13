@@ -61,9 +61,10 @@ REASONING.md's *Source tags*:
     **recommended next steps**.
 
 Sections 3 and 4 are read off the model: a topic whose evidence is `explicit` is confirmed, one that
-is `inferred` is an assumption. An `explicit` topic the client did not state — its `evidence` opens
-`Client delegated:`, or a claim on it is `let_stand` — is a default chosen on their behalf: list it
-under *Defaults chosen on your behalf*, between the two, with that source, never as confirmed (#809).
+is `inferred` is an assumption. What the client did not state on an `explicit` topic — a `let_stand`
+claim, or the whole topic when its `evidence` opens `Client delegated:` and no claim on it is theirs —
+is a default chosen on their behalf: list it under *Defaults chosen on your behalf*, between the two,
+with that source, never as confirmed; a stated claim beside it stays confirmed (#809).
 An open question is a question in the client's terms, never a stored value under a prefix such as
 "Confirm:", and each item appears once across sections. Do not promote an assumption to a fact
 because it sounds settled — that distinction is the most useful thing on the page. **Propose and

@@ -6,6 +6,7 @@ from typing import Any
 from requivo.core.contracts import (
     IMPACT_RANK,
     SOFT_COMPLETENESS,
+    ClaimSource,
     Confidence,
     Confirmation,
     EngineOutput,
@@ -117,15 +118,27 @@ def blocking_reason(s: Slot | None) -> str:
 DELEGATED_EVIDENCE = "client delegated"
 
 
-def default_source(s: Slot) -> str:
-    """Why an `explicit` slot holds a value the client did not state (#809): `delegated` (its evidence
-    opens `Client delegated:`), `let_stand` (a claim shown as a default and not overturned), or "" for
-    the client's own word. A naming over what is recorded, never a second confidence."""
+def stated_and_defaults(s: Slot) -> tuple[list[str], list[tuple[str, str]]]:
+    """An `explicit` slot split into what the client stated and the defaults it holds, each `(text, source)`
+    (#809): claim by claim (#751), a `let_stand` claim, or under `Client delegated:` evidence any claim
+    not the requester's, is a default (`let_stand`/`delegated`); the slot moves whole only when nothing on
+    it was stated. A naming over what is recorded, never a second confidence."""
     if s.confidence is not Confidence.explicit:
-        return ""
-    if s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE):
-        return "delegated"
-    return "let_stand" if any(c.confirmation is Confirmation.let_stand for c in s.claims) else ""
+        return [], []
+    delegated = s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE)
+    stated: list[str] = []
+    defaults: list[tuple[str, str]] = []
+    for c in s.claims:
+        if c.confirmation is Confirmation.let_stand:
+            defaults.append((c.text, "let_stand"))
+        elif delegated and c.source is not ClaimSource.requester:
+            defaults.append((c.text, "delegated"))
+        else:
+            stated.append(c.text)
+    if stated:
+        return (stated, defaults) if defaults else ([s.value], [])
+    whole = "delegated" if delegated else defaults[0][1] if defaults else ""
+    return ([], [(s.value, whole)]) if whole else ([s.value], [])
 
 
 def state_of(s: Slot) -> str:

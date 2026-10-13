@@ -206,11 +206,11 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 ```
 
 Read off the model, never restated: *What is confirmed* lists the values of the slots stated outright
-(`explicit`), *Defaults chosen on your behalf* the `explicit` ones the user did not state (`evidence`
-opening `Client delegated:`, or a `let_stand` claim), *Important assumptions* the `inferred` ones, each
-as the value alone, never under its label (#783), and each item once across sections (#809); *Out of
-scope* and *Decision thresholds* the exclusions and thresholds as applied in step 4, and the blocking
-topics come from that apply's `readiness`. The title carries "— Draft: unresolved topics remain" only
+(`explicit`), *Defaults chosen on your behalf* what the user did not state on them (a `let_stand` claim
+alone, or the whole slot when its `evidence` opens `Client delegated:`), *Important assumptions*
+the `inferred` ones, each as the value alone, never under its label (#783), and each item once across
+sections (#809); *Out of scope* and *Decision thresholds* the exclusions and thresholds as applied in
+step 4, and the blocking topics come from that apply's `readiness`. The title carries "— Draft: unresolved topics remain" only
 while something blocks. With nothing blocking, *Are we ready?* reads **Ready.** Nothing that could
 change the solution is still open. — unless an open decision is listed, when it reads **Decisions to
 make first.** and points at them: never Ready beside an open decision.

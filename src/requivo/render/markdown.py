@@ -4,7 +4,7 @@ import functools
 import re
 from collections.abc import Sequence
 
-from requivo.core.analysis import default_source, readiness_blockers, slot_label, slot_meta
+from requivo.core.analysis import readiness_blockers, slot_label, slot_meta, stated_and_defaults
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -62,12 +62,11 @@ def _block_line(text: str) -> str:
 def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """The values stated at a given provenance, in `perimeter`'s schema order, as business statements:
     read off the model, never restated by the provider, never framed by a slot label (#783, Voice rule).
-    A default the client did not state is never among them: `_defaults` lists it (#809)."""
-    order = slot_meta(perimeter)[1]
-    return [f"- {_line(out.model[sid].value)}"
-            for sid in order
-            if sid in out.model and out.model[sid].confidence is confidence
-            and not default_source(out.model[sid]) and out.model[sid].value.strip()]
+    A default the client did not state is never among them, claim by claim: `_defaults` lists it (#809)."""
+    slots = [out.model[sid] for sid in slot_meta(perimeter)[1] if sid in out.model]
+    said = [t for s in slots if s.confidence is confidence
+            for t in (stated_and_defaults(s)[0] if confidence is Confidence.explicit else [s.value])]
+    return [f"- {_line(t)}" for t in said if t.strip()]
 
 
 _DEFAULT_TAG = {"delegated": "you left this decision to us", "let_stand": "proposed, and you let it stand"}
@@ -76,8 +75,8 @@ _DEFAULT_TAG = {"delegated": "you left this decision to us", "let_stand": "propo
 def _defaults(out: EngineOutput, perimeter: str) -> list[str]:
     """The settled values the client did not state, in schema order, each with its source (#809)."""
     slots = [out.model[sid] for sid in slot_meta(perimeter)[1] if sid in out.model]
-    return [f"- {_line(s.value)} _({_DEFAULT_TAG[default_source(s)]})_"
-            for s in slots if default_source(s) and s.value.strip()]
+    return [f"- {_line(text)} _({_DEFAULT_TAG[source]})_"
+            for s in slots for text, source in stated_and_defaults(s)[1] if text.strip()]
 
 
 def _in_words(out: EngineOutput, sid: str, perimeter: str) -> str:
