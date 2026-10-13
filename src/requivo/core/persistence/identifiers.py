@@ -56,7 +56,8 @@ def derive_slug(text: str) -> str:
     fence = ""
     for line in text.splitlines():
         if fence:
-            if re.fullmatch(r" {0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ \t]*", line):
+            closing = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t]*", line)
+            if closing and closing[1][0] == fence[0] and len(closing[1]) >= len(fence):
                 fence = ""
             continue
         opening = re.match(r" {0,3}(`{3,}|~{3,})(.*)", line)
@@ -238,4 +239,3 @@ def _probe(marker: Path, slug: str) -> bool:
         raise SessionUnreadableError(
             f"could not determine whether session '{slug}' exists: {e}",
             details={"slug": slug}) from e
-
