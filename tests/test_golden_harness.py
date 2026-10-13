@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 import anthropic
 import httpx
 import pytest
+from _credentials import _CREDENTIAL_ENV
 from _fakes import printed
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -643,6 +645,31 @@ def test_the_claude_code_transport_rides_the_api_paths_extraction_validate_hook_
     retry = calls[1]["input"]
     assert len(calls) == 2 and retry.index("[user]\na request") < retry.index("[assistant]\n```json")
     assert "refused by the hook" in retry.rsplit("[user]", 1)[1]
+
+
+def test_the_claude_code_child_inherits_no_api_credential_at_all(monkeypatch):
+    """#767 (Codex): any SDK credential in the child, a bearer token included, could bill the capture to the API."""
+    for var in _CREDENTIAL_ENV:
+        monkeypatch.setenv(var, "must-not-reach-the-child")
+    run, calls = _claude(_result(_asking().model_dump_json()))
+    _complete(golden_run.ClaudeCodeClient(run), "sys", [dict(role="user", content="r")], EngineOutput, model="m")
+    assert not set(_CREDENTIAL_ENV) & set(calls[0]["env"]), calls[0]["env"].keys()
+
+
+def test_a_claude_code_timeout_is_retried_once_like_an_api_connection_error(monkeypatch):
+    """#767 (Codex): the timeout is this transport's transient failure, so `with_retry` must recognise it."""
+    monkeypatch.setattr(golden_run, "RETRY_PAUSE", 0)
+    replies = iter([subprocess.TimeoutExpired("claude", 600), SimpleNamespace(
+        returncode=0, stdout=json.dumps(_result(_asking().model_dump_json())), stderr="")])
+
+    def run(*_a, **_k):
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    client = golden_run.ClaudeCodeClient(run)
+    assert golden_run.with_retry(_complete, client, "sys", [dict(role="user", content="r")], EngineOutput, model="m")
 
 
 def _missing(*_a, **_k):

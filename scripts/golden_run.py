@@ -85,7 +85,9 @@ def is_transport_failure(exc: BaseException) -> bool:
         so a credential, rate-limit or malformed-output failure carries a different cause and is not retried
         (`test_an_auth_failure_is_not_retried_and_a_malformed_reply_neither`).
     """
-    return isinstance(exc, EngineError) and isinstance(exc.__cause__, (APIConnectionError, *STREAM_TRANSPORT_ERRORS))
+    # A `claude -p` timeout is the Claude Code transport's own connection failure (#767).
+    transient = (APIConnectionError, subprocess.TimeoutExpired, *STREAM_TRANSPORT_ERRORS)
+    return isinstance(exc, EngineError) and isinstance(exc.__cause__, transient)
 
 
 def with_retry(call, *args, **kwargs):
@@ -125,6 +127,9 @@ def capture_model() -> str:
 CLAUDE_CODE = "claude-code"
 TRANSPORTS = (API, CLAUDE_CODE)
 CLAUDE_CODE_TIMEOUT = 600.0  # seconds: the SDK's own default request timeout
+# What the SDK resolves a credential from (tests/_credentials.py names the same set): none reaches `claude -p`.
+API_CREDENTIAL_ENV = frozenset(("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE", "ANTHROPIC_IDENTITY_TOKEN",
+                                "ANTHROPIC_IDENTITY_TOKEN_FILE", "ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"))
 
 
 def prompt_text(messages: list[dict]) -> str:
@@ -144,7 +149,7 @@ class ClaudeCodeClient:
 
         The JSON extraction, the `validate` hook and the schema retry are therefore the API path's own. The
         child gets the assembled system prompt and nothing else: no tools, settings, MCP, skills or saved
-        session, and no ANTHROPIC_API_KEY, so it bills the subscription (`--bare` would force the key).
+        session, and no API credential, so it bills the subscription (`--bare` would force the key).
         `test_the_claude_code_transport_sends_the_assembled_prompt_and_drops_the_key`.
     """
 
@@ -161,8 +166,8 @@ class ClaudeCodeClient:
         argv = ["claude", "-p", "--model", model, "--system-prompt", "".join(b["text"] for b in system),
                 "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
                 "--no-session-persistence", "--output-format", "json"]
-        child = dict(os.environ)
-        child.pop("ANTHROPIC_API_KEY", None)  # so the call bills the subscription, never the key
+        # Every credential the SDK resolves, so the call bills the subscription and never an API key or token.
+        child = dict((k, v) for k, v in os.environ.items() if k not in API_CREDENTIAL_ENV)
         child["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)  # the API path's ceiling, held here too
         try:
             with tempfile.TemporaryDirectory() as workdir:  # no project around the child for it to discover
