@@ -46,7 +46,7 @@ _UPDATE_RESULT = _keys("status revision:int readiness:dict", **{k: "list" for k 
     "changed_thresholds", "invalidated_decisions", "invalidated_challenges", "invalidated_exclusions",
     "invalidated_thresholds", "stale_artifacts", "changed_claims")})   # #599 the exclusions, #751 the claims; `model diff` is the same dict
 _IMPACT = _keys("slug changed:list decisions:list challenges:list exclusions:list thresholds:list artifacts:list "
-                "stale_artifacts:list evidence:dict")
+                "stale_artifacts:list stale_changes:list evidence:dict")   # #810 what to change in each stale one
 _STATUS_BARE = _keys("slug readiness:dict understanding:dict questions:list summary:dict remaining_gaps:list "
                      "claims_below_slot_impact:int pillars:dict")   # #751, #771
 
@@ -68,7 +68,8 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
     "impact": [   # #717: two forms, and a bare model.json cannot say what was generated
         ("impact <slug> <slot> --json", ("impact", "s", "workflow", "--json"), _IMPACT),
         ("impact <a bare model.json> <slot> --json", ("impact", "{bare_model}", "workflow", "--json"),
-         _keys("stale_artifacts:null evidence:null", **{k: v for k, v in _IMPACT.items() if k not in ("stale_artifacts", "evidence")})),
+         _keys("stale_artifacts:null stale_changes:null evidence:null",
+               **{k: v for k, v in _IMPACT.items() if k not in ("stale_artifacts", "stale_changes", "evidence")})),
         ("impact <slug> --json", ("impact", "s", "--json"), _keys("slug map:list evidence:dict"))],
     "artifact save": [("artifact save --json",
                        ("artifact", "save", "s", "--type", "prd", "--file", "{prd}", "--revision", "1", "--json"),

@@ -12,10 +12,11 @@ from _fakes import full_model, out, simulate_py314_denied_path, slot
 
 from conftest import blind_to_dangling_links, healthy_session, symlink_or_skip
 from requivo.core import persistence as store
-from requivo.core.context import check_selection
+from requivo.core.context import build_system_prompt, check_selection
 from requivo.core.contracts import ModelProposal
 from requivo.core.errors import InvalidSessionError, InvalidSlugError, RequivoError
 from requivo.core.integrity import check_session, inspect_session, newest_readable_revision, readable_revision
+from requivo.core.perimeters import known_perimeter_ids
 from requivo.core.persistence import lock as store_lock
 from requivo.core.persistence import store as store_module
 from requivo.services.artifacts import ArtifactService
@@ -176,6 +177,10 @@ def test_a_refinement_stating_two_slots_moves_only_those_and_what_consumes_them(
     assert sorted(result.stale_artifacts) == ["prd", "stories"]          # `release` consumes neither slot
     with pytest.raises(RequivoError, match="missing required slots"):   # a first model has nothing to carry
         _session("t")[0].update_model("t", {"model": stated, "summary": {"objective": "First"}})
+    # #810: and both providers are told to leave a slot the answer does not bear on byte-identical.
+    plugin = (Path(__file__).resolve().parents[1] / "plugins" / "claude-code" / "REASONING.md").read_text(encoding="utf-8")
+    for text in (plugin, *(build_system_prompt("engine.md", perimeter=p).text for p in known_perimeter_ids())):
+        assert all(rule in " ".join(text.replace("*", "").split()) for rule in ("byte for byte", "merely infer")), text[:120]
 
 
 _QUOTE = '"I have no strong view on roles, so you can decide."'

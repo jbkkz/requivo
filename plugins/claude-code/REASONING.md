@@ -396,8 +396,14 @@ A refinement turn answers a question; it does not re-derive the brief, so **omit
 normal case** and costs nothing. Emit `[]` only when you mean "these no longer hold" — it is recorded
 as a real change, and the user is told what it unseated.
 
-The slots are not tri-state: `model` is always the complete set. `model apply` *replaces* the model, so
-a proposal missing slots is refused rather than merged.
+The slots are not tri-state, but a slot you leave out is kept. On a session that already has a model,
+`model apply` replaces each slot the proposal states and carries every other one forward unchanged
+(#780); only a first model must state every required slot. So on a refinement turn, state only the slots
+the answer bears on, and any slot you do restate without the answer bearing on it is copied from the
+model you read **byte for byte**: a reworded or re-graded slot is a changed requirement, and every
+document built on it goes stale (#810). A knock-on you merely infer is a question, not an edit; a
+changed fact (a vendor, a threshold) is replaced where a `value` names it, and nothing else in those
+slots moves.
 
 The model is complete when every required slot is present **and** `summary.objective` says in one line
 what the thing is for. An empty objective fails validation with `invalid_model`.

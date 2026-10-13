@@ -35,7 +35,8 @@ total_max_lines = 2908
 # `compatibility_max_lines` raised 418 -> 419 by #751: claims are a new public field, a row each place it shows.
 # Raised 419 -> 420 by #787: the router's verdict is a new session.json and `--json` field, one row for all three.
 # Raised 420 -> 421 by #598: `--save-card` is a new flag on discover and run, one row.
-compatibility_max_lines = 421
+# Raised 421 -> 422 by #810: the impact report's `stale_changes` is a new `--json` field, one row.
+compatibility_max_lines = 422
 decision_record_max_lines = 84
 
 [scripts]

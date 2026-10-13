@@ -727,17 +727,47 @@ def render_impact(report) -> None:
     # What exists goes stale; a type never generated merely rests on the slots (#717). A bare
     # model.json (`stale_artifacts is None`) cannot tell, so every type is listed as before.
     stale = report.artifacts if report.stale_artifacts is None else report.stale_artifacts
+    changes = {c.artifact: c for c in report.stale_changes or []}
     if stale:
         print("\nARTIFACTS THAT GO STALE")
         for name in stale:
             f = ARTIFACT_FILENAMES.get(name)
             where = f" ({f})" if f else " (regenerate on demand)"
             print(f"  • {name}{where}")
-        print("\n  → Regenerate these after confirming the change.")
+            if name in changes:
+                _render_stale_change(changes[name])
+        print("\n  → " + ("Patch the parts named above, or regenerate" if changes else "Regenerate these")
+              + " after confirming the change.")
     not_generated = [t for t in report.artifacts if t not in stale]
     if not_generated:
         print("\nNOT GENERATED YET — would rest on this change, nothing to regenerate")
         print(f"  {', '.join(not_generated)}")
+
+
+_EMPTY = "(empty)"
+
+
+def _moved_line(label: str, m: dict) -> str:
+    """One moved field of a slot, before → after; the value carries the label alone (#810)."""
+    name = label if m["field"] == "value" else f"{label} {m['field']}"
+    return f"{name}: {m['before'] or _EMPTY} → {m['after'] or _EMPTY}"
+
+
+def _render_stale_change(change) -> None:
+    """What to patch in one stale document (#810): each named slot it consumes, then → now, and the moved claims."""
+    print(f"    written from revision {change.revision}")
+    claimed = {m["slot"] for m in change.claims}
+    for s in change.slots:   # _bullet escapes the whole line, the model values included (#40)
+        if s.before is None:
+            lines = [f"{s.label}: now {s.after or _EMPTY} (revision {change.revision} could not be read)"]
+        elif not s.moved and s.slot not in claimed:
+            lines = [f"{s.label}: unchanged since then: {s.after or _EMPTY}"]
+        else:   # every material field that moved, so a stale slot never reads as unchanged
+            lines = [_moved_line(s.label, m) for m in s.moved] or [f"{s.label}: its claims moved"]
+        for line in lines:
+            print(_bullet(line, marker="↳", indent="    "))
+    for m in change.claims:
+        print(_bullet(f"claim {m['change']}: {m['text']}", marker="↳", indent="    "))
 
 
 def render_evidence(report) -> None:

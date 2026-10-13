@@ -143,6 +143,52 @@ class ThresholdImpact:
 
 
 @dataclass
+class SlotChange:
+    slot: str
+    label: str
+    before: Optional[str]  # its value in the revision the document was written from; `None` when unreadable
+    after: str
+    # Each material field that moved since, compared as diff_models compares it (claims are listed apart).
+    moved: list[dict[str, Optional[str]]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"slot": self.slot, "label": self.label, "before": self.before, "after": self.after, "moved": self.moved}
+
+
+@dataclass
+class StaleChange:
+    """What to patch in one stale document (#810): the named slots it consumes and the claims that moved in them (#751)."""
+    artifact: str
+    revision: int  # the revision the document was written from
+    slots: list[SlotChange]
+    claims: list[dict[str, str]]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"artifact": self.artifact, "revision": self.revision,
+                "slots": [s.to_dict() for s in self.slots], "claims": self.claims}
+
+
+def stale_change(artifact: str, revision: int, then: Optional[EngineOutput], now: EngineOutput,
+                 changed: list[str], perimeter: str = DEFAULT_PERIMETER) -> StaleChange:
+    """`changed` ∩ what `artifact` consumes, `then` (the model at `revision`, `None` if unreadable) → `now`."""
+    hit = [sid for sid in changed if sid in artifact_slots(perimeter).get(artifact, set())]
+
+    def fields(model: EngineOutput, sid: str) -> dict[str, Optional[str]]:
+        s = model.model.get(sid)   # compared as `diff_models` compares them, the text fields stripped
+        return {"value": s.value.strip() if s else "", "confidence": s.confidence.value if s else None,
+                "impact": s.impact.value if s else None, "test_plan": s.test_plan.strip() if s else ""}
+
+    slots = []
+    for sid in hit:
+        was, is_ = (None if then is None else fields(then, sid)), fields(now, sid)
+        moved = [] if was is None else [{"field": f, "before": was[f], "after": is_[f]} for f in is_ if was[f] != is_[f]]
+        slots.append(SlotChange(sid, slot_label(sid, perimeter), None if was is None else was["value"],
+                                is_["value"] or "", moved))
+    claims = [] if then is None else [m for m in diff_claims(then, now) if m["slot"] in hit]
+    return StaleChange(artifact, revision, slots, claims)
+
+
+@dataclass
 class ImpactReport:
     changed: list[str]  # labels of the slots in question
     decisions: list[DecisionImpact] = field(default_factory=list[DecisionImpact])
@@ -155,6 +201,8 @@ class ImpactReport:
     # The `artifacts` the session has generated, which go stale (#717); the rest merely rest on the
     # slots. `None` is no session to ask (a bare model.json), never "nothing generated".
     stale_artifacts: Optional[list[str]] = None
+    # Per stale artifact, what to change in it (#810); `None` where `stale_artifacts` is, or no service asked.
+    stale_changes: Optional[list[StaleChange]] = None
 
     def mark_generated(self, generated: Sequence[str]) -> None:
         """Split `artifacts` by what the session holds: `test_impact_splits_what_goes_stale_from_what_would_rest_on`."""
@@ -179,6 +227,7 @@ class ImpactReport:
                 "thresholds": [t.to_dict() for t in self.thresholds],
                 "artifacts": self.artifacts,
                 "stale_artifacts": self.stale_artifacts,
+                "stale_changes": None if self.stale_changes is None else [c.to_dict() for c in self.stale_changes],
                 "evidence": None if self.evidence is None else self.evidence.to_dict()}
 
 

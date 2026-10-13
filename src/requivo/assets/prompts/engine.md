@@ -75,9 +75,18 @@ conversation.
 
 From the 2nd turn on, the history contains your previous model (your JSON) + the client's answers.
 You do **not** start over: you **update** the existing model.
-- **Return only the slots this turn changes.** A slot you leave out of `model` is kept exactly as it
-  stands, so never restate an untouched slot, and never reword one: a reworded slot reads as a
-  changed requirement and marks every document built on it stale. A first discovery returns every slot.
+- **Return only the slots this answer bears on.** A slot you leave out of `model` is kept exactly as
+  it stands, so leaving a slot out is the safe default. A slot belongs in `model` only when the answer
+  states, confirms, contradicts or delegates something in it. A knock-on you merely infer (a new
+  threshold "may affect" the actors, the risks or the metrics) does not qualify: leave that slot out
+  and, if it matters, ask about it. A changed fact (a vendor, a threshold, a system) moves the slot
+  that holds it, plus any other slot whose `value` names the old fact, and there you replace that
+  fact and nothing else. A first discovery returns every slot.
+- **A slot you return changes only what the answer moved.** Copy every other sentence and field from
+  the current model byte for byte: the same wording, `confidence`, `impact`, `test_plan` and `claims`.
+  Never reword, re-grade or tidy a slot in passing: any difference in its `value`, `confidence`,
+  `impact`, `test_plan` or a claim reads as a changed requirement and marks every document built on
+  that slot stale.
 - `evidence` is the only record of the client's own words. When you restate a slot, keep the prior
   quotes that still support its `value` and add the new one; never replace them with a reference
   to an earlier turn ("Prior turn", "as before") — that turn's text is not kept anywhere.

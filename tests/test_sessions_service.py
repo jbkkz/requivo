@@ -384,6 +384,31 @@ def test_impact_with_no_slots_named_is_an_empty_report_not_a_refusal():
     assert _session(full_model()).impact("s", []).empty
 
 
+def test_impact_says_what_to_change_in_each_stale_document(art):
+    """#810: per stale document, the named slots it consumes, before (its own revision) → after, and the moved claims."""
+    claim = {"text": "Finance approves above 300", "source": "requester", "confirmation": "open"}
+    svc = _session(full_model(business_rules=slot(80, "explicit", "high", "Finance approves above 1000")))
+    art.save("s", "criteria", "# doc\n", source_revision=1)
+    svc.update_model("s", full_model(business_rules={**slot(80, "explicit", "high", "Finance approves above 300"),
+                                                     "claims": [claim]}))
+    art.save("s", "stories", "# doc\n", source_revision=2)
+    by_type = {c["artifact"]: c for c in svc.impact("s", ["business_rules"]).to_dict()["stale_changes"]}
+    assert set(by_type) == {"criteria", "stories"}   # must fire, and a document never generated is not one to patch
+    [moved] = by_type["criteria"]["slots"]
+    assert (by_type["criteria"]["revision"], moved["slot"], moved["before"], moved["after"]) == (
+        1, "business_rules", "Finance approves above 1000", "Finance approves above 300")
+    assert [(c["change"], c["text"]) for c in by_type["criteria"]["claims"]] == [("added", claim["text"])]
+    assert by_type["stories"]["slots"][0]["moved"] == [] and not by_type["stories"]["claims"]
+    assert [m["field"] for m in moved["moved"]] == ["value"]
+    # A slot moved on confidence alone is material (`diff_models`), so it is named, never read as unchanged.
+    svc.update_model("s", full_model(business_rules={**slot(80, "inferred", "high", "Finance approves above 300"), "claims": [claim]}))
+    [graded] = [c for c in svc.impact("s", ["business_rules"]).to_dict()["stale_changes"] if c["artifact"] == "stories"]
+    assert graded["slots"][0]["moved"] == [{"field": "confidence", "before": "explicit", "after": "inferred"}]
+    _revision_file("s", 1).unlink()   # a revision that cannot be read is `before: None`, never a refused report
+    [unread] = [c for c in svc.impact("s", ["business_rules"]).to_dict()["stale_changes"] if c["artifact"] == "criteria"]
+    assert unread["slots"][0]["before"] is None and unread["claims"] == []
+
+
 @pytest.mark.parametrize("read", ["show", "show_with_status"])
 def test_artifact_read_for_missing_session_uses_session_error(read, art, monkeypatch):
     """A missing session is not reported as a missing artifact (#666)."""

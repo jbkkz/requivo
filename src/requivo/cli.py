@@ -659,7 +659,7 @@ def _cmd_impact(a, client) -> None:
     if not a.slots:
         if want_json:   # the rows `render_dependency_map` prints, none carrying an `evidence` of its own
             reports = [(sid, report_on([sid])) for sid in out.model]
-            rows = [{"slot": sid, **{k: v for k, v in r.to_dict().items() if k != "evidence"}}
+            rows = [{"slot": sid, **{k: v for k, v in r.to_dict().items() if k not in ("evidence", "stale_changes")}}
                     for sid, r in reports if not r.empty]
             print_json({"slug": slug, "map": rows, "evidence": None if evidence is None else evidence.to_dict()})
             return
@@ -675,7 +675,8 @@ def _cmd_impact(a, client) -> None:
             raise unknown_slots(unmatched)
         print(unknown_slots(unmatched))
     if resolved:
-        report = report_on(resolved)
+        # A session's report is the service's, which says what to change in each stale document (#810).
+        report = svc.impact(slug, resolved) if meta is not None else report_on(resolved)
         if want_json:
             report.evidence = evidence
             print_json({"slug": slug, **report.to_dict()})

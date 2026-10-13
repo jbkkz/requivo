@@ -25,12 +25,14 @@ from requivo.core.dependencies import (
     EvidenceUnknown,
     ImpactReport,
     ReasoningDiff,
+    StaleChange,
     diff_claims,
     diff_models,
     diff_reasoning,
     introduced_reasoning,
     propagate,
     resolve_slots,
+    stale_change,
     thinner_evidence,
     unknown_slots,
 )
@@ -475,9 +477,26 @@ class SessionService:
                 raise unknown_slots(unmatched)
             report = propagate(model, resolved, perimeter)
             report.mark_generated(list(meta.artifact_status))
+            report.stale_changes = self._stale_changes(slug, meta, model, resolved, perimeter, report.stale_artifacts or [])
             # Not narrowed to `slots` (#493): the slot that thickened is the one nobody asks about.
             report.evidence = self.thinner_evidence(slug)
         return report
+
+    def _stale_changes(self, slug: str, meta: SessionMeta, now: EngineOutput, changed: list[str], perimeter: str,
+                       stale: list[str]) -> list[StaleChange]:
+        """Per stale document, `changed` from the revision it was written from to now (#810). A revision that
+        cannot be read gives `before: None`, never a refused report: `test_impact_says_what_to_change_in_each_stale_document`."""
+        frozen: dict[int, EngineOutput | None] = {meta.current_revision: now}
+        changes = []
+        for t in stale:
+            rev = meta.artifact_status[t].revision
+            if rev not in frozen:
+                try:
+                    frozen[rev] = self.repo.load_revision(slug, rev)
+                except (SessionNotFoundError, ModelUnreadableError):
+                    frozen[rev] = None
+            changes.append(stale_change(t, rev, frozen[rev], now, changed, perimeter))
+        return changes
 
     def thinner_evidence(self, slug: str) -> EvidenceReport:
         """Which decisions were derived while a slot they rest on was thinner than now (#493). The
