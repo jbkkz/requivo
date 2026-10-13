@@ -276,8 +276,11 @@ use shell equivalents only with the same path restrictions and file budget:
   request about Stripe finds — with a `glob` or `type` narrowed to source files and a `head_limit` of
   about twenty paths. A matched path on the never-open list below is not opened; it goes on that list.
 
-For a shell search fallback, `grep -rl --include='*.py' -- 'request noun' src/ | head -n 20`
-prints paths only; narrow the extension and directory to the repository in front of you. Never
+For a shell search fallback, accept a noun only when the entire value matches `^[A-Za-z0-9 _.-]+$`;
+otherwise skip the search and say why. Never paste request text into shell source, including a
+variable assignment. Use a noun only if the tool can supply it as data in an existing `$noun` variable;
+otherwise use native `Grep` or skip. `grep -rlF --include='*.py' -e "$noun" src/ | head -n 20`
+prints paths only and treats the noun literally; narrow the extension and directory to this repository. Never
 use content-mode `grep`, search a forbidden tree, or open a matched path before checking the
 never-open list below. Read only the individually checked files with a shell reader when
 `Read` is unavailable; this fallback does not grant new tool permissions.
