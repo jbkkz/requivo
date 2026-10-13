@@ -149,7 +149,7 @@ class SlotChange:
     before: Optional[str]  # its value in the revision the document was written from; `None` when unreadable
     after: str
     # Each material field that moved since, compared as diff_models compares it (claims are listed apart).
-    moved: list[dict[str, Optional[str]]] = field(default_factory=list)
+    moved: list[dict[str, Optional[str]]] = field(default_factory=list[dict[str, Optional[str]]])
 
     def to_dict(self) -> dict[str, Any]:
         return {"slot": self.slot, "label": self.label, "before": self.before, "after": self.after, "moved": self.moved}
@@ -178,10 +178,10 @@ def stale_change(artifact: str, revision: int, then: Optional[EngineOutput], now
         return {"value": s.value.strip() if s else "", "confidence": s.confidence.value if s else None,
                 "impact": s.impact.value if s else None, "test_plan": s.test_plan.strip() if s else ""}
 
-    slots = []
+    slots: list[SlotChange] = []
     for sid in hit:
         was, is_ = (None if then is None else fields(then, sid)), fields(now, sid)
-        moved = [] if was is None else [{"field": f, "before": was[f], "after": is_[f]} for f in is_ if was[f] != is_[f]]
+        moved: list[dict[str, Optional[str]]] = [] if was is None else [{"field": f, "before": was[f], "after": is_[f]} for f in is_ if was[f] != is_[f]]
         slots.append(SlotChange(sid, slot_label(sid, perimeter), None if was is None else was["value"],
                                 is_["value"] or "", moved))
     claims = [] if then is None else [m for m in diff_claims(then, now) if m["slot"] in hit]
