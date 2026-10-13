@@ -10,9 +10,12 @@ from requivo.core.errors import InvalidLanguageError
 
 DEFAULT_DOCS_LANGUAGE = "en"
 
-# A BCP 47 shape, lower-cased: a primary subtag and optional subtags. The code reaches a prompt, so
-# nothing else gets through (invariant 14).
-_CODE = re.compile(r"[a-z]{2,3}(?:-[a-z0-9]{2,8})*\Z")
+# A BCP 47 shape, lower-cased: a 2-3 letter language subtag, or `x` for a private-use tag, then any
+# subtags of 1-8 letters or digits, so extension and private-use singletons (`en-u-ca-gregory`,
+# `x-klingon`) pass. The code reaches a paid prompt, so nothing else gets through (invariant 14), and
+# nothing longer than BCP 47's practical maximum either (invariant 3: refused, never cut).
+MAX_LANGUAGE_TAG_LENGTH = 35
+_CODE = re.compile(r"(?:[a-z]{2,3}(?:-[a-z0-9]{1,8})*|x(?:-[a-z0-9]{1,8})+)\Z")
 
 LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "de": "German"}
 
@@ -35,10 +38,11 @@ def normalize_language(code: str) -> str:
     an English language name the table knows (`French`) → its code."""
     said = code.strip().lower().replace("_", "-")
     said = {name.lower(): c for c, name in LANGUAGE_NAMES.items()}.get(said, said)
-    if not _CODE.match(said):
+    if len(said) > MAX_LANGUAGE_TAG_LENGTH or not _CODE.match(said):
         raise InvalidLanguageError(
-            f"{code!r} is not a language code; name one such as en, fr, es or de",
-            details={"language": code})
+            f"{code[:MAX_LANGUAGE_TAG_LENGTH]!r} is not a language code of at most {MAX_LANGUAGE_TAG_LENGTH} "
+            "characters; name one such as en, fr, es or de",
+            details={"language": code[:MAX_LANGUAGE_TAG_LENGTH + 1], "max_length": MAX_LANGUAGE_TAG_LENGTH})
     return said
 
 

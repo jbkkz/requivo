@@ -199,8 +199,11 @@ documents say about the session.
 user chose (`--docs-language`, or the first terminal run's question), else the request's language as
 its function words tell it, else `en`. It is written on every new session and again whenever a
 language is named for an existing one; it is not identity, so naming another makes no new session and
-stales no document. `null` — every session written before #790 — reads as English. A value that is not
-a language code is refused as `invalid_language` when a document is generated from it.
+stales no document. `null` — every session written before #790 — reads as English. A language code
+here is the BCP 47 shape, lower-cased: a 2–3 letter language subtag (or `x` for a private-use tag) and
+hyphen-separated subtags of 1–8 letters or digits, extension and private-use singletons included
+(`en-u-ca-gregory`, `x-klingon`), at most 35 characters. Anything else is refused as
+`invalid_language` — on the flag before any provider call, and when a document is generated from it.
 
 ## Slugs
 
