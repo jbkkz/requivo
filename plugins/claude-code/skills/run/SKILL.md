@@ -113,6 +113,15 @@ For an installed perimeter this table does not name, read `requivo schema --peri
 from its slots. When the request fits more than one ("launch a paid tier" can mean building billing
 or selling it), **ask** in one plain question naming each reading; never default it silently.
 
+**Recommend `go-to-market` when the request asks whether something is worth building, or who it is
+for** (#775): "is it worth building something for this, for whom first, and what would it have to
+do?" is a go-to-market question first and a software one second. Who it is for, who pays, how the
+first users are reached and what they would switch from decide whether there is anything to build,
+and `go-to-market` asks them as its core slots, where `software` only reaches them through slots it
+raises for a product idea. Still ask, and the user still chooses, but put the recommendation and its
+reason in that one question instead of a neutral choice. Nothing on this path runs the router
+`requivo discover` uses, so this judgment is yours.
+
 ### Choose the product context cards
 
 Do this **before** creating the session: the selection is fixed at `session init`, and after that it
