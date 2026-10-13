@@ -31,7 +31,7 @@ from requivo.core.persistence import ArtifactStatus
 from requivo.core.recap import build_recap
 from requivo.render.html import _BULLET, _INLINE_MARKUP, _INLINE_TAGS, _ORDERED, _inline, _list_items, markdown_to_html
 from requivo.render.markdown import (
-    brief_markdown,
+    consultant_view_markdown,
     criteria_markdown,
     epic_markdown,
     gtm_plan_markdown,
@@ -149,7 +149,7 @@ def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief
                   risks=[f"c{i}"], open_decisions=[f"d{i}"], next_steps=[f"e{i}"], decisions=[DesignDecision(decision=i)],
                   challenges=[Challenge(headline=i, premise="p", alternative="a", consequence="c", recommendation="r")],
                   opportunities=[Opportunity(text=i, leverage="high")])
-    md = brief_markdown(model, brief)
+    md = consultant_view_markdown(model, brief)
     assert "\n# INJECTED" not in md and md.count("INJECTED") == 19
     gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=[f"c{i}"], open_decisions=[f"d{i}"]))
     assert "\n# INJECTED" not in gtm and gtm.count("INJECTED") == 10
@@ -162,7 +162,7 @@ def test_a_newline_in_a_slot_value_or_an_opportunity_module_cannot_open_a_forged
     model = out({"problem": slot(80, "explicit", "high", forged), "actors": slot(60, "inferred", "high", f"y{forged}")})
     brief = Brief(problem="P", solution="S", complexity="low",
                   opportunities=[Opportunity(text="o", leverage="high", modules=[forged])])
-    md = brief_markdown(model, brief)
+    md = consultant_view_markdown(model, brief)
     assert "\n# FORGED" not in md and md.count("FORGED") == 3   # a blocker reads as its probe, not its value (#809)
     # the go-to-market brief reads its own slot ids, which the default-schema `out()` refuses
     model.model["objective"] = model.model["problem"].model_copy()
@@ -182,7 +182,7 @@ def test_the_decision_brief_projects_reasoning_items_rather_than_writing_them(fi
     """#599, #604: the brief's "Out of scope" and "Decision thresholds" are projections of the model, not provider prose."""
     model = out(_MODEL)
     setattr(model, field, [item])
-    md = brief_markdown(model, Brief(problem="P", solution="S", complexity="low"))
+    md = consultant_view_markdown(model, Brief(problem="P", solution="S", complexity="low"))
     assert heading in md and line in md and "rests on: Real problem" in md
 
 
@@ -192,7 +192,7 @@ def _bilingual_brief() -> str:
     model.summary.objective = "Gérer les congés des employés."
     model.summary.scope = "Un portail où chaque salarié dépose sa demande."
     model.summary.assumptions = ["Les managers valident sous 48 heures."]
-    return brief_markdown(model, Brief(complexity="low", problem="Leave approvals are inconsistent.", solution="A single approval workflow."))
+    return consultant_view_markdown(model, Brief(complexity="low", problem="Leave approvals are inconsistent.", solution="A single approval workflow."))
 
 
 def test_the_decision_brief_projects_the_models_own_words_rather_than_restating_them():
@@ -214,7 +214,7 @@ def test_the_decision_brief_states_values_and_names_what_blocks_in_plain_words()
                  "actors": slot(60, "inferred", "high", "Employees and line managers."),
                  "workflow": slot(0, "empty", "high"), "permissions": slot(0, "empty", "high")})
     model.questions = [Question(q="Who approves when the manager is away?", slot="workflow", why="w")]
-    md = brief_markdown(model, Brief(complexity="low"))
+    md = consultant_view_markdown(model, Brief(complexity="low"))
     for line in ("- Approvals get lost in email.", "- Employees and line managers.", "- Who triggers, who executes, who approves?",
                  "- Who approves when the manager is away?", "- Who sees what, who can do what?"):
         assert line in md, line
@@ -242,7 +242,7 @@ def _client_brief(perimeter: str) -> str:
     risks = [f"\x60{thin}\x60 is vague", f"No owner for {bare} yet."]
     twice = ["Name the escalation owner.", "name the escalation  owner"]
     if perimeter == "software":
-        return brief_markdown(model, Brief(complexity="low", risks=risks, open_decisions=twice))
+        return consultant_view_markdown(model, Brief(complexity="low", risks=risks, open_decisions=twice))
     return gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=risks, open_decisions=twice))
 
 
@@ -274,7 +274,7 @@ def test_a_mixed_slot_is_split_claim_by_claim_between_confirmed_and_defaults():
     model = out({"problem": slot(90, "explicit", "high", "Approvals get lost in email.")})
     model.model["constraints"] = Slot(completeness=80, confidence="explicit", impact="high", claims=[stated, let_stand],
                                       value="Budget capped at 20k; consent is recorded for GDPR.")
-    md = brief_markdown(model, Brief(complexity="low"))
+    md = consultant_view_markdown(model, Brief(complexity="low"))
     confirmed, defaults = _section(md, "What is confirmed"), _section(md, "Defaults chosen on your behalf")
     assert "- Budget capped at 20k." in confirmed and "GDPR" not in confirmed, md
     assert "- Consent is recorded for GDPR. _(proposed, and you let it stand)_" in defaults and "20k" not in defaults, md

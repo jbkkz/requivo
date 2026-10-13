@@ -46,7 +46,12 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "release": {"problem", "success_metrics", "workflow", "risks"},
     # The go-to-market perimeter's one artifact (#609), `*` for the same reason `brief` is.
     "gtm_plan": "*",
+    "consultant_view": "*",   # the brief's internal view (#814), from the same reply
 }
+
+# A type no generator of its own writes: its parent's generation saves it, from the same reply and
+# against the same revision (#814). The registries agree on it: `test_the_real_artifact_registries_agree_on_their_key_sets`.
+COMPANION_OF: dict[str, str] = dict(consultant_view="brief")
 
 # type → filename under <session>/artifacts/, for everything that can be persisted: the one table three
 # layers read (the service that saves, the CLI, the integrity checker). `ARTIFACT_FILES` was a second
@@ -54,6 +59,7 @@ _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
 # `test_the_real_artifact_registries_agree_on_their_key_sets` catches a type missing here.
 ARTIFACT_FILENAMES: dict[str, str] = {
     "brief": "solution-assessment.md",
+    "consultant_view": "consultant-view.md",  # #814, the brief's internal view
     "prd": "prd.md",
     "stories": "stories.md",
     "estimate": "estimate.md",

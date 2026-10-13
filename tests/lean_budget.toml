@@ -37,7 +37,8 @@ total_max_lines = 2908
 # Raised 420 -> 421 by #598: `--save-card` is a new flag on discover and run, one row.
 # Raised 421 -> 422 by #810: the impact report's `stale_changes` is a new `--json` field, one row.
 # Raised 422 -> 423 by #790: the documents' language is a new session.json field, `--json` key and flag, one row.
-compatibility_max_lines = 423
+# Raised 423 -> 424 by #814: the brief's consultant view is a new artifact type and filename, one row.
+compatibility_max_lines = 424
 decision_record_max_lines = 84
 
 [scripts]

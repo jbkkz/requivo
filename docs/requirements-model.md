@@ -35,6 +35,7 @@ technical docs speak.
 | assumption to review | challenge |
 | needs updating | stale artifact |
 | decision brief | `brief` |
+| consultant view | `consultant_view` |
 
 ## Slots and pillars
 

@@ -25,9 +25,9 @@ requivo status <slug> --json
 Note the `revision` — call it `N`. It is the understanding this brief will rest on, and you will state it
 when you save.
 
-If high-impact topics are still unresolved, **say so up front**. A brief written on a thin
-understanding must flag its assumptions — never present an inferred topic or an open decision as
-settled.
+If high-impact topics are still unresolved, the page names each one under *Still open* (step 3) as a
+question in the client's terms, never as a readiness label. A brief written on a thin understanding
+must flag its assumptions — never present an inferred topic or an open decision as settled.
 
 ## 2. Load the model
 ```
@@ -35,45 +35,34 @@ requivo model show <slug>
 requivo context --session <slug>    # exactly the cards this session was created with
 ```
 
-## 3. Reason → write the brief
-Produce it in PM language, in the order a scope review is run, under one legend line for
-REASONING.md's *Source tags*:
+## 3. Reason → write the one-page brief
+The brief is the page the client reads (#814): **one page of prose**, one recommendation, each thing
+said **once**. Reason through the whole model first: what the client stated, what was inferred, the
+defaults chosen on their behalf (a `let_stand` claim, or a topic whose `evidence` opens `Client
+delegated:`), the evidence and its limits, the options set aside, the riskiest assumptions and the
+signal that would end the case, the premises worth contesting. Then write only the page:
 
-1. **Request and objective** — the underlying problem, what is being built, complexity and its cost driver.
-2. **Current understanding** — the scope in a short paragraph.
-3. **What is confirmed** — what the client actually stated, as business statements: the values, never
-   a topic label in bold before each one (#783).
-4. **Important assumptions** — what was *inferred*, the same way, each marked as needing confirmation,
-   your proposals and domain facts among them under their own tags.
-5. **Evidence and its limits** — each source the request rests on (its own words, the data or threads
-   it cites, the repository, domain knowledge): what it says, and what it cannot tell you.
-6. **Decisions made** — settled choices, with the alternative weighed and the trade-off accepted.
-7. **Options considered and set aside** — each with why it lost.
-8. **Assumptions worth contesting** — premises worth challenging *before* build. This is the differentiator.
-9. **Riskiest assumptions: cheap test → kill signal** — a table: the assumption, the cheapest test
-   that would settle it, and the result that kills or reshapes the plan.
-10. **What would make me stop** — the signals, from the table and the challenges, that end the case.
-11. **Scope implications**, **main risks**, **opportunities**.
-12. **Open questions that block the decision** — only those whose answer could change go / no-go or the
-    scope, each said as what has to be decided, never as a list of topic labels.
-13. **Are we ready?** — ready, or not ready and pointing at the open points above; never *Ready* while
-    section 12 lists an open decision: say they remain to be settled before estimating (#783). Then the
-    **recommended next steps**.
+1. **The call and the recommendation** — a title naming the call to make, then one short paragraph:
+   the decision the client has to make and what you recommend. One recommendation, not a menu.
+2. **Why** — one short paragraph, grounded in what the client said and the constraints the model states.
+3. **Cost and risk** — one short paragraph: the main driver of effort and the risk that matters most.
+4. **Still open, and would change this** — each open point whose answer would change the
+   recommendation, as a question in the client's terms with how it would change it. Every topic
+   step 1 reports as blocking belongs here; a point whose answer changes nothing does not.
+5. **This recommendation assumes** — what it rests on that the client has not confirmed, each once,
+   under REASONING.md's *Source tags*: a default you chose `[proposed]`, an inference `[assumed]`, a
+   domain fact `[domain]`, the client's own word `[requester]`. Never promote an assumption to a fact
+   because it sounds settled.
 
-Sections 3 and 4 are read off the model: a topic whose evidence is `explicit` is confirmed, one that
-is `inferred` is an assumption. What the client did not state on an `explicit` topic — a `let_stand`
-claim, or the whole topic when its `evidence` opens `Client delegated:` and no claim on it is theirs —
-is a default chosen on their behalf: list it under *Defaults chosen on your behalf*, between the two,
-with that source, never as confirmed; a stated claim beside it stays confirmed (#809).
-An open question is a question in the client's terms, never a stored value under a prefix such as
-"Confirm:", and each item appears once across sections. Do not promote an assumption to a fact
-because it sounds settled — that distinction is the most useful thing on the page. **Propose and
-label** (REASONING.md's honesty rules): a concrete default or a domain fact that changes the case
-belongs here, tagged `[proposed]` or `[domain]`, never as the requester's word.
+The page carries no readiness verdict or label ("Draft", "Not ready", "Ready"), no note on how it was
+produced, no headings beyond the five lead-ins, no topic labels in bold before a value, and never
+says one thing in two places: an assumption named under 5 is not restated under 2 or 4. A reader
+finishes it in two minutes. The analysis behind it is not lost: step 4 writes it into the model,
+where every later document reads it.
 
-**Language.** Write the whole brief — the section headings above, the labels and the verdict included —
-in the session's `docs_language` from the step-1 `status` (REASONING.md, *Every document is written in
-the session's documents language*), so a brief never mixes an English frame with the client's words.
+**Language.** Write the whole page — the title and the lead-ins included — in the session's
+`docs_language` from the step-1 `status` (REASONING.md, *Every document is written in the session's
+documents language*), so the page never mixes an English frame with the client's words.
 
 **Every opportunity is a premise too** (#749): "this would be valuable". Put it through the check a
 challenge gets: what would have to be true, and what if it is not? One that survives with a material
@@ -81,10 +70,7 @@ caveat carries the caveat in its text; one that does not survive becomes a chall
 
 An option is set aside only because it loses to something the model states (a constraint, the
 capacity, a decision), and a kill signal only where the model grounds a number or a concrete trigger.
-Never invent either to fill a table: a forced one is worse than none.
-
-Keep it shorter than a PRD. The question it answers is "what do I need to review before estimating
-this?", not "what should be built".
+Never invent either to fill a list: a forced one is worse than none.
 
 Voice rule: no slot ids, no percentages, no confidence labels in the prose (the source tags are not
 confidence labels). Say the business thing.
@@ -115,10 +101,11 @@ requivo model apply <slug> - --expected-revision N --json <<'JSON'
 JSON
 ```
 
-These are the same items as in your prose, stated structurally: section 7 is `exclusions`, sections
-9 and 10 are `thresholds`. Emit all five lists, `[]` for an empty one: a new brief replaces the last
-one's items, including a challenge a discovery turn recorded (#777) — restate the ones that still
-stand. A decision's `source` says who owns it (#751): `requester` for their own choice,
+This is the analysis behind the page, stated structurally: the options you set aside are
+`exclusions`, the kill signals are `thresholds`, the premises worth contesting are `challenges`. Emit
+all five lists, `[]` for an empty one: a new brief replaces the last one's items, including a
+challenge a discovery turn recorded (#777) — restate the ones that still stand. A decision's `source`
+says who owns it (#751): `requester` for their own choice,
 `proposed` for your recommendation. `derived_from`, `contests` and `rests_on` are the dependency
 edges: they are what lets Requivo tell the user *which* later change unseats *which* decision, option
 set aside or kill signal. An item with no edges still records fine, but it can never be reported as

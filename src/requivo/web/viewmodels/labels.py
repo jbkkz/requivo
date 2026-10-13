@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 # not identity: the file, the verb and the contract are unchanged.
 ARTIFACT_LABELS: dict[str, str] = {
     "brief": "Decision brief",
+    "consultant_view": "Consultant view (internal)",  # #814, the brief's sectioned analysis
     "prd": "PRD",
     "stories": "User stories",
     "estimate": "Estimate",

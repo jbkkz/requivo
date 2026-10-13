@@ -46,7 +46,7 @@ from requivo.core.contracts import (
     schema_slot_ids,
 )
 from requivo.core.perimeters import GO_TO_MARKET
-from requivo.render.markdown import brief_markdown
+from requivo.render.markdown import consultant_view_markdown
 from requivo.render.terminal import render_readiness, render_turn
 from requivo.web.viewmodels.status import readiness_view
 
@@ -376,14 +376,14 @@ def _after(text: str, marker: str, stop: str | None = None) -> str:
 
 
 def _brief_verdict(model, brief: Brief | None = None) -> str:
-    body = brief_markdown(model, brief or Brief(complexity="low")).split(BRIEF_READINESS_HEADING, 1)[1]
+    body = consultant_view_markdown(model, brief or Brief(complexity="low")).split(BRIEF_READINESS_HEADING, 1)[1]
     match = re.search(r"\*\*(.+?)\*\*", body)
     assert match, "the decision brief's readiness section states no verdict"
     return match.group(1)
 
 
 SURFACES = [("terminal status", lambda m: _after(printed(render_readiness, m), "Status")),
-            ("terminal turn", lambda m: _after(printed(render_turn, m), "Ready?", "→")), ("decision brief", _brief_verdict),
+            ("terminal turn", lambda m: _after(printed(render_turn, m), "Ready?", "→")), ("consultant view", _brief_verdict),
             ("web", lambda m: readiness_view(model_status(m))["headline"])]
 
 
@@ -405,7 +405,7 @@ def test_readiness_renders_as_one_boolean_on_every_surface(surface, extract):
 def test_every_surface_asks_the_same_readiness_question():
     model = _model_with(2)
     terminal = printed(render_readiness, model)
-    markdown = brief_markdown(model, Brief(complexity="low"))
+    markdown = consultant_view_markdown(model, Brief(complexity="low"))
     assert "ARE WE READY?" in terminal and "READY FOR IMPLEMENTATION?" not in terminal
     assert BRIEF_READINESS_HEADING in markdown and "Ready to estimate?" not in markdown
 
@@ -417,7 +417,7 @@ def test_the_brief_never_says_ready_beside_an_open_decision():
     verdicts = {n: _brief_verdict(_model_with(n), brief) for n in BLOCKER_COUNTS}
     assert len({v for n, v in verdicts.items() if n}) == 1 and verdicts[0] != verdicts[1], verdicts
     assert not verdicts[0].startswith("Ready") and verdicts[1] == _brief_verdict(_model_with(1))
-    ready_side = brief_markdown(_model_with(0), brief).split(BRIEF_READINESS_HEADING, 1)[1]
+    ready_side = consultant_view_markdown(_model_with(0), brief).split(BRIEF_READINESS_HEADING, 1)[1]
     assert "before estimating" in ready_side and "*Unresolved questions*" in ready_side
 
 

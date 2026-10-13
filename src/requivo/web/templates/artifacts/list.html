@@ -40,7 +40,7 @@
       assumed, and what is still open.</p>
     {% if not s.readiness.ready and s.readiness.blocking_labels %}
     <p class="hint">Unresolved topics remain ({{ s.readiness.blocking_labels|join(', ') }}) — the
-      {{ primary_label|lower }} will be marked <em>Draft</em> until they are answered.</p>
+      {{ primary_label|lower }} will name them as still open until they are answered.</p>
     {% endif %}
     {% endif %}
 

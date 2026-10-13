@@ -13,7 +13,7 @@ import os
 import time
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
@@ -55,6 +55,7 @@ from requivo.paths import workspace_root
 from requivo.providers.base import ContextJudge, PerimeterJudge
 from requivo.render.markdown import (
     brief_markdown,
+    consultant_view_markdown,
     criteria_markdown,
     epic_markdown,
     estimate_markdown,
@@ -127,6 +128,8 @@ class Generated(Generic[_A]):
     artifact: _A
     model: EngineOutput
     language: str = DEFAULT_DOCS_LANGUAGE   # the language it was written in (#790)
+    # Each companion saved from the same reply and revision (#814), by type: the brief's consultant view.
+    companions: dict[str, ArtifactStatus] = field(default_factory=dict[str, ArtifactStatus])
 
 
 def _require_revision_zero(slug: str, revision: int) -> None:
@@ -190,11 +193,14 @@ class _AssessmentArtifact:
     absorb: Callable[[EngineOutput, Any], None]
     cli_verb: str
     label: str
+    # The companion type (`core.dependencies.COMPANION_OF`) saved beside it from the same reply, and its writer.
+    companion: tuple[str, Callable[[EngineOutput, Any, str], str]] | None = None
 
 
 # The artifact types that take the reasoning-absorbing path, keyed like every registry here (#609).
 _ASSESSMENT_ARTIFACTS: dict[str, _AssessmentArtifact] = {
-    "brief": _AssessmentArtifact(brief_markdown, absorb_reasoning, "brief", "decision brief"),
+    "brief": _AssessmentArtifact(brief_markdown, absorb_reasoning, "brief", "decision brief",
+                                 ("consultant_view", consultant_view_markdown)),
     "gtm_plan": _AssessmentArtifact(gtm_plan_markdown, absorb_gtm_reasoning, "gtm_plan",
                                      "go-to-market plan"),
 }
@@ -818,8 +824,7 @@ class DiscoveryService:
                 # The paid assessment is filed stale against its source revision rather than thrown away
                 # (invariant 2). `test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded`.
                 try:
-                    status = self._save_generated(
-                        slug, artifact_type, spec.writer(out, brief, language), source_revision)
+                    status, _ = self._save_assessment(slug, artifact_type, spec, out, brief, language, source_revision)
                 except ArtifactWriteFailedError as write_err:
                     # Both failures stated, chained from the write failure, the unresolved one.
                     # `test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one`.
@@ -837,8 +842,8 @@ class DiscoveryService:
                     details={**e.details, "artifact_saved": True, "artifact_type": artifact_type,
                              "artifact_stale": status.stale}) from e
             # The assessment renders exactly the model that apply just wrote, so it belongs to that revision.
-            status = self._save_generated(slug, artifact_type, spec.writer(out, brief, language), applied.revision)
-            return Generated(status=status, artifact=brief, model=out, language=language)
+            status, companions = self._save_assessment(slug, artifact_type, spec, out, brief, language, applied.revision)
+            return Generated(status=status, artifact=brief, model=out, language=language, companions=companions)
 
         if artifact_type == "estimate":
             return self._generate_estimate(slug, out, snap.request, cards, source_revision, provider,
@@ -888,6 +893,16 @@ class DiscoveryService:
                          artifact=SavedEstimate(draft=draft, soft=soft, confidence=confidence,
                                                 uncovered=uncovered, stories=stories,
                                                 stories_status=stories_status))
+
+    def _save_assessment(self, slug: str, artifact_type: str, spec: _AssessmentArtifact, out: EngineOutput,
+                         artifact: Any, language: str, revision: int) -> tuple[ArtifactStatus, dict[str, ArtifactStatus]]:
+        """The assessment and its companion (#814), written from one reply against one revision (invariant 2):
+        `test_the_brief_and_its_consultant_view_are_saved_against_one_revision`."""
+        status = self._save_generated(slug, artifact_type, spec.writer(out, artifact, language), revision)
+        if spec.companion is None:
+            return status, {}
+        kind, writer = spec.companion
+        return status, {kind: self._save_generated(slug, kind, writer(out, artifact, language), revision)}
 
     def _save_generated(self, slug: str, artifact_type: str, content: str, source_revision: int):
         """Save a generated artifact against the revision it was produced from; the staleness check

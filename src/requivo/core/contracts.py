@@ -687,8 +687,47 @@ class Threshold(StrictModel):
         return self
 
 
+def _said_once(key: str) -> str:
+    """The comparison key "stated twice" is judged on: case, spacing and end punctuation ignored."""
+    return " ".join(key.casefold().split()).rstrip(".;:!?")
+
+
+class OpenPoint(StrictModel):
+    # One point still open on the client page (#814): what to decide, and how it would change the answer.
+    question: NonEmpty
+    would_change: NonEmpty
+    slots: list[str] = Field(default_factory=list)  # slot ids it settles; never shown, read for coverage
+
+
+class PageAssumption(StrictModel):
+    # One assumption the recommendation rests on, with where it came from (#751), named once on the page.
+    text: NonEmpty
+    source: ClaimSource
+
+
+class ClientPage(StrictModel):
+    """The decision brief as the client reads it (#814): one page of prose, each element said once.
+    A repeated item is refused, so it rides the retry loop: `test_a_client_page_stating_an_item_twice_is_refused`."""
+
+    title: NonEmpty             # the call to make, in the client's terms
+    recommendation: NonEmpty    # the call and what we recommend
+    why: NonEmpty
+    cost_and_risk: NonEmpty
+    open: list[OpenPoint] = Field(default_factory=list[OpenPoint])
+    assumptions: list[PageAssumption] = Field(default_factory=list[PageAssumption])
+
+    @model_validator(mode="after")
+    def _each_item_once(self):
+        said = [_said_once(t) for t in (self.recommendation, self.why, self.cost_and_risk,
+                                         *(p.question for p in self.open), *(a.text for a in self.assumptions))]
+        twice = sorted({k for k in said if said.count(k) > 1})
+        if twice:
+            raise ValueError(f"the client page states {twice!r} more than once; say each item once")
+        return self
+
+
 class Brief(StrictModel):
-    # The advisory layer.
+    # The advisory layer; `page` is what the client reads (#814), the rest the consultant view's.
     problem: str = ""                                   # one-line problem statement (exec summary)
     solution: str = ""                                  # one-line solution statement (exec summary)
     introduces: list[str] = Field(default_factory=list)
@@ -705,6 +744,11 @@ class Brief(StrictModel):
     # Typed thresholds (#604): `test_brief_carries_typed_exclusions_it_can_propose_600`.
     thresholds: list[Threshold] = Field(default_factory=list[Threshold])
     open_decisions: list[str] = Field(default_factory=list)  # decisions still to make
+    page: Optional[ClientPage] = None  # None: `brief_markdown` writes the page from the fields above
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_page(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _without(handler(self), page=None)
 
 
 class Priority(str, Enum):

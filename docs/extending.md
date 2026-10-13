@@ -24,7 +24,11 @@ new type touches all of these, or it lands in some tables and not others (#270, 
 `test_the_real_artifact_registries_agree_on_their_key_sets` fails when a type reaches some tables and
 not the rest. A generator whose text is user-facing carries the Voice rule: no slot ids, percentages
 or confidence labels in prose. A generator can have several writers on one contract (`Epic` has a
-Markdown writer and a JSON export; tracker adapters are pure transforms over that export).
+Markdown writer and a JSON export; tracker adapters are pure transforms over that export). A
+*companion* (`core/dependencies.py`'s `COMPANION_OF`, the brief's `consultant_view` since #814) is a
+second document one generation saves from the same reply against the same revision: it takes
+`_ARTIFACT_SLOTS_RAW`, `ARTIFACT_FILENAMES`, `ARTIFACT_LABELS` and the perimeter's types, and no
+generator, prompt, verb or skill of its own.
 
 ## Adding a slot
 

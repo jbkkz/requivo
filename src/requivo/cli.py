@@ -752,7 +752,7 @@ _RENDER: dict[str, Callable[[str, object], None]] = {
 
 # type → the label `_wrote` prints; the type, verb and filename stay `brief` (#166).
 _LABEL: dict[str, str] = {
-    "brief": "decision brief", "gtm_plan": "go-to-market plan", "prd": "PRD", "stories": "user stories", "estimate": "estimate", "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
+    "brief": "decision brief (the page for the client)", "gtm_plan": "go-to-market plan", "prd": "PRD", "stories": "user stories", "estimate": "estimate", "criteria": "acceptance criteria", "epic": "epic", "release": "release notes",
 }
 
 
@@ -771,8 +771,13 @@ def _post_epic(a: argparse.Namespace, slug: str, result) -> None:
               f"{store.write_artifact_file(slug, 'epic.gitlab.json', to_gitlab_json(epic, slug, result.status.revision))}")
 
 
-# type → extra work after `_wrote`. Only `epic` has any (its three optional tracker-plan exports).
-_POST: dict[str, Callable[[argparse.Namespace, str, object], None]] = {"epic": _post_epic}
+def _post_brief(a: argparse.Namespace, slug: str, result) -> None:
+    # The brief file is the page for the client; the sectioned analysis beside it stays with the consultant (#814).
+    _wrote_file(slug, result.companions["consultant_view"], "consultant view (internal, not for the client)")
+
+
+# type → extra work after `_wrote`: `epic`'s tracker-plan exports, `brief`'s consultant view.
+_POST: dict[str, Callable[[argparse.Namespace, str, object], None]] = {"epic": _post_epic, "brief": _post_brief}
 
 
 def _cmd_generate(a: argparse.Namespace, client, type_: str) -> None:

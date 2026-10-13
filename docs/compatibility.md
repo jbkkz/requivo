@@ -324,6 +324,7 @@ above](#http-statuses-in-requivo-web)); removing or moving a route is breaking. 
 | Type | File | Since |
 |---|---|---|
 | `brief` | `solution-assessment.md` | 0.1 |
+| `consultant_view` | `consultant-view.md` (the brief's internal sectioned view, saved with it against one revision; the brief became one page for the client) | #814 |
 | `prd` | `prd.md` | 0.1 |
 | `stories` | `stories.md` | #519 |
 | `estimate` | `estimate.md` | #519 |

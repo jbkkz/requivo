@@ -15,4 +15,5 @@ reachable (`test_the_real_artifact_registries_agree_on_their_key_sets`):
 - `web/viewmodels/labels.py`: `ARTIFACT_LABELS`; `cli.py`: the subcommand;
 - the keyless skill under `plugins/claude-code/skills/` and its row in `/requivo:docs`' perimeter table.
 
+A companion (`COMPANION_OF`, #814) skips the generator, prompt, verb and skill: its parent saves it.
 Staleness is the dependency graph, never the revision number. `docs/extending.md` has the rest.

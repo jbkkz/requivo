@@ -24,7 +24,7 @@ DEFAULT_PERIMETER = SOFTWARE
 # `test_the_real_artifact_registries_agree_on_their_key_sets` cross-checks every table.
 _ARTIFACT_TYPES: dict[str, frozenset[str]] = {
     SOFTWARE: frozenset(
-        {"brief", "prd", "stories", "estimate", "criteria", "epic", "release"}),
+        {"brief", "consultant_view", "prd", "stories", "estimate", "criteria", "epic", "release"}),
     # Go-to-market's one artifact (#609), a distinct key from "brief" since the registries are keyed globally.
     GO_TO_MARKET: frozenset({"gtm_plan"}),
 }

@@ -23,6 +23,7 @@ from requivo.core.contracts import Challenge, DesignDecision, EngineOutput, Excl
 from requivo.core.dependencies import (
     _ARTIFACT_SLOTS_RAW,
     ARTIFACT_FILENAMES,
+    COMPANION_OF,
     EvidenceReport,
     ImpactReport,
     artifact_slots,
@@ -88,7 +89,7 @@ def test_propagate_flags_dependent_thresholds(field, item, key):
 
 def test_propagate_reaches_only_the_assessment_for_an_otherwise_isolated_slot():
     rep = propagate(_out(), ["current_process"])   # feeds no buildable deliverable, no decision rests on it
-    assert rep.artifacts == ["brief"] and not rep.decisions and not rep.challenges and not rep.empty
+    assert rep.artifacts == ["brief", "consultant_view"] and not rep.decisions and not rep.challenges and not rep.empty
 
 
 def test_resolve_slots_accepts_ids_and_label_words_and_flags_unknowns():
@@ -178,7 +179,7 @@ def test_artifact_slots_reference_only_real_slot_ids():
 def test_every_required_slot_is_consumed_by_a_specific_artifact_or_is_exempted():
     """#269: `schema_slot_ids()` is the single source of the required set; a stale exemption is the mirror (#14)."""
     _, required = schema_slot_ids()
-    specific = set().union(*(slots for name, slots in artifact_slots().items() if name != "brief"))
+    specific = set().union(*(slots for name, slots in artifact_slots().items() if name != "brief" and name not in COMPANION_OF))
     exempt = set(_SLOTS_WITH_NO_SPECIFIC_ARTIFACT)
     uncovered = required - specific - exempt
     assert not uncovered, f"consumed by no specific artifact and not exempted: {sorted(uncovered)}"
@@ -473,15 +474,18 @@ def test_the_traceability_panel_marks_the_decision_worth_re_reading():
 
 def _artifact_vocabulary_mismatches(*, slots_raw, generators, op_prompts, writers, generatable,
                                     artifact_filenames, artifact_labels) -> list[str]:
-    """Every relationship the real tables must satisfy, over the real tables or a broken fixture copy."""
-    canonical = set(slots_raw)
+    """Every relationship the real tables must satisfy, over the real tables or a broken fixture copy. A
+    companion (#814) has no generator: its parent's generation saves it."""
+    companions = {c: p for c, p in COMPANION_OF.items() if c in slots_raw}
+    canonical = set(slots_raw) - set(companions)
     checks = [
+        (not set(companions.values()) <= set(generatable), f"COMPANION_OF parents {sorted(set(companions.values()) - set(generatable))} not generatable"),
         (set(generators) != canonical, f"_GENERATORS {sorted(set(generators) ^ canonical)} disagrees with _ARTIFACT_SLOTS_RAW"),
         (set(op_prompts) != canonical | {"analyze"}, f"_OP_PROMPTS {sorted(set(op_prompts) ^ (canonical | {'analyze'}))} disagrees with _ARTIFACT_SLOTS_RAW + analyze"),
         (not set(writers) <= canonical, f"_WRITERS {sorted(set(writers) - canonical)} not in _ARTIFACT_SLOTS_RAW"),
         (not set(generatable) <= canonical, f"GENERATABLE {sorted(set(generatable) - canonical)} not in _ARTIFACT_SLOTS_RAW"),
         # The dangerous one: a type saved under a real filename here is never flagged stale (invariant 1).
-        (not set(artifact_filenames) <= canonical, f"ARTIFACT_FILENAMES {sorted(set(artifact_filenames) - canonical)} not in _ARTIFACT_SLOTS_RAW"),
+        (not set(artifact_filenames) <= set(slots_raw), f"ARTIFACT_FILENAMES {sorted(set(artifact_filenames) - set(slots_raw))} not in _ARTIFACT_SLOTS_RAW"),
         (not set(generatable) <= set(artifact_filenames), f"GENERATABLE {sorted(set(generatable) - set(artifact_filenames))} has no ARTIFACT_FILENAMES entry"),
         (not set(artifact_filenames) <= set(artifact_labels), f"ARTIFACT_FILENAMES {sorted(set(artifact_filenames) - set(artifact_labels))} has no ARTIFACT_LABELS entry"),
     ]

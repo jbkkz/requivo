@@ -151,7 +151,7 @@ Each is a view of the saved model: `requivo <verb> <slug>`.
 
 | Command | Produces |
 |---|---|
-| `requivo brief <slug>` | The decision brief — what to review before estimating |
+| `requivo brief <slug>` | The decision brief, one page of prose for the client (`solution-assessment.md`), and beside it the consultant view, the sectioned analysis with its readiness verdict (`consultant-view.md`), both from one reply and one revision |
 | `requivo gtm_plan <slug>` | Go-to-market plan (the go-to-market perimeter's generator) |
 | `requivo prd <slug>` | Product Requirements Document |
 | `requivo stories <slug>` | User stories (`stories.md`) |

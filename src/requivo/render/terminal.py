@@ -30,7 +30,7 @@ from requivo.core.contracts import (
     PerimeterDecision,
     Stories,
 )
-from requivo.core.dependencies import ARTIFACT_FILENAMES, diff_claims
+from requivo.core.dependencies import ARTIFACT_FILENAMES, COMPANION_OF, diff_claims
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.recap import DocumentState, Recap
@@ -348,7 +348,7 @@ def next_command(payload: dict, provider: str | None = None, workspace: str = ""
                     f"no question is left, but readiness still blocks on: {', '.join(blocking)}")
     # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
-        if status.get("stale"):
+        if status.get("stale") and artifact_type not in COMPANION_OF:   # its parent's step refreshes it (#814)
             return step(f"requivo {artifact_type} {slug}", "/requivo:docs",
                         f"regenerates {status['filename']}; requivo impact {slug} shows what else moved")
     # Gated on ownership, read off `Perimeter.primary_artifact` rather than a `"brief"` literal (#609):
@@ -381,7 +381,7 @@ def render_next_command(payload: dict, provider: str | None = None, workspace: s
 
 # ── `docs` menu (#544) ────────────────────────────────────────────────────────
 # `DOC_TYPES` fixes the order, `ARTIFACT_LABELS` is the one name table, the state is `ArtifactStatus.stale`.
-DOC_TYPES: tuple[str, ...] = tuple(ARTIFACT_FILENAMES)
+DOC_TYPES: tuple[str, ...] = tuple(t for t in ARTIFACT_FILENAMES if t not in COMPANION_OF)  # a companion comes with its parent (#814)
 
 DOC_BLURBS: dict[str, str] = {
     "brief": "The judgment call to review before estimating or committing to scope.",
@@ -434,7 +434,7 @@ def render_documents(artifacts: dict | None) -> None:
     """Each generated document and whether it is current (#785), so `status` cannot show a stale one
     as current. Reads the recorded `stale` flag (invariant 1); silent with none generated."""
     present = artifacts or {}
-    rows = [(t, present[t]) for t in DOC_TYPES if t in present]
+    rows = [(t, present[t]) for t in ARTIFACT_FILENAMES if t in present]
     if not rows:
         return
     print("\nDOCUMENTS")

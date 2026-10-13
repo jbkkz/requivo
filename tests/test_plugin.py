@@ -259,17 +259,18 @@ def test_the_keyless_gtm_plan_folds_what_the_cli_absorbs_and_saves_through_the_r
     assert saved == {"type": "gtm_plan", "filename": "go-to-market-plan.md", "revision": 1, "stale": False}
 
 
-def test_the_keyless_brief_names_its_decision_sections_and_a_proposal_it_applies_awaits_veto(workspace, monkeypatch):
-    """#746, #749, #744: step 3 names the decision sections and puts opportunities through the challenge check; its
-    apply carries exclusions and thresholds, and a `proposed:` value applied that way reaches the defaults list."""
+def test_the_keyless_brief_writes_the_one_page_and_a_proposal_it_applies_awaits_veto(workspace, monkeypatch):
+    """#814 (the page #746's sections became), #749, #744: step 3 writes the one-page brief with no readiness
+    label and puts opportunities through the challenge check; its apply carries exclusions and thresholds."""
     from _fakes import run_cli, run_cli_stdin
 
     from requivo.core.contracts import schema_slot_ids
     from requivo.services.sessions import SessionService
     text, step = SKILLS["brief"], _section(SKILLS["brief"], r"^## 3\..*$")
-    sections = ("Evidence and its limits", "Options considered and set aside", "Riskiest assumptions: cheap test → kill signal",
-                "What would make me stop", "Open questions that block the decision")
-    assert not [s for s in sections if f"**{s}**" not in step], "brief: step 3 lacks a decision section (#746)"
+    parts = ("The call and the recommendation", "Why", "Cost and risk", "Still open, and would change this",
+             "This recommendation assumes")
+    assert not [s for s in parts if f"**{s}**" not in step], "brief: step 3 lacks a part of the one page (#814)"
+    assert "**Are we ready?**" not in step and "no readiness verdict" in step and "**once**" in step
     assert "what would have to be true" in step and "becomes a challenge" in step, "brief: opportunities skip the check (#749)"
     apply = re.search(r"^requivo model apply .*?\n(.*?)\nJSON$", text, re.DOTALL | re.MULTILINE)
     assert apply and {"exclusions", "thresholds"} <= set(re.findall(r'^\s*"(\w+)":', apply.group(1), re.MULTILINE))

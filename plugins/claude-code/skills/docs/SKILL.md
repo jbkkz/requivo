@@ -52,6 +52,9 @@ A perimeter produces its own documents and no other's (#719), the same split the
 | `software` | `brief`, `prd`, `stories`, `estimate`, `criteria`, `epic`, `release` |
 | `go-to-market` | `gtm_plan` |
 
+`status` may also list `consultant_view`: the decision brief's internal, sectioned view, which
+`requivo brief` writes beside it. It is not a menu entry; regenerating the brief is what refreshes it.
+
 The names are the CLI's own artifact types, in the same order every time. A perimeter this table
 does not name has no documents in this plugin build: say so, point at `requivo docs <slug>`, and stop.
 A document token from `$ARGUMENTS` is matched by name (case-insensitive, `gtm-plan` reads as
