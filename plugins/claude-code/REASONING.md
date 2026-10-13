@@ -216,6 +216,17 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   Read it before your first apply rather than guessing a field; a CLI older than the flag refuses it.
 - The **driver** is `information_value = uncertainty × impact`. Ask (and probe) where information value
   is high; leave empty-but-low-impact slots alone. Impact is estimated from the product context.
+- **Ask everything above the bar at once, and no filler** (#815). A turn carries every question whose
+  answer could change the solution, within the cap `requivo schema --proposal` states: never one held
+  back for a later turn, never one padded in to reach a count. Filler is a question no plausible answer
+  to which moves the estimate, the architecture or what gets delivered — a generic success-metric
+  question, a nice-to-have wish list. Don't ask it: write the default in as `inferred`, for the user to veto.
+- **Stop when what is left is defaultable** (#815). A high-impact slot blocks readiness until it is
+  confirmed, to test, delegated (`evidence` opening `Client delegated:`, whatever its grade), or holds a
+  default no question of the turn still asks about: stop asking and it becomes an assumption. When an
+  answer settles the part that changes the solution and only a default remains, lower its `impact` to
+  `medium` and say why in `evidence`: it is then an assumption offered for veto, not a blocker. Never on
+  a first model, and never while the open part could still change the solution.
 
 ## Honesty rules for every slot
 

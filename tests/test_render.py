@@ -215,7 +215,7 @@ def test_the_decision_brief_states_values_and_names_what_blocks_in_plain_words()
                  "workflow": slot(0, "empty", "high"), "permissions": slot(0, "empty", "high")})
     model.questions = [Question(q="Who approves when the manager is away?", slot="workflow", why="w")]
     md = consultant_view_markdown(model, Brief(complexity="low"))
-    for line in ("- Approvals get lost in email.", "- Employees and line managers.", "- Who triggers, who executes, who approves?",
+    for line in ("- Approvals get lost in email.", "- Employees and line managers.",
                  "- Who approves when the manager is away?", "- Who sees what, who can do what?"):
         assert line in md, line
     assert " · " not in md and not [label for label in slot_meta()[1].values() if f"**{label}**" in md], md

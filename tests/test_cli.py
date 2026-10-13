@@ -606,11 +606,13 @@ def test_open_questions_point_at_answer():
 
 
 def test_a_turn_that_asks_nothing_while_still_blocked_says_how_to_settle_it():
-    """#784: no question while readiness blocks printed "converged", and `status` pointed past it."""
+    """#784: no question while readiness blocks printed "converged", and `status` pointed past it. Since
+    #815 the blocker the turn left unasked carries the probe from the schema as its question."""
     with _model_in_out("clitest-stall") as p:
         reply = {"model": {"problem": slot(50, "explicit", "high")}, "questions": [], "summary": {"objective": "o"}}
         text = run_cli(["answer", p.parent.name, "No strong view."], client=FakeClient(json.dumps(reply)))
-        assert "Discovery converged" not in text and "Real problem (too thin)" in text and "you decide" in text
+        assert "Discovery converged" not in text and "Real problem (too thin)" in text
+        assert "What problem is behind the request?" in text and "No question is left" not in text
         assert f"requivo answer {p.parent.name}" in text
     blocked = {**_payload(artifacts=_STALE_BRIEF), "readiness": {"ready": False, "blocking_slots": [{"slot": "problem", "label": "Real problem"}]}}
     assert next_command(blocked).startswith(f'requivo answer {_SLUG} "') and "Real problem" in next_command(blocked)

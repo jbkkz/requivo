@@ -100,10 +100,11 @@ def test_apply_carries_the_slots_a_refinement_omits_and_refuses_a_partial_first_
 
 def test_model_apply_and_status_and_artifact_flow(tmp_path):
     _init("event")
-    proposal = _write(tmp_path / "p.json", full_model(workflow=slot(70, "inferred", "high", "scan")))
+    asking = [{"q": "How is a guest checked in?", "slot": "workflow", "why": "w"}]
+    proposal = _write(tmp_path / "p.json", {**full_model(workflow=slot(70, "inferred", "high", "scan")), "questions": asking})
     applied = run_cli_json(["model", "apply", "event", proposal, "--json"])
     assert applied["status"] == "applied" and applied["revision"] == 1
-    assert "workflow" in applied["readiness"]["blocking_slots"]  # inferred high-impact blocks
+    assert "workflow" in applied["readiness"]["blocking_slots"]  # inferred high-impact blocks while asked (#815)
     status = run_cli_json(["status", "event", "--json"])
     assert status["revision"] == 1 and status["readiness"]["ready"] is False
     brief = tmp_path / "brief.md"
@@ -236,10 +237,11 @@ def test_status_labels_claims_and_counts_the_downgraded(tmp_path):
     stated = dict(text="5-10 h/week", source="requester")
     obligation = dict(text="GDPR controller split", source="domain", impact="medium", evidence="an assumption to review")
     constraints = dict(slot(90, "inferred", "high", "5-10 h/week; GDPR"), claims=[stated, obligation])
-    _init("s", full_model(constraints=constraints), where=tmp_path)
+    asking = [{"q": "Is the GDPR split right?", "slot": "constraints", "why": "w"}]   # asked, so it blocks (#815)
+    _init("s", {**full_model(constraints=constraints), "questions": asking}, where=tmp_path)
     before = run_cli_json(["status", "s", "--json"])
     confirmed = dict(constraints, claims=[dict(stated, confirmation="confirmed", answered_by="requester"), obligation])
-    applied = run_cli(["model", "apply", "s", _write(tmp_path / "p.json", full_model(constraints=confirmed))])
+    applied = run_cli(["model", "apply", "s", _write(tmp_path / "p.json", {**full_model(constraints=confirmed), "questions": asking})])
     assert 'claim confirmation: constraints — 5-10 h/week' in applied
     after = run_cli_json(["status", "s", "--json"])
     assert after["readiness"] == before["readiness"] and not after["readiness"]["ready"]   # claims inform, never decide

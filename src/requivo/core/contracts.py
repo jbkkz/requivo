@@ -29,7 +29,7 @@ _Item = TypeVar("_Item")
 
 # The cap on questions per turn, carried by `ModelProposal` and its persisted mirror, which pydantic
 # makes restate it (#14): `test_the_persisted_mirror_copies_every_constraint_it_restates`.
-MAX_QUESTIONS = 6
+MAX_QUESTIONS = 9
 
 # The ceiling on a raw text input, enforced by `require_input_within_bounds` in core, not only by
 # the Web (#255, invariant 14): `test_an_oversized_request_is_refused_before_any_provider_call`.

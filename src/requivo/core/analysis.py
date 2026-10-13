@@ -84,20 +84,32 @@ def uncovered_slots(out: EngineOutput, stories: Stories, perimeter: str = DEFAUL
 
 
 def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
-    """High-impact slots not yet confirmed AND covered: what stands between here and build. Iterates
-    the schema's required slots, so an omitted one blocks at its baseline impact; confirmation is
-    `explicit` *and* completeness at the soft boundary, so a one-word reply cannot read as confirmed."""
+    """High-impact slots not yet confirmed AND covered: what is left that would change the solution
+    (#815). Iterates the schema's required slots, so an omitted one blocks at its baseline impact;
+    confirmation is `explicit` *and* completeness at the soft boundary, so a one-word reply cannot read
+    as confirmed. Below high impact, delegated, or a default no question still asks about, a gap is an
+    assumption to veto, never a blocker; a blank one nobody asks about is asked by `ranked_questions`."""
     _, required = schema_slot_ids(perimeter)
+    asked = {q.slot for q in out.questions}
     blockers: list[str] = []
     for sid in required:
         s = out.model.get(sid)
         impact = s.impact if s is not None else _default_impacts(perimeter).get(sid, Impact.low)
         confirmed = s is not None and s.confidence is Confidence.explicit and not is_thin(s)
-        # A slot deferred to a named test (#610) is a known unknown and does not block readiness.
-        deferred_to_test = s is not None and s.confidence is Confidence.testable
-        if impact is Impact.high and not confirmed and not deferred_to_test:
+        # Deferred to a named test (#610), handed to us by the client, or a default the turn stopped asking about (#815).
+        settled = s is not None and (s.confidence is Confidence.testable or is_delegated(s)
+                                     or (sid not in asked and s.confidence is not Confidence.empty
+                                         and bool(s.value.strip())))
+        if impact is Impact.high and not confirmed and not settled:
             blockers.append(sid)
     return [sid for sid in slot_meta(perimeter)[1] if sid in set(blockers)]  # schema order
+
+
+def unasked_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+    """Blockers no question of the turn targets (#815): only blank ones can be, since a default nobody
+    asks about is an assumption. Left alone, Not ready with nothing to ask is a dead end."""
+    asked = {q.slot for q in out.questions}
+    return [sid for sid in readiness_blockers(out, perimeter) if sid not in asked]
 
 
 def is_thin(s: Slot) -> bool:
@@ -118,6 +130,13 @@ def blocking_reason(s: Slot | None) -> str:
 DELEGATED_EVIDENCE = "client delegated"
 
 
+def is_delegated(s: Slot) -> bool:
+    """The client handed this slot's decision over and a default was chosen (#815): settled whatever
+    grade the turn gave it, since no later answer can confirm a choice the client declined to make."""
+    return (s.confidence is not Confidence.empty and bool(s.value.strip())
+            and s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE))
+
+
 def stated_and_defaults(s: Slot) -> tuple[list[str], list[tuple[str, str]]]:
     """An `explicit` slot split into what the client stated and the defaults it holds, each `(text, source)`
     (#809): claim by claim (#751), a `let_stand` claim, or under `Client delegated:` evidence any claim
@@ -125,7 +144,7 @@ def stated_and_defaults(s: Slot) -> tuple[list[str], list[tuple[str, str]]]:
     it was stated. A naming over what is recorded, never a second confidence."""
     if s.confidence is not Confidence.explicit:
         return [], []
-    delegated = s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE)
+    delegated = is_delegated(s)
     stated: list[str] = []
     defaults: list[tuple[str, str]] = []
     for c in s.claims:
@@ -215,10 +234,19 @@ def information_value(out: EngineOutput, slot_id: str, perimeter: str = DEFAULT_
     return round(uncertainty * (IMPACT_RANK[s.impact] + 1) / 3, 2)
 
 
+# The `why` of a question asked for a blocker the turn left unasked (#815), so the dead end has an exit.
+UNASKED_BLOCKER_WHY = "It still blocks readiness and no question asked about it: answer it, or delegate it."
+
+
 def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[Question]:
     """The turn's questions by descending information value, the order every surface asks and shows
-    them in (#771). `sorted` is stable, so a tie keeps the provider's order."""
-    return sorted(out.questions, key=lambda q: -information_value(out, q.slot, perimeter))
+    them in (#771), plus the probe the schema gives each blocker the turn left unasked (#815), so a
+    blocker always carries a question: `test_no_turn_can_stop_not_ready_with_nothing_to_ask`. `sorted`
+    is stable, so a tie keeps the provider's order."""
+    probes = {s["id"]: s["probe"] for s in schema_slots(perimeter)}
+    # An omitted slot (a session older than the slot) blocks at its baseline impact, so it is probed too.
+    derived = [Question(q=probes[sid], slot=sid, why=UNASKED_BLOCKER_WHY) for sid in unasked_blockers(out, perimeter)]
+    return sorted(list(out.questions) + derived, key=lambda q: -information_value(out, q.slot, perimeter))
 
 
 def pillar_completeness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, int]:

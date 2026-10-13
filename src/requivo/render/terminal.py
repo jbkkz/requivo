@@ -189,7 +189,7 @@ def render_defaults(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
         print(_bullet(line))
     if len(lines) > len(fresh):
         print(f"  + {len(lines) - len(fresh)} earlier default(s) still standing (`requivo status` lists them).")
-    if out.questions:
+    if ranked_questions(out, perimeter):
         print("  To overturn one, say so in any answer, in your own words: it is folded in like an answer.")
 
 
@@ -198,9 +198,10 @@ def render_turn(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER,
     """The checkpoint plus the questions, for the verbs with nobody at a prompt (`discover`,
     `answer`, `status`, `demo`)."""
     render_turn_state(out, perimeter, previous)
-    if out.questions:
+    questions = ranked_questions(out, perimeter)   # a blocker always carries one (#815)
+    if questions:
         print("\nPRIORITY QUESTIONS  (ranked by information value = uncertainty × impact)")
-        for i, q in enumerate(ranked_questions(out, perimeter), 1):
+        for i, q in enumerate(questions, 1):
             print(f"  {i}. {display_text(q.q)}")
             # A schema-validated slot id, not free text, and the number it was ranked by (#771).
             print(f"     → {slot_label(q.slot, perimeter)} · information value {information_value(out, q.slot, perimeter):.2f}")
@@ -364,8 +365,9 @@ def render_next_turn(out: EngineOutput, perimeter: str, slug: str, *, ask: str =
     """A turn's last line: `ask` while questions remain, `converged` when nothing blocks, and otherwise
     the topics still blocking with how to settle them (#784): never a silent "Not ready" with nothing to do.
     `slug` is as the hint must be pasted, `--workspace` included (#772)."""
-    blockers = [] if out.questions else _named_blockers(out, perimeter)
-    line = ask if out.questions else converged if not blockers else (
+    asking = bool(ranked_questions(out, perimeter))
+    blockers = [] if asking else _named_blockers(out, perimeter)
+    line = ask if asking else converged if not blockers else (
         f"\n⚠  No question is left, but readiness still blocks on: {', '.join(blockers)}.\n"
         f'→ Confirm each, or say "you decide" to delegate it: requivo answer {slug} "<your answers>"')
     if line:

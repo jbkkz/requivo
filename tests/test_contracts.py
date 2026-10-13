@@ -15,8 +15,10 @@ from requivo.core.analysis import (
     state_of,
     uncovered_slots,
     understanding_view,
+    veto_defaults,
 )
 from requivo.core.contracts import (
+    MAX_QUESTIONS,
     PRD,
     AcceptanceCriteria,
     Brief,
@@ -68,7 +70,7 @@ def _q(slot_id, i=0):
     {"model": {"real_problem": slot(80, "explicit", "high")}, "questions": [], "summary": {}},
     {**_ONE_SLOT, "model": {"problem": slot(150, "explicit", "high")}},
     {**_ONE_SLOT, "model": {"problem": slot(10, "maybe", "high")}},
-    {**_ONE_SLOT, "questions": [_q("workflow", i) for i in range(7)]},
+    {**_ONE_SLOT, "questions": [_q("workflow", i) for i in range(MAX_QUESTIONS + 1)]},
     {**_ONE_SLOT, "questions": [{"q": "", "slot": "workflow", "why": "w"}]},
     {**_ONE_SLOT, "questions": [{"q": "Q?", "slot": "workflow", "why": ""}]},
     {**_ONE_SLOT, "questions": [_q("not_a_slot")]},
@@ -324,6 +326,45 @@ def test_readiness_flags_a_missing_high_impact_slot_as_blocker():
 def test_readiness_is_not_reached_on_self_asserted_beliefs_about_the_world_alone():
     """#611: with no client, `explicit` means the requester is the authority for the fact."""
     assert readiness_blockers(out({"success_metrics": slot(90, "inferred", "high"), "problem": slot(90, "inferred", "high")}))
+
+
+_DELEGATED = "Client delegated: no strong view. Default chosen: each manager approves their own team."
+
+
+@pytest.mark.parametrize("workflow, asked, blocks", [
+    ({**slot(50, "inferred", "high", "managers approve"), "evidence": _DELEGATED}, True, False),
+    ({**slot(40, "explicit", "high", "managers approve"), "evidence": _DELEGATED}, True, False),
+    ({**slot(0, "empty", "high"), "evidence": _DELEGATED}, False, True),
+    ({**slot(50, "inferred", "high", "managers approve"), "evidence": "proposed: the usual chain"}, True, True),
+    ({**slot(50, "inferred", "high", "managers approve"), "evidence": "proposed: the usual chain"}, False, False),
+    (slot(50, "inferred", "medium", "managers approve"), True, False),
+], ids=["delegated-inferred", "delegated-thin", "delegated-with-nothing-chosen", "a-default-still-asked-about",
+        "a-default-nobody-asks-about", "remainder-rated-below-high"])
+def test_a_slot_whose_remainder_is_defaultable_is_an_assumption_not_a_blocker(workflow, asked, blocks):
+    """#815: readiness is "nothing left that would change the solution". A slot the client delegated,
+    one rated below high, or one holding a default no question still asks about, stops blocking and
+    stays in the defaults offered for veto; a default the turn still asks about blocks."""
+    model = EngineOutput.model_validate({**full_model(workflow=workflow), "questions": [_q("workflow")] if asked else []})
+    assert ("workflow" in readiness_blockers(model)) is blocks
+    assert blocks or workflow["confidence"] != "inferred" or "workflow" in veto_defaults(model)
+
+
+@pytest.mark.parametrize("workflow, derived", [
+    (slot(0, "empty", "high"), True), (slot(15, "empty", "high", "a note, not an answer"), True),
+    (slot(50, "explicit", "high"), True), (slot(50, "inferred", "high", "managers approve"), False),
+    (slot(90, "explicit", "high", "submit, approve"), False), (None, True),
+], ids=["unknown", "unknown-with-a-note", "thin-and-blank", "assumed", "confirmed", "omitted"])
+def test_no_turn_can_stop_not_ready_with_nothing_to_ask(workflow, derived):
+    """#815: a blocker carries a question or does not block. A turn that asks nothing turns a default into
+    an assumption, and a blank blocker it left unasked gets the probe from the schema, so every surface
+    showing readiness has something to ask: Not ready beside zero questions cannot be rendered."""
+    model = out({"workflow": workflow} if workflow else {})
+    if workflow is None:   # a slot added since an older session was written: blocks at its baseline impact
+        del model.model["workflow"]
+    status = model_status(model)
+    assert status["readiness"]["ready"] or status["questions"], "Not ready with nothing to ask"
+    assert [q["slot"] for q in status["questions"]] == (["workflow"] if derived else [])
+    assert {b["slot"] for b in status["readiness"]["blocking_slots"]} <= {q["slot"] for q in status["questions"]}
 
 
 @pytest.mark.parametrize("s, state", [

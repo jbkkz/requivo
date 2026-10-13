@@ -19,6 +19,7 @@ from _fakes import (
     blind_to_session,
     forge_meta,
     full_model,
+    full_slots,
     printed,
     run_cli,
     run_cli_exit,
@@ -55,8 +56,9 @@ def _raise(exc):
 
 
 def _model(*, objective: str, questions: list[Question] | None = None) -> EngineOutput:
-    return EngineOutput(model={"problem": Slot(completeness=80, confidence="explicit", impact="high", value="v")},
-                        summary=Summary(objective=objective), questions=questions or [])
+    # Every required slot, so no omitted high-impact one blocks and gets its probe asked (#815).
+    model = {sid: Slot(**s) for sid, s in full_slots(problem=slot(80, "explicit", "high", "v")).items()}
+    return EngineOutput(model=model, summary=Summary(objective=objective), questions=questions or [])
 
 
 def _questions(n: int) -> list[Question]:
@@ -199,30 +201,28 @@ def test_the_interactive_loop_asks_one_question_per_prompt():
         assert f"Question {i}?" in prompt and sum(f"Question {j}?" in prompt for j in range(3)) == 1
 
 
-def test_the_checkpoint_window_fits_inside_the_contract_cap():
-    """Only `QUESTIONS_PER_CHECKPOINT` of a turn's `MAX_QUESTIONS` are asked, then compiled as one turn (#592)."""
-    assert 0 < QUESTIONS_PER_CHECKPOINT <= MAX_QUESTIONS
+def test_the_checkpoint_asks_every_question_a_turn_returned():
+    """#815: every one of a full turn of `MAX_QUESTIONS` is asked, one at a time (#592), then compiled as
+    one turn: a question held back for the next checkpoint costs a paid call and a round trip."""
+    assert QUESTIONS_PER_CHECKPOINT == MAX_QUESTIONS
     first, second = *_asking("one", n=MAX_QUESTIONS), _model(objective="two")
     provider = _provider(first, second)
     prompts: list[str] = []
     _converse(provider, "a request", ["a"] * MAX_QUESTIONS, prompts=prompts)
-    assert len(prompts) == QUESTIONS_PER_CHECKPOINT
-    dropped = first.questions[QUESTIONS_PER_CHECKPOINT:]
-    assert dropped, "the fixture did not actually overflow the window"
-    for q in dropped:
-        assert not any(q.q in p for p in prompts), f"{q.q!r} was asked past the window"
-    assert provider.analyze_calls == 2, "a window is one turn, not one turn per question"
+    assert len(prompts) == MAX_QUESTIONS
+    assert provider.analyze_calls == 2, "a checkpoint is one turn, not one turn per question"
     folded = provider.analyze_kwargs[1]["answers"]
     assert folded.count(ARROW) == QUESTIONS_PER_CHECKPOINT and len(folded.splitlines()) == QUESTIONS_PER_CHECKPOINT
 
 
 def test_the_checkpoint_asks_the_highest_information_value_first():
-    """#771: the window takes the core's ranked order, so what falls past it is the least worth asking."""
+    """#771: the checkpoint asks in the core's ranked order, the most worth asking first."""
     asking = _model(objective="one", questions=[Question(q=f"About {s}?", slot=s, why="w")
                                                 for s in ("reporting", "problem", "workflow", "actors", "permissions")])
+    asking.model.update({s: Slot(completeness=0, confidence="empty", impact="high") for s in ("workflow", "actors", "permissions")})
     prompts: list[str] = []
-    _converse(_provider(asking, _model(objective="two")), "a request", ["a"] * QUESTIONS_PER_CHECKPOINT, prompts=prompts)
-    assert [p.split("About ")[1].split("?")[0] for p in prompts] == ["workflow", "actors", "permissions", "reporting"]
+    _converse(_provider(asking, _model(objective="two")), "a request", ["a"] * 5, prompts=prompts)
+    assert [p.split("About ")[1].split("?")[0] for p in prompts] == ["workflow", "actors", "permissions", "reporting", "problem"]
 
 
 def test_the_golden_harness_answers_a_turn_in_exactly_the_words_this_loop_does():

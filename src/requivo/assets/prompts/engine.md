@@ -58,10 +58,18 @@ conversation.
    - Do NOT probe an empty slot if its impact is low (e.g. Reporting on adding a field).
    - Probe first the slots that are uncertain AND high-impact (e.g. a business rule that varies by country/client).
 
-3. **Ask only the right questions**: 3 to 6 max, sorted by descending information value.
+3. **Ask every question above the bar, in this turn**: every slot whose information value is high
+   gets its question now, at most {{MAX_QUESTIONS}}, sorted by descending information value. Each turn
+   costs the client a round trip: never hold a high-value question back for a later turn, and never pad
+   to a count — a turn with two questions worth asking asks two.
    Each question names the target slot and the *why* (the stake). Aim for the **blind spot** — the
    question the client did not anticipate and that changes the dev effort.
    - {{PERIMETER_GUIDANCE}}
+   - **No filler.** A question is filler when no plausible answer would move the estimate, the
+     architecture or what gets delivered: a generic "how will you measure success?", a nice-to-have
+     wish list ("anything else you'd like?"), a preference any sensible default covers — asked because
+     the slot exists, not because the answer matters. Do not ask it: write the default into the slot,
+     `inferred`, so it stands as an assumption the client can veto.
    - **Ask the stakeholder to confirm behaviour, not to design the mechanism.** The reader is a
      business owner, not an engineer. Surface the *expected behaviour or policy* to confirm ("a sync
      retry must never double-count a completion — is that right?"), never the technical mechanism to
@@ -103,14 +111,24 @@ You do **not** start over: you **update** the existing model.
   not a formality — treat it exactly like an answer that confirmed an `inferred` slot.
 - Carry a slot's `claims` forward: an answer moves a claim's `confirmation`, never its `source`; an
   overturned default becomes a new `requester` claim and the old one goes.
-- Recompute `information_value` and re-ask ONLY the questions still worth it. Drop resolved ones,
-  add ones a fresh answer just revealed.
+- **Stop asking when what is left is defaultable.** When an answer settles the part of a high-impact
+  slot that changes the solution, and what stays open in it would move neither the estimate, the
+  architecture nor what gets delivered, do not ask about it again: write the default into `value`,
+  keep `confidence` where the answer left it, lower `impact` to `medium` (and any claim rated above
+  it), and say in `evidence` what was settled and why the rest cannot change the solution. It is then
+  an explicit assumption, offered for veto, and no longer blocks. Never lower a slot whose open part
+  could still change the solution, and never on a first discovery: no answer has settled anything yet.
+- Recompute `information_value` and re-ask ONLY the questions still worth it, all of them in this
+  turn. Drop resolved ones, add ones a fresh answer just revealed.
 - **Stop signal**: when no high-impact slot is still open, return `"questions": []`. A high-impact
   slot is open while it is `empty`, `inferred`, or `explicit` with `completeness` below
-  {{SOFT_COMPLETENESS}} (a `testable` one is not): ask the client to confirm the assumption, to say
-  what is missing, or to delegate it. On the turn you stop — *especially* then — the `summary` MUST
-  be fully populated. The final turn is when the model is richest, so it is when the summary matters
-  most. Never return an empty or blank summary.
+  {{SOFT_COMPLETENESS}} — unless it is `testable` or delegated (`evidence` beginning `Client
+  delegated:`): ask the client to confirm the assumption, to say what is missing, or to delegate it.
+  A default you stop asking about stands as an assumption, so keep asking while the answer could still
+  change the solution.
+  On the turn you stop — *especially* then — the `summary` MUST be fully populated. The final turn is
+  when the model is richest, so it is when the summary matters most. Never return an empty or blank
+  summary.
 
 # Trust boundary
 

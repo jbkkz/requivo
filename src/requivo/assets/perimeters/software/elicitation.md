@@ -107,11 +107,11 @@ it is asked). The order is computed from the target slot, not taken from the rea
 from its completeness and confidence, impact from its impact (the one-line formula is in
 `core/analysis.py`), ties keeping the order the turn proposed.
 
-A turn may propose more questions than a checkpoint asks (`MAX_QUESTIONS` against the CLI's
-`QUESTIONS_PER_CHECKPOINT`, which the Claude Code skill follows). A checkpoint asks the leading ones by
-information value, one at a time; the rest are not queued. The next turn derives its own questions
-against the updated model, so one that is still worth asking comes back, ranked against what the
-answers changed.
+A checkpoint asks every question the turn returned (`QUESTIONS_PER_CHECKPOINT` in the CLI equals
+`MAX_QUESTIONS`, and the Claude Code skill follows it, #815), one at a time by information value, then
+folds the answers into one turn: a question held back would cost another round trip with the client.
+The next turn derives its own questions against the updated model, ranked against what the answers
+changed.
 
 When nothing high-value is left to ask, it produces the deliverable: a **Decision brief**. Alongside
 the objective and the assumptions still to confirm, the brief adds a consultant's read — what the

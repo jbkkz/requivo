@@ -331,10 +331,10 @@ its `test_plan`), `completeness` (0–100), and `impact`, plus `claims` on a slo
 provenance. Follow the honesty rules — mark inferences as inferred, leave true unknowns empty,
 invent nothing the requester did not say, and bring your proposals and domain facts labelled
 (`proposed:`, `domain:`). Include a `summary` — all four of `objective`, `scope`, `assumptions` and
-`blind_spot`, since `status` reads each back — and, where information value is high, 3–6
+`blind_spot`, since `status` reads each back — and, where information value is high, all the
 `questions` — each one `{ "q": "…", "slot": "<a real slot id>", "why": "<one line>" }`. The text
 field is **`q`**; see the apply loop in REASONING.md for why that is worth reading before you emit
-six of them.
+several of them.
 
 **Acceptance is derived, not asked** (#734). Draft Given/When/Then criteria from the slots the user
 has confirmed (rules, workflow, edge cases, the success measure) into `acceptance`, where the
@@ -410,25 +410,25 @@ Before the first question, hand the user the ground the session is standing on. 
 Then **stop and wait**, in this same conversation, for the user's answer — do not answer for them.
 Go to **7. Wait for the reply**.
 
-### One question at a time, four to a turn
+### One question at a time, the whole turn at once
 
 A turn's reasoning yields several questions, ordered by information value. **Ask them one at a
-time**: the leading one, then — once the user has answered — the next, and so on, up to **four**.
-Then fold all four answers into **one** `model apply` and present the checkpoint (step 6's *Relay
+time**: the leading one, then — once the user has answered — the next, and so on, through **every** question
+the turn returned (#815). Then fold all the answers into **one** `model apply` and present the checkpoint (step 6's *Relay
 the result*). That is the cadence, and the CLI's own loop holds it at
 `QUESTIONS_PER_CHECKPOINT` in `cli.py`.
 
 Three rules make it work rather than merely feel slower:
 
-- **Nothing is applied mid-window.** The four answers are one turn. Applying after each question
-  would buy four reasoning cycles where the user paid for one, and would re-derive the remaining
+- **Nothing is applied mid-window.** The answers are one turn. Applying after each question
+  would buy a reasoning cycle per question where the user paid for one, and would re-derive the remaining
   questions against a model that has moved under them.
-- **The surplus is dropped, not queued.** If the turn produced more than four questions, the ones
-  past the window are not asked later — the next turn derives its own against the updated model, and
-  answering four often makes the fifth obsolete or reveals a better one.
+- **Nothing is held back for a later turn.** Every question the turn returned is above the bar, and
+  each further turn is another round trip with the client, so ask them all now; the next turn derives
+  its own against the updated model.
 - **A queued question can be replaced** (#735). When the answer just given opens a higher-value
-  question than the next one queued, ask that instead and say so in one line. The window stays four
-  questions, and the apply at its end stays one.
+  question than the next one queued, ask that instead and say so in one line. The window stays the
+  whole turn, and the apply at its end stays one.
 
 A user who answers several questions at once in a single message has answered them: take what they
 gave, do not re-ask it one at a time.

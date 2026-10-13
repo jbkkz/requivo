@@ -31,7 +31,7 @@ from requivo.core import persistence as store
 from requivo.core.adapters import epic_export_json, to_github_json, to_gitlab_json
 from requivo.core.analysis import model_status, ranked_questions, slot_label
 from requivo.core.context import available_cards, average_card_byte_size, resolve_cards
-from requivo.core.contracts import EngineOutput, Question
+from requivo.core.contracts import MAX_QUESTIONS, EngineOutput, Question
 from requivo.core.dependencies import propagate, resolve_slots, unknown_slots
 from requivo.core.errors import AmbiguousPerimeterError, InvalidSlugError, RequivoError, SessionNotFoundError
 from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_perimeter
@@ -76,9 +76,9 @@ from requivo.usage import track_usage
 
 MAX_TURNS = 8
 
-# Questions asked per checkpoint, below `MAX_QUESTIONS` (the ceiling on what a turn *returns*); the
-# rest are re-derived next turn, never carried (#592). `test_the_checkpoint_window_fits_inside_the_contract_cap`.
-QUESTIONS_PER_CHECKPOINT = 4
+# Questions asked per checkpoint: every one a turn may return (#815), since each further turn is another
+# paid call and another round trip with the client. `test_the_checkpoint_asks_every_question_a_turn_returned`.
+QUESTIONS_PER_CHECKPOINT = MAX_QUESTIONS
 
 # The work succeeded and the report could not be encoded: distinct from 1 so a script can tell them apart.
 EXIT_RENDER_FAILED = 3
@@ -160,7 +160,7 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
         # The checkpoint, its defaults diffed against `prev` (#731); `_prompt_answers` asks one at a time (#592).
         render_turn_state(out, perimeter, prev)
 
-        if not out.questions:
+        if not ranked_questions(out, perimeter):   # a blocker always carries one (#815)
             break
 
         answers = _prompt_answers(ranked_questions(out, perimeter), perimeter)
@@ -174,8 +174,8 @@ def converse(disco: DiscoveryService, request: str, only: list[str] | None = Non
 
 def _prompt_answers(questions: list[Question], perimeter: str = DEFAULT_PERIMETER) -> str | None:
     """Prompt for one turn's answers, folded into the `[slot: ...] Q: ... → A: ...` shape the
-    provider reads back. `None` means the user stopped, and this already printed why. Only the
-    leading `QUESTIONS_PER_CHECKPOINT` are asked (#592)."""
+    provider reads back. `None` means the user stopped, and this already printed why. One at a time
+    (#592), up to `QUESTIONS_PER_CHECKPOINT`, the whole turn (#815)."""
     asked = questions[:QUESTIONS_PER_CHECKPOINT]
     print("\nEnter skips a question · 'q' stops.")
     replies = []
@@ -476,7 +476,7 @@ def _resume_run(disco: DiscoveryService, slug: str) -> None:
     prev, out = None, svc.load_model(slug)   # a resume's first checkpoint lists every default (#731)
     for _turn in range(1, MAX_TURNS + 1):
         render_turn_state(out, perimeter, prev)
-        if not out.questions:
+        if not ranked_questions(out, perimeter):
             primary = get_perimeter(perimeter).primary_artifact  # #609 -- was hardcoded "brief"
             render_next_turn(out, perimeter, f"{slug}{workspace_flag()}", converged=f"\n✅ Discovery converged — run "
                              f"`requivo {primary} {slug}{workspace_flag()}` for the {_LABEL[primary]}." if primary else "\n✅ Discovery converged.")
