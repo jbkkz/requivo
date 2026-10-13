@@ -39,7 +39,8 @@ install has no cards) or `unreadable` (they could not be read at all). On anythi
 user what `context.error` or the card count says and stop rather than reasoning without them.
 
 **`ok` means present and readable. It does not mean relevant, and there is no status that does.**
-`doctor` lists both shipped cards and user cards from `~/.config/requivo/context`. Select a
+`doctor` lists shipped cards and user cards from `$REQUIVO_CONTEXT_DIR`, else `~/.config/requivo/context`;
+its `context.roots` names the directory in use. Select a
 user card by name in the same way as a shipped card, using `requivo context`. The shipped
 cards describe B2B enterprise domains, and impact is estimated against whatever cards a
 session holds — so a request from outside that domain is scored against a product it has nothing to
