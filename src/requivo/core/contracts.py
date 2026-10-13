@@ -371,7 +371,9 @@ class ModelProposal(StrictModel):
     # The cap is an invariant: a turn that floods questions has stopped prioritising by information value.
     questions: list[Question] = Field(default_factory=list[Question], max_length=MAX_QUESTIONS)
     summary: Summary
-    # The reasoning layer, filled by absorbing the assessment's Brief, never by the discovery turn.
+    # The reasoning layer, mostly absorbed from the assessment's Brief; `apply` takes any of the five on
+    # any turn, and a discovery turn may record challenges to the request's own claims (#777):
+    # `test_a_discovery_turn_records_a_challenge_that_impact_then_traces`.
     # `SerializeAsAny` on these five and nowhere else: `resolve()` carries an unstated collection
     # forward off disk (invariant 10), and pydantic serializes by the annotated type, so without it a
     # `PersistedDesignDecision`'s unknown key is lost on the next write (#14).

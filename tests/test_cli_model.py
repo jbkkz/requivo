@@ -190,6 +190,20 @@ def test_impact_splits_what_goes_stale_from_what_would_rest_on(tmp_path):
     assert json.loads(run_cli(["model", "show", "s", "--json"]))["model"]["workflow"]["confidence"] == "empty"
 
 
+def test_a_discovery_turn_records_a_challenge_that_impact_then_traces(monkeypatch):
+    """#777: the first apply, at revision 0, keeps a challenge, tracks its `contests`, and `impact` reaches it."""
+    _init("d")
+    challenge = {"headline": "The dealbreaker is a landlord's", "premise": "Renters reject the current flow",
+                 "alternative": "Interview renters first", "consequence": "The wrong side gets built",
+                 "recommendation": "Confirm with renters before build", "contests": ["problem"]}
+    applied = json.loads(run_cli_stdin(["model", "apply", "d", "-", "--expected-revision", "0", "--json"],
+                                       json.dumps({**full_model(), "challenges": [challenge]}), monkeypatch))
+    [kept] = run_cli_json(["model", "show", "d", "--json"])["challenges"]
+    assert applied["revision"] == 1 and applied["changed_challenges"] == [kept["id"]] and kept["contests"] == ["problem"]
+    assert [c["headline"] for c in run_cli_json(["impact", "d", "problem", "--json"])["challenges"]] == [challenge["headline"]]
+    assert run_cli_json(["impact", "d", "workflow", "--json"])["challenges"] == []
+
+
 @pytest.mark.parametrize("key, item, announced", [
     ("exclusions", {"option": "Bulk import", "reason": "Out of scope for v1", "rests_on": ["workflow"]}, "exclusions to reconsider: 1"),
     ("thresholds", {"condition": "CAC exceeds the stated budget ceiling", "measure": "cost per paid signup",

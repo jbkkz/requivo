@@ -108,7 +108,8 @@ JSON
 
 These are the same items as in your prose, stated structurally: section 7 is `exclusions`, sections
 9 and 10 are `thresholds`. Emit all five lists, `[]` for an empty one: a new brief replaces the last
-one's items. A decision's `source` says who owns it (#751): `requester` for their own choice,
+one's items, including a challenge a discovery turn recorded (#777) — restate the ones that still
+stand. A decision's `source` says who owns it (#751): `requester` for their own choice,
 `proposed` for your recommendation. `derived_from`, `contests` and `rests_on` are the dependency
 edges: they are what lets Requivo tell the user *which* later change unseats *which* decision, option
 set aside or kill signal. An item with no edges still records fine, but it can never be reported as

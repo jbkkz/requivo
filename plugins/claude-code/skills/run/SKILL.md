@@ -318,6 +318,17 @@ has confirmed (rules, workflow, edge cases, the success measure) into `acceptanc
 perimeter has one, as `inferred`, and show them in the defaults list below for veto. Never ask for
 acceptance with an example to accept; if you ask about it at all, ask what would make them reject it.
 
+**A premise the request's own evidence undercuts is a challenge, not prose** (#777). When checking the
+request against its own claims shows one resting on shaky ground — a "dealbreaker" quoted from a
+landlord, not a renter; the only criticism of a tool coming from a competitor's pitch — record it in
+`challenges` (0–3; a forced one is worse than none), not in `summary.blind_spot` or a slot's prose,
+where it names no slot and no later answer can unseat it. Each item is `headline` (3–6 words), the
+`premise` the request takes for granted, a concrete `alternative`, the `consequence` the premise
+risks, a `recommendation` for before build, and `contests`: the 1–3 slot ids whose content it calls
+into question. `contests` is what puts it in those slots' blast radius (`requivo impact`), so a later
+answer there reports it as a premise to re-examine. `schema --proposal` prints the shape; never send
+an `id`. Leave `decisions`, `opportunities`, `exclusions` and `thresholds` out: the brief derives them.
+
 ### Apply → fix → re-apply
 
 Pass the proposal on stdin — no temp file, and **once**:

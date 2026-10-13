@@ -228,6 +228,8 @@ def _print_proposal_shape(perimeter: str) -> None:
         ("summary", "objective is required, in one line; scope, assumptions and blind_spot complete it."),
         ("reasoning", "decisions, challenges, opportunities, exclusions, thresholds: absent keeps what stands, "
                       "[] deletes it, a list replaces it. An item's id derives from its text and is never sent."),
+        ("challenges", "a premise the request's own evidence puts in question, recordable on a discovery turn "
+                       "too (#777); contests names the slots it questions, so `impact` on them reaches it."),
     ]
     print(f"# The proposal `requivo model apply <session> -` reads ({shape['perimeter']} perimeter)")
     print("\nBuilt from the contracts `model apply` validates with, which accept it; every <...> is a placeholder.\n")

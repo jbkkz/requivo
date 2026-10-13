@@ -378,6 +378,7 @@ def test_the_printed_proposal_shape_is_the_one_apply_takes_and_the_pages_point_a
     refusals = [json.loads(line) for line in re.findall(r'^\{"code".*\}$', text, re.MULTILINE)]
     assert {s["confidence"] for s in proposal["model"].values()} == {c.value for c in Confidence}
     assert set(proposal["summary"]) == set(Summary.model_fields) and {"decisions", "thresholds"} <= set(proposal)
+    assert re.search(r"^challenges .*discovery turn", text, re.MULTILINE), "#777: no rule for a discovery-turn challenge"
     assert {r["code"] for r in refusals} == {"invalid_model", "missing_required_slot"}
     assert all({"code", "message", "path"} <= set(r) <= {"code", "message", "path", "details"} for r in refusals)
     empty = next(s for s in proposal["model"].values() if s["confidence"] == "empty")
