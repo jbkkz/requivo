@@ -647,13 +647,13 @@ def test_the_claude_code_transport_rides_the_api_paths_extraction_validate_hook_
     assert "refused by the hook" in retry.rsplit("[user]", 1)[1]
 
 
-def test_the_claude_code_child_inherits_no_api_credential_at_all(monkeypatch):
-    """#767 (Codex): any SDK credential in the child, a bearer token included, could bill the capture to the API."""
-    for var in _CREDENTIAL_ENV:
-        monkeypatch.setenv(var, "must-not-reach-the-child")
-    run, calls = _claude(_result(_asking().model_dump_json()))
-    _complete(golden_run.ClaudeCodeClient(run), "sys", [dict(role="user", content="r")], EngineOutput, model="m")
-    assert not set(_CREDENTIAL_ENV) & set(calls[0]["env"]), calls[0]["env"].keys()
+def test_the_claude_code_child_drops_every_anthropic_variable_and_keeps_the_subscription_login():
+    """#767 (Codex P1): a rule, not a list: any ANTHROPIC_ name can route or bill the call; the login lives elsewhere."""
+    environ = dict(ANTHROPIC_CONFIG_DIR="d", ANTHROPIC_SCOPE="s", ANTHROPIC_BASE_URL="u", UNRELATED="kept",
+                   CLAUDE_CONFIG_DIR="login", HOME="/home/me")
+    assert golden_run.child_env(environ, 32000) == dict(UNRELATED="kept", CLAUDE_CONFIG_DIR="login", HOME="/home/me",
+                                                        CLAUDE_CODE_MAX_OUTPUT_TOKENS="32000")
+    assert golden_run.child_env(dict.fromkeys(_CREDENTIAL_ENV, "x"), 1) == dict(CLAUDE_CODE_MAX_OUTPUT_TOKENS="1")
 
 
 def test_a_claude_code_timeout_is_retried_once_like_an_api_connection_error(monkeypatch):

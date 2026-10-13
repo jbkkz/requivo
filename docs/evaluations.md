@@ -38,10 +38,10 @@ the one go-to-market request.
 ## The transport a capture runs over
 
 `--transport claude-code` sends the same assembled system prompt and messages through `claude -p`
-(no tools, settings, MCP or skills, no saved session) instead of the API, with every SDK
-credential (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, …) removed from its environment so it bills the
-Claude subscription, and a timeout retried once like an API connection error; the reply goes through the same JSON
-extraction and the same `validate` hook (#767). `claude -p` takes no prior assistant turn, so a
+(no tools, settings, MCP or skills, no saved session) instead of the API, with every `ANTHROPIC_`
+variable removed from its environment so it bills the Claude subscription (the login in
+`CLAUDE_CONFIG_DIR` / `HOME` stays), and a timeout retried once like an API connection error; the
+reply goes through the same JSON extraction and the same `validate` hook (#767). `claude -p` takes no prior assistant turn, so a
 multi-turn history (a refinement, a schema retry) is flattened into one prompt. The transport is
 recorded in the envelope, where a missing key reads as `api`, and `golden_diff.py` refuses to compare
 two transports as it refuses two perimeters.

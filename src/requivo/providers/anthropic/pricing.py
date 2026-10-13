@@ -40,6 +40,11 @@ def price_per_mtok(model: str, on: date | None = None) -> tuple[float, float] | 
     return _PRICE_PER_MTOK.get(model)
 
 
+def rates_read_on(model: str) -> str:
+    """The day `model`'s row was read off the pricing page: its own date when it has one, else the table's."""
+    return _READ_ON.get(model, PRICING_AS_OF)
+
+
 def price_call(rec: CallRecord, on: date | None = None) -> CallRecord:
     """Stamp the rate this call was billed at onto the record, resolved when the call is filed, not
     when the total is rendered (#167, `test_a_call_is_priced_at_the_rate_in_force_when_it_was_made`).
@@ -48,5 +53,5 @@ def price_call(rec: CallRecord, on: date | None = None) -> CallRecord:
     rate = price_per_mtok(rec.model, on)
     if rate is not None:
         rec.rate_per_mtok = rate
-        rec.priced_as_of = _READ_ON.get(rec.model, PRICING_AS_OF)
+        rec.priced_as_of = rates_read_on(rec.model)
     return rec

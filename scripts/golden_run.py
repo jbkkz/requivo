@@ -127,9 +127,16 @@ def capture_model() -> str:
 CLAUDE_CODE = "claude-code"
 TRANSPORTS = (API, CLAUDE_CODE)
 CLAUDE_CODE_TIMEOUT = 600.0  # seconds: the SDK's own default request timeout
-# What the SDK resolves a credential from (tests/_credentials.py names the same set): none reaches `claude -p`.
-API_CREDENTIAL_ENV = frozenset(("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE", "ANTHROPIC_IDENTITY_TOKEN",
-                                "ANTHROPIC_IDENTITY_TOKEN_FILE", "ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"))
+
+
+def child_env(environ: dict[str, str], max_tokens: int) -> dict[str, str]:
+    """`environ` with every ANTHROPIC_ variable dropped: a rule, since any of them can carry a credential or a
+        route to the API, and the subscription login lives in CLAUDE_CONFIG_DIR / HOME, which stay (#767).
+        `test_the_claude_code_child_drops_every_anthropic_variable_and_keeps_the_subscription_login`.
+    """
+    child = dict((k, v) for k, v in environ.items() if not k.startswith("ANTHROPIC_"))
+    child["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)  # the API path's ceiling, held here too
+    return child
 
 
 def prompt_text(messages: list[dict]) -> str:
@@ -166,9 +173,7 @@ class ClaudeCodeClient:
         argv = ["claude", "-p", "--model", model, "--system-prompt", "".join(b["text"] for b in system),
                 "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
                 "--no-session-persistence", "--output-format", "json"]
-        # Every credential the SDK resolves, so the call bills the subscription and never an API key or token.
-        child = dict((k, v) for k, v in os.environ.items() if k not in API_CREDENTIAL_ENV)
-        child["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)  # the API path's ceiling, held here too
+        child = child_env(dict(os.environ), max_tokens)
         try:
             with tempfile.TemporaryDirectory() as workdir:  # no project around the child for it to discover
                 done = self._run(argv, input=prompt_text(messages), capture_output=True, encoding="utf-8",

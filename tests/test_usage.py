@@ -20,6 +20,7 @@ from requivo.providers.anthropic.pricing import (
     PRICING_AS_OF,
     price_call,
     price_per_mtok,
+    rates_read_on,
 )
 from requivo.providers.errors import EngineError
 from requivo.render.terminal import render_usage
@@ -163,7 +164,8 @@ def test_complete_records_usage_into_the_active_ledger():
         run(client, _USER)
     assert len(ledger.calls) == 1 and ledger.calls[0].operation == "analyze"
     assert (ledger.input_tokens, ledger.output_tokens, ledger.cache_read_tokens) == (1000, 200, 500)
-    assert ledger.cost_usd() is not None and ledger.priced_as_of == [PRICING_AS_OF]  # the provider stamps the rate
+    # The provider stamps the rate, dated by the row the call was priced from (#767).
+    assert ledger.cost_usd() is not None and ledger.priced_as_of == [rates_read_on(ledger.calls[0].model)]
 
 
 def test_a_failed_call_is_still_recorded_on_every_exit():
