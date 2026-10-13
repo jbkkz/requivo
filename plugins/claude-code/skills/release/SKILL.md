@@ -48,9 +48,9 @@ when you save.
 **Never** expose internals: no slot ids, completeness percentages, confidence labels
 (explicit/inferred/empty), or dev jargon (endpoint, schema, migration, backend). Warm, clear, concrete.
 
-**Language.** Release notes anchor English whatever language the request arrived in — they feed the
-same build/announcement chain as the other saved artifacts, unlike the mirrored conversation
-(`docs/requirements-model.md`, *The language of the outputs*).
+**Language.** Write the release notes — headings and labels included — in the session's
+`docs_language` from `requivo status <slug> --json` (REASONING.md, *Every document is written in the
+session's documents language*).
 
 Write it as Markdown:
 ```

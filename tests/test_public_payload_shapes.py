@@ -58,7 +58,7 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
         "context:dict perimeters:dict provider_anthropic:dict workspace:dict sessions:dict locks:dict"))],
     "session init": [("session init --json",
                       ("session", "init", "Build a leave approval system.", "--slug", "s", "--context", "b2b-platform", "--json"),
-                      _keys("slug session_id path context_cards:list|null perimeter revision:int"))],   # #719
+                      _keys("slug session_id path context_cards:list|null perimeter revision:int docs_language"))],   # #719, #790
     "model validate": [("model validate --json", ("model", "validate", "{proposal}", "--json"), _keys("status slots:int"))],
     "model apply": [("model apply --json", ("model", "apply", "s", "{proposal}", "--json"), _UPDATE_RESULT)],
     "model diff": [("model diff --json", ("model", "diff", "s", "{proposal}", "--json"), _UPDATE_RESULT)],
@@ -78,7 +78,7 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
     "status": [   # two cases: the payload is genuinely conditional
         ("status <slug> --json", ("status", "s", "--json"),
          _keys("revision:int context_cards:list|null artifacts:dict perimeter perimeter_fit:str|null "
-               "perimeter_fit_reason:str|null", **_STATUS_BARE)),   # #787 the router's verdict
+               "perimeter_fit_reason:str|null docs_language", **_STATUS_BARE)),   # #787 the router's verdict, #790
         ("status <a bare model.json> --json", ("status", "{bare_model}", "--json"), _STATUS_BARE),
         ("status <slug> --recap --json", ("status", "s", "--recap", "--json"), _keys(   # #785
             "slug objective ready:bool decided:list decisions:list questions:list assumed:list proposed:list to_test:list "
@@ -86,7 +86,8 @@ _PAYLOAD_SHAPES: dict[str, list[tuple[str, tuple[str, ...], dict[str, str]]]] = 
     "session show": [("session show --json", ("session", "show", "s", "--json"), _keys(
         "format_version:int requivo_version session_id slug created_at updated_at provider:str|null "
         "model_name:str|null context_cards:list|null request_hash schema_version:int current_revision:int "
-        "revisions:list artifact_status:dict perimeter:str|null perimeter_fit:str|null perimeter_fit_reason:str|null"))],
+        "revisions:list artifact_status:dict perimeter:str|null perimeter_fit:str|null perimeter_fit_reason:str|null "
+        "docs_language:str|null"))],
     # `notes` (#260) is a sibling of `problems` that moves neither `ok` nor the exit code.
     "session verify": [("session verify --json", ("session", "verify", "s", "--json"),
                         _keys("slug ok:bool session:dict problems:list notes:list context_cards:dict"))],

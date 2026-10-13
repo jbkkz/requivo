@@ -150,32 +150,38 @@ still blocks, which is what stops a model of untested guesses from reading as se
 
 ## The language of the outputs
 
-Requivo splits its outputs by reader:
+Requivo splits its outputs by reader, and lets the user choose the second
+(`decision: documents-speak-the-chosen-language`, #790):
 
 - **The conversation mirrors the request.** The questions and the understanding rendered each turn
   are in the request's language: they are read by the person who has to take them back to the client.
   Requivo mirrors; it does not translate.
-- **The buildable artifacts anchor English** — the decision brief, PRD, stories, acceptance criteria,
-  epic and release notes feed dev teams and trackers. The brief sits on this side because its
-  reasoning is folded into the model every later generator reads.
+- **The documents are written in the language the user chose** — the decision brief, the go-to-market
+  plan, the PRD, stories, estimate, acceptance criteria, epic and release notes. A first `discover`
+  or `run` at a terminal asks for it, offering the request's language; `--docs-language CODE` answers
+  ahead (on `session init` too, which the keyless run skill passes after asking at its first
+  checkpoint); any other run takes the request's language, or English when it cannot be told.
 
-**The saved brief is bilingual on purpose** (`decision: the-decision-briefs-quoted-half`, #491):
-`brief_markdown` also receives the `EngineOutput`, and its projected sections — the objective, the
-current understanding, *What is confirmed*, *Defaults chosen on your behalf* (#809), the first half of
-*Important assumptions*, *Out of scope* (#599) and *Decision thresholds* (#604) — are the model's own
-words, quoted, while the judgment is English. So a French request yields French questions and
-understanding, and an English PRD.
+**The default costs no call.** The request's language is guessed by counting function words of the
+languages Requivo knows by name (English, French, Spanish, German): at least two, and more than any
+other language's. Anything else — another script, a one-word request, a tie — is English, and the user
+can still name any BCP 47 code.
 
-The policy is one sentence in each prompt asset's *Output format* block — `engine.md` for the
-mirroring half, the six artifact prompts for the English half. Requivo does **not** detect the
-request's language; nothing is stored or branched on.
+**The choice is recorded** as `docs_language` on `session.json` and read back from the session's
+snapshot by every generation; a session from before #790 has none and reads as English
+([session-format.md](session-format.md)). Each document generator is told it in its user message, not
+its system prompt, so the cached prompt stays one per operation; the prompts say only to write the prose
+in the language named there, and to leave ids, slot ids, enum values, JSON keys and code as they are.
+The keyless skills read the same field from `status --json`.
 
-**One open edge: `estimate`.** Its prompt carries no language sentence, so its `note` and `risks` come
-back in whatever language the model settles on. It was left open while the estimate was terminal-only;
-since #519 it is saved as `estimate.md`, and closing the edge is a prompt change that owes a golden
-re-capture. Until then "every artifact anchors English" means the six above.
+**The decision brief and the go-to-market plan no longer mix languages.** Their projected sections
+quote the model's own words, which are in the request's language; with the default those match the
+judgment the provider writes. Their fixed words — title, headings, labels, the readiness verdict — come
+from `render/phrases.py` in French, Spanish and German, and stay English for any other code. Two edges
+remain: a slot's label (in *rests on* and the envelope) and a schema probe standing in for a question
+nobody asked are the schema's English, and the other six documents keep their few English headings.
 
 Requivo Web declares `lang="en"` for its chrome and an empty `lang` on the regions that mirror the
-request — the honest claim, since nothing knows the client's language. That removes a false claim but
-does not satisfy [WCAG 3.1.2](https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts), which
-needs a real BCP 47 value, and so either detection or asking the user — neither decided.
+request — the honest claim, since the request's own language is still not recorded. That removes a
+false claim but does not satisfy [WCAG 3.1.2](https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts),
+which needs a real BCP 47 value; a saved document could now declare `docs_language`, which is not done yet.

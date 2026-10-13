@@ -22,7 +22,9 @@ from requivo.core.contracts import (
     Stories,
     schema_slots,
 )
+from requivo.core.language import DEFAULT_DOCS_LANGUAGE
 from requivo.core.perimeters import DEFAULT_PERIMETER, GO_TO_MARKET
+from requivo.render.phrases import enum_phrase, phrase
 
 _KIND_TAG = {
     ScenarioKind.happy_path: "Happy path",
@@ -72,10 +74,10 @@ def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_
 _DEFAULT_TAG = {"delegated": "you left this decision to us", "let_stand": "proposed, and you let it stand"}
 
 
-def _defaults(out: EngineOutput, perimeter: str) -> list[str]:
+def _defaults(out: EngineOutput, perimeter: str, language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """The settled values the client did not state, in schema order, each with its source (#809)."""
     slots = [out.model[sid] for sid in slot_meta(perimeter)[1] if sid in out.model]
-    return [f"- {_line(text)} _({_DEFAULT_TAG[source]})_"
+    return [f"- {_line(text)} _({phrase(language, _DEFAULT_TAG[source])})_"
             for s in slots for text, source in stated_and_defaults(s)[1] if text.strip()]
 
 
@@ -116,41 +118,46 @@ def _unjargoned(document: str, perimeter: str) -> str:
     return _slot_ids(perimeter).sub(lambda m: slot_label(m.group(1) or m.group(2), perimeter), document)
 
 
-def _known(out: EngineOutput, perimeter: str, seen: set[str], of: str) -> list[tuple[str, list[str]]]:
+def _known(out: EngineOutput, perimeter: str, seen: set[str], of: str,
+           language: str = DEFAULT_DOCS_LANGUAGE) -> list[tuple[str, list[str]]]:
     """What the client stated, the defaults chosen on their behalf, then what was inferred: the three
-    projected sections, each item once against `seen` (#809)."""
+    projected sections, each item once against `seen` (#809), their notes in `language` (#790)."""
     confirmed = _once(_stated(out, Confidence.explicit, perimeter), seen)
-    defaults = _once(_defaults(out, perimeter), seen)
+    defaults = _once(_defaults(out, perimeter, language), seen)
     if defaults:
-        defaults += ["", "_You did not state these. Each stands unless you change it._"]
+        defaults += ["", phrase(language, "_You did not state these. Each stands unless you change it._")]
     assumed = _once(_stated(out, Confidence.inferred, perimeter) + [f"- {_line(a)}" for a in out.summary.assumptions], seen)
     if assumed:
-        assumed += ["", f"_Each of these was inferred, not stated. Confirm the ones that would change the {of}._"]
+        assumed += ["", phrase(language, f"_Each of these was inferred, not stated. Confirm the ones that would change the {of}._")]
     return [("What is confirmed", confirmed), ("Defaults chosen on your behalf", defaults),
             ("Important assumptions", assumed)]
 
 
-def _unresolved(out: EngineOutput, open_decisions: list[str], perimeter: str) -> list[str]:
+def _unresolved(out: EngineOutput, open_decisions: list[str], perimeter: str,
+                language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """The open decisions, then each readiness blocker in plain words on its own line (#783), then the
     least explored area: the one list the readiness verdict points at."""
     items = [f"- {_line(d)}" for d in open_decisions]
     items += [f"- {_line(_in_words(out, sid, perimeter))}" for sid in readiness_blockers(out, perimeter)]
     if out.summary.blind_spot:
-        items.append(f"- Least explored: {_line(out.summary.blind_spot)}")
+        items.append(f"- {phrase(language, 'Least explored')}: {_line(out.summary.blind_spot)}")
     return items
 
 
-def _verdict(blocked: bool, open_decisions: bool, settle: str) -> str:
+# The verdict's three sentences, the keys `render/phrases.py` translates them under.
+_NOT_READY = ("**Not ready.** Points that can still change the solution are open; they are listed under "
+              "*Unresolved questions*. Settle them {settle}.")
+_DECIDE_FIRST = ("**Decisions to make first.** Everything that could change the solution is known, but the "
+                 "decisions listed under *Unresolved questions* remain to be settled {settle}.")
+_READY = "**Ready.** Nothing that could change the solution is still open."
+
+
+def _verdict(blocked: bool, open_decisions: bool, settle: str, language: str = DEFAULT_DOCS_LANGUAGE) -> str:
     """Not a second readiness question (#165): the blockers alone decide ready or not, and open decisions
     only word the ready side, so it never says Ready beside one (#783).
     `test_the_brief_never_says_ready_beside_an_open_decision`."""
-    if blocked:
-        return ("**Not ready.** Points that can still change the solution are open; they are listed under "
-                f"*Unresolved questions*. Settle them {settle}.")
-    if open_decisions:
-        return ("**Decisions to make first.** Everything that could change the solution is known, but the "
-                f"decisions listed under *Unresolved questions* remain to be settled {settle}.")
-    return "**Ready.** Nothing that could change the solution is still open."
+    sentence = _NOT_READY if blocked else _DECIDE_FIRST if open_decisions else _READY
+    return phrase(language, sentence).replace("{settle}", phrase(language, settle))
 
 
 def boundary_note(reason: str) -> str:
@@ -175,72 +182,71 @@ def with_boundary_note(document: str, reason: str) -> str:
     return f"{title}\n\n{note}\n" + (body if body.startswith("\n") else f"\n{body}")
 
 
-def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+def _rests_on(slots: list[str], perimeter: str, language: str) -> str:
+    """The slots a reasoning item rests on, by label; the labels are the schema's own (#790's open edge)."""
+    labels = ", ".join(slot_label(sid, perimeter) for sid in slots)
+    return f" _({phrase(language, 'rests on')}: {labels})_" if slots else ""
+
+
+def _excluded(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER, language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """Excluded options projected off the model (#599), by label (Voice rule), `_line()`-flattened."""
-    lines = []
-    for ex in out.exclusions:
-        line = f"- **{_line(ex.option)}** — {_line(ex.reason)}"
-        if ex.rests_on:
-            line += f" _(rests on: {', '.join(slot_label(sid, perimeter) for sid in ex.rests_on)})_"
-        lines.append(line)
-    return lines
+    return [f"- **{_line(ex.option)}** — {_line(ex.reason)}" + _rests_on(ex.rests_on, perimeter, language)
+            for ex in out.exclusions]
 
 
-def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+def _thresholds(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER, language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """Decision thresholds projected off the model (#604), by label, `_line()`-flattened."""
-    lines = []
-    for th in out.thresholds:
-        line = f"- **{_line(th.condition)}** → {_line(th.action)}"
-        if th.rests_on:
-            line += f" _(rests on: {', '.join(slot_label(sid, perimeter) for sid in th.rests_on)})_"
-        lines.append(line)
-    return lines
+    return [f"- **{_line(th.condition)}** → {_line(th.action)}" + _rests_on(th.rests_on, perimeter, language)
+            for th in out.thresholds]
 
 
-def _challenges(challenges: list[Challenge]) -> list[str]:
+def _challenges(challenges: list[Challenge], language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """Premises worth contesting, one sub-section each, `_line()`-flattened; the brief's and the plan's (#728)."""
     lines: list[str] = []
     for c in challenges:
-        lines += [f"### {_line(c.headline)}",
-                  f"- **Premise:** {_line(c.premise)}",
-                  f"- **Alternative:** {_line(c.alternative)}",
-                  f"- **Consequence:** {_line(c.consequence)}",
-                  f"- **Recommendation:** {_line(c.recommendation)}", ""]
+        lines.append(f"### {_line(c.headline)}")
+        for label, text in (("Premise", c.premise), ("Alternative", c.alternative),
+                            ("Consequence", c.consequence), ("Recommendation", c.recommendation)):
+            lines.append(f"- **{phrase(language, label)}:** {_line(text)}")
+        lines.append("")
     return lines
 
 
-def brief_markdown(out: EngineOutput, brief: Brief) -> str:
+def brief_markdown(out: EngineOutput, brief: Brief, language: str = DEFAULT_DOCS_LANGUAGE) -> str:
     """Render the decision brief: what is settled and what is assumed first, then the judgment.
     Half of it is deterministic: the confirmed, default, assumed, excluded, threshold and blocking sections are
     projected off the model, because a restatement can drift and a projection cannot. No slot ids or
-    confidence labels in either half (Voice rule), nor slot labels framing a value (#783)."""
+    confidence labels in either half (Voice rule), nor slot labels framing a value (#783). Its own words
+    are in the documents `language` where `render/phrases.py` has them (#790)."""
+    t = functools.partial(phrase, language)
     blockers = readiness_blockers(out)
-    draft = " — Draft: unresolved topics remain" if blockers else ""
-    md: list[str] = [f"# Decision Brief{draft}", "",
-                     "> What to review before committing to the scope — generated by Requivo", ""]
+    draft = t(" — Draft: unresolved topics remain") if blockers else ""
+    md: list[str] = [f"# {t('Decision Brief')}{draft}", "",
+                     t("> What to review before committing to the scope — generated by Requivo"), ""]
 
     def section(heading: str, lines: list[str]) -> None:
         if lines:
-            md.extend([f"## {heading}", "", *lines, ""])
+            md.extend([f"## {t(heading)}", "", *lines, ""])
 
     summary = []
     if out.summary.objective:
-        summary.append(f"**Objective:** {_line(out.summary.objective)}")
+        summary.append(f"**{t('Objective')}:** {_line(out.summary.objective)}")
     if brief.problem:
-        summary.append(f"**Problem:** {_line(brief.problem)}")
+        summary.append(f"**{t('Problem')}:** {_line(brief.problem)}")
     if brief.solution:
-        summary.append(f"**Solution:** {_line(brief.solution)}")
-    summary.append(f"**Complexity:** {brief.complexity.value}"
-                   + (f" — {'; '.join(_line(r) for r in brief.complexity_reasons)}" if brief.complexity_reasons else ""))
+        summary.append(f"**{t('Solution')}:** {_line(brief.solution)}")
+    reasons = "; ".join(_line(r) for r in brief.complexity_reasons)
+    summary.append(f"**{t('Complexity')}:** {enum_phrase(language, 'complexity', brief.complexity.value)}"
+                   + (f" — {reasons}" if reasons else ""))
     if brief.cost_driver:
-        summary.append(f"**Main cost driver:** {_line(brief.cost_driver)}")
+        summary.append(f"**{t('Main cost driver')}:** {_line(brief.cost_driver)}")
     section("Request and objective", summary)
 
     section("Current understanding", [_block_line(out.summary.scope)] if out.summary.scope else [])
     # An open point stays where the verdict points; any earlier copy of it goes (#809).
     seen: set[str] = set()
-    open_items = _once(_unresolved(out, brief.open_decisions, DEFAULT_PERIMETER), seen)
-    for heading, lines in _known(out, DEFAULT_PERIMETER, seen, "build"):
+    open_items = _once(_unresolved(out, brief.open_decisions, DEFAULT_PERIMETER, language), seen)
+    for heading, lines in _known(out, DEFAULT_PERIMETER, seen, "build", language):
         section(heading, lines)
 
     # `_line()`-flattened, or a newline in a provider decision opens a forged heading (#599).
@@ -251,85 +257,91 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
             line += f" — {_line(d.why)}"
         decisions.append(line)
         if d.alternative:
-            decisions.append(f"  - _Alternative weighed:_ {_line(d.alternative)}")
+            decisions.append(f"  - _{t('Alternative weighed')}:_ {_line(d.alternative)}")
         if d.tradeoff:
-            decisions.append(f"  - _Trade-off accepted:_ {_line(d.tradeoff)}")
+            decisions.append(f"  - _{t('Trade-off accepted')}:_ {_line(d.tradeoff)}")
     section("Decisions made", decisions)
 
     section("Scope implications", _once([f"- {_line(i)}" for i in brief.introduces], seen))
 
-    section("Out of scope", _excluded(out))
+    section("Out of scope", _excluded(out, DEFAULT_PERIMETER, language))
 
-    section("Decision thresholds", _thresholds(out))
+    section("Decision thresholds", _thresholds(out, DEFAULT_PERIMETER, language))
 
-    section("Assumptions worth contesting", _challenges(brief.challenges))
+    section("Assumptions worth contesting", _challenges(brief.challenges, language))
 
     section("Main risks", _once([f"- {_line(r)}" for r in brief.risks], seen))
 
     section("Unresolved questions", open_items)
 
-    section("Opportunities", [
-        f"- **{_line(o.text)}** (leverage: {o.leverage.value})"
-        + (f" — reaches {', '.join(_line(m) for m in o.modules)}" if o.modules else "")
-        for o in brief.opportunities])
+    opportunities = []
+    for o in brief.opportunities:
+        modules = ", ".join(_line(m) for m in o.modules)
+        opportunities.append(f"- **{_line(o.text)}** ({t('leverage')}: {enum_phrase(language, 'leverage', o.leverage.value)})"
+                             + (f" — {t('reaches')} {modules}" if modules else ""))
+    section("Opportunities", opportunities)
 
     # Not a second readiness question (#165): `test_every_surface_asks_the_same_readiness_question`.
-    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before estimating")])
+    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before estimating", language)])
     section("Recommended next steps", _once([f"- {_line(s)}" for s in brief.next_steps], seen))
 
     return _unjargoned("\n".join(md).rstrip() + "\n", DEFAULT_PERIMETER)
 
 
-def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
+def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan, language: str = DEFAULT_DOCS_LANGUAGE) -> str:
     """Render the go-to-market perimeter's one artifact (#609): `brief_markdown`'s split, over its own
-    slots, every projection called with `GO_TO_MARKET` explicitly."""
+    slots, every projection called with `GO_TO_MARKET` explicitly, its own words in `language` (#790)."""
+    t = functools.partial(phrase, language)
     blockers = readiness_blockers(out, GO_TO_MARKET)
-    draft = " — Draft: unresolved topics remain" if blockers else ""
-    md: list[str] = [f"# Go-to-Market Plan{draft}", "",
-                     "> What to review before committing to this push — generated by Requivo", ""]
+    draft = t(" — Draft: unresolved topics remain") if blockers else ""
+    md: list[str] = [f"# {t('Go-to-Market Plan')}{draft}", "",
+                     t("> What to review before committing to this push — generated by Requivo"), ""]
 
     def section(heading: str, lines: list[str]) -> None:
         if lines:
-            md.extend([f"## {heading}", "", *lines, ""])
+            md.extend([f"## {t(heading)}", "", *lines, ""])
 
     summary = []
     if out.summary.objective:
-        summary.append(f"**Objective:** {_line(out.summary.objective)}")
+        summary.append(f"**{t('Objective')}:** {_line(out.summary.objective)}")
     section("Objective", summary)
 
     section("Current understanding", [_block_line(out.summary.scope)] if out.summary.scope else [])
     seen: set[str] = set()
-    open_items = _once(_unresolved(out, brief.open_decisions, GO_TO_MARKET), seen)
-    for heading, lines in _known(out, GO_TO_MARKET, seen, "plan"):
+    open_items = _once(_unresolved(out, brief.open_decisions, GO_TO_MARKET, language), seen)
+    for heading, lines in _known(out, GO_TO_MARKET, seen, "plan", language):
         section(heading, lines)
 
-    section("Resource envelope", _envelope_lines(brief.envelope, GO_TO_MARKET))
+    section("Resource envelope", _envelope_lines(brief.envelope, GO_TO_MARKET, language))
 
     plan: list[str] = [f"- {_line(p)}" for p in brief.plan]
     if brief.rationale:
         plan += ["", _block_line(brief.rationale)]
     section("The plan", plan)
 
-    section("Out of scope", _excluded(out, GO_TO_MARKET))
-    section("Decision thresholds", _thresholds(out, GO_TO_MARKET))
-    section("Assumptions worth contesting", _challenges(brief.challenges))
+    section("Out of scope", _excluded(out, GO_TO_MARKET, language))
+    section("Decision thresholds", _thresholds(out, GO_TO_MARKET, language))
+    section("Assumptions worth contesting", _challenges(brief.challenges, language))
     section("Main risks", _once([f"- {_line(r)}" for r in brief.risks], seen))
 
     section("Unresolved questions", open_items)
     # Not a second readiness question, as in `brief_markdown`.
-    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before committing to the plan")])
+    section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before committing to the plan",
+                                       language)])
 
     return _unjargoned("\n".join(md).rstrip() + "\n", GO_TO_MARKET)
 
 
-def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
+def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PERIMETER,
+                    language: str = DEFAULT_DOCS_LANGUAGE) -> list[str]:
     """Render the resource envelope an artifact was planned within (#603): a slot-sourced element by
     its label, an assumed one said plainly. `perimeter` (#609) selects the labels."""
     lines = []
     for e in elements:
         # The enum decides, never the field's presence (#603).
         slot = e.source_slot if e.origin is EnvelopeOrigin.slot else None
-        origin = f"stated in {slot_label(slot, perimeter)}" if slot else "assumption — not stated in the model"
+        origin = (f"{phrase(language, 'stated in')} {slot_label(slot, perimeter)}" if slot
+                  else phrase(language, "assumption — not stated in the model"))
         lines.append(f"- **{_line(e.kind)}** — {_line(e.value)} _({origin})_")
     return lines
 

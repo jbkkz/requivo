@@ -45,6 +45,7 @@ from requivo.core.errors import (
     SessionLockedError,
     SessionUnreadableError,
 )
+from requivo.core.language import DEFAULT_DOCS_LANGUAGE, normalize_language, resolve_docs_language
 from requivo.core.perimeters import DEFAULT_PERIMETER, known_perimeter_ids, perimeter_summaries, resolve_perimeter
 from requivo.core.persistence import ArtifactStatus, Store, _refuse_new_reserved_slug, _slug_shape, artifact_path
 from requivo.core.persistence.lock import require_lock_file_contained
@@ -125,6 +126,7 @@ class Generated(Generic[_A]):
     status: ArtifactStatus
     artifact: _A
     model: EngineOutput
+    language: str = DEFAULT_DOCS_LANGUAGE   # the language it was written in (#790)
 
 
 def _require_revision_zero(slug: str, revision: int) -> None:
@@ -184,7 +186,7 @@ def absorb_gtm_reasoning(out: EngineOutput, brief: GoToMarketPlan) -> None:
 class _AssessmentArtifact:
     """An artifact type whose generation absorbs reasoning into the model before saving (`brief`,
     `gtm_plan`); `cli_verb`/`label` feed the revision-conflict messages in `generate()`."""
-    writer: Callable[[EngineOutput, Any], str]
+    writer: Callable[[EngineOutput, Any, str], str]   # (model, artifact, documents language)
     absorb: Callable[[EngineOutput, Any], None]
     cli_verb: str
     label: str
@@ -454,8 +456,8 @@ class DiscoveryService:
         return Reclaim(meta, True, recreated)
 
     def claim_and_ground(self, request: str, *, cards: list[str] | None, slug: str | None,
-                         perimeter: str | None = None, save_card: bool = False  # consent, #598
-                         ) -> ClaimAndGround:
+                         perimeter: str | None = None, save_card: bool = False,  # consent, #598
+                         docs_language: str | None = None) -> ClaimAndGround:
         """Claim the session, route it to its perimeter (#601), judge its grounding (#593), and act
         on each verdict when acting is safe: one implementation of the destructive step (invariant 14).
 
@@ -468,11 +470,17 @@ class DiscoveryService:
         `test_an_ambiguous_verdict_refuses_before_any_model_is_reasoned`,
         `test_a_session_this_call_did_not_create_is_never_deleted_by_a_verdict` and
         `test_claim_and_ground_resolves_an_existing_non_default_perimeter_session_before_routing`."""
+        # A named documents language (#790) is checked before anything is paid for, and recorded on the
+        # session the claim lands on; with none, the new session carries the request's guessed one.
+        docs_language = normalize_language(docs_language) if docs_language is not None else None
         base = slug or self.sessions.slug_hint(request)
         with ExitStack() as held:
             held.enter_context(_discovery_guard(base, self._store_for_repo()))
-            return self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
-                                               held=held, held_slugs={base}, save_card=save_card)
+            claimed = self._claim_and_ground_held(request, cards=cards, slug=slug, perimeter=perimeter,
+                                                  held=held, held_slugs={base}, save_card=save_card)
+            if docs_language is None:
+                return claimed
+            return claimed._replace(meta=self.sessions.record_docs_language(claimed.meta.slug, docs_language))
 
     def _record_route(self, meta, routing: Routing):
         """Remember the router's verdict on the claim (#787) before the fallible grounding call, since a
@@ -737,9 +745,10 @@ class DiscoveryService:
         _require_owned_artifact_type(snap.perimeter, artifact_type)
         model = _require_a_model(snap.slug, snap)
         self._check_spend()
+        language = resolve_docs_language(snap.docs_language)
         with self._provider_call(artifact_type):
             return self._need_provider().generate(artifact_type, model, request=snap.request,
-                                                  only=snap.context_cards, **kwargs)
+                                                  language=language, only=snap.context_cards, **kwargs)
 
     # `generate()`'s public signature is these overloads: `Literal`-keyed per type, plus a plain `str`
     # for a name held in a variable. `decision: typed-generation-seam`. `estimate`'s `on_stories` is
@@ -784,6 +793,7 @@ class DiscoveryService:
         _require_owned_artifact_type(snap.perimeter, artifact_type)
         source_revision, cards = snap.revision, snap.context_cards
         out = _require_a_model(slug, snap)
+        language = resolve_docs_language(snap.docs_language)   # every generator is told it (#790)
         provider = self._need_provider()
 
         if artifact_type in _ASSESSMENT_ARTIFACTS:
@@ -792,7 +802,7 @@ class DiscoveryService:
             before = len(ledger.calls) if ledger is not None else 0
             self._check_spend()
             with self._provider_call(artifact_type):
-                brief = provider.generate(artifact_type, out, request=snap.request, only=cards)
+                brief = provider.generate(artifact_type, out, request=snap.request, language=language, only=cards)
             spec.absorb(out, brief)
             usage = _usage_since(before)
             # Without the precondition, a revision that landed during the call would be discarded.
@@ -809,7 +819,7 @@ class DiscoveryService:
                 # (invariant 2). `test_a_brief_lost_to_a_revision_conflict_is_still_saved_stale_not_discarded`.
                 try:
                     status = self._save_generated(
-                        slug, artifact_type, spec.writer(out, brief), source_revision)
+                        slug, artifact_type, spec.writer(out, brief, language), source_revision)
                 except ArtifactWriteFailedError as write_err:
                     # Both failures stated, chained from the write failure, the unresolved one.
                     # `test_a_conflict_plus_a_secondary_write_failure_states_both_not_just_one`.
@@ -827,12 +837,12 @@ class DiscoveryService:
                     details={**e.details, "artifact_saved": True, "artifact_type": artifact_type,
                              "artifact_stale": status.stale}) from e
             # The assessment renders exactly the model that apply just wrote, so it belongs to that revision.
-            status = self._save_generated(slug, artifact_type, spec.writer(out, brief), applied.revision)
-            return Generated(status=status, artifact=brief, model=out)
+            status = self._save_generated(slug, artifact_type, spec.writer(out, brief, language), applied.revision)
+            return Generated(status=status, artifact=brief, model=out, language=language)
 
         if artifact_type == "estimate":
             return self._generate_estimate(slug, out, snap.request, cards, source_revision, provider,
-                                           **kwargs)
+                                           language=language, **kwargs)
 
         try:
             writer = _WRITERS[artifact_type]
@@ -840,12 +850,13 @@ class DiscoveryService:
             raise ValueError(f"{artifact_type!r} has no saveable document — use `reason()`") from e
         self._check_spend()
         with self._provider_call(artifact_type):
-            artifact = provider.generate(artifact_type, out, request=snap.request, only=cards, **kwargs)
+            artifact = provider.generate(artifact_type, out, request=snap.request, language=language, only=cards,
+                                         **kwargs)
         status = self._save_generated(slug, artifact_type, writer(artifact), source_revision)
-        return Generated(status=status, artifact=artifact, model=out)
+        return Generated(status=status, artifact=artifact, model=out, language=language)
 
     def _generate_estimate(self, slug: str, out: EngineOutput, request: str, cards: list[str] | None,
-                           source_revision: int, provider, *,
+                           source_revision: int, provider, *, language: str = DEFAULT_DOCS_LANGUAGE,
                            on_stories: Callable[[Stories], None] | None = None,
                            **kwargs) -> Generated[SavedEstimate]:
         """The one two-call generation (#519): the stories are reasoned from the same snapshot, saved
@@ -860,19 +871,20 @@ class DiscoveryService:
                 "estimate over stories you already hold.")
         self._check_spend()
         with self._provider_call("stories"):
-            stories = cast(Stories, provider.generate("stories", out, request=request, only=cards))
+            stories = cast(Stories, provider.generate("stories", out, request=request, language=language,
+                                                      only=cards))
         stories_status = self._save_generated(slug, "stories", _WRITERS["stories"](stories),
                                               source_revision)
         if on_stories is not None:
             on_stories(stories)
         self._check_spend()
         with self._provider_call("estimate"):
-            draft, soft, confidence = provider.generate("estimate", out, request=request, only=cards,
-                                                        stories=stories)
+            draft, soft, confidence = provider.generate("estimate", out, request=request, language=language,
+                                                        only=cards, stories=stories)
         uncovered = uncovered_slots(out, stories)  # #782: named beside the provider's confidence
         status = self._save_generated(
             slug, "estimate", _WRITERS["estimate"]((draft, soft, confidence, uncovered)), source_revision)
-        return Generated(status=status, model=out,
+        return Generated(status=status, model=out, language=language,
                          artifact=SavedEstimate(draft=draft, soft=soft, confidence=confidence,
                                                 uncovered=uncovered, stories=stories,
                                                 stories_status=stories_status))

@@ -116,9 +116,10 @@ For each element you state:
 
 Reply with **only** a valid JSON object, no surrounding text:
 
-**Language.** Write this artifact in English, whatever language the client's request is in — it
-feeds dev teams and trackers, so it anchors English rather than mirroring the request the way the
-engine's questions do.
+**Language.** Write this artifact in the **documents language** the user message names — the
+language the user chose for this session's documents, whatever language the request arrived in. Ids,
+slot ids, enum values, JSON keys and anything code-like stay exactly as they are; only the prose is
+written in that language.
 
 ```json
 {

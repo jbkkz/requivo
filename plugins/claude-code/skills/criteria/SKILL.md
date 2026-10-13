@@ -60,9 +60,9 @@ when you save.
 (explicit/inferred/empty) in the prose. Say the business thing; this calibration is invisible to the
 reader, never printed as a label.
 
-**Language.** Criteria anchor English whatever language the request arrived in — they feed dev teams
-and trackers, unlike the mirrored conversation (`docs/requirements-model.md`, *The language of the
-outputs*).
+**Language.** Write the criteria — headings, Given/When/Then keywords included — in the session's
+`docs_language` from `requivo status <slug> --json` (REASONING.md, *Every document is written in the
+session's documents language*); scenario ids stay as they are.
 
 Write it as Markdown:
 ```

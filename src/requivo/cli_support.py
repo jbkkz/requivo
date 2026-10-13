@@ -9,7 +9,8 @@ from pathlib import Path
 
 from requivo.core import persistence as store
 from requivo.core.contracts import EngineOutput
-from requivo.core.errors import AmbiguousPerimeterError, RequivoError, SessionNotFoundError
+from requivo.core.errors import AmbiguousPerimeterError, InvalidLanguageError, RequivoError, SessionNotFoundError
+from requivo.core.language import language_name, normalize_language
 from requivo.core.persistence import load_model
 from requivo.core.selectors import display_text, display_token
 from requivo.deterministic import print_json
@@ -52,6 +53,23 @@ def _prompt_perimeter_choice(e: AmbiguousPerimeterError) -> str | None:
     chosen = candidates[int(ans) - 1]
     print(f"→ Continuing under {chosen}.")
     return chosen
+
+
+def _ask_docs_language(default: str) -> str:
+    """The first run's question (#790): which language the documents are written in, offering `default`,
+    the one the new session carries (the request's language). Enter, end of input, or an answer that is
+    no language code keeps it, as does a stdin that cannot be read: the question never costs the run.
+    `KeyboardInterrupt` exits 130, as at the perimeter prompt."""
+    print(f"\nThis session's documents will be written in {language_name(default)}.")
+    try:
+        said = input("      Enter to keep it, or another language code (en, fr, es, de, …) > ").strip()
+    except (EOFError, OSError):
+        return default
+    try:
+        return normalize_language(said) if said else default
+    except InvalidLanguageError:
+        print(f"→ {said!r} is not a language code; keeping {language_name(default)}.")
+        return default
 
 
 def _offer_to_save_card(disco: DiscoveryService, grounding) -> None:

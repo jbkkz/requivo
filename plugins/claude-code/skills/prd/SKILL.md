@@ -44,6 +44,8 @@ acceptance criteria, assumptions, open questions, risks). The rules:
   requester stated.
 - **Traceability.** Each requirement names the topic(s) it rests on, by label, or "proposed" for one
   this PRD introduces — which step 3 then puts on a topic too.
+- **Language.** The whole PRD, headings included, is in the session's `docs_language` from the
+  `status` above (REASONING.md, *Every document is written in the session's documents language*).
 
 ## 3. Write the proposals back into the model
 Follow REASONING.md, *a document that proposes writes the proposal back first*: every `[proposed]` or

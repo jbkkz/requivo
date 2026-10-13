@@ -90,6 +90,12 @@ class InputTooLargeError(RequivoError):
     code = "input_too_large"
 
 
+class InvalidLanguageError(RequivoError):
+    """A documents language that is not a language code (#790). `details`: `{language}`; refused, never defaulted."""
+
+    code = "invalid_language"
+
+
 class InvalidSessionError(RequivoError):
     """A session on disk is malformed, unreadable or of an unsupported format: a family nothing raises directly (#82). `docs/compatibility.md` carries the per-arm `details` table."""
 

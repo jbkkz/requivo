@@ -195,6 +195,13 @@ one whose perimeter was named with `--perimeter`. Unlike `perimeter` they are ca
 interpreted: `no_fit` changes no routing, only what `status`, the generator verbs and the saved
 documents say about the session.
 
+**`docs_language`** (#790) is the BCP 47 code the session's documents are written in: the one the
+user chose (`--docs-language`, or the first terminal run's question), else the request's language as
+its function words tell it, else `en`. It is written on every new session and again whenever a
+language is named for an existing one; it is not identity, so naming another makes no new session and
+stales no document. `null` — every session written before #790 — reads as English. A value that is not
+a language code is refused as `invalid_language` when a document is generated from it.
+
 ## Slugs
 
 A slug names the session directory, so it is validated in the Core: strict kebab-case

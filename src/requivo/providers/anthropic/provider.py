@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from requivo.core.context import CardSummary
 from requivo.core.contracts import ContextJudgment, EngineOutput, PerimeterJudgment
+from requivo.core.language import DEFAULT_DOCS_LANGUAGE
 from requivo.core.perimeters import DEFAULT_PERIMETER, PerimeterSummary
 from requivo.providers.anthropic.client import current_model_name, new_client
 from requivo.providers.anthropic.generators import (
@@ -50,7 +51,7 @@ class AnthropicProvider:
         return judge_perimeter(self.client, request, perimeters, model=self._model)
 
     def generate(self, artifact_type: str, model: EngineOutput, *, request: str = "",
-                 only: list[str] | None = None, **kwargs):
+                 language: str = DEFAULT_DOCS_LANGUAGE, only: list[str] | None = None, **kwargs):
         """`**kwargs` carries per-artifact options; an unknown one is a TypeError. `model` is the
         requirements model; `self._model` is forwarded by name as the LLM id (#434,
         `test_generate_threads_the_constructed_model_too`)."""
@@ -58,7 +59,7 @@ class AnthropicProvider:
             fn = _GENERATORS[artifact_type]
         except KeyError as e:
             raise EngineError(f"unknown artifact type for the Anthropic provider: {artifact_type!r}") from e
-        return fn(self.client, model, only=only, request=request, model=self._model, **kwargs)
+        return fn(self.client, model, only=only, request=request, language=language, model=self._model, **kwargs)
 
     def model_name(self) -> str:
         return self._model if self._model is not None else current_model_name()

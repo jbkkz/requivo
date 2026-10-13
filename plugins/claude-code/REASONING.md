@@ -299,6 +299,12 @@ Every document, tagged or not, keeps the requester's words apart from what was i
 role, constraint or number they did not give is a proposal, presented as one, never as fact; and
 where an answer admits more than one reading, the document says which reading it took.
 
+**Every document is written in the session's documents language** (#790): `docs_language` in
+`requivo status <slug> --json`, chosen at the run's first checkpoint and English when the field is
+absent (a session or a CLI from before it). Its prose, headings and labels are in that language,
+whatever language the request arrived in; ids, slot ids, enum values and anything code-like stay as
+they are (`docs/requirements-model.md`, *The language of the outputs*).
+
 ## Sessions outside the current directory
 
 A session lives under its workspace's `.requivo/`: the current directory, unless `--workspace DIR`

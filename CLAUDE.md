@@ -9,8 +9,8 @@ on the tracker, under the issue its guarding test cites (`decision: the-tree-rec
 model ready for dev. It is not a chatbot: the product is the model (typed slots, four pillars, the
 driver `information_value = uncertainty × impact`) and the engine that fills it until it is precise
 enough to build from. Documents are views of that model. Everything in the repo is in English; the
-engine's questions mirror the request's language and every buildable artifact anchors English
-(`docs/requirements-model.md`, "The language of the outputs").
+engine's questions mirror the request's language and the documents are written in the language the
+user chose, recorded on the session (`docs/requirements-model.md`, "The language of the outputs").
 
 ## Run and test
 

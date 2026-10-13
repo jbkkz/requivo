@@ -2,6 +2,9 @@
 
 **Slug:** `the-decision-briefs-quoted-half`
 
+**Superseded** by `decision: documents-speak-the-chosen-language` (#790): the brief is now written in
+the language the user chose, so its judgment and its quoted half are one language by default.
+
 ## Context
 
 `docs/requirements-model.md` puts the saved artifacts on the English side of the output-language
@@ -19,7 +22,7 @@ client's own words about their own problem, which are not improved by translatio
 is read by the build side, the same audience as the PRD and the epic; the PM taking questions back
 to the client is served by the turn output, which mirrors. No code changes: the behaviour is pinned
 by `test_the_decision_brief_projects_the_models_own_words_rather_than_restating_them` and
-`test_the_decision_briefs_english_anchor_covers_the_judgment_the_provider_wrote`. A reader expecting
+`test_the_decision_brief_renders_the_judgment_the_provider_wrote_beside_the_quoted_model`. A reader expecting
 a wholly English brief will meet French in four sections; that is the decision, not a defect.
 
 ## What breaking it cost

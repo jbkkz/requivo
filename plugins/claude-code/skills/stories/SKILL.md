@@ -54,9 +54,9 @@ when you save.
 **Voice.** No slot ids, percentages or confidence labels in the prose — say the business thing
 ("to confirm", "to decide"), never `inferred` or a completeness number.
 
-**Language.** Stories anchor English whatever language the request arrived in — they feed dev teams
-and trackers, unlike the mirrored conversation (`docs/requirements-model.md`, *The language of the
-outputs*).
+**Language.** Write the stories — headings and labels included — in the session's `docs_language`
+from `requivo status <slug> --json` (REASONING.md, *Every document is written in the session's
+documents language*); story ids stay as they are.
 
 Write it as Markdown, one section per story:
 

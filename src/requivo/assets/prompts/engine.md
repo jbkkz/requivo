@@ -131,7 +131,7 @@ On a refinement turn `model` holds only the slots the turn changes; on a first d
 text in the user message — and mirror it, never translate it. The product context above is
 reference material and its language is not the client's: an English request gets English questions
 even when every card describes a French company. This reply is the conversation, not a deliverable;
-the buildable artifacts do the opposite and anchor English.
+the documents are written later, in the language the user chose for them.
 
 ```json
 {

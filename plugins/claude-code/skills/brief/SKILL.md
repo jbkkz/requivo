@@ -71,6 +71,10 @@ because it sounds settled — that distinction is the most useful thing on the p
 label** (REASONING.md's honesty rules): a concrete default or a domain fact that changes the case
 belongs here, tagged `[proposed]` or `[domain]`, never as the requester's word.
 
+**Language.** Write the whole brief — the section headings above, the labels and the verdict included —
+in the session's `docs_language` from the step-1 `status` (REASONING.md, *Every document is written in
+the session's documents language*), so a brief never mixes an English frame with the client's words.
+
 **Every opportunity is a premise too** (#749): "this would be valuable". Put it through the check a
 challenge gets: what would have to be true, and what if it is not? One that survives with a material
 caveat carries the caveat in its text; one that does not survive becomes a challenge instead.

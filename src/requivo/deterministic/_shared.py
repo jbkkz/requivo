@@ -18,6 +18,10 @@ from requivo.core.selectors import display_token
 # `cli.EXIT_RENDER_FAILED`, which cannot be imported from here: `test_the_degraded_code_collides_with_nothing`.
 EXIT_DEGRADED = 4
 JSON_HELP = "emit the report as JSON"
+# One help string for the flag `discover`, `run` and `session init` share (#790).
+DOCS_LANGUAGE_HELP = ("the language the documents are written in, as a code (en, fr, es, de, …); omitted, a "
+                      "terminal discovery asks, offering the request's language, and any other run takes the "
+                      "request's language, or English when it cannot be told")
 
 
 def print_json(obj) -> None:

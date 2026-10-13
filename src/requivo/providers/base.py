@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from requivo.core.context import CardSummary
 from requivo.core.contracts import ContextJudgment, EngineOutput, PerimeterJudgment
+from requivo.core.language import DEFAULT_DOCS_LANGUAGE
 from requivo.core.perimeters import DEFAULT_PERIMETER, PerimeterSummary
 
 
@@ -45,9 +46,10 @@ class ReasoningProvider(Protocol):
         ...
 
     def generate(self, artifact_type: str, model: EngineOutput, *, request: str = "",
-                 only: list[str] | None = None, **kwargs) -> object:
-        """A model → its typed artifact contract, reasoned beside the session's `request` (#782,
-        which `DiscoveryService` always passes); `**kwargs` carries per-artifact options. `estimate`
+                 language: str = DEFAULT_DOCS_LANGUAGE, only: list[str] | None = None, **kwargs) -> object:
+        """A model → its typed artifact contract, reasoned beside the session's `request` (#782) and
+        written in its documents `language` (#790), both of which `DiscoveryService` always passes;
+        `**kwargs` carries per-artifact options. `estimate`
         returns `(EstimateDraft, soft_slots, confidence)`, the two extras being deterministic reads of
         the same model; everything else returns exactly its contract."""
         ...

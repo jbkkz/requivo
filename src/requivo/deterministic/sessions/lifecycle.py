@@ -22,14 +22,16 @@ def _cmd_session_init(a, client) -> None:
         raise InvalidModelError("session init needs a request (a sentence or a file path)")
     cards = _resolve_cards(a.context)
     meta = SessionService().create_session(
-        request, context_cards=cards, slug=a.slug, provider=a.provider, perimeter=a.perimeter)
+        request, context_cards=cards, slug=a.slug, provider=a.provider, perimeter=a.perimeter,
+        docs_language=a.docs_language)
     # `canonical_dir` direct, justified (#76): where the session landed is the answer asked for, and
     # `SessionRepository` exposes no path.
     if a.json:
         # init is idempotent, so `revision` tells a caller whether it got an existing session with a model.
         print_json({"slug": meta.slug, "session_id": meta.session_id,
                      "path": str(store.canonical_dir(meta.slug)), "context_cards": meta.context_cards,
-                     "perimeter": resolve_perimeter(meta.perimeter), "revision": meta.current_revision})
+                     "perimeter": resolve_perimeter(meta.perimeter), "revision": meta.current_revision,
+                     "docs_language": meta.docs_language or "en"})
         return
     print(f"Created session '{meta.slug}' → {store.canonical_dir(meta.slug)}")
     print("  No model yet. Produce a proposal and run:")

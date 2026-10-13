@@ -49,6 +49,11 @@ both, and keep what the client said apart from what was inferred:
 
 Reply with **only** a valid JSON object, no surrounding text:
 
+**Language.** Write this artifact in the **documents language** the user message names — the
+language the user chose for this session's documents, whatever language the request arrived in. Ids,
+slot ids, enum values, JSON keys and anything code-like stay exactly as they are; only the prose is
+written in that language.
+
 ```json
 {
   "items": [

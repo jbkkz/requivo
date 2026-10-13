@@ -202,7 +202,7 @@ def test_the_decision_brief_projects_the_models_own_words_rather_than_restating_
         assert verbatim in md
 
 
-def test_the_decision_briefs_english_anchor_covers_the_judgment_the_provider_wrote():
+def test_the_decision_brief_renders_the_judgment_the_provider_wrote_beside_the_quoted_model():
     md = _bilingual_brief()
     assert "**Problem:** Leave approvals are inconsistent." in md and "**Solution:** A single approval workflow." in md
 

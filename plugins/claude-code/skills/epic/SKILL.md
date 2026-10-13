@@ -61,9 +61,9 @@ you save.
 **Voice.** Write for a dev team and a client — no slot ids, completeness percentages, or confidence
 labels in the prose. Say the business thing; the calibration above is invisible to the reader.
 
-**Language.** The epic anchors English whatever language the request arrived in — it feeds a dev team
-and a tracker, unlike the mirrored conversation (`docs/requirements-model.md`, *The language of the
-outputs*).
+**Language.** Write the epic — headings and labels included — in the session's `docs_language` from
+`requivo status <slug> --json` (REASONING.md, *Every document is written in the session's documents
+language*); issue ids and tracker labels stay as they are.
 
 Write it as Markdown:
 ```

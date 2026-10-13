@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from requivo import __version__
 from requivo.cli_support import (
     _announce_bind,
+    _ask_docs_language,
     _display_url,
     _generator_service,
     _missing_extra_message,
@@ -37,7 +38,7 @@ from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter, resolve_pe
 from requivo.core.selectors import display_document, display_text, display_token
 from requivo.deterministic import is_file_argument, print_json, read_source
 from requivo.deterministic import register as register_deterministic
-from requivo.deterministic._shared import JSON_HELP
+from requivo.deterministic._shared import DOCS_LANGUAGE_HELP, JSON_HELP
 from requivo.paths import DEMO, workspace_flag, workspace_root
 
 # The only provider names this surface may take, each a surface concern (#77, #167); the list is
@@ -305,11 +306,12 @@ def _cmd_discover(a, client) -> None:
     # A filename is a slug *suggestion*; it is validated strictly.
     slug_hint = SessionService.slug_hint(Path(a.request).stem) if is_file else None
     quick = a.once or not sys.stdin.isatty()
+    language = a.docs_language   # #790: recorded on the claim; without it, the request's language
     if quick:
         # Claimed, routed, judged and re-claimed in one service call (#593, #601); `only`/`perimeter`
         # are rebound. The `except` below needs the slug to name.
-        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=perimeter, save_card=a.save_card)
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint, perimeter=perimeter,
+                                                                 save_card=a.save_card, docs_language=language)
         perimeter = meta.perimeter
         render_context_judgment(grounding, routing, only)
         _offer_to_save_card(disco, grounding)  # before the turn the card grounds (#598)
@@ -331,19 +333,21 @@ def _cmd_discover(a, client) -> None:
     # Invariant 13's gate before the loop pays (#133):
     # `test_both_discover_entry_points_refuse_a_refined_session_before_paying`.
     try:
-        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=perimeter, save_card=a.save_card)
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint, perimeter=perimeter,
+                                                                 save_card=a.save_card, docs_language=language)
     except AmbiguousPerimeterError as e:
         # Someone is at a prompt: ask, don't guess (#601). A chosen perimeter re-runs explicit.
         chosen = _prompt_perimeter_choice(e)
         if chosen is None:
             raise
-        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint,
-                                                                 perimeter=chosen, save_card=a.save_card)
+        meta, grounding, only, routing = disco.claim_and_ground(request, cards=only, slug=slug_hint, perimeter=chosen,
+                                                                 save_card=a.save_card, docs_language=language)
     slug = meta.slug
     perimeter = meta.perimeter
     render_context_judgment(grounding, routing, only)
     _offer_to_save_card(disco, grounding)
+    if not language:   # the first run asks (#790), once the claim is known to be one a discovery may land on
+        disco.sessions.record_docs_language(slug, _ask_docs_language(meta.docs_language or "en"))
     try:
         drafted = converse(disco, request, only=only, perimeter=perimeter)
     except DraftingFailed as e:
@@ -455,11 +459,11 @@ _SAVE_CARD_HELP = ("if no installed card describes the request's domain and a ca
 
 
 def _refuse_resume_only_flags(a) -> None:
-    """`--once`/`--context`/`--save-card` describe a new discovery; refused on a resume rather than
-    ignored. `test_run_refuses_once_and_context_when_resuming`."""
-    if a.once or a.context or a.save_card:
+    """`--once`/`--context`/`--save-card`/`--docs-language` describe a new discovery; refused on a resume
+    rather than ignored. `test_run_refuses_once_and_context_when_resuming`."""
+    if a.once or a.context or a.save_card or a.docs_language:
         raise RequivoError(
-            "requivo run <slug>: --once, --context and --save-card apply to a new discovery, not to resuming an "
+            "requivo run <slug>: --once, --context, --save-card and --docs-language apply to a new discovery, not to resuming an "
             "existing session, which reuses the session's own context cards. Drop them, or discover "
             "a fresh session with `requivo discover`/`requivo run <request>`.")
 
@@ -528,7 +532,8 @@ def _status_payload(ref: str) -> tuple[EngineOutput, dict]:
     if meta is not None:
         payload["revision"] = meta.current_revision
         payload["context_cards"] = meta.context_cards
-        payload.update(perimeter=perimeter, perimeter_fit=meta.perimeter_fit, perimeter_fit_reason=meta.perimeter_fit_reason)  # #787
+        payload.update(perimeter=perimeter, perimeter_fit=meta.perimeter_fit, perimeter_fit_reason=meta.perimeter_fit_reason,  # #787
+                       docs_language=meta.docs_language or "en")   # #790: what the keyless skills write in
         # Freshness is the explicit stale flag only — revision is provenance, not an invalidation rule.
         payload["artifacts"] = {
             t: {"revision": st.revision, "filename": st.filename, "stale": st.stale}
@@ -716,7 +721,7 @@ def _render_brief(slug: str, result) -> None:
 
 
 def _render_gtm_plan(slug: str, result) -> None:  # plain-document pattern, like every non-`brief` generator below
-    print(display_document(gtm_plan_markdown(result.model, result.artifact)))
+    print(display_document(gtm_plan_markdown(result.model, result.artifact, result.language)))
 
 
 def _render_prd(slug: str, result) -> None:
@@ -1094,6 +1099,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
                    help="comma-separated context cards for a new discovery (refused when "
                         "resuming, which reuses the session's own cards). Alias: --cards.")
     r.add_argument("--save-card", action="store_true", help=_SAVE_CARD_HELP)
+    r.add_argument("--docs-language", metavar="CODE", help=DOCS_LANGUAGE_HELP + " (refused when resuming)")
     r.set_defaults(func=_cmd_run)
 
     d = sub.add_parser("discover",
@@ -1113,6 +1119,7 @@ def _build_parser(formatter_class: type[argparse.HelpFormatter] = _JourneyHelpFo
                         "Omit it to let the router (#601) judge the request's shape and pick one, "
                         "or ask when more than one plausibly fits.")
     d.add_argument("--save-card", action="store_true", help=_SAVE_CARD_HELP)
+    d.add_argument("--docs-language", metavar="CODE", help=DOCS_LANGUAGE_HELP)
     d.set_defaults(func=_cmd_discover)
 
     model_cmd("answer", "fold the client's answers in and report what moved (API)",

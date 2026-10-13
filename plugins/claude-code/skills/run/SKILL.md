@@ -149,19 +149,30 @@ A request from outside the shipped domains is the case step 1 warns has no statu
 this is where it is cheapest for a human to catch — before the selection is fixed rather than after,
 when correcting it costs a rescope.
 
+### Ask which language the documents should be written in
+
+This is the run's first checkpoint, and `requivo discover` asks the same question (#790). The
+documents — the brief, the PRD and every other one — are written in the language the user chooses
+here, whatever language the request arrived in; the questions you ask still mirror the request. Offer
+the **request's language** as the default, named as a code (`fr`, `en`, `es`, `de`, …), in one plain
+question — "Which language should the documents be written in? French (fr), unless you say otherwise."
+— and take what the user says. When they do not answer that point, keep the default. Pass the choice to
+`session init` as `--docs-language <code>`; it is recorded on the session, and every document skill
+reads it back as `docs_language` from `status --json`.
+
 ### Create the session
 
 Pass the request on **stdin**, not as a shell argument. A client request is untrusted text — it can
 carry quotes, newlines, backticks, a `$(…)` — and interpolating it into a command line asks the shell
 to parse something the user only meant as prose:
 ```
-requivo session init - --provider claude-code --json <<'REQUEST'
+requivo session init - --provider claude-code --docs-language <code> --json <<'REQUEST'
 …the request text, verbatim…
 REQUEST
 ```
 Only when the argument is genuinely a **file path** does it go in as an argument:
 ```
-requivo session init path/to/request.md --provider claude-code --json
+requivo session init path/to/request.md --provider claude-code --docs-language <code> --json
 ```
 Note the `slug`, the `revision`, the `path` and the `perimeter` it returns (an older CLI returns no
 `perimeter`: that session is `software`). Call the revision `N`; it is `0` for a new session.
@@ -171,10 +182,11 @@ step above as `--context a,b`, or `--context none`; omit the flag only when that
 every card applies. Pass `--perimeter <id>` for any perimeter but `software`, and omit it for
 `software`, the default, so that call stays one every released CLI accepts.
 
-Both are newer than some installed CLIs. An older `session init` refuses `--perimeter` as an
-unrecognized argument and reads `none` as an unknown card (`unknown_context_card`); either way it
-created nothing. Do not quietly retry without the flag: say their installed CLI predates it, point at
-the upgrade in REASONING.md's version check, and ask whether to go on without it, knowing the cost.
+These are newer than some installed CLIs. An older `session init` refuses `--perimeter` or
+`--docs-language` as an unrecognized argument and reads `none` as an unknown card
+(`unknown_context_card`); either way it created nothing. Do not quietly retry without the flag: say
+their installed CLI predates it, point at the upgrade in REASONING.md's version check, and ask whether
+to go on without it, knowing the cost.
 
 `path` is the absolute directory the session was written to, and it is worth keeping because sessions
 land under the **caller's workspace** — the current directory, unless `--workspace` or
@@ -374,6 +386,7 @@ Before the first question, hand the user the ground the session is standing on. 
   command from the wrong directory that they did,
 - **the perimeter** the session reasons in — `perimeter` from session creation — and, when you chose
   it rather than the user, why, in one line,
+- **the documents' language** — `docs_language` from session creation, in one line,
 - **which product context cards grounded the impact estimates** — the `context_cards` from session
   creation, by name, *all cards* when it is `null`, or *no product context* when it is `["none"]`.
   Name them even when it is the default set: they are what `information_value = uncertainty × impact`

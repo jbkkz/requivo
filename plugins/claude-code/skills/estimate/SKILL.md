@@ -62,13 +62,9 @@ off the model you loaded in step 1.
 
 **Voice.** No slot ids, percentages or confidence labels in the prose.
 
-**Language — the one open edge.** Everything else this plugin saves anchors English regardless of the
-request's language (`docs/requirements-model.md`, *The language of the outputs*). The estimate is the
-one artifact this policy does not fully reach: `estimate.md`'s own prompt carries no language
-sentence, so each item's `note` and the batch `risks` may legitimately come back in whichever language
-you are reasoning in. This is a documented, deliberate gap (CLAUDE.md names `estimate` as one of two
-open edges), not an inconsistency to silently fix — story titles and table structure stay stable
-regardless, since they are copied from the English stories above.
+**Language.** Write the stories and the estimate — headings, notes and risks included — in the
+session's `docs_language` from `requivo status <slug> --json` (REASONING.md, *Every document is
+written in the session's documents language*); story ids and the table's structure stay as they are.
 
 Write the estimate as Markdown:
 ```

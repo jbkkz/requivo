@@ -63,6 +63,7 @@ from golden_lib import (  # noqa: E402
 )
 
 sys.path.insert(0, str(REPO / "src"))
+from requivo.core.language import default_docs_language  # noqa: E402
 from requivo.core.perimeters import DEFAULT_PERIMETER, SOFTWARE  # noqa: E402
 from requivo.providers.anthropic import advise, run  # noqa: E402
 from requivo.providers.anthropic.client import (
@@ -277,8 +278,9 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             # reuse_system=True: engine.md's system prompt is sent K times here (#58); brief.md's too (#9).
             out = with_retry(run, client, [{"role": "user", "content": req["request"]}], reuse_system=True,
                              model=model, perimeter=perimeter)
-            brief = (with_retry(advise, client, out, request=req["request"], reuse_system=True, model=model)
-                     if with_brief else None)
+            # The language a new session would record for this request (#790), as `discover` would.
+            brief = (with_retry(advise, client, out, request=req["request"], reuse_system=True, model=model,
+                                language=default_docs_language(req["request"])) if with_brief else None)
         except Exception as exc:
             # A run counts only once its assessment (if asked for) landed too (#557).
             keep_partial(req["slug"], runs_envelope(req["request"], models, briefs, model=model,

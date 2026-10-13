@@ -158,6 +158,7 @@ class StubProvider:
         self.generate_calls = 0
         self.analyze_kwargs: list[dict] = []
         self.generate_requests: list[str] = []
+        self.generate_languages: list[str] = []
 
     @property
     def calls(self) -> int:
@@ -174,9 +175,10 @@ class StubProvider:
             return self.turns.pop(0)
         return out({"problem": slot(80, "explicit", "high")})
 
-    def generate(self, artifact_type, model, *, request, only=None, **kwargs):
+    def generate(self, artifact_type, model, *, request, language="en", only=None, **kwargs):
         self.generate_calls += 1
         self.generate_requests.append(request)
+        self.generate_languages.append(language)
         if self._generate_error is not None:
             raise self._generate_error
         if artifact_type not in self.artifacts:

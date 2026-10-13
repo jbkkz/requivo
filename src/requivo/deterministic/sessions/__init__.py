@@ -5,7 +5,7 @@ through `display_token` (invariant 14). Split into `lifecycle.py`, `archives.py`
 """
 from __future__ import annotations
 
-from requivo.deterministic._shared import JSON_HELP
+from requivo.deterministic._shared import DOCS_LANGUAGE_HELP, JSON_HELP
 from requivo.deterministic.sessions.archives import _cmd_session_export, _cmd_session_import, _cmd_session_restore
 from requivo.deterministic.sessions.lifecycle import (
     _cmd_session_delete,
@@ -35,6 +35,7 @@ def register_sessions(sub) -> None:
     si.add_argument("--perimeter", default=None, metavar="ID",
                     help="which installed perimeter this session runs under, frozen at creation "
                          "(default: software; `requivo doctor` lists them)")
+    si.add_argument("--docs-language", metavar="CODE", help=DOCS_LANGUAGE_HELP)
     si.add_argument("--provider", default=None, help="informational provider tag (e.g. claude-code)")
     si.add_argument("--json", action="store_true", help=JSON_HELP)
     si.set_defaults(func=_cmd_session_init)

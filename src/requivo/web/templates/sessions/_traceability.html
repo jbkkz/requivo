@@ -37,9 +37,9 @@
     {% for d in s.decisions %}
     <div class="reason">
       {# Deliberately *not* tagged, unlike the questions above. Decisions, challenges and
-         opportunities are the decision brief's own content, and the brief is a buildable artifact:
-         under the output-language policy it anchors English whatever the request's language, so the
-         document's `lang="en"` is the true claim here. See base.html, and
+         opportunities are the decision brief's own content, written in the session's `docs_language`
+         (#790): `lang="en"` is true for a session that chose English and not yet declared otherwise for
+         one that did not. See base.html, and
          `test_the_page_still_declares_english_for_its_own_chrome_and_the_briefs_own_content`, which asserts this side. #}
       <div class="head">{{ d.decision }}</div>
       {# Derived while a topic under it was still assumed or empty, and that topic is confirmed

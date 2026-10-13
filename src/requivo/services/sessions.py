@@ -43,6 +43,7 @@ from requivo.core.errors import (
     SessionExistsError,
     SessionNotFoundError,
 )
+from requivo.core.language import DEFAULT_DOCS_LANGUAGE, default_docs_language, normalize_language
 from requivo.core.perimeters import DEFAULT_PERIMETER, resolve_perimeter
 from requivo.core.persistence import SessionMeta, Store
 from requivo.core.persistence.identifiers import _stat_exists
@@ -77,6 +78,7 @@ class SessionSnapshot:
     request: str
     context_cards: list[str] | None     # None == every card
     perimeter: str = DEFAULT_PERIMETER  # resolved (#608) -- never None, even for a pre-perimeter session
+    docs_language: str | None = None    # as recorded (#790); a generation resolves it, None reads as English
 
 
 @dataclass(frozen=True)
@@ -288,7 +290,7 @@ class SessionService:
     def create_session(self, request: str, *, context_cards: list[str] | None = None,
                         slug: str | None = None, provider: str | None = None,
                         model_name: str | None = None,
-                        perimeter: str | None = None) -> SessionMeta:
+                        perimeter: str | None = None, docs_language: str | None = None) -> SessionMeta:
         """Create a fresh session from a request (no model yet); `slug` defaults to a derivation
         from the request, made collision-safe. Idempotent on identity, which is the request, its
         cards and its perimeter (invariant 11); the claim is `repo.create`, atomic. Cards and size
@@ -296,21 +298,24 @@ class SessionService:
         `test_the_service_refuses_a_context_card_that_does_not_exist`."""
         meta, _created = self.create_session_report(
             request, context_cards=context_cards, slug=slug, provider=provider,
-            model_name=model_name, perimeter=perimeter)
+            model_name=model_name, perimeter=perimeter, docs_language=docs_language)
         return meta
 
     def create_session_report(self, request: str, *, context_cards: list[str] | None = None,
                               slug: str | None = None, provider: str | None = None,
                               model_name: str | None = None, strict_slug: bool = False,
-                              perimeter: str | None = None,
+                              perimeter: str | None = None, docs_language: str | None = None,
                               ) -> tuple[SessionMeta, bool]:
         """`create_session`, plus whether *this call* created the session (`POST /sessions` answers
         201/200 off it, #425) and, with `strict_slug`, a 409 `session_exists` when an explicit slug
         is taken by a different identity. The default keeps the hash-suffixed fallback every other
-        caller relies on (`test_a_taken_session_name_is_suffixed_rather_than_refused` pins it)."""
+        caller relies on (`test_a_taken_session_name_is_suffixed_rather_than_refused` pins it).
+        `docs_language` (#790) is recorded on a new session, the request's guessed language when it
+        is `None`, and on an existing one only when named: `test_a_new_session_records_its_documents_language`."""
         if not request.strip():
             raise InvalidModelError("a session needs a request, and this one is empty")
         require_input_within_bounds(request, field="request")
+        docs_language = normalize_language(docs_language) if docs_language is not None else None
         context_cards = resolve_cards(context_cards) if context_cards else None
         # Resolved once, so "no perimeter named" and an explicit `software` compare equal below.
         resolved_perimeter = resolve_perimeter(perimeter)
@@ -324,10 +329,13 @@ class SessionService:
                 meta = self.repo.create(candidate, request, provider=provider, model_name=model_name,
                                         context_cards=context_cards, perimeter=perimeter)
                 logger.info("session created: slug=%s", meta.slug)
-                return meta, True
+                return self.record_docs_language(meta.slug, docs_language or default_docs_language(request)), True
             except SessionExistsError:
                 if self._same_identity(candidate, request, context_cards, resolved_perimeter):
-                    return self.repo.read_meta(candidate), False  # idempotent re-init, same discovery
+                    # Idempotent re-init, same discovery; a named language is still the user's to change.
+                    if docs_language is not None:
+                        return self.record_docs_language(candidate, docs_language), False
+                    return self.repo.read_meta(candidate), False
                 if refuse_immediately:
                     raise SessionExistsError(
                         f"session '{candidate}' already exists with a different request, context "
@@ -461,6 +469,7 @@ class SessionService:
                 request=self.repo.request_text(slug),
                 context_cards=meta.context_cards,
                 perimeter=resolve_perimeter(meta.perimeter),
+                docs_language=meta.docs_language,
             )
 
     def impact(self, slug: str, slots: list[str]) -> ImpactReport:
@@ -558,6 +567,16 @@ class SessionService:
         with self.repo.lock(slug):
             meta = self.repo.read_meta(slug)
             meta.perimeter_fit, meta.perimeter_fit_reason = fit, reason
+            self.repo.write_meta(slug, meta)
+            return meta
+
+    def record_docs_language(self, slug: str, code: str) -> SessionMeta:
+        """Remember the language the documents are written in (#790), a metadata write under the lock that
+        mints no revision and stales nothing. Returns the metadata as written."""
+        code = normalize_language(code)
+        with self.repo.lock(slug):
+            meta = self.repo.read_meta(slug)
+            meta.docs_language = code
             self.repo.write_meta(slug, meta)
             return meta
 
@@ -716,6 +735,8 @@ class SessionService:
             # The router's verdict (#787), `null` when none was asked; `null` too with no session.json.
             "perimeter_fit": meta.perimeter_fit if meta else None,
             "perimeter_fit_reason": meta.perimeter_fit_reason if meta else None,
+            # The documents' language (#790), English for a session from before it; `null` with no session.json.
+            "docs_language": (meta.docs_language or DEFAULT_DOCS_LANGUAGE) if meta else None,
             **model_status(model, perimeter),
             "context_cards": meta.context_cards if meta else None,
             "artifacts": artifacts,

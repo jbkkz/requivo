@@ -2,8 +2,8 @@
 {# The chrome, the labels, the headings and every word this product writes about itself are English,
    so the document says so. What the *engine* writes is not: under the output-language policy
    (docs/requirements-model.md, "The language of the outputs") the questions and the understanding it
-   renders each turn mirror the client's request, while every buildable artifact -- the decision
-   brief included -- anchors English.
+   renders each turn mirror the client's request, while the documents -- the decision brief included --
+   are written in the session's `docs_language` (#790), which this page does not yet declare.
    Those regions therefore declare `lang=""` -- HTML's own "the language is unknown" -- rather than
    inheriting the `en` below. Nothing records a session's language and #277 puts detection out of
    scope, so an honest unknown is the strongest true claim available; a guessed `fr` would be right

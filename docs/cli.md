@@ -61,8 +61,8 @@ as the automation contract underneath it (`decision: three-journey-verbs`).
 
 | Command | Does |
 |---|---|
-| `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery, `--save-card` as on `discover` — all **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
-| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure, frozen at creation; omit it to let the router pick one or ask when more than one plausibly fits; `--save-card` keeps a card written for an uncovered domain for later sessions without asking — see below) |
+| `requivo run [request\|file\|-\|slug]` | The one verb over the conversation (#540): no argument resumes the workspace's default session, or prompts for a request when none exists; a request/file/`-` is `requivo discover`, unchanged; an existing session's slug resumes it through the *answer* path, never a second discovery (interactive; `--once` for a single pass on a new discovery, `--context a,b`/`--cards` to scope cards on a new discovery, `--save-card` and `--docs-language` as on `discover` — all **refused** when resuming, since a resume reuses the session's own cards and has no single-pass shape of its own) |
+| `requivo discover <request\|file\|->` | Analyse a request and create a session (interactive; `-` reads the request from stdin, `--once` for a single pass, `--context a,b` to scope cards, `--perimeter ID` to choose the decision structure, frozen at creation; omit it to let the router pick one or ask when more than one plausibly fits; `--save-card` keeps a card written for an uncovered domain for later sessions without asking; `--docs-language CODE` names the documents' language — see below) |
 | `requivo answer <slug> "<answers>"` | Fold answers in and refine the model one more turn |
 | `requivo status [slug]` | Understanding checklist, per-pillar progress, readiness, the questions ranked by information value (each with its value), each generated document marked up to date or *needs updating*, closing with the single next command (`--json` for a machine snapshot, with no pointer). Omit the slug to resolve the workspace's default session (#541). No network |
 | `requivo status [slug] --recap` | Where a session stands on return (#785): what is decided, what is open, what changed since the oldest current document was last generated (named, with its revision), which documents are stale and on which topics, and the one next step, in the model's own words. Computed from the model and its revision history, never a provider call; a session only, not a bare `model.json` (`--json` for the same recap plus `next`). `requivo run <slug>` prints its short form (no verdict, no open items: the checkpoint follows) before resuming. No network |
@@ -137,6 +137,14 @@ reuse in later sessions? [y/N]*; without a terminal it never saves unless `--sav
 which also skips the question. A saved card is copied to `REQUIVO_CONTEXT_DIR` under the same name, so
 the session's selection is unchanged ([context-cards.md](context-cards.md#a-card-the-engine-writes)).
 
+**The documents are written in the language you choose** (#790). A first `discover` (or `run`) at a
+terminal asks *This session's documents will be written in French (fr). Enter to keep it, or another
+language code*, offering the request's language; `--docs-language CODE` answers it ahead, and a run
+with no terminal takes the request's language, or English when it cannot be told. The request's
+language is read off its function words, with no provider call. The choice is recorded on the session
+(`docs_language` in `session.json`, `session show` and `status --json`), and every generator writes
+in it; the questions still mirror the request.
+
 ## Artifact generators (provider-backed)
 
 Each is a view of the saved model: `requivo <verb> <slug>`.
@@ -210,7 +218,7 @@ these apply.
 
 | Command | Flags | Does |
 |---|---|---|
-| `requivo session init <request\|file\|->` | `--slug`, `--context`/`--cards`, `--perimeter`, `--provider`, `--json` | Create a session from a request (no LLM). `--slug` sets an explicit slug instead of one derived from the request; `--perimeter ID` chooses the decision structure as on `discover` (default `software`, an unknown id refused as `unknown_perimeter`, #719); `--provider` is an informational tag (e.g. `claude-code`) recorded on the session |
+| `requivo session init <request\|file\|->` | `--slug`, `--context`/`--cards`, `--perimeter`, `--docs-language`, `--provider`, `--json` | Create a session from a request (no LLM). `--slug` sets an explicit slug instead of one derived from the request; `--perimeter ID` chooses the decision structure as on `discover` (default `software`, an unknown id refused as `unknown_perimeter`, #719); `--docs-language CODE` records the documents' language (default: the request's, else English; on an existing session it is recorded again, #790); `--provider` is an informational tag (e.g. `claude-code`) recorded on the session |
 | `requivo session list` | `--json` | List canonical sessions |
 | `requivo session show <session>` | `--json` | Show a session's metadata + artifacts |
 | `requivo session migrate` | `--json` | Migrate ALL legacy `out/` sessions into `.requivo/sessions/` |

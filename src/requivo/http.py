@@ -49,6 +49,7 @@ STATUS_BY_CODE = {
     "spend_ceiling_reached": 403,  # not 429: a budget does not reset with time (#427, `decision: the-http-api-facade`)
     "unauthorized": 401,  # names which credential to send, via WWW-Authenticate (#425 slice 4)
     "input_too_large": 413,
+    "invalid_language": 400,
     "revision_conflict": 409,
     "session_exists": 409,
     "import_destination_occupied": 409,

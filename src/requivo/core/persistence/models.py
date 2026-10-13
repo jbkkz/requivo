@@ -117,6 +117,9 @@ class SessionMeta(BaseModel):
     # router was asked (an older session, `session init`, `--perimeter`). It routes nothing; it is said.
     perimeter_fit: Optional[str] = None
     perimeter_fit_reason: Optional[str] = None
+    # The language the user chose for the documents (#790), a BCP 47 code; `None` (a session from before
+    # it) reads as English. Not identity: it can be recorded again without making another session.
+    docs_language: Optional[str] = None
     # A session-level `prompt_versions` map lived here and is retired (`_RETIRED_KEYS`).
     current_revision: int = 0            # 0 == session created but no model applied yet
     revisions: list[RevisionRecord] = Field(default_factory=list[RevisionRecord])  # provenance log, one per applied revision

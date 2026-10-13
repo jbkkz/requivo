@@ -96,8 +96,9 @@ both back (REASONING.md, *a document that proposes*). Never "most founders do X"
 typically converts at…": that is not a fact, so state it as your own reasoning from this model, or
 tie it to the product context.
 
-**Language.** The plan anchors English whatever language the request arrived in, like every
-buildable artifact (`docs/requirements-model.md`, *The language of the outputs*).
+**Language.** Write the plan — headings and labels included — in the session's `docs_language` from
+`requivo status <slug> --json` (REASONING.md, *Every document is written in the session's documents
+language*).
 
 ## 4. Fold the reasoning back into the model — do not skip this
 The typed half of the plan is part of the model, exactly as the CLI's `requivo gtm_plan` absorbs it:
