@@ -7,193 +7,210 @@
     {
       "model": {
         "problem": {
-          "completeness": 25,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers want to change documents that have already been signed, and have the changed content re-approved. The underlying need (correcting an error, updating terms, renewing, reacting to a change) is not stated.",
-          "evidence": "Client: \"We'd like managers to edit and re-approve documents after they've already been signed.\"",
+          "value": "Signed documents sometimes need correcting or updating, and today managers cannot do this themselves. The request is for a solution (edit and re-approve), and the underlying need is not stated: a correction, a commercial change, or a periodic update.",
+          "evidence": "Request: 'We'd like managers to edit and re-approve documents after they've already been signed.' The underlying need is not stated.",
           "test_plan": ""
         },
         "current_process": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown how post-signature changes are handled today (new document, amendment, paper, outside the system, or not possible).",
-          "evidence": "",
+          "value": "Unknown how a change to a signed document is handled today (new document, manual amendment, request to an admin, workaround).",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "existing_solutions": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 15,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Unknown whether the existing versioning, approval circuits and e-signature features already cover this, or whether a tool or budget is involved.",
-          "evidence": "",
+          "value": "The platform already has document versioning, approval circuits, classification and publication. This may be mostly configuring or opening up the existing supersession path to the manager role, not a new build. The e-signature provider and any native re-sign feature are unknown.",
+          "evidence": "Context card (existing surface: capture & versioning, approval circuits, publication). Nothing in the request says what exists or its budget.",
           "test_plan": ""
         },
         "success_metrics": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown.",
-          "evidence": "",
+          "value": "Not stated. A plausible measure is that a manager can issue a corrected version without admin help, and nobody acts on a superseded version.",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "payer": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 80,
+          "confidence": "inferred",
           "impact": "low",
-          "value": "Not relevant: a feature for an existing platform.",
-          "evidence": "",
+          "value": "Existing client of the platform; a feature for the platform, not a standalone product.",
+          "evidence": "Context: configurable multi-client platform.",
           "test_plan": ""
         },
         "actors": {
-          "completeness": 30,
-          "confidence": "inferred",
+          "completeness": 35,
+          "confidence": "explicit",
           "impact": "high",
-          "value": "Managers edit and trigger re-approval. Re-approvers, original signatories and compliance/records roles are unknown. The re-approver is rarely the same as the original.",
-          "evidence": "Client: \"managers to edit and re-approve\"",
+          "value": "Managers edit and trigger re-approval. Unknown: any manager or only the document's owner, who approves the new version (the same manager is a segregation-of-duties problem), and who the original signatories are.",
+          "evidence": "Request: 'managers to edit and re-approve documents'.",
           "test_plan": ""
         },
         "business_objects": {
-          "completeness": 30,
+          "completeness": 40,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Document, Version, Approval, Signatory. Per the domain model, editing a signed document means creating a new version, with the signed version frozen and retained.",
-          "evidence": "Client: \"edit ... documents after they've already been signed\"",
+          "value": "Document (stable identity), Version (frozen once signed), Approval, Signatory, Classification. Which document types are in scope (contracts, policies, reports) is unknown.",
+          "evidence": "Context card: Document vs Version; a signed version is frozen.",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 10,
-          "confidence": "empty",
+          "completeness": 25,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Unknown: which documents or classifications may be edited after signature, what a manager may change, whether prior signatures are invalidated or re-collected, and whether a manager may approve their own edit.",
-          "evidence": "",
+          "value": "'Edit a signed document' is read as 'supersede with a new version'. The signed version stays frozen, retained and referenceable. Prior signatures are invalidated or re-collected. Open: whether any document types may never be modified after signing, and whether rules vary by client, document type or contract.",
+          "evidence": "Context card: edit of signed/approved document = supersession, never an in-place change. Not confirmed by the client.",
           "test_plan": ""
         },
         "workflow": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Assumed: signed v1 stays frozen, the manager creates v2 as a draft, v2 goes through the approval circuit and signature again, then it is published and v1 is marked superseded. Unclear whether the request means a new version or an in-place edit of the signed content, and which version counts as current while v2 is pending.",
-          "evidence": "Domain context: a signed version is frozen; an edit is a new version.",
+          "value": "Proposed: signed v1 (current) -> manager drafts v2 -> review/approval circuit -> re-signature -> v2 published, v1 stamped superseded. Open: whether the circuit is the same as the original, whether re-signature is required in addition to re-approval, and which version is 'current' while v2 is pending.",
+          "evidence": "Context card: two independent lifecycles (approval/signature vs publication). Request says only 're-approve'.",
           "test_plan": ""
         },
         "integrations": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 10,
+          "confidence": "inferred",
           "impact": "medium",
-          "value": "Unknown who is notified (original signatories, readers of the old version), and which events trigger it.",
-          "evidence": "",
+          "value": "Signature is an event other modules subscribe to; a second signature may re-trigger downstream automation (e.g. invoicing, contract activation). Notification recipients and the e-signature provider are unknown.",
+          "evidence": "Context cards: signature is a common trigger for downstream automation.",
           "test_plan": ""
         },
         "permissions": {
-          "completeness": 10,
-          "confidence": "empty",
+          "completeness": 15,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Unknown which managers may edit (own team, any), who may see the draft successor, and how classification restricts this.",
-          "evidence": "",
+          "value": "A new right 'create a new version of a signed document' for managers, separate from the right to approve. Scope (own team/entity/classification) is unknown. Classification determines who sees v2 and the pending draft.",
+          "evidence": "Context card: access driven by classification; permissions forgotten until acceptance. Request names only the manager role.",
           "test_plan": ""
         },
         "config_vs_custom": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether this applies to all clients or varies by client (circuits, which documents are eligible).",
-          "evidence": "",
+          "value": "Unknown whether the re-approval circuit and who may edit is the same for all clients or configurable per client.",
+          "evidence": "Context: approval circuits and rights are client-specific on this platform.",
           "test_plan": ""
         },
         "constraints": {
           "completeness": 10,
           "confidence": "inferred",
-          "impact": "high",
-          "value": "Likely audit and e-signature validity requirements, since the request touches signed documents. Not confirmed.",
-          "evidence": "Domain context: audit trail and signature validity are compliance requirements.",
+          "impact": "medium",
+          "value": "Electronic-signature validity, retention rules and GDPR. No deadline stated.",
+          "evidence": "Context card regulatory section. Request states no deadline.",
           "test_plan": ""
         },
         "edge_cases": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 10,
+          "confidence": "inferred",
           "impact": "medium",
-          "value": "Unknown: re-approval rejected (does v1 stay current?), approver absent, concurrent edits, links or citations pointing at v1, legal hold.",
-          "evidence": "",
+          "value": "Open: two managers editing at once, a v2 rejected or abandoned (v1 stays current), a signatory who has left, a retroactive change affecting items already issued from v1, a legal hold.",
+          "evidence": "Deduced from the context card.",
           "test_plan": ""
         },
         "reporting": {
-          "completeness": 10,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "An audit trail of who changed what, previous vs new content, and who re-approved is likely required. Raised to high because the request alters signed documents.",
-          "evidence": "Domain context: the audit trail must never have gaps.",
+          "value": "A full audit trail is needed: who changed what, previous vs new version, who re-approved and when, and a view of the version history. Impact is raised because the platform's audit trail is relied on for compliance and retrofitting is expensive. The client has not stated an audit obligation.",
+          "evidence": "Context card: audit trail is a hard requirement. Not stated by the client.",
           "test_plan": ""
         },
         "acceptance": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown.",
-          "evidence": "",
+          "value": "Not defined. Proposed scenarios: a manager issues v2, v1 stays retrievable and stamped superseded, v2 requires re-approval before becoming current, and the audit shows the full chain.",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "risks": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 10,
+          "confidence": "inferred",
           "impact": "medium",
-          "value": "Risk of people acting on the wrong version, or of signed content being altered without a trace. Rollout unknown.",
-          "evidence": "",
+          "value": "People may act on the wrong version (approved vs current), prior signatures may be wrongly treated as still covering v2, and downstream automation may fire twice. A gradual rollout starting with one document type would limit exposure.",
+          "evidence": "Deduced from the context card traps.",
           "test_plan": ""
         },
         "acquisition": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 90,
+          "confidence": "inferred",
           "impact": "low",
-          "value": "Not relevant: a feature for existing users.",
-          "evidence": "",
+          "value": "Not applicable: a feature for existing users of the platform.",
+          "evidence": "Not a product idea.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "When a manager changes a document that has already been signed, should the signed version stay untouched and be kept, with the change creating a new version that goes through approval and signature again? Or do you really mean changing the signed content in place?",
-          "slot": "workflow",
-          "why": "Editing in place versus superseding with a new version are fundamentally different builds, with different audit and legal consequences."
-        },
-        {
-          "q": "What happens today when a signed document has to change (new document, amendment, outside the system), and why does that not work for you?",
+          "q": "What triggers this need today? Please give a real example of a signed document that had to be changed, and say how it was handled (new document, manual amendment, workaround).",
           "slot": "current_process",
-          "why": "It shows the real problem and whether existing versioning and approval already cover most of the need."
+          "why": "uncertainty \u00d7 impact: we don't know whether the need is correcting a typo or renegotiating terms, and that changes the whole build."
         },
         {
-          "q": "When the new version is submitted, do the previous signatures stay valid, or must everyone sign again? And who approves it: the same people as before, or someone else? Can the manager who made the edit approve it?",
+          "q": "When a manager 'edits' a signed document, do we agree the signed version is never changed? It stays archived and viewable, and the edit creates a new version that goes through approval, rather than modifying the signed one in place.",
           "slot": "business_rules",
-          "why": "This sets the approval circuit, the signature handling and the segregation of duties."
+          "why": "uncertainty \u00d7 impact: supersession (new version) versus in-place edit are two entirely different builds, with legal consequences for signature validity."
         },
         {
-          "q": "While the new version is waiting for approval, which version should people see and use as the current one? And if it is rejected, does the old signed version stay in force?",
-          "slot": "edge_cases",
-          "why": "Mixing up approved, published and current is the classic way people end up acting on the wrong version."
+          "q": "Who must re-approve the new version: the same circuit as the original, only the original approvers, or someone else? Do the original signatories also have to sign again, or is re-approval enough?",
+          "slot": "workflow",
+          "why": "uncertainty \u00d7 impact: 're-approve' vs 're-sign' changes the e-signature integration and the approval circuit setup."
         },
         {
-          "q": "Are there documents that must never be changed after signature (certain classifications or types), and is a trace of every change required for audit or regulatory reasons?",
-          "slot": "constraints",
-          "why": "A named compliance obligation raises the audit trail, permissions and eligibility rules from nice-to-have to core scope."
+          "q": "While the new version is waiting for approval, which version should people see and act on as 'current': the signed one, or nothing until v2 is approved?",
+          "slot": "workflow",
+          "why": "uncertainty \u00d7 impact: 'approved' is not 'current'; getting this wrong means people act on the wrong version."
         },
         {
-          "q": "Do all your clients work the same way here, or do some need different rules (who may edit, which circuit applies)?",
+          "q": "Which documents are in scope (contracts, policies, reports\u2026), and can any manager edit any document, or only those they own or in their entity? Should some documents never be modifiable after signature?",
+          "slot": "permissions",
+          "why": "uncertainty \u00d7 impact: scope and rights determine the permission model; the blast radius of getting it wrong is high."
+        },
+        {
+          "q": "Does signing a document currently trigger something else (invoicing, activation, notifications)? If a new version is signed, should that happen again, not happen, or be handled differently?",
+          "slot": "integrations",
+          "why": "uncertainty \u00d7 impact: a second signature can re-trigger or double-fire downstream automation."
+        },
+        {
+          "q": "Is there a legal, audit or compliance reason behind this request? If so, which obligations (retention of the signed version, proof of who changed what and who approved) must the history satisfy?",
+          "slot": "reporting",
+          "why": "uncertainty \u00d7 impact: a named obligation turns the audit trail into a core part of the build."
+        },
+        {
+          "q": "The platform already has versioning, approval circuits and e-signature. Is something already available for amending signed documents that isn't switched on, and which e-signature provider is used?",
+          "slot": "existing_solutions",
+          "why": "uncertainty \u00d7 impact: configuring existing features could replace most of the build."
+        },
+        {
+          "q": "Should the rules (who may edit, who re-approves, whether re-signature is required) be the same for every client, or configurable per client?",
           "slot": "config_vs_custom",
-          "why": "Client-specific rules mean making this configurable rather than hardcoded."
+          "why": "uncertainty \u00d7 impact: hardcoding versus per-client configuration is a major cost difference on this multi-client platform."
         }
       ],
       "summary": {
-        "objective": "Let managers change documents that have already been signed and send the changed content through approval again.",
-        "scope": "Likely scope: create a new version from a signed document, keep the signed version frozen and referenceable, run the new version through an approval circuit and signature, then publish it and mark the previous one superseded. It includes permissions for who may edit and approve, notifications, and an audit trail.",
+        "objective": "Let managers change a document after it has been signed and send the change back through approval, without losing the signed original or the audit history.",
+        "scope": "Likely a supersession flow built on the existing versioning and approval features: the signed version stays frozen and retrievable, a manager creates a new version, it goes through approval (and possibly re-signature), then becomes the current version while the previous one is stamped superseded. It includes a new manager right, an audit trail and handling of downstream signature events. The document types in scope are still to be defined.",
         "assumptions": [
-          "An edit of a signed document means a new version; the signed version is never changed in place.",
-          "Re-approval uses the existing multi-step approval circuit.",
-          "The re-approver may differ from the original approver.",
-          "An audit trail and signature validity are required, since signed documents are involved.",
-          "The request applies to the document management module."
+          "'Edit' means creating a new version; the signed version is never modified in place.",
+          "The platform's existing versioning, approval circuits and publication features are reused.",
+          "Prior signatures do not carry over automatically to the new version.",
+          "A full audit trail (who, what, when, previous vs new) is required.",
+          "Visibility of the new version follows the document's classification.",
+          "The rules (who edits, who re-approves) may vary per client.",
+          "This is a feature for the existing platform, not a standalone product."
         ],
-        "blind_spot": "\"Edit after signature\" probably means superseding the document with a new version, not patching it. That raises unanswered questions: whether earlier signatures are invalidated or re-collected, which version counts as current while the new one is pending, and what happens if re-approval is refused."
+        "blind_spot": "'Edit and re-approve a signed document' hides supersession: what happens to the signatures, which version counts as current while v2 is pending, and whether the new signature re-triggers downstream automation. Re-approval and re-signature are also not the same thing."
       },
       "decisions": [],
       "challenges": [],
@@ -207,185 +224,201 @@
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers need to correct or change documents that are already signed, and have the corrected content re-approved. The underlying need (typo fix, changed terms, outdated content, mistake found after signing) is not stated.",
-          "evidence": "Request: \"We'd like managers to edit and re-approve documents after they've already been signed.\"",
+          "value": "Managers need to change documents that are already signed and have the changes re-approved. The underlying need is not stated: correcting an error, a legitimate business change, or a renewal.",
+          "evidence": "Request: \"We'd like managers to edit and re-approve documents after they've already been signed.\" The request names a solution (edit after signature), not the need behind it.",
           "test_plan": ""
         },
         "current_process": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown how post-signature changes are handled today (re-create the document, side agreement, manual workaround, or not possible).",
-          "evidence": "Not stated in the request.",
+          "value": "Unknown how a signed document gets changed today (new document from scratch, an amendment, an outside workaround, or not possible at all).",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "existing_solutions": {
-          "completeness": 10,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "The existing document platform already has versioning, approval circuits and audit trail; the likely path is to extend its supersession flow rather than buy anything. Not confirmed.",
-          "evidence": "Context: document-management module already has capture & versioning, approval circuits, classification, publication, retention.",
+          "value": "The existing surface already has document versioning, approval circuits and publication. The supersede-by-new-version capability may already exist or only need to be switched on or configured. Unknown whether an e-signature provider is in place.",
+          "evidence": "Context card (document-management): existing features include capture and versioning, approval circuits, publication and retention. Nothing in the request says what is missing.",
           "test_plan": ""
         },
         "success_metrics": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown how success is judged (fewer workarounds, faster corrections, audit-clean history).",
-          "evidence": "Not stated.",
+          "value": "Unknown. Plausibly less time to correct a signed document, with no one acting on a stale version.",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "payer": {
           "completeness": 50,
           "confidence": "inferred",
           "impact": "low",
-          "value": "Feature on an existing platform; the client is the payer.",
-          "evidence": "Request reads as a spec for an existing system, not a product idea.",
+          "value": "An internal or client-commissioned feature on the existing platform, so the payer is the client.",
+          "evidence": "Context: configurable multi-client platform. Not a product idea.",
           "test_plan": ""
         },
         "actors": {
-          "completeness": 30,
+          "completeness": 25,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers edit. Who re-approves (the same managers? the original approvers? someone else) and who the original signatories are is not stated.",
-          "evidence": "Request: \"managers to edit and re-approve\".",
+          "value": "Managers edit. Who re-approves is unknown: the same manager, a higher level, the original approvers or signatories, or a compliance officer. Whether a manager may approve their own edit is unknown.",
+          "evidence": "Request names only \"managers\". Context card: the re-approver after an edit is rarely the same as the original.",
           "test_plan": ""
         },
         "business_objects": {
-          "completeness": 40,
+          "completeness": 30,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Document, Version, Approval, Signatory. A signed version is frozen, so an edit creates a new version and the old signed one is retained.",
-          "evidence": "Context: Document vs Version; approved/signed versions are frozen.",
+          "value": "Document and Version (and possibly Contract and Amendment). Which document types are in scope is unknown: all documents, or only certain classes such as contracts or policies.",
+          "evidence": "Context cards: Document, Version, Approval and Signatory; the contract/amendment pattern.",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 15,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Editing a signed document means superseding it with a new version, not an in-place change. Open: whether prior signatures are invalidated or re-collected, which document types or classifications are allowed, whether a reason is mandatory, and whether the rules vary by client.",
-          "evidence": "Context: \"edit a signed/approved document\" hides supersession; prior signatures invalidated or re-collected.",
+          "value": "Assumption: a signed or approved version is frozen. \"Edit\" means creating a new version that supersedes it. The old version is retained and stays referenceable. Prior signatures are invalidated or must be re-collected. Open: whether every edit needs full re-signature or only some, whether a reason is required, and whether the rules vary by document type, client or country.",
+          "evidence": "Context card: content is immutable after approval, and \"edit a signed document\" hides supersession. This is the platform's standard rule, not something the requester confirmed.",
           "test_plan": ""
         },
         "workflow": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Signed \u2192 new draft version \u2192 in-review \u2192 approved \u2192 (re-signed?) \u2192 published as current, with the old version marked superseded. Open: whether re-approval is enough or a new signature is needed, and what happens between the edit and the new approval.",
-          "evidence": "Context: two lifecycles (approval/signature vs publication); the request mentions only edit and re-approve.",
+          "value": "Assumed flow: signed v1 is current, then a manager opens a new draft version, then review and approval, then re-signature, then the new version is published and v1 is stamped superseded. Open: which version is the current one while v2 is in review, and whether publication is automatic once approved.",
+          "evidence": "Context card: two independent lifecycles (approval/signature and publication/distribution). Not stated in the request.",
           "test_plan": ""
         },
         "integrations": {
           "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown who is notified (signatories, readers of the old version, downstream modules) and on which events.",
-          "evidence": "Not stated.",
+          "value": "Unknown who is notified and on which events, and whether signature is an event that triggers downstream automation. Re-signing could re-trigger it.",
+          "evidence": "Context cards: signature is an event other modules subscribe to; \"notify\" implies who, when and which channel.",
           "test_plan": ""
         },
         "permissions": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers get the right to start a change on signed documents. Open: all managers or only owners of the document, and the effect of classification.",
-          "evidence": "Request names managers; context says access is driven by classification.",
+          "value": "Which managers may start a change (all managers, only the owner, only certain document types or classifications) is unknown. Visibility of drafts and of superseded versions follows classification.",
+          "evidence": "Context card: access is driven by classification, and permissions are forgotten until acceptance. The request says only \"managers\".",
           "test_plan": ""
         },
         "config_vs_custom": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether the re-approval rules are standard for all clients or client-specific.",
-          "evidence": "Context: approval circuits are client-specific; frozen-after-approval is standard.",
+          "value": "Unknown whether this is standard for all clients or client-specific. The context says approval circuits and rules are client-specific, while the frozen-after-approval rule and the audit trail are standard.",
+          "evidence": "Context card: configurable multi-client platform.",
           "test_plan": ""
         },
         "constraints": {
-          "completeness": 20,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Frozen-after-approval, audit trail and electronic-signature validity are fixed by the platform and regulation. Deadline unknown.",
-          "evidence": "Context: audit trail and signature validity are hard requirements.",
+          "value": "Electronic-signature validity, retention obligations and auditability probably apply. Deadline unknown.",
+          "evidence": "Context card regulatory section: retention, GDPR and e-signature validity. Nothing stated in the request.",
           "test_plan": ""
         },
         "edge_cases": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unknown: a signatory has left, a re-approval is rejected, two managers edit at once, the document is under legal hold, a document is cited or linked to a specific version, or a retroactive correction is needed.",
+          "evidence": "Not covered by the request. Context card traps.",
+          "test_plan": ""
+        },
+        "reporting": {
+          "completeness": 15,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "An audit trail is needed (who edited, what changed, who re-approved, when, with a before/after). Gaps are not acceptable. The context treats audit as a hard requirement and editing signed documents is audit-sensitive.",
+          "evidence": "Context card: the audit trail is relied on for compliance and retrofitting it is expensive. Raised from the default of low on that basis.",
+          "test_plan": ""
+        },
+        "acceptance": {
           "completeness": 5,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Not discussed: a newer edit started while one is in review, an approver absent, references or citations to the old version, retroactive changes.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "reporting": {
-          "completeness": 20,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "A full audit trail is needed: who changed what, previous vs new value, who re-approved, and the link between old and new versions. Raised to high because modifying signed documents is an auditable act.",
-          "evidence": "Context: audit trail is a hard requirement; the request touches signed documents.",
-          "test_plan": ""
-        },
-        "acceptance": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "No acceptance scenarios yet.",
-          "evidence": "Not stated.",
+          "value": "No acceptance scenarios yet. Likely candidates: the signed v1 stays intact and retrievable, v2 requires fresh approval, and the current version is unambiguous to readers.",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "risks": {
-          "completeness": 10,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Risk of people acting on the wrong version, of undermining the legal value of the signature, and of weakening the audit trail.",
-          "evidence": "Context: approved \u2260 published/current; supersession traps.",
+          "value": "Risks: people acting on the wrong version, signatures lost or invalidated without notice, abuse (silent changes to signed content), and effects on documents or modules that point at the old version. Rollout is unknown.",
+          "evidence": "Context card recurring traps.",
           "test_plan": ""
         },
         "acquisition": {
           "completeness": 50,
           "confidence": "inferred",
           "impact": "low",
-          "value": "Internal feature rolled out to existing users.",
-          "evidence": "Request reads as a spec for an existing system.",
+          "value": "Rollout to existing known users (managers) on the existing platform, not a product launch.",
+          "evidence": "Context: internal platform feature.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "When a manager edits a signed document, should the original signed version stay on record as it was, with the edit creating a new version that goes through approval? And do the original signatories have to sign again, or is a new approval enough?",
-          "slot": "business_rules",
-          "why": "uncertainty \u00d7 impact: this is the largest effort driver. Superseding with a new version and re-collecting signatures is a different build from a simple re-approval, and it affects the legal validity of the document."
-        },
-        {
-          "q": "What is happening today that prompts this? For example, what kind of changes are made after signing (typos, changed terms, renewals), and how are they handled now?",
+          "q": "What is the real need behind this? For example, fixing a mistake in a signed document, a genuine change of terms, or periodic renewal. And which document types are concerned: all of them, or specific ones such as contracts or policies?",
           "slot": "problem",
-          "why": "uncertainty \u00d7 impact: a typo fix and a change of commercial terms need different controls. The current workaround shows what the new flow has to replace."
+          "why": "uncertainty \u00d7 impact: a typo fix, a change of terms and a renewal are three different builds, and scope depends on the document types."
         },
         {
-          "q": "Who should re-approve an edited document: the same people who approved it originally, the manager's own hierarchy, or a different circuit? And should it vary by client or document type?",
+          "q": "When a manager changes a signed document, we would keep the signed original untouched and create a new version that must be approved and signed again, so earlier signatures do not carry over to the new content. Is that what you mean, or do you want the signed document itself changed in place?",
+          "slot": "business_rules",
+          "why": "uncertainty \u00d7 impact: editing in place breaks the validity of the signature and the audit trail. A new version is a very different build."
+        },
+        {
+          "q": "Who must re-approve and re-sign: the same people as the first time, a higher level, or someone else? And may the manager who made the edit also approve it?",
           "slot": "actors",
-          "why": "uncertainty \u00d7 impact: it sets the approval circuit and whether it is a standard rule or client-specific configuration."
+          "why": "uncertainty \u00d7 impact: it defines the approval circuit and the separation of duties, and the re-approver is rarely the original one."
         },
         {
-          "q": "While the edited version is being re-approved, which version should people see and act on: the old signed one until the new one is approved, or both with a warning?",
+          "q": "While the new version is being reviewed, should readers keep seeing the old signed version as the current one until the new one is approved and published? Or should the old one be withdrawn immediately?",
           "slot": "workflow",
-          "why": "uncertainty \u00d7 impact: 'approved' is not 'current'. A wrong answer here leads people to act on the wrong version."
+          "why": "uncertainty \u00d7 impact: it decides which version people act on, and confusing approved with current is the main source of errors."
         },
         {
-          "q": "Do any of these documents fall under audit, legal or retention obligations that require a full history of every change and who approved it? Can every manager edit any signed document, or only certain types or confidentiality levels?",
+          "q": "How is a signed document changed today (new document, amendment, outside the system, not possible)? And does the platform already have versioning or an e-signature tool that could cover part of this?",
+          "slot": "current_process",
+          "why": "uncertainty \u00d7 impact: reusing existing versioning, circuits or e-signature could reduce the build substantially."
+        },
+        {
+          "q": "Is there a compliance or audit requirement here? For example: a reason mandatory for every change, a full history of who changed what, retention of the signed versions, or legal constraints on electronic signatures.",
+          "slot": "reporting",
+          "why": "uncertainty \u00d7 impact: a named audit or legal obligation makes the audit trail and retention a core part of the build."
+        },
+        {
+          "q": "Which managers may start a change: any manager, only the document's owner or their line, or only for certain classifications? Should the rule differ by client?",
           "slot": "permissions",
-          "why": "uncertainty \u00d7 impact: a compliance need makes the audit trail and access rules high-cost build items, and reclassification affects who may see what."
+          "why": "uncertainty \u00d7 impact: it drives access rules and whether the behaviour is standard or configured per client."
+        },
+        {
+          "q": "Does signing a document trigger anything downstream (notifications, contract activation, invoicing, other modules)? If so, should a re-signed version trigger it again, and who must be told that a new version exists?",
+          "slot": "integrations",
+          "why": "uncertainty \u00d7 impact: re-signing can re-trigger automation and create duplicates unless the behaviour is defined."
         }
       ],
       "summary": {
-        "objective": "Let managers change documents that are already signed and have the changed content re-approved, without losing the integrity of the signed original.",
-        "scope": "Likely an extension of the existing document platform: a controlled 'supersede signed document' flow that creates a new version, routes it through an approval circuit, retains the old signed version, and records everything in the audit trail. Notifications, permissions by role and classification, and the publication of the new current version are part of it.",
+        "objective": "Let managers change documents that have already been signed, with the change going through re-approval, without breaking the validity of the earlier signature or the audit trail.",
+        "scope": "Likely scope: create a new version from a signed one (the signed version stays frozen, retained and referenceable), run it through an approval and signature circuit, publish it as current and mark the previous version superseded. Includes permissions for who may start a change, notifications, and an audit trail of each change. Which document types are covered and whether it is configurable per client are still open.",
         "assumptions": [
-          "An edit to a signed document creates a new version; the signed version is never modified in place.",
-          "The existing approval circuits, versioning and audit trail are reused rather than anything being bought.",
-          "Managers are the only editors; who re-approves is not yet known.",
-          "A full audit trail is required.",
-          "This is an internal feature for an existing platform, not a new product."
+          "\"Edit\" means supersede with a new version; the signed original is never changed in place.",
+          "Prior signatures do not carry over: the new version must be approved and signed again.",
+          "Approval and signature are separate from publication, so v1 may stay current while v2 is under review.",
+          "An audit trail is required (who changed what, when, who re-approved).",
+          "This is a feature on the existing platform for known users, so the client pays and there is no product-launch question.",
+          "Existing versioning, approval circuits and publication can be reused."
         ],
-        "blind_spot": "'Edit after signing' is almost certainly 'supersede with a new version'. The key unknown is whether the original signatures stay valid, are invalidated, or must be collected again. That decision determines the legal value of the document, the workflow and the effort."
+        "blind_spot": "\"Edit a signed document\" is not an edit. It is a supersession with new signatures, and the real design questions are who re-approves, which version stays current in the meantime, and what happens to everything that points at the old version. If the requester wants the signed document altered in place, that conflicts with signature validity and the audit requirement."
       },
       "decisions": [],
       "challenges": [],
@@ -399,185 +432,200 @@
           "completeness": 25,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers need to change documents that are already signed and have them re-approved. The underlying need is not stated (typo fix, changed terms, corrected data?).",
-          "evidence": "Client: \"We'd like managers to edit and re-approve documents after they've already been signed.\"",
+          "value": "Managers need to change documents that are already signed and have the change re-approved. The underlying need is not stated: it could be correcting errors, updating terms, or periodic revision.",
+          "evidence": "Request: \"We'd like managers to edit and re-approve documents after they've already been signed.\" The request asks for a solution (edit after signature), not the need behind it.",
           "test_plan": ""
         },
         "current_process": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown how post-signature changes are handled today (new document, amendment, outside the system, not possible).",
-          "evidence": "",
+          "value": "Unknown how a signed document that must change is handled today (re-created from scratch, side-agreement, off-system, or not possible).",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "existing_solutions": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether the existing versioning/approval features, amendment flow or an e-signature tool already cover this, and what budget applies.",
-          "evidence": "",
+          "value": "Unknown whether an existing e-signature or document tool, or an unused feature of the current platform, already covers versioning or re-signature. Budget unknown.",
+          "evidence": "Not mentioned. The existing surface already has versioning, approval circuits and signature validity handling, so this may be an extension rather than a new build.",
           "test_plan": ""
         },
         "success_metrics": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown.",
-          "evidence": "",
+          "value": "Unknown. Likely candidates: time to re-issue a signed document, no one acting on an outdated version.",
+          "evidence": "Not mentioned in the request.",
           "test_plan": ""
         },
         "payer": {
-          "completeness": 50,
+          "completeness": 80,
           "confidence": "inferred",
           "impact": "low",
-          "value": "Internal feature requested by the client; the client is the payer.",
-          "evidence": "Request reads as a commissioned feature on an existing platform.",
+          "value": "Internal capability of an existing platform; the requesting organisation is the payer.",
+          "evidence": "The request is a feature on an existing document platform, not a product idea.",
           "test_plan": ""
         },
         "actors": {
-          "completeness": 40,
+          "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers edit and re-approve. Unclear who the re-approver is (the same manager, the original approvers, a higher level) and who must re-sign (the original signatories).",
-          "evidence": "Client: \"managers to edit and re-approve\"",
+          "value": "Managers edit. Who re-approves is unknown (the same managers, a higher level, or the original approvers), and so is whether original signatories, possibly external, must re-sign. Whether the editor may approve their own edit is also unknown.",
+          "evidence": "Request names \"managers\" as editors and \"re-approve\" with no approver identified. The domain note says the re-approver after an edit is rarely the original one.",
           "test_plan": ""
         },
         "business_objects": {
-          "completeness": 25,
+          "completeness": 35,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Document, Version, Approval, Signatory. Which document types are in scope is unknown (contracts, policies, all).",
-          "evidence": "Request says 'documents'; context card document-management.",
+          "value": "Document (stable identity), Version (mutable unit, frozen once approved or signed), Approval, Signatory, and the audit trail. Which document types are in scope is unknown.",
+          "evidence": "Inferred from the document-management context. The request says only \"documents\".",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 15,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Per the context, an edit to a signed/approved document cannot be in place: it must create a new version, keep the old one, and invalidate or re-collect prior signatures. Which edits are allowed, any limits, and whether rules vary by client or document type are unknown.",
-          "evidence": "Domain rule: approved or signed versions are frozen; 'edit' means supersede.",
+          "value": "Assumption: editing a signed document means creating a new version. The signed version stays frozen and retained, and prior signatures are not carried over silently. Unknown: which document types or classifications may be edited, whether the rule varies by client, whether any edits are minor enough to skip full re-approval, and whether some documents are never editable after signature.",
+          "evidence": "Domain rule: approved or signed content is frozen, and an edit is a supersession. The request itself states no conditions.",
           "test_plan": ""
         },
         "workflow": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Assumed flow: signed version, then new draft version, review/approval circuit, then re-signature, then publication. Unknown: whether the new version replaces the old one as current immediately or only after re-approval, and what 'current' means (latest, latest approved, latest published).",
-          "evidence": "Two lifecycles in the context card: approval/signature and publication.",
+          "value": "Assumed flow: signed v1 \u2192 manager creates draft v2 \u2192 in-review \u2192 approved or re-signed \u2192 published as current, with v1 stamped superseded. Unknown: which version is live while v2 is pending, and whether re-approval re-triggers the signature event and downstream automation.",
+          "evidence": "Inferred from the two-lifecycle model (approval/signature vs publication). The request says only \"edit and re-approve\".",
           "test_plan": ""
         },
         "integrations": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown who is notified and what downstream systems react to signature or supersession.",
-          "evidence": "",
+          "value": "Unknown who is notified and on which event, and which downstream systems or modules subscribe to the signature event and would be re-triggered or need reconciling.",
+          "evidence": "Not mentioned. Signature is commonly a trigger for downstream automation.",
           "test_plan": ""
         },
         "permissions": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Managers may edit signed documents; whether this applies to all managers or only the owner/department, and how classification limits it, is unknown.",
-          "evidence": "Client: \"managers\"",
+          "value": "Assumption: only managers may create a new version of a signed document, and access follows the document's classification. Segregation of duties between editor and approver is unknown.",
+          "evidence": "The request names managers as the editing role. The context says access is driven by classification, and permissions are often forgotten until acceptance testing.",
           "test_plan": ""
         },
         "config_vs_custom": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown whether the behaviour is standard for all clients or client-specific.",
-          "evidence": "",
+          "value": "Unknown whether the re-approval circuit and edit rules are standard for all clients or configurable per client.",
+          "evidence": "The platform is configurable multi-client; approval circuits and rules are typically client-specific.",
           "test_plan": ""
         },
         "constraints": {
-          "completeness": 10,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Editing signed documents implies legal or regulatory exposure (signature validity, retention, auditability). No deadline or regulatory framework stated.",
-          "evidence": "Context: signature validity, retention and audit are sensitivities.",
+          "value": "Likely constraints: retention obligations, e-signature validity, and an audit trail with no gaps. Deadline and any specific regulatory regime are unknown.",
+          "evidence": "Document-management context sensitivities. The request names no deadline or regulation. Raised to high because editing signed documents directly affects signature validity.",
           "test_plan": ""
         },
         "edge_cases": {
-          "completeness": 0,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown: edit while an earlier re-approval is pending, rejected re-approval, approver absent, document already referenced or cited by others.",
-          "evidence": "",
+          "value": "Open: re-approval rejected (does v1 remain current?), a signatory unavailable, a second edit started while one is pending, references or citations pointing at v1, and a legal hold on the document.",
+          "evidence": "Not mentioned. Candidates derived from the supersession pattern.",
           "test_plan": ""
         },
         "reporting": {
-          "completeness": 20,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "A full audit trail is required for changes to signed documents: who changed what, previous vs new value, who re-approved. Raised to high because the edit targets signed content.",
-          "evidence": "Context: audit trail is a hard requirement for signed documents.",
+          "value": "Assumed need: a full history of who changed what, who re-approved, and the prior vs new version, with older versions still retrievable. Whether an audit or export is mandated is unknown.",
+          "evidence": "Context: the audit trail is relied on for compliance and retrofitting it is expensive. Altering signed documents is exactly what an auditor would examine, so impact is raised from the low default.",
           "test_plan": ""
         },
         "acceptance": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown.",
-          "evidence": "",
+          "value": "Unknown. To be derived once the rules and workflow are confirmed.",
+          "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "risks": {
-          "completeness": 10,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Risk of people acting on a superseded version, or of a change made without the signatories' knowledge. Rollout plan unknown.",
-          "evidence": "Context traps: approved is not the same as current.",
+          "value": "Risks: people acting on a superseded version, loss of signature validity, and downstream automation re-firing. Rollout approach is unknown.",
+          "evidence": "Inferred from the document-management traps.",
           "test_plan": ""
         },
         "acquisition": {
-          "completeness": 50,
+          "completeness": 80,
           "confidence": "inferred",
           "impact": "low",
-          "value": "Existing users of a platform already in use; no acquisition issue.",
-          "evidence": "Internal feature on an existing platform.",
+          "value": "Not applicable. This is a feature rolled out to existing managers, which falls under rollout.",
+          "evidence": "The request is a feature on an existing platform, not a product idea.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "When a manager changes a signed document, should the signed version stay on record unchanged, with the change creating a new version that is re-approved and re-signed? Or do you really mean overwriting the signed document in place, with the original signatures staying valid?",
-          "slot": "business_rules",
-          "why": "High impact: the in-place option conflicts with signature validity and audit needs. The new-version option is a different, larger build (retained history, re-signature, supersession)."
+          "q": "What is driving this? For example, correcting mistakes, renegotiated terms, or periodic updates. And which document types does it concern (contracts, policies, reports\u2026)?",
+          "slot": "problem",
+          "why": "High uncertainty \u00d7 high impact: the underlying need decides whether this is a light correction path or a full re-signature process, and which documents are in scope."
         },
         {
-          "q": "How are changes to signed documents handled today (a new document, an amendment, a workaround outside the system, not possible), and what goes wrong that you want fixed?",
+          "q": "Today, when a signed document has to change, what actually happens? Is it re-created, handled by a side agreement, or done outside the system?",
           "slot": "current_process",
-          "why": "It reveals the real problem and whether the existing amendment or versioning features can be reused, which may shrink the build."
+          "why": "The as-is shows what the new flow must replace and what people already rely on."
         },
         {
-          "q": "Who must re-approve and re-sign after an edit: the original approvers and signatories, the manager's own superior, or someone else? And may any manager edit any signed document?",
+          "q": "Do you already use a tool, or have a feature already paid for but not switched on, that handles versioning or re-signature (an e-signature service, for example)? Were any options considered or rejected, and is there a budget?",
+          "slot": "existing_solutions",
+          "why": "Buying or reusing could remove most of the build, and the budget sizes everything else."
+        },
+        {
+          "q": "When a manager edits a signed document, we propose that the signed version stays untouched and archived, and the edit becomes a new version that must be approved again. Is that what you mean, rather than changing the signed document in place?",
+          "slot": "business_rules",
+          "why": "In-place editing of a signed document would invalidate its signatures and the audit trail. A new version is a different build, so this is the core assumption to confirm."
+        },
+        {
+          "q": "Who must re-approve the new version: the same managers, a higher level, or the original approvers? Must the original signatories, including any external ones, sign again? Can the manager who made the edit also approve it?",
           "slot": "actors",
-          "why": "This sets the approval circuit, who is asked to sign again, and the permission model. These are often forgotten until acceptance testing."
+          "why": "This sets the approval circuit and signature collection, and whether external parties are involved."
         },
         {
-          "q": "While the edited version awaits re-approval, which version should people see and act on: the old signed one, or nothing until the new one is approved?",
+          "q": "While the new version is awaiting re-approval, which version should people treat as the current one: the old signed version until the new one is approved, or neither?",
           "slot": "workflow",
-          "why": "'Current document' is ambiguous (latest, latest approved, latest published). A wrong answer leads people to act on the wrong version."
+          "why": "Mixing up approved and live versions is how people end up acting on the wrong document."
         },
         {
-          "q": "Are there legal, regulatory or audit obligations on these documents (e-signature validity, retention, audit evidence)? Do the rules differ by client or document type?",
+          "q": "When the new version is approved or re-signed, should that count as a new signature event that re-triggers whatever currently reacts to a signature (notifications, downstream automation)? What should happen to things that point at the old version?",
+          "slot": "integrations",
+          "why": "Re-triggering could duplicate downstream actions, or leave dependants working from outdated content."
+        },
+        {
+          "q": "Do you have audit or regulatory obligations here, such as proving who changed what, when and with whose approval, or retaining the original signed version? Do the rules differ by client?",
           "slot": "constraints",
-          "why": "A named obligation makes the audit trail and permissions high-cost requirements and decides whether the behaviour is standard or client-specific."
+          "why": "A named obligation turns the audit trail into a core requirement and may need per-client configuration."
         }
       ],
       "summary": {
-        "objective": "Let managers change documents that are already signed and put the changed content through re-approval.",
-        "scope": "Likely scope: creating a new version from a signed document, a re-approval circuit, re-collection of signatures, supersession of the prior version with its history retained, role-based permissions, and a full audit trail. Document types and clients in scope are not yet known.",
+        "objective": "Let managers change documents that have already been signed, and have the change re-approved, without losing the validity or history of the original signed document.",
+        "scope": "Likely scope: create a new version from a signed document, run it through a re-approval (and possibly re-signature) circuit, mark the previous version superseded while keeping it retrievable, publish the new one as current, and record the whole history in the audit trail. Document types, approver roles and per-client variations are still to be defined.",
         "assumptions": [
-          "'Edit' means creating a new version; the signed version is frozen and retained (platform domain rule).",
-          "Re-approval uses the platform's existing multi-step approval circuit.",
-          "Prior signatures are invalidated or re-collected when the content changes.",
-          "An audit trail of every change is required.",
-          "This is a commissioned feature on the existing platform; the client pays."
+          "An edit after signature creates a new version; the signed version is frozen and retained, not changed in place.",
+          "Prior signatures are not carried over silently; the new version needs re-approval, and possibly re-signature.",
+          "Only managers can start such an edit, and access follows the document's classification.",
+          "A full audit trail (who, when, previous vs new version, who re-approved) is required.",
+          "This is an internal extension of the existing platform, so payer and acquisition are not in play."
         ],
-        "blind_spot": "'Edit a signed document' is almost certainly a supersession (new version, re-approval, re-signature, old version retained), not a field edit. The request does not say whether the old signatures survive or who has to sign again, and that decides the size of the build."
+        "blind_spot": "\"Edit a signed document\" is really supersession: a new version, the old one retained, signatures re-collected, and everything pointing at the old version reconciled. The request also doesn't say which version counts as current while the new one is pending, or whether re-signing re-triggers downstream automation."
       },
       "decisions": [],
       "challenges": [],
@@ -588,232 +636,317 @@
   ],
   "briefs": [
     {
-      "problem": "Signed documents sometimes need to change, and there is no stated, controlled way for managers to change them and get the change re-approved without undermining the validity of what was signed.",
-      "solution": "A 'supersede a signed document' flow: a manager starts a new draft version from a frozen signed version, it goes through approval and signature again, and on completion it becomes the current version while the old one is kept and marked superseded.",
+      "problem": "Signed documents sometimes need to change, and managers cannot issue the change themselves; the underlying need (correction, commercial change or periodic update) has not been stated.",
+      "solution": "A supersession flow on the existing document versioning and approval features: the signed version stays frozen, a manager creates a new version, it goes through approval (and possibly re-signature), then becomes current while the old one is stamped superseded.",
       "introduces": [
-        "a supersession flow that creates a successor version from a frozen signed version",
-        "re-approval circuit selection and routing, where the re-approver may differ from the original approver",
-        "a rule for which version counts as current while a successor is pending, and after it is rejected",
-        "signature invalidation or re-collection handling for prior signatories",
-        "segregation-of-duties checks so an editor cannot approve their own change",
-        "an audit trail covering the change, previous versus new content and the re-approval, with no gaps"
+        "a manager right to create a new version of a signed document, separate from the right to approve",
+        "a supersession flow linking a frozen signed version to its successor",
+        "a re-approval and re-signature path with its own circuit",
+        "a rule for which version is current while the new one is pending",
+        "an audit trail of version history, edits and re-approvals",
+        "handling of repeated signature events for downstream automation"
       ],
       "challenges": [
         {
-          "id": "chl_9522d2a52f",
-          "headline": "'Edit' a signed document",
-          "premise": "The request says managers will edit documents after they are signed, as if the signed document itself changes.",
-          "alternative": "Treat every post-signature change as a new version that supersedes the signed one. The signed version stays frozen and referenceable, and the edit happens only on the successor draft. This is my reasoning from the document model, where prior signatures and citations point at a specific version.",
-          "consequence": "A true in-place edit would break the link between a signature and the content it covered, and would leave signed content altered without a trace. That is a compliance and legal exposure, and retrofitting an audit trail later is expensive.",
-          "recommendation": "Confirm with the client that 'edit' means 'create a new version', and that signed content is never overwritten, before any design starts.",
+          "id": "chl_c6959d1d37",
+          "headline": "Editing a signed document",
+          "premise": "Managers 'edit' a document that has already been signed.",
+          "alternative": "Treat every change as a new version that supersedes the signed one. The signed version stays frozen, retrievable and referenceable, and the manager works on a draft of the successor.",
+          "consequence": "An in-place edit would break the validity of existing signatures, destroy the evidence of what was signed, and leave citations and prior approvals pointing at content that no longer exists.",
+          "recommendation": "Get the client's agreement that the signed version is never modified before any design starts.",
           "contests": [
-            "workflow",
-            "business_objects",
-            "constraints"
-          ]
-        },
-        {
-          "id": "chl_22a92603c4",
-          "headline": "Managers as editors and approvers",
-          "premise": "Managers both make the edit and drive its re-approval, as the request phrases it, without saying who actually approves.",
-          "alternative": "Separate the right to propose a change from the right to approve it, so the editing manager cannot approve their own successor version. The approver can be drawn from the existing circuit or a different one.",
-          "consequence": "If the editor can also approve, a signed document can be changed and re-validated by one person. That defeats the purpose of re-approval and is hard to defend at audit.",
-          "recommendation": "Agree with the client who approves a successor version, and whether the original signatories must sign again, before building the circuit.",
-          "contests": [
-            "actors",
             "business_rules",
-            "permissions"
+            "workflow"
           ]
         },
         {
-          "id": "chl_504f626316",
-          "headline": "Is a new build needed?",
-          "premise": "Post-signature editing is assumed to be a missing capability that must be built.",
-          "alternative": "The platform already has versioning, approval circuits and e-signature. The need may be met by exposing 'new version from a signed document' through those existing pieces, with a few rules on top, rather than building a separate engine.",
-          "consequence": "Building a parallel mechanism would duplicate approval and versioning logic, and would drift from the existing audit and classification behaviour.",
-          "recommendation": "Check how signed documents are changed today and what the existing versioning and circuits already do, then scope only the gap.",
+          "id": "chl_690de2a9c0",
+          "headline": "Re-approval is not re-signature",
+          "premise": "Sending the change back through approval is enough to make it valid.",
+          "alternative": "Decide separately whether the new version needs only internal re-approval or also fresh signatures from the original signatories. Prior signatures do not automatically cover the new content.",
+          "consequence": "Treating them as the same either leaves a version in force that nobody with signing authority has signed, or adds an e-signature round that the business did not need.",
+          "recommendation": "Ask which document types need new signatures and which only need internal re-approval, then build each path explicitly.",
           "contests": [
-            "existing_solutions",
-            "current_process"
-          ]
-        }
-      ],
-      "complexity": "high",
-      "complexity_reasons": [
-        "supersession across a frozen signed version, a pending successor and the current version",
-        "re-approval circuits with segregation of duties",
-        "signature invalidation or re-collection rules",
-        "classification-based access and an audit trail that touch search, notifications and export"
-      ],
-      "cost_driver": "the supersession and re-approval rules, which are still unspecified",
-      "risks": [
-        "People act on the wrong version while the successor is pending or after a rejection, if 'current' is not defined precisely.",
-        "Signed content could be altered without a trace if any path allows an in-place edit.",
-        "Links, citations and earlier signatures that point at the old version may break or mislead after supersession.",
-        "Approval circuits and classification rules are shared across the platform, so changes may ripple into search, listings, notifications and export.",
-        "Legal hold or retention rules may forbid changing certain documents, and none of these have been stated yet."
-      ],
-      "opportunities": [
-        {
-          "id": "opp_efc96f585c",
-          "text": "Build the supersession flow as a general capability of the document model, so any frozen version can spawn a successor through the same approval and audit path.",
-          "leverage": "high",
-          "modules": [
-            "Document",
-            "Version",
-            "Approval"
-          ]
-        },
-        {
-          "id": "opp_3e56cddac8",
-          "text": "Make eligibility, who may edit, and which circuit applies configurable per client, using the existing circuit and classification configuration.",
-          "leverage": "medium",
-          "modules": [
-            "Approval",
-            "Classification",
-            "Retention rule"
-          ]
-        },
-        {
-          "id": "opp_597f8d1963",
-          "text": "Notify original signatories and readers when a successor is submitted, approved or rejected, reusing the existing role-based notification routing.",
-          "leverage": "future",
-          "modules": [
-            "Signatory",
-            "Approval",
-            "Document"
-          ]
-        }
-      ],
-      "next_steps": [
-        "Run a short discovery with the client to confirm that 'edit' means a new version, what happens today, and which documents are eligible.",
-        "Decide the signature and approval rules: whether prior signatures stay valid, who re-approves, and that the editor cannot approve their own change.",
-        "Define which version is current while a successor is pending and after rejection, and confirm the audit trail requirements.",
-        "Only then scope and estimate the build, limited to the gap left by the existing versioning, circuits and e-signature."
-      ],
-      "decisions": [
-        {
-          "id": "dec_dd6248f7df",
-          "decision": "A change to a signed document creates a new version; the signed version is never modified in place.",
-          "why": "Signatures and citations refer to a specific version, and the domain model freezes a version once approved or signed.",
-          "alternative": "Edit the signed content in place.",
-          "tradeoff": "More structure (versions, supersession, current-version rules) in exchange for preserving signature validity and a defensible audit trail.",
-          "derived_from": [
             "workflow",
-            "business_objects",
-            "constraints"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_8495aa452b",
-          "decision": "Re-approval reuses the existing multi-step approval circuit.",
-          "why": "The platform already has approval circuits, and a parallel mechanism would duplicate logic.",
-          "alternative": "A dedicated re-approval flow for signed documents.",
-          "tradeoff": "Less new code, but the existing circuit may need extending for re-approvers who differ from the original ones.",
-          "derived_from": [
-            "workflow",
-            "actors",
-            "existing_solutions"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_4f624ea53e",
-          "decision": "Managers are the ones who request the change, as stated by the client.",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "actors"
-          ],
-          "source": "requester"
-        }
-      ],
-      "exclusions": [],
-      "thresholds": [],
-      "open_decisions": [
-        "Does 'edit' mean a new version, or does the client really intend an in-place change?",
-        "What is the real need behind the request: correcting errors, updating terms, renewing, or reacting to a change?",
-        "How are post-signature changes handled today, and why does that not work?",
-        "Do prior signatures stay valid, or must everyone sign again?",
-        "Who approves a successor version, and can the editing manager approve it?",
-        "Which version is current while the successor is pending, and what happens if it is rejected?",
-        "Which documents or classifications must never be changed after signature?",
-        "What audit and regulatory obligations apply, including legal hold and retention?",
-        "Do all clients follow the same rules, or must eligibility and circuits be configurable per client?",
-        "Success criteria and acceptance scenarios for delivery."
-      ]
-    },
-    {
-      "problem": "Signed documents sometimes need to change, but the platform freezes them after approval, and the reason for the change and the way it is handled today are not stated.",
-      "solution": "A controlled 'supersede a signed document' flow on the existing document platform: a manager starts a change, a new version goes through an approval circuit, the signed original is retained and marked superseded, and every step is recorded in the audit trail.",
-      "introduces": [
-        "a supersession flow that links a new version to the frozen signed original",
-        "a re-approval circuit with its own approver resolution, including absent approvers",
-        "a signature-handling rule (keep, invalidate or re-collect) applied to the prior version",
-        "a rule on which version is current while the change is in review, so the two lifecycles stay separate",
-        "an audit trail extended to cover who changed what, previous versus new content, and who re-approved",
-        "a notification path for signatories and readers of the old version"
-      ],
-      "challenges": [
-        {
-          "id": "chl_261a63268f",
-          "headline": "Editing signed documents at all",
-          "premise": "Managers should be able to 'edit' a signed document and then re-approve it, as if the signed document were a working draft.",
-          "alternative": "Treat every change as a new version that supersedes the signed original. The original stays untouched and referenceable, and the manager edits a copy. Separately, a lighter path for pure corrections (typos, formatting) and a full path for changes to terms could be offered, because the two carry different legal weight.",
-          "consequence": "If 'edit' means changing a signed version in place, prior signatures no longer correspond to the content and the audit trail loses its meaning. A single flow for both a typo and a change of terms either over-burdens trivial fixes or under-controls substantive ones.",
-          "recommendation": "Agree with the client that signed versions are never modified. Ask them to sort their real post-signature changes into trivial corrections and substantive changes, then decide whether those get different controls.",
-          "contests": [
-            "problem",
             "business_rules"
           ]
         },
         {
-          "id": "chl_ca4e68bf4a",
-          "headline": "Re-approval is enough",
-          "premise": "The request says 'edit and re-approve' and does not mention signatures, implying that approval of the new content restores the document's standing.",
-          "alternative": "Decide explicitly, per document type, whether the new version needs fresh signatures from the original signatories, or whether an approval by the right circuit is sufficient. This is my reading of the request: it is silent on signatures, and I have not assumed either answer.",
-          "consequence": "If signatures are required and the build only delivers approval, the resulting documents may not carry the legal value people assume. If approval is enough, the build is much smaller. The two answers are different builds.",
-          "recommendation": "Get a written answer from the client's legal or compliance owner on whether a superseding version needs new signatures before estimating.",
+          "id": "chl_882ae8e7e0",
+          "headline": "Build before checking what exists",
+          "premise": "A new capability is needed for managers to amend signed documents.",
+          "alternative": "The platform already has versioning, approval circuits and publication. Opening the existing supersession path to a manager role, with configured circuits, may deliver most of the request.",
+          "consequence": "Building a separate amendment feature duplicates the approval circuits and creates a second way to change documents, which is more to maintain and more to audit.",
+          "recommendation": "Review what is already available or switched off, including the e-signature provider's re-sign capability, before estimating any new build.",
           "contests": [
-            "business_rules",
-            "workflow",
-            "constraints"
-          ]
-        },
-        {
-          "id": "chl_aa295cd48b",
-          "headline": "Any manager, any signed document",
-          "premise": "Managers are the right group to start changes on signed documents, with no limit stated on which documents or which managers.",
-          "alternative": "Limit the right to document owners or to the manager of the relevant area, and limit by document type and confidentiality level. Re-approval by someone other than the editing manager separates the person who changes from the person who approves.",
-          "consequence": "Broad edit rights on signed documents widen exposure to unauthorised changes and complicate audits. Access in this platform is driven by classification, so a permissive rule can expose restricted documents through new versions, search and notifications.",
-          "recommendation": "Propose owner-scoped rights with classification limits as the starting point, and confirm who re-approves before building the circuit.",
-          "contests": [
-            "actors",
+            "existing_solutions",
             "permissions"
           ]
         }
       ],
       "complexity": "medium",
       "complexity_reasons": [
-        "reuses existing versioning, approval circuits and audit trail, but supersession must be wired across them",
-        "signature handling may add a re-signing flow depending on the legal answer",
-        "current-versus-approved version logic touches publication, search and notifications",
-        "re-approver resolution and absent approvers add circuit rules that may be client-specific"
+        "supersession and current-version semantics across two lifecycles",
+        "re-approval and possible re-signature through the e-signature provider",
+        "a new permission cutting across classification, search and notifications",
+        "downstream automation that may fire twice"
       ],
-      "cost_driver": "the signature rule for the superseding version (re-sign versus re-approve)",
+      "cost_driver": "supersession rules and re-signature handling",
       "risks": [
-        "People act on the wrong version during the review window if it is unclear whether the signed or the pending version is current.",
-        "Signature validity could be undermined if the legal treatment of prior signatures is not settled before the build.",
-        "The audit trail may have gaps if supersession events are not captured by the existing logging, and retrofitting it is expensive.",
-        "Approval circuits and access rules are cross-cutting, so a change here can ripple into search, listings, notifications and export.",
-        "Links, citations and earlier signatures that point at the old version need a defined behaviour once it is superseded."
+        "People may act on the wrong version, because an approved version is not necessarily the current one while the successor is pending.",
+        "A second signature may re-trigger downstream automation such as invoicing or contract activation, causing duplicates.",
+        "Prior signatures may be wrongly treated as still covering the new version, which creates legal exposure.",
+        "If managers can approve their own changes, segregation of duties is lost.",
+        "The audit trail is hard to retrofit, so any gap in version history shows up at audit time."
       ],
       "opportunities": [
         {
-          "id": "opp_08e2482749",
-          "text": "Build supersession as a generic 'new version of a frozen document' capability rather than a manager-only feature, so other document types can reuse it.",
+          "id": "opp_f587939189",
+          "text": "Treat supersession as one reusable pattern (frozen version, successor draft, re-approval, current-version stamp) shared by every signed document type.",
+          "leverage": "high",
+          "modules": [
+            "Contracts",
+            "Document",
+            "Version",
+            "Approval"
+          ]
+        },
+        {
+          "id": "opp_69dabc92a0",
+          "text": "Make the re-approval circuit and who may create a new version configurable per client, reusing the existing circuit engine.",
+          "leverage": "medium",
+          "modules": [
+            "Approval",
+            "Contracts"
+          ]
+        },
+        {
+          "id": "opp_0ccad59b9e",
+          "text": "Make downstream signature subscribers idempotent so a repeated signature event cannot create duplicates.",
+          "leverage": "future",
+          "modules": [
+            "Contracts",
+            "Invoicing"
+          ]
+        }
+      ],
+      "next_steps": [
+        "Collect one or two real examples of signed documents that had to change, and how each was handled, to establish the underlying need.",
+        "Check what the platform and the e-signature provider already offer for amending signed documents, and what is switched off.",
+        "Confirm the supersession principle, the current-version rule while a new version is pending, and whether re-signature is required, for one document type first.",
+        "Define manager rights, the re-approver, and the audit trail requirements, then estimate the pilot on one document type."
+      ],
+      "decisions": [
+        {
+          "id": "dec_b27a6ea51e",
+          "decision": "Editing a signed document means creating a new version; the signed version is never modified in place.",
+          "why": "Signatures and audit evidence refer to a specific frozen version.",
+          "alternative": "Allow in-place edits with a change log.",
+          "tradeoff": "More workflow steps for managers, in exchange for preserved signature validity and a defensible history.",
+          "derived_from": [
+            "business_rules",
+            "business_objects",
+            "constraints"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_900d186323",
+          "decision": "Managers are the actors who start the change and re-approval.",
+          "why": "",
+          "alternative": "",
+          "tradeoff": "",
+          "derived_from": [
+            "actors"
+          ],
+          "source": "requester"
+        },
+        {
+          "id": "dec_f7682937b8",
+          "decision": "Start with one document type before extending to others.",
+          "why": "Limits exposure to wrong-version and double-trigger problems while the rules are validated.",
+          "alternative": "Roll out to all document types at once.",
+          "tradeoff": "Slower coverage, in exchange for a smaller blast radius.",
+          "derived_from": [
+            "risks",
+            "business_objects"
+          ],
+          "source": "proposed"
+        }
+      ],
+      "exclusions": [],
+      "thresholds": [],
+      "open_decisions": [
+        "Which document types are in scope, and which may never be changed after signature",
+        "Who re-approves the new version and whether the original signatories must sign again",
+        "Which version counts as current while the new one is pending",
+        "Whether the rules are the same for every client or configurable per client",
+        "Whether a new signature should re-trigger downstream automation",
+        "Which compliance or audit obligations apply to the history"
+      ],
+      "page": {
+        "title": "Changing signed documents safely",
+        "recommendation": "Decide whether managers may change a signed document by issuing a new version that supersedes it, rather than editing the signed one. We recommend this approach, reusing the platform's existing versioning and approval circuits, and piloting it on one document type before extending it.",
+        "why": "A signed version is the evidence of what was agreed, so changing it in place would undermine the signatures and the history. A successor version keeps the original retrievable and lets the change go through its own approval. The platform already offers versioning, approval circuits and publication, so much of this may be configuration and a new manager right rather than a new build. Your request names re-approval, but a change to signed content may also need fresh signatures, and that is the point that most changes the build.",
+        "cost_and_risk": "The main effort is in the supersession rules and the handling of re-signature. The risk that matters most is people acting on the wrong version, or a repeated signature firing downstream actions such as invoicing a second time. A pilot on one document type limits both.",
+        "open": [
+          {
+            "question": "Can you give a real example of a signed document that had to change, and how it was handled?",
+            "would_change": "If changes are mostly typo corrections, a lighter correction path could replace the full re-approval flow; if they are commercial changes, re-signature is likely required.",
+            "slots": [
+              "problem",
+              "current_process"
+            ]
+          },
+          {
+            "question": "Do you agree that the signed version is never modified, and that an edit always creates a new version that goes through approval? Are there document types that must never be changed after signature, or rules that differ by client or document type?",
+            "would_change": "If in-place correction of signed documents is expected, this is a different build with legal consequences for signature validity; document types that must never change are excluded from the flow.",
+            "slots": [
+              "business_rules"
+            ]
+          },
+          {
+            "question": "Is something for amending signed documents already available on the platform or with your e-signature provider but not switched on?",
+            "would_change": "If so, much of the build could be replaced by configuration.",
+            "slots": [
+              "existing_solutions"
+            ]
+          },
+          {
+            "question": "Must the original signatories sign again, or is internal re-approval enough, and who approves the new version?",
+            "would_change": "Re-signature adds an e-signature integration step; the choice of approver decides whether segregation of duties is respected.",
+            "slots": [
+              "workflow",
+              "actors"
+            ]
+          },
+          {
+            "question": "Which version should people treat as current while the new version awaits approval?",
+            "would_change": "Keeping the signed version current avoids a gap, but showing nothing until approval changes the publication logic.",
+            "slots": [
+              "workflow"
+            ]
+          },
+          {
+            "question": "Which documents are in scope, which managers may change them, and should some never be modifiable after signature?",
+            "would_change": "A narrow scope allows a simple right; a broad one needs scoping by entity and classification.",
+            "slots": [
+              "permissions",
+              "business_objects"
+            ]
+          },
+          {
+            "question": "Does signing currently trigger other actions, and should a new signature repeat them?",
+            "would_change": "If it does, repeat-safe handling becomes part of the first release.",
+            "slots": [
+              "integrations"
+            ]
+          },
+          {
+            "question": "Is there a legal or audit obligation behind this request, and are the rules the same for every client?",
+            "would_change": "A named obligation makes the audit trail a core deliverable; per-client variation moves the rules into configuration.",
+            "slots": [
+              "reporting",
+              "config_vs_custom"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "The signed version is never modified in place; an edit creates a new version.",
+            "source": "proposed"
+          },
+          {
+            "text": "Existing versioning, approval circuits and publication are reused.",
+            "source": "assumed"
+          },
+          {
+            "text": "Prior signatures do not carry over automatically to the new version.",
+            "source": "domain"
+          },
+          {
+            "text": "A full audit trail of who changed what and who re-approved is required.",
+            "source": "assumed"
+          },
+          {
+            "text": "Visibility of the new version follows the document's classification.",
+            "source": "domain"
+          },
+          {
+            "text": "Managers are the people who edit and re-approve.",
+            "source": "requester"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "Signed documents sometimes have to change, and today it is unclear how to do that without breaking the validity of the earlier signature or the audit trail.",
+      "solution": "A controlled 'revise a signed document' path: a manager starts a new version from the signed one, it goes through approval and fresh signature, and it replaces the old version as current while the signed original stays frozen and retrievable.",
+      "introduces": [
+        "a supersession flow that creates a new version from a frozen signed one",
+        "a re-approval and re-signature circuit, with rules on who may approve their own edit",
+        "a 'current version' rule separate from 'approved', so readers always know which version to act on",
+        "an audit trail covering who changed what, why, and who re-approved",
+        "re-trigger handling for downstream automation fired by signature events",
+        "permission rules for who may start a revision, tied to classification"
+      ],
+      "challenges": [
+        {
+          "id": "chl_b57aa9eae2",
+          "headline": "Editing signed documents at all",
+          "premise": "Managers should be able to 'edit' a document that has already been signed.",
+          "alternative": "Treat every change as a new version that supersedes the signed one. The signed original is never altered, and the new version is approved and signed in its own right. This keeps the earlier signature valid for the content it covered, and the history can be shown intact.",
+          "consequence": "A true in-place edit breaks the link between a signature and the content it was given on, and leaves the audit trail unable to show what was actually signed. It is hard to defend later and expensive to retrofit.",
+          "recommendation": "Confirm with the client that 'edit' means 'issue a new version' before anything is designed. If they really want in-place changes, take that to compliance first.",
+          "contests": [
+            "business_rules",
+            "problem"
+          ]
+        },
+        {
+          "id": "chl_a4be9b2113",
+          "headline": "Build before checking what exists",
+          "premise": "A new capability is needed for editing and re-approving signed documents.",
+          "alternative": "The platform already has versioning, approval circuits and publication. The request may be covered by switching on or configuring supersession for signed documents, with a modest extension for re-signature.",
+          "consequence": "Building a parallel flow duplicates the approval circuits and creates a second definition of 'current version' that readers and other modules can confuse.",
+          "recommendation": "Have a lead engineer walk the existing versioning and approval flow with a signed test document before estimating anything. Record the gaps, not the whole feature.",
+          "contests": [
+            "existing_solutions",
+            "current_process"
+          ]
+        },
+        {
+          "id": "chl_1ff5a2a840",
+          "headline": "One flow for every change",
+          "premise": "Any change to a signed document follows the same edit, re-approve and re-sign path.",
+          "alternative": "A typo correction, a genuine change of terms and a periodic renewal carry different risk. A lighter path, such as a reason code and a single approver, could cover corrections, while changes of terms get full re-signature.",
+          "consequence": "A single heavy path gets bypassed through workarounds outside the system for small fixes. A single light path undermines signature validity for material changes.",
+          "recommendation": "Ask the client which kinds of change they actually need, and design the first release around the one or two that matter most.",
+          "contests": [
+            "problem",
+            "business_rules"
+          ]
+        }
+      ],
+      "complexity": "medium",
+      "complexity_reasons": [
+        "supersession must keep the signed version frozen and referenceable",
+        "re-approval circuit with separation of duties",
+        "ambiguity between approved, published and current",
+        "audit trail and retention with no gaps"
+      ],
+      "cost_driver": "re-approval and re-signature circuit design, and keeping the current-version rule unambiguous",
+      "risks": [
+        "People acting on the wrong version while the new one is in review, or after it is approved but not yet published.",
+        "Signatures invalidated or re-collected without the people involved being told, or a signatory who has left blocking the circuit.",
+        "Re-signing re-triggering downstream automation (activation, invoicing, notifications) and creating duplicates.",
+        "Links, citations and other modules that point at the old version going stale or pointing at the wrong one.",
+        "Permissions on drafts and superseded versions left until acceptance testing, when they depend on classification and are cross-cutting."
+      ],
+      "opportunities": [
+        {
+          "id": "opp_05ba4468bc",
+          "text": "Reuse the existing versioning and approval circuits for a general 'supersede a frozen document' flow, rather than a signed-document special case.",
           "leverage": "high",
           "modules": [
             "Document",
@@ -822,58 +955,276 @@
           ]
         },
         {
-          "id": "opp_a9ae10352d",
-          "text": "Make the re-approval circuit configurable per client and document type, reusing the existing circuit configuration.",
+          "id": "opp_1a23f2b8a3",
+          "text": "Apply the same supersession pattern to contracts and amendments, so a change to a signed contract and a change to a signed document share one mechanism.",
           "leverage": "medium",
           "modules": [
-            "Approval",
-            "Classification"
+            "Contracts",
+            "Document"
           ]
         },
         {
-          "id": "opp_86c29681a8",
-          "text": "Expose a version-history view linking each superseded version to its successor, built on the extended audit trail, for compliance officers.",
+          "id": "opp_b50fd0135d",
+          "text": "Make the re-approval circuit and the revision reasons configurable per client, since circuits are already client-specific.",
           "leverage": "future",
           "modules": [
-            "Version",
+            "Approval",
             "Document"
           ]
         }
       ],
       "next_steps": [
-        "Run a short discovery with the client to learn what post-signature changes happen today, how they are handled, and which are trivial versus substantive.",
-        "Obtain a decision from legal or compliance on whether prior signatures stay valid, are invalidated or must be re-collected.",
-        "Define who may start a change and who re-approves, by role, document type and classification, and whether this varies by client.",
-        "Specify the version behaviour during review (which one is current) and the audit and notification events, then estimate the build."
+        "Confirm with the client that 'edit' means a new version that supersedes the signed one, and name the real need: correction, change of terms or renewal.",
+        "Walk the existing versioning, approval and publication flow with a signed test document to list what is genuinely missing.",
+        "Settle who re-approves and re-signs, whether the editor may approve their own change, and which version stays current during review.",
+        "Define the audit and downstream-automation requirements before estimating, so they are built in rather than retrofitted."
       ],
       "decisions": [
         {
-          "id": "dec_790a929ef7",
-          "decision": "A signed version is never modified in place; any change creates a new version and the signed original is retained.",
-          "why": "Prior signatures and references point at a specific version, and the platform already freezes approved content.",
-          "alternative": "Allow in-place edits of signed documents with re-approval.",
-          "tradeoff": "More structure for each change, in exchange for preserving the integrity of the signed record and the audit trail.",
+          "id": "dec_6006136fb6",
+          "decision": "A signed version is never changed in place; a change creates a new version that supersedes it.",
+          "why": "Signature validity and the audit trail depend on the signed content staying intact and referenceable.",
+          "alternative": "Allow in-place edits of signed documents.",
+          "tradeoff": "More steps for the manager, in exchange for a defensible history and valid signatures.",
           "derived_from": [
-            "business_objects",
             "business_rules",
+            "constraints",
+            "reporting"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_d7d9bb66ca",
+          "decision": "Approval and signature are kept separate from publication, so the old version remains current until the new one is approved and published.",
+          "why": "Readers keep a clear current version during review.",
+          "alternative": "Withdraw the old version as soon as a revision starts.",
+          "tradeoff": "Two versions exist for a while, in exchange for no gap where nothing is current.",
+          "derived_from": [
+            "workflow"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_641264040d",
+          "decision": "An audit trail of who changed what, when and who re-approved is part of the first release.",
+          "why": "Editing signed documents is audit-sensitive, and retrofitting an audit trail is expensive.",
+          "alternative": "Add the audit trail in a later phase.",
+          "tradeoff": "More work up front, in exchange for no gaps in the history.",
+          "derived_from": [
+            "reporting",
+            "constraints"
+          ],
+          "source": "proposed"
+        }
+      ],
+      "exclusions": [],
+      "thresholds": [],
+      "open_decisions": [
+        "What the real need is: correcting a mistake, a change of terms, or a renewal",
+        "Which document types are in scope",
+        "Who re-approves and re-signs, and whether the editor may approve their own change",
+        "Which version is current while the new one is in review",
+        "Whether signature triggers downstream automation that must not fire twice",
+        "Which managers may start a revision",
+        "Whether the rules are standard for all clients or vary per client",
+        "Audit, retention and e-signature obligations that apply"
+      ],
+      "page": {
+        "title": "Revising signed documents safely",
+        "recommendation": "Decide what 'edit a signed document' should mean. We recommend that a manager starts a new version from the signed one, that it goes through fresh approval and signature, and that it replaces the old one as current only once approved. The signed original stays untouched and retrievable.",
+        "why": "Changing a signed document in place breaks the link between the signature and what was signed, and leaves the history unable to show it. A new version keeps both intact. The platform already handles versions, approval circuits and publication, so the work is probably an extension of what exists rather than a new system.",
+        "cost_and_risk": "The main cost is designing the re-approval and re-signature circuit, and keeping 'which version is current' unambiguous. The risk that matters most is people acting on the wrong version, or re-signing re-triggering automation that already ran for the first signature.",
+        "open": [
+          {
+            "question": "What is the real need: correcting a mistake, a genuine change of terms, or a renewal? And which document types are involved?",
+            "would_change": "A typo-level correction could use a lighter path with one approver, while changes of terms need full re-signature. The document types set the scope.",
+            "slots": [
+              "problem",
+              "business_objects"
+            ]
+          },
+          {
+            "question": "How is a signed document changed today, and does the platform already have versioning or e-signature that covers part of this?",
+            "would_change": "If most of it exists, the work shrinks to configuration and a small extension.",
+            "slots": [
+              "current_process",
+              "existing_solutions"
+            ]
+          },
+          {
+            "question": "Who must re-approve and re-sign, and may the manager who made the edit also approve it?",
+            "would_change": "It defines the approval circuit and separation of duties, and could add a compliance or higher-level approver.",
+            "slots": [
+              "actors",
+              "business_rules"
+            ]
+          },
+          {
+            "question": "While the new version is in review, should readers keep seeing the old signed one as current?",
+            "would_change": "If the old one must be withdrawn immediately, we need a gap-handling rule for what readers see in the meantime.",
+            "slots": [
+              "workflow"
+            ]
+          },
+          {
+            "question": "Which managers may start a revision, and should that differ by client?",
+            "would_change": "Per-client rules make the behaviour configurable instead of standard, which raises the build effort.",
+            "slots": [
+              "permissions",
+              "config_vs_custom"
+            ]
+          },
+          {
+            "question": "Is there a compliance, audit or electronic-signature obligation, and does signing trigger anything downstream?",
+            "would_change": "A named obligation makes the audit trail and retention central to the build, and downstream triggers need rules so they do not fire twice.",
+            "slots": [
+              "reporting",
+              "constraints",
+              "integrations"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "'Edit' means issuing a new version that supersedes the signed one, never changing the signed one in place.",
+            "source": "proposed"
+          },
+          {
+            "text": "Earlier signatures do not carry over: the new version must be approved and signed again.",
+            "source": "domain"
+          },
+          {
+            "text": "Existing versioning, approval circuits and publication can be reused.",
+            "source": "assumed"
+          },
+          {
+            "text": "An audit trail of each change is required.",
+            "source": "domain"
+          },
+          {
+            "text": "This is a feature for known internal users on the existing platform, paid for by the client.",
+            "source": "assumed"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "Signed documents sometimes need to change, and there is no stated way to change them and have the change re-approved without losing the validity or history of what was signed.",
+      "solution": "A supersession path on the existing document platform: a manager starts a new version of a signed document, it goes through re-approval (and re-signature where required), the signed version stays frozen and retrievable, and the whole history is recorded.",
+      "introduces": [
+        "a 'supersede signed document' flow that creates a new version from a frozen one",
+        "a re-approval circuit distinct from the original, with editor/approver separation rules",
+        "a rule for which version is current while a replacement is pending",
+        "re-signature collection, possibly from external signatories",
+        "handling of references and downstream subscribers that point at the superseded version",
+        "audit entries linking each new version to the signed one it replaces"
+      ],
+      "challenges": [
+        {
+          "id": "chl_9b880ac83b",
+          "headline": "Editing signed documents at all",
+          "premise": "Managers need to edit documents after signature, and re-approval is enough to make the change valid.",
+          "alternative": "Treat the need as 'issue a new version of a signed document'. The signed version is never edited; a successor is created and approved or re-signed. Where the need is only a small, pre-agreed change, a lighter amendment-style path keeps the original intact and avoids full re-signature of the whole document.",
+          "consequence": "Literal in-place editing would break the signatures on the original and leave a gap in the audit trail. Treating every edit as a full re-signature may be needlessly heavy if most changes are corrections.",
+          "recommendation": "Confirm with the client that an edit means a new version and not an in-place change, and find out what share of changes are corrections versus renegotiated terms before sizing the re-signature work.",
+          "contests": [
+            "problem",
+            "business_rules"
+          ]
+        },
+        {
+          "id": "chl_b09aee30be",
+          "headline": "Managers approving their own edits",
+          "premise": "The managers who edit are also the natural people to re-approve.",
+          "alternative": "Require the re-approver to be someone other than the editor, for instance a higher level or the original approvers, so that a change to signed content is always reviewed by a second person.",
+          "consequence": "If the editor can approve their own change, a signed document can be altered and re-validated by one person, which is exactly what an auditor would look for.",
+          "recommendation": "Decide the re-approver and the editor/approver separation rule before designing the circuit.",
+          "contests": [
+            "actors",
+            "permissions"
+          ]
+        },
+        {
+          "id": "chl_7e92515448",
+          "headline": "Which version is live meanwhile",
+          "premise": "'Edit and re-approve' implies one document that simply moves through states.",
+          "alternative": "Keep the signed version as the current one until the new version is approved and published, then stamp the old one as superseded. Approval and publication stay separate steps.",
+          "consequence": "Without a stated rule, people may act on a draft or on an outdated version, and re-approval may re-fire signature-triggered automation twice.",
+          "recommendation": "Settle which version is current during review, and whether re-approval counts as a new signature event for downstream modules.",
+          "contests": [
+            "workflow",
+            "integrations"
+          ]
+        }
+      ],
+      "complexity": "medium",
+      "complexity_reasons": [
+        "builds on existing versioning, approval circuits and signature handling, so it is an extension",
+        "two lifecycles (approval/signature and publication) must stay consistent",
+        "re-signature from possibly external signatories",
+        "reconciling references and downstream subscribers to the old version"
+      ],
+      "cost_driver": "the re-approval and re-signature circuit, including what happens to anything pointing at the old version",
+      "risks": [
+        "People acting on a superseded version if 'current' is not clearly defined and visible.",
+        "Signature validity: prior signatures must not be carried over silently, and the rule for what needs re-signing is not yet known.",
+        "Downstream automation triggered by signature may fire again on re-approval and duplicate actions.",
+        "The shared access-control and classification layer may need extending, and permissions are often discovered late.",
+        "Audit trail gaps: the history of who changed what and who re-approved is hard to retrofit, and any legal hold or retention rule may block the change."
+      ],
+      "opportunities": [
+        {
+          "id": "opp_1ea74de9e5",
+          "text": "Build one generic 'supersede a frozen version' capability, rather than a signed-document special case, so the same mechanism serves any approved or signed content.",
+          "leverage": "high",
+          "modules": [
+            "Document",
+            "Version",
+            "Approval"
+          ]
+        },
+        {
+          "id": "opp_0f1793619a",
+          "text": "Make the re-approval circuit configurable per client by reusing the existing approval circuit engine rather than creating a second one.",
+          "leverage": "medium",
+          "modules": [
+            "Approval",
+            "Signatory"
+          ]
+        },
+        {
+          "id": "opp_51dae0b827",
+          "text": "Expose supersession as an event so subscribers can reconcile references to the old version.",
+          "leverage": "future",
+          "modules": [
+            "Document",
+            "Version"
+          ]
+        }
+      ],
+      "next_steps": [
+        "Confirm with the client that an edit creates a new version, and agree the reason behind the request and the document types in scope.",
+        "Check whether the existing versioning, approval circuits and signature handling already cover most of this, before sizing any build.",
+        "Define the re-approval rules: who re-approves, who must re-sign, editor/approver separation, and which version is current meanwhile.",
+        "Specify audit and retention requirements and the behaviour of downstream subscribers, then derive acceptance scenarios."
+      ],
+      "decisions": [
+        {
+          "id": "dec_5ec84443ba",
+          "decision": "An edit after signature creates a new version; the signed version is frozen, retained and stamped superseded once the successor is published.",
+          "why": "Signed content must stay intact and referenceable, and in-place editing would invalidate signatures and the audit trail.",
+          "alternative": "Editing the signed document in place.",
+          "tradeoff": "More process (a new version and re-approval each time) in exchange for preserved signature validity and a clean history.",
+          "derived_from": [
+            "business_rules",
+            "workflow",
             "constraints"
           ],
           "source": "proposed"
         },
         {
-          "id": "dec_803917f7b4",
-          "decision": "Extend the existing versioning, approval circuits and audit trail rather than buy or build a separate tool.",
-          "why": "The document platform already provides these capabilities.",
-          "alternative": "Buy a separate document or e-signature tool.",
-          "tradeoff": "Dependence on the existing platform's limits, in exchange for no new vendor and no split of the audit record.",
-          "derived_from": [
-            "existing_solutions"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_0f080c149c",
-          "decision": "Managers are the people who start changes to signed documents.",
+          "id": "dec_8e6b75ed9e",
+          "decision": "Managers are the role that can start an edit of a signed document.",
           "why": "",
           "alternative": "",
           "tradeoff": "",
@@ -884,11 +1235,11 @@
           "source": "requester"
         },
         {
-          "id": "dec_55155d6b2f",
-          "decision": "A full audit trail covers every change and every re-approval.",
-          "why": "Modifying signed documents is an auditable act.",
-          "alternative": "",
-          "tradeoff": "",
+          "id": "dec_5d88c8ab67",
+          "decision": "Every change is recorded in a full audit trail linking the new version to the one it replaces.",
+          "why": "Altering signed documents is what an auditor examines, and retrofitting an audit trail later is expensive.",
+          "alternative": "A lighter change log added later.",
+          "tradeoff": "Some extra up-front build work in exchange for no gaps at audit time.",
           "derived_from": [
             "reporting",
             "constraints"
@@ -899,167 +1250,83 @@
       "exclusions": [],
       "thresholds": [],
       "open_decisions": [
-        "Do prior signatures stay valid, get invalidated or have to be re-collected?",
-        "Who re-approves: original approvers, the manager's hierarchy or another circuit?",
-        "Which document types and classification levels may be changed after signing?",
-        "Which version is current while the new one is in review?",
-        "Do re-approval rules vary by client?",
-        "Who is notified, and on which events?",
-        "What does success look like, and what are the acceptance scenarios?",
-        "Is there a deadline?"
-      ]
-    },
-    {
-      "problem": "Managers need to change documents after signature, but the underlying need (typo, changed terms, corrected data) and today's workaround are not stated.",
-      "solution": "A supersession flow: a manager starts a new version from a signed document, it goes through the approval circuit and re-signature, the signed original is retained, and every step is audited.",
-      "introduces": [
-        "a supersede-from-signed action that creates a new draft version and freezes the original",
-        "a re-approval and re-signature circuit for the new version, with a defined re-approver",
-        "handling for which version is 'current' while the new one is pending (approved vs published)",
-        "a change-level audit trail (who changed what, previous vs new, who re-approved)",
-        "a rule for how signatures on the old version are treated (kept as history, invalidated, or re-collected)",
-        "permission rules for who may start a change on a signed document, interacting with classification"
+        "Reason behind the request and the document types and classifications in scope",
+        "Who re-approves, who must re-sign (including external signatories), and whether the editor may approve their own edit",
+        "Which version is current while the new one is pending, and what happens if re-approval is rejected",
+        "Whether re-approval counts as a new signature event for downstream automation, and how references to the old version are handled",
+        "Whether the re-approval circuit and edit rules vary by client",
+        "Audit, retention and legal hold obligations",
+        "How signed documents are handled today and whether an existing tool or feature already covers it",
+        "Success criteria and rollout approach"
       ],
-      "challenges": [
-        {
-          "id": "chl_bc588e5324",
-          "headline": "Editing signed documents literally",
-          "premise": "Managers can 'edit' a document once it has been signed, and re-approval follows.",
-          "alternative": "Treat the request as issuing a new version (or an amendment, for contracts) and leave the signed version frozen. A signature then always points at the exact content it was given for, and no one has to explain a signed document that quietly changed.",
-          "consequence": "If 'edit' means in-place change, the original signatures no longer match the content, the audit trail loses its evidential value, and anything citing the signed version silently points at different text. If it means a new version, the build is much larger than an edit form: re-signature, supersession and history.",
-          "recommendation": "Confirm with the client, before any estimate, that they mean a new version with the original retained. Ask which change they actually need to make (typo, changed terms, corrected data), since that decides the rest.",
-          "contests": [
-            "business_rules",
-            "problem"
-          ]
-        },
-        {
-          "id": "chl_ce309e1ef7",
-          "headline": "Managers as sole editors",
-          "premise": "Managers are the right people to change signed content and to re-approve their own changes.",
-          "alternative": "Let a manager initiate the change, but route re-approval to someone other than the author (the original approvers or a higher level), so the person who edits is not the one who validates. This is a proposal; the client has not named a re-approver.",
-          "consequence": "If the editing manager can also approve, a signed document can be changed with no independent check, which undermines the point of having signed it. Allowing any manager to edit any signed document also widens access beyond what classification and ownership would normally allow.",
-          "recommendation": "Agree with the client who re-approves and who must re-sign, and whether editing rights are limited to the document owner or department.",
-          "contests": [
-            "actors",
-            "permissions"
-          ]
-        },
-        {
-          "id": "chl_75638d6fc5",
-          "headline": "Building before checking reuse",
-          "premise": "A new capability is needed for post-signature changes.",
-          "alternative": "The platform already has versioning, approval circuits and, for contracts, an amendment flow with its own draft-to-issued lifecycle. Part or all of the request may be met by exposing these to managers, rather than building a new mechanism.",
-          "consequence": "Building a separate flow duplicates the approval and versioning logic and creates two ways to change a signed document, with diverging rules and audit behaviour.",
-          "recommendation": "Map the request against the existing versioning, approval and amendment features first, and only build the gap.",
-          "contests": [
-            "existing_solutions",
-            "current_process"
-          ]
-        }
-      ],
-      "complexity": "high",
-      "complexity_reasons": [
-        "supersession with retained history and re-signature",
-        "multi-step re-approval circuit with an independent approver",
-        "the approved vs published vs current distinction",
-        "audit trail that must have no gaps"
-      ],
-      "cost_driver": "supersession of signed versions with re-signature and audit",
-      "risks": [
-        "People may act on a superseded or not-yet-re-approved version if 'current' is not defined clearly.",
-        "Signatories may be unaware a signed document was changed, or prior signatures may be treated as still valid for new content, creating legal exposure.",
-        "Anything that references the old version (links, citations, earlier signatures) must be reconciled, or it silently points at the wrong text.",
-        "Access and classification rules touch search, listings, notifications and export, so a permission change here ripples across shared modules.",
-        "Regulatory position (signature validity, retention, audit) is not yet established, so scope could grow late."
-      ],
-      "opportunities": [
-        {
-          "id": "opp_c7a925e88f",
-          "text": "Reuse the existing versioning and approval circuit for supersession instead of building a separate flow, so one mechanism covers every post-signature change.",
-          "leverage": "high",
-          "modules": [
-            "Document",
-            "Version",
-            "Approval"
-          ]
-        },
-        {
-          "id": "opp_b6dd729f70",
-          "text": "Generalise the contract amendment pattern (draft to issued, re-opens signature) into a shared 'supersede a frozen version' capability for all document types.",
-          "leverage": "medium",
-          "modules": [
-            "Contracts",
-            "Document",
-            "Signatory"
-          ]
-        },
-        {
-          "id": "opp_81ed9a782b",
-          "text": "Make the audit trail of version changes a shared service that also serves retention and access reporting.",
-          "leverage": "future",
-          "modules": [
-            "Document",
-            "Classification",
-            "Retention rule"
-          ]
-        }
-      ],
-      "next_steps": [
-        "Hold a short session with the client to confirm that 'edit' means a new version with the signed original retained, and to learn which changes they actually need to make.",
-        "Map the request against the existing versioning, approval and amendment features to identify the real gap before estimating.",
-        "Settle who re-approves, who re-signs and who may start a change, as the basis for the permission and circuit design.",
-        "Define what 'current' means while a new version is pending, and then estimate the build, including the audit trail."
-      ],
-      "decisions": [
-        {
-          "id": "dec_a19b81c363",
-          "decision": "A signed version is never changed in place; a change creates a new version and the original is retained.",
-          "why": "Signatures and citations point at a specific version, and the audit trail must stay reliable.",
-          "alternative": "Overwrite the signed document and keep the original signatures valid.",
-          "tradeoff": "A larger build (re-signature, supersession, history) in exchange for signature validity and audit integrity.",
-          "derived_from": [
-            "business_rules",
-            "constraints"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_1286910509",
-          "decision": "Re-approval uses the platform's existing multi-step approval circuit.",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "workflow",
-            "actors"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_05cac401a7",
-          "decision": "A full audit trail covers every change to a signed document.",
-          "why": "The edit targets signed content, so who changed what and who re-approved must be provable.",
-          "alternative": "Basic version history only.",
-          "tradeoff": "Extra build effort in exchange for defensibility at audit.",
-          "derived_from": [
-            "reporting",
-            "constraints"
-          ],
-          "source": "proposed"
-        }
-      ],
-      "exclusions": [],
-      "thresholds": [],
-      "open_decisions": [
-        "In-place overwrite or new version: which does the client mean?",
-        "Who re-approves and who must re-sign after a change?",
-        "Which version is current while a change awaits re-approval?",
-        "Which document types and which clients are in scope, and is the behaviour standard or client-specific?",
-        "Which legal, regulatory or audit obligations apply?",
-        "How are changes handled today, and can existing versioning or amendment features cover part of this?",
-        "Success measures and acceptance scenarios"
-      ]
+      "page": {
+        "title": "Editing signed documents safely",
+        "recommendation": "Decide whether 'editing a signed document' means issuing a new version that is re-approved, rather than changing the signed document itself. We recommend building a supersession path on the existing platform: a manager starts a new version, a second person re-approves it (with re-signature where required), the signed version stays frozen and retrievable, and the full history is recorded.",
+        "why": "Changing a signed document in place would break its signatures and leave a gap in the record, which is exactly what an auditor would examine. Your platform already has versioning, approval circuits and signature handling, so a new-version path is likely an extension of what exists rather than a new system, and it keeps one clear answer to which version people should act on.",
+        "cost_and_risk": "The main effort is the re-approval and re-signature circuit, together with reconciling anything that points at the old version. The risk that matters most is people acting on an outdated version, or signature-triggered automation firing a second time when the new version is approved.",
+        "open": [
+          {
+            "question": "What is driving this: correcting mistakes, renegotiated terms or periodic updates, and for which document types?",
+            "would_change": "If most edits are small corrections, a lighter amendment-style path could replace full re-signature and reduce the build.",
+            "slots": [
+              "problem",
+              "business_objects"
+            ]
+          },
+          {
+            "question": "How are signed documents that must change handled today, and do you already have a tool or unused feature (such as an e-signature service) that covers re-signature?",
+            "would_change": "If an existing tool covers it, we would configure or buy rather than build.",
+            "slots": [
+              "current_process",
+              "existing_solutions"
+            ]
+          },
+          {
+            "question": "Who must re-approve the new version, must the original signatories (including external ones) sign again, and can the editing manager approve their own edit?",
+            "would_change": "External re-signature or a mandatory second approver changes the circuit and widens the build.",
+            "slots": [
+              "actors",
+              "permissions",
+              "business_rules"
+            ]
+          },
+          {
+            "question": "While the new version awaits approval, which version should count as current, and should approval re-trigger what reacts to a signature today?",
+            "would_change": "Re-triggering would require guarding downstream automation against duplicates, and the choice of current version changes the publication rules.",
+            "slots": [
+              "workflow",
+              "integrations"
+            ]
+          },
+          {
+            "question": "Do audit, retention or legal-hold obligations apply, and do the rules differ by client?",
+            "would_change": "A named obligation makes the audit trail a core deliverable and may require per-client configuration of the circuit.",
+            "slots": [
+              "constraints",
+              "reporting",
+              "config_vs_custom"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "An edit after signature creates a new version and the signed version is never changed in place.",
+            "source": "proposed"
+          },
+          {
+            "text": "Only managers can start such an edit, and access follows the document's classification.",
+            "source": "requester"
+          },
+          {
+            "text": "Prior signatures are not carried over silently; the new version needs re-approval and possibly re-signature.",
+            "source": "assumed"
+          },
+          {
+            "text": "The existing versioning, approval and signature features can be extended rather than replaced.",
+            "source": "artifact"
+          }
+        ]
+      }
     }
   ]
 }

@@ -7,11 +7,11 @@
     {
       "model": {
         "objective": {
-          "completeness": 20,
+          "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Win paying customers for the reporting add-on in a new customer segment. The target number and the clock are not stated.",
-          "evidence": "Client: \"a go-to-market plan for selling it into a customer segment we've never targeted before.\" The outcome (revenue, pilots, logos) is deduced, not stated.",
+          "value": "Win first customers for the reporting add-on in a segment the company has never sold to. No target number or outcome is stated yet (paying customers, pilots, revenue, or learning).",
+          "evidence": "Request: 'go-to-market plan for selling it into a customer segment we've never targeted before.' The intent to sell is stated; the outcome is not.",
           "test_plan": ""
         },
         "success_metric": {
@@ -19,85 +19,71 @@
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Nothing stated about a leading indicator or what it should exclude (e.g. free pilots, existing customers adding the add-on).",
+          "evidence": "Nothing stated. A leading indicator is needed (e.g. qualified demos, pilots started, activated accounts), with a counting rule that excludes existing-segment customers and free trials that never connect data.",
           "test_plan": ""
         },
         "icp": {
           "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "A segment is chosen but not named. It is new to the company, so there is no customer history in it.",
-          "evidence": "Client: \"a customer segment we've never targeted before.\" No firmographics, buyer role or exclusions given.",
+          "value": "A 'new segment' is named but not identified: industry, company size, buyer role, and who it is NOT for are all unknown.",
+          "evidence": "Request: 'a customer segment we've never targeted before.' No further detail.",
           "test_plan": ""
         },
         "existing_distribution": {
           "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "An installed base of the existing B2B product probably exists. It was gathered for a different segment and promise, so it may not match the new ICP. Any audience, partner or community in the new segment is unknown.",
-          "evidence": "Client: \"our existing B2B product\" and \"never targeted before.\" Whether any relationship reaches the new segment is not stated.",
-          "test_plan": "",
-          "claims": [
-            {
-              "id": "clm_c24a76ef85",
-              "text": "An installed base of the existing product exists.",
-              "source": "requester",
-              "confirmation": "open"
-            },
-            {
-              "id": "clm_5b3f51a008",
-              "text": "No audience or relationship exists in the new segment.",
-              "source": "assumed",
-              "confirmation": "open"
-            }
-          ]
+          "value": "The existing B2B customer base and its relationships are probably the only owned surface, and it probably does not match the new segment, so it is an upsell or referral route at best. Partners, lists, communities and brand awareness in the new segment are unknown.",
+          "evidence": "Deduced from 'existing B2B product' and 'never targeted before'. Unconfirmed; the segment-match question is the key unknown.",
+          "test_plan": ""
         },
         "offer": {
-          "completeness": 15,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "A reporting add-on built on the existing product. It is unclear whether the new segment must also adopt the base product, which would make this a two-part purchase. Pricing, packaging and trial terms are unknown.",
-          "evidence": "Client: \"a reporting add-on for our existing B2B product.\" Whether it is sold standalone is not stated.",
+          "value": "A reporting add-on built for the existing B2B product. Whether new-segment buyers must adopt the core product first, or can buy it standalone, is unknown, and so are pricing, packaging and trial terms.",
+          "evidence": "Request: 'reporting add-on for our existing B2B product'. If it needs the core product, the offer is the whole product, not the add-on, which changes the plan.",
           "test_plan": ""
         },
         "objections": {
-          "completeness": 0,
-          "confidence": "testable",
+          "completeness": 5,
+          "confidence": "empty",
           "impact": "high",
-          "value": "Likely objections in an unfamiliar segment: trust, data handling, switching cost, and the need to adopt the base product. None is confirmed.",
-          "evidence": "Not discussed. Reporting often pulls sensitive figures into a new place, which raises the impact of this slot.",
-          "test_plan": "Run 8-10 discovery calls with people in the target segment and ask what would stop them buying. Record the objections that recur."
+          "value": "",
+          "evidence": "Not stated. Likely candidates are data handling and integration with systems already in place in the new segment, and switching cost. If the add-on handles financial or audit-relevant figures, trust and traceability become the decisive objection.",
+          "test_plan": ""
         },
         "alternatives": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "What the segment uses today (spreadsheets, BI tools, a competitor) and what it costs them is unknown. Impact is raised because the add-on will be priced and the price anchor depends on this.",
+          "evidence": "Not stated. Impact is raised because the add-on will be priced, and the price anchor and positioning depend on what the new segment uses today (spreadsheets, BI tools, an incumbent).",
           "test_plan": ""
         },
         "channels": {
-          "completeness": 5,
+          "completeness": 0,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "No channels discussed. Impact is raised because there is no known distribution in the segment, and the segment may bring a regulated audience or contact rules.",
+          "evidence": "No channel named. Impact is raised above the default because the segment is new and no matching distribution is confirmed. Viable routes depend on the distribution answer, and any outbound route may carry unsolicited-contact rules.",
           "test_plan": ""
         },
         "unit_economics": {
           "completeness": 0,
-          "confidence": "empty",
+          "confidence": "testable",
           "impact": "medium",
-          "value": "",
-          "evidence": "No price, margin, expected customer lifetime or acceptable acquisition cost stated.",
-          "test_plan": ""
+          "value": "Customer value and acceptable acquisition cost in the new segment are unknown.",
+          "evidence": "Willingness to pay in a segment never sold to cannot be settled by conversation.",
+          "test_plan": "Present 2-3 price points and packagings to 8-10 prospects from the segment in discovery calls, then run a paid pilot or letter-of-intent test. Compare the price accepted to the cost of reaching them."
         },
         "capacity": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Hours per week and number of weeks available for go-to-market work, and who does it, are not stated. This is the binding constraint on the plan.",
+          "evidence": "Hours per week and number of weeks, and who is available (sales, marketing, product, founders), are not stated. This is the binding constraint on the plan.",
           "test_plan": ""
         },
         "budget": {
@@ -105,7 +91,7 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No budget stated, and no indication whether it is committed or conditional on early results.",
+          "evidence": "No budget stated, and nothing on whether it is committed or released on an early result.",
           "test_plan": ""
         },
         "horizon": {
@@ -113,15 +99,15 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No date or review point stated.",
+          "evidence": "No deadline or review date stated.",
           "test_plan": ""
         },
         "instrumentation": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 10,
+          "confidence": "inferred",
           "impact": "low",
-          "value": "",
-          "evidence": "Nothing stated. Low priority until the metric and channels are set.",
+          "value": "Assumed: the existing product's analytics and a CRM can count funnel stages. What cannot be measured (e.g. dark-social referrals) is not yet identified.",
+          "evidence": "Deduced from the existing B2B product. Not confirmed, and low impact until channels are chosen.",
           "test_plan": ""
         },
         "decision_thresholds": {
@@ -129,47 +115,241 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No rule stated for when to continue, change or stop the effort in the new segment.",
+          "evidence": "No continue / change / stop criteria stated. They depend on the objective, metric and horizon.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "How many hours per week can your team actually give to this go-to-market effort, for how many weeks, and who is doing the work?",
+          "q": "How many hours per week can your team actually give to this go-to-market, for how many weeks, and who are those people (sales, marketing, product, founders)?",
           "slot": "capacity",
-          "why": "High impact and fully unknown. A plan that does not fit the hours available is not a plan, and this sets how many channels we can consider."
+          "why": "Uncertain \u00d7 high: this is the binding constraint, and it decides how many channels and experiments the plan can hold."
         },
         {
-          "q": "Which segment is it, and who is the buyer inside it? Can you also name a type of company in that segment that the add-on is not for?",
-          "slot": "icp",
-          "why": "The whole plan depends on it, and a segment you have never sold to has no history to guess from. If it is regulated, the channel and offer options change."
-        },
-        {
-          "q": "What do you already have that reaches this segment: customers who sit in or near it, partners, a community, an email list, or anyone who knows you there? Or is it a cold start?",
+          "q": "In the new segment, what do you already have: contacts, partners, a list, a community, or brand recognition? Or do your current customers include people who know or work with this segment?",
           "slot": "existing_distribution",
-          "why": "This decides which channels are viable at all. Proposing channels before knowing it would mean designing on an unknown."
+          "why": "Uncertain \u00d7 high: it is the main determinant of which channels are viable, and designing channels before knowing it is guesswork."
         },
         {
-          "q": "Does a buyer in the new segment need your base product to use the add-on, or can they buy it on its own? And if it needs the base product, is the plan to sell both together?",
+          "q": "Which segment is it (industry, company size, buyer role), and can you name a kind of company in it that you would NOT target?",
+          "slot": "icp",
+          "why": "Uncertain \u00d7 high: every message, channel and price depends on a narrow first slice."
+        },
+        {
+          "q": "Can a company in the new segment buy the add-on without your core product? If not, what does a new customer have to adopt first, and on what terms (price, trial, contract)?",
           "slot": "offer",
-          "why": "This changes the sales effort from an upsell to a full product sale, which affects price, objections and the time it takes to close."
+          "why": "Uncertain \u00d7 high: an add-on that needs the core product means selling the whole product, which is a different plan and a longer sale."
         },
         {
-          "q": "What is the one result you want from this, and by when? For example, a number of paying customers or a revenue figure within six months.",
+          "q": "What would make a buyer in this segment hesitate or refuse? For example: data leaving their systems, integration with what they already use, audit or compliance requirements, or switching cost. What do you have to answer it (references, certifications, a pilot)?",
+          "slot": "objections",
+          "why": "Uncertain \u00d7 high: if the add-on handles sensitive or audit-relevant figures, this objection decides conversion."
+        },
+        {
+          "q": "What does the segment use today for this reporting, and roughly what does it cost them (a tool, spreadsheets, an analyst, an agency)?",
+          "slot": "alternatives",
+          "why": "Uncertain \u00d7 high once priced: positioning and the price anchor are defined against what they already use."
+        },
+        {
+          "q": "What outcome do you want, by when? For example: N paying customers or pilots, or a revenue figure, within a given number of months, or evidence that the segment is worth pursuing.",
           "slot": "objective",
-          "why": "Without a target and a date there is no success metric and no point at which to continue, change or stop."
+          "why": "Uncertain \u00d7 high: it decides the plan's shape, and whether it should be a learning exercise or a scale-up."
+        },
+        {
+          "q": "What budget is available, and is it committed or released only after an early result?",
+          "slot": "budget",
+          "why": "Uncertain \u00d7 medium-high: it decides whether paid acquisition or partnerships are possible, or whether the plan is limited to owned effort."
+        },
+        {
+          "q": "Which early signal would you count as progress (e.g. demos booked, pilots started), and at what result would you continue, change course, or stop?",
+          "slot": "success_metric",
+          "why": "Uncertain \u00d7 high: without a leading indicator and a stop rule the plan cannot be judged before the horizon."
         }
       ],
       "summary": {
-        "objective": "Sell the reporting add-on to a new customer segment the company has never targeted. The target and the date are not yet defined.",
-        "scope": "A go-to-market plan covering the segment and buyer, the offer and pricing, the channels, the objections to answer, and the measures and thresholds for deciding whether to continue. The scope is sized to the team's available hours once those are known.",
+        "objective": "Build a go-to-market plan to sell a reporting add-on, built for the existing B2B product, into a customer segment the company has never targeted.",
+        "scope": "Segment definition, offer and packaging, positioning against current alternatives, a small set of channels fitted to available hours and existing distribution, and measurable thresholds for continuing or stopping. The target outcome and timeline still need to be set.",
         "assumptions": [
-          "An installed base of the existing product exists, but it was gathered for a different segment and may not reach the new one.",
-          "The add-on is sold alongside or on top of the base product. Whether it can be bought standalone is unconfirmed.",
-          "Buyers' main objections are trust, data handling and the effort of adopting the base product. This needs to be tested in conversations with the segment.",
-          "Nothing is known yet about the segment's current alternatives, willingness to pay, budget or timeline."
+          "The existing customer base is probably not in the new segment, so it is an upsell or referral route at best (inferred).",
+          "The add-on likely depends on the core product, which would make this a sale of the whole product (inferred, to confirm).",
+          "Standard analytics and a CRM can measure the funnel (inferred, low impact).",
+          "Willingness to pay in the new segment is untested and is treated as something to test, not assume."
         ],
-        "blind_spot": "Team hours and existing reach into the new segment are both unknown. A plan built on channels before those are answered would probably assume more hands and more audience than exist. A related risk is that the segment may have to adopt the base product to use the add-on, which turns an upsell into a full product sale."
+        "blind_spot": "Two unknowns decide the plan: whether the add-on can be bought without the core product, and whether any distribution exists in the new segment. Without a matching audience and with a hard dependency on the core product, the add-on is not a quick upsell, and the plan has to be a pilot-led learning effort sized to the available hours."
+      },
+      "decisions": [],
+      "challenges": [],
+      "opportunities": [],
+      "exclusions": [],
+      "thresholds": []
+    },
+    {
+      "model": {
+        "objective": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "A go-to-market plan for a reporting add-on, aimed at a customer segment the company has never sold to. The outcome it must achieve (first customers, revenue, pipeline, or learning) is not stated.",
+          "evidence": "Request: 'want a go-to-market plan for selling it into a customer segment we've never targeted before.'",
+          "test_plan": ""
+        },
+        "success_metric": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "",
+          "evidence": "No leading indicator or counting rule stated.",
+          "test_plan": ""
+        },
+        "icp": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown new segment. Not stated who they are, what size they are, who buys, or who uses the product.",
+          "evidence": "Request only says 'a customer segment we've never targeted before'.",
+          "test_plan": ""
+        },
+        "existing_distribution": {
+          "completeness": 15,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "The existing B2B customer base and its relationships probably exist, but they belong to the old segment. Nothing is known about reach into the new segment (list, partners, community, references).",
+          "evidence": "'our existing B2B product' implies a current customer base. The segment is 'never targeted', so reach into it is probably thin. This is the assistant's deduction, not confirmed.",
+          "test_plan": ""
+        },
+        "offer": {
+          "completeness": 15,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "A reporting add-on built on an existing B2B product. Unknown whether new-segment buyers must adopt the base product first (a two-step sale) or can buy the add-on standalone. Pricing, packaging and terms are unknown.",
+          "evidence": "Request: 'reporting add-on for our existing B2B product'. 'Add-on' implies a dependency on the base product, which is deduced and not confirmed.",
+          "test_plan": ""
+        },
+        "objections": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown. Likely candidates are trust and data handling, switching cost, and whether the figures are auditable and tie back to the source. If the segment is finance or regulated, auditability becomes a hard requirement.",
+          "evidence": "Nothing stated. The candidates come from the financial-reporting and b2b-platform context cards, not from the requester.",
+          "test_plan": ""
+        },
+        "alternatives": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown what the new segment uses today (spreadsheets, BI tools, an incumbent, an agency) or what it costs them. Impact is raised because the add-on will be priced, and price anchor and pitch are defined against that alternative.",
+          "evidence": "Nothing stated.",
+          "test_plan": ""
+        },
+        "channels": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "No candidate channels identified. Impact is raised because no existing distribution into the new segment is named, and a channel may carry a legal regime (unsolicited-contact rules) or a regulated audience.",
+          "evidence": "Nothing stated.",
+          "test_plan": ""
+        },
+        "unit_economics": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "",
+          "evidence": "No price, margin, sales-cycle or lifetime value given.",
+          "test_plan": ""
+        },
+        "capacity": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown: people and hours per week available for go-to-market work, and for how many weeks.",
+          "evidence": "Nothing stated. This is the binding constraint on how many channels the plan can include.",
+          "test_plan": ""
+        },
+        "budget": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "",
+          "evidence": "No amount given, and unknown whether it is committed or conditional on an early result.",
+          "test_plan": ""
+        },
+        "horizon": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "",
+          "evidence": "No date or review point given.",
+          "test_plan": ""
+        },
+        "instrumentation": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "",
+          "evidence": "Nothing stated. The default is to use whatever CRM and product analytics already exist. Not worth a question yet.",
+          "test_plan": ""
+        },
+        "decision_thresholds": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "",
+          "evidence": "No continue, change or stop criteria given. This follows once the objective, horizon and economics are known.",
+          "test_plan": ""
+        }
+      },
+      "questions": [
+        {
+          "q": "How many people will work on this go-to-market, and how many hours per week each, for how many weeks (including sales, marketing and customer success time)?",
+          "slot": "capacity",
+          "why": "High uncertainty \u00d7 high impact: the hours available set how many channels and experiments the plan can hold. A plan that doesn't fit the available time is not a plan."
+        },
+        {
+          "q": "Which segment is this: industry, company size, and the role of the person who buys and the person who uses it? Can you name one type of company in that segment who is not a fit?",
+          "slot": "icp",
+          "why": "High uncertainty \u00d7 high impact: the segment sets the message, the channels and whether the buyer is regulated. Without it, nothing else in the plan can be sized."
+        },
+        {
+          "q": "What do you already have in or near this new segment: existing customers who sit in it, partners or resellers, an email list, community presence, references or contacts? Or is it a cold start?",
+          "slot": "existing_distribution",
+          "why": "High uncertainty \u00d7 high impact: existing reach decides which channels are viable at all. It's better to know this before proposing anything new."
+        },
+        {
+          "q": "Can someone in the new segment buy the add-on without already using your base product, or must they adopt the base product first? How is the add-on priced and packaged today?",
+          "slot": "offer",
+          "why": "High uncertainty \u00d7 high impact: a standalone sale and a base-product-plus-add-on sale are different sales motions, with different cycle lengths, pricing and onboarding."
+        },
+        {
+          "q": "What is the one outcome this must achieve (for example a number of paying customers or a revenue target), and by when will it be judged?",
+          "slot": "objective",
+          "why": "High uncertainty \u00d7 high impact: the target and its deadline set the plan's ambition, its pace and the stop-or-continue decision. Horizon is covered here too."
+        },
+        {
+          "q": "What does the new segment use today to get these reports (spreadsheets, BI tools, a competitor, an outsourced provider), and roughly what does it cost them?",
+          "slot": "alternatives",
+          "why": "High uncertainty \u00d7 high impact: positioning, the price anchor and the pitch are all defined against what the buyer already uses."
+        },
+        {
+          "q": "What would make a buyer in this segment hesitate: sending their data into your product, the figures needing to be auditable, or the cost of switching? Does this segment have compliance requirements on its reporting?",
+          "slot": "objections",
+          "why": "High uncertainty \u00d7 high impact: if the segment is regulated or audit-sensitive, traceability becomes a build cost and an early gate in the sale."
+        },
+        {
+          "q": "How much money is available for this go-to-market, and is it fully committed or released only if an early result comes in?",
+          "slot": "budget",
+          "why": "Medium-high value: committed and conditional budgets lead to different plans (paid channels, events, a partner programme)."
+        }
+      ],
+      "summary": {
+        "objective": "Define a go-to-market plan to sell an already-built reporting add-on into a customer segment the company has never targeted. The target outcome and the deadline are not yet stated.",
+        "scope": "Segment definition and buyer roles, positioning against what the segment uses today, offer and pricing, channels matched to existing reach, a plan sized to the hours and budget available, and a measurement and decision framework. The build is out of scope: the add-on is already built.",
+        "assumptions": [
+          "The add-on needs the existing base product (inferred from the word 'add-on'), so a new-segment buyer may have to adopt both.",
+          "The existing customer base belongs to the old segment, so reach into the new one is probably weak.",
+          "Instrumentation defaults to the CRM and analytics already in place.",
+          "The reporting content may be audit-sensitive (financial-reporting context), which would raise the trust and traceability bar, but this is unconfirmed."
+        ],
+        "blind_spot": "Nobody has yet said how much time the team has, or what reach it has into the new segment. A plan built before those two are known risks a long channel list that nobody has the hours to run, aimed at an audience nobody can reach. A close second is whether the segment can buy the add-on without the base product."
       },
       "decisions": [],
       "challenges": [],
@@ -183,167 +363,8 @@
           "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Win first customers for the reporting add-on in a new customer segment (not yet targeted). Target outcome and date not stated.",
-          "evidence": "Client: 'we want a go-to-market plan for selling it into a customer segment we've never targeted before.'",
-          "test_plan": ""
-        },
-        "success_metric": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown: no leading indicator or counting rule stated.",
-          "evidence": "Nothing in the request.",
-          "test_plan": ""
-        },
-        "icp": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Segment is new to the company but not named. Unknown which segment, buyer role, or who it is NOT for.",
-          "evidence": "Client: 'a customer segment we've never targeted before.'",
-          "test_plan": ""
-        },
-        "existing_distribution": {
-          "completeness": 15,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "An installed base of customers of the existing B2B product exists, but it is likely from other segments. No known audience, list, partner or community in the new segment. Raises channels' impact.",
-          "evidence": "Client: 'existing B2B product' and 'never targeted before' imply the new segment has no existing relationship.",
-          "test_plan": ""
-        },
-        "offer": {
-          "completeness": 25,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "A reporting add-on to the existing product. Pricing, packaging, terms, and whether it is sold only to existing product customers or standalone are unknown. If it needs the core product, the new segment must also adopt that product.",
-          "evidence": "Client: 'reporting add-on for our existing B2B product.'",
-          "test_plan": ""
-        },
-        "objections": {
-          "completeness": 5,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown. Financial reporting moves sensitive data and workflow, so trust, data handling, auditability and switching cost are likely decisive. A new segment may also lack the core product.",
-          "evidence": "Not stated; inferred from the financial-reporting context.",
-          "test_plan": ""
-        },
-        "alternatives": {
-          "completeness": 5,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown what the new segment uses today (spreadsheets, BI tools, accounting package reports, consultants) or what it costs. Impact raised because an add-on will be priced.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "channels": {
-          "completeness": 5,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "No candidate channels named. Impact raised: no existing distribution in the segment, and a possibly regulated audience or contact regime (outbound rules) is unknown.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "unit_economics": {
-          "completeness": 0,
-          "confidence": "testable",
-          "impact": "medium",
-          "value": "Unknown customer value, price, margin, sales cycle or acquisition cost in the new segment.",
-          "evidence": "Not stated.",
-          "test_plan": "Run a pricing and willingness-to-pay test with 5-10 segment prospects, then derive the CAC and payback thresholds from the quoted price and sales cycle."
-        },
-        "capacity": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown hours per week and number of weeks available, and who sells, supports and onboards.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "budget": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Unknown amount, and whether it is committed or conditional on early results.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "horizon": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Unknown when this is judged.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "instrumentation": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "low",
-          "value": "Unknown how pipeline and adoption are tracked.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        },
-        "decision_thresholds": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "No continue/change/stop thresholds defined.",
-          "evidence": "Not stated.",
-          "test_plan": ""
-        }
-      },
-      "questions": [
-        {
-          "q": "Which customer segment is this (industry, company size, buyer role), and who is it deliberately not for?",
-          "slot": "icp",
-          "why": "uncertainty \u00d7 impact: every other choice (channels, offer, objections, alternatives) depends on it, and it is currently unnamed."
-        },
-        {
-          "q": "How many hours per week, for how many weeks, can your team realistically give to selling this, and who would do it?",
-          "slot": "capacity",
-          "why": "uncertainty \u00d7 impact: this is the binding constraint, and a plan that exceeds the available hours is not a plan."
-        },
-        {
-          "q": "What do you already have in this segment: any existing customers, contacts, partners, communities or a mailing list? And can someone buy the add-on without your core product?",
-          "slot": "existing_distribution",
-          "why": "uncertainty \u00d7 impact: this decides which channels are viable at all, and whether the new segment must also adopt the core product."
-        },
-        {
-          "q": "What outcome would count as success, and by when (for example a number of paying customers or pilots within a given number of months)?",
-          "slot": "objective",
-          "why": "uncertainty \u00d7 impact: without a target and a clock, no threshold or budget can be derived."
-        },
-        {
-          "q": "What does this segment use today for reporting, and what is the main reason they might hesitate to switch (data handling, trust, integration, cost)?",
-          "slot": "objections",
-          "why": "uncertainty \u00d7 impact: your reporting handles sensitive financial data, so the objection and the incumbent define positioning and price."
-        }
-      ],
-      "summary": {
-        "objective": "Build a go-to-market plan to sell the reporting add-on into a customer segment the company has never targeted, with no target or date yet defined.",
-        "scope": "Likely scope: define the segment and buyer, position the add-on against what they use today, choose a few channels the available hours can support, set a price and offer, and define success measures and stop/continue thresholds. Details are open until the segment and capacity are known.",
-        "assumptions": [
-          "The new segment has no existing relationship with the company, so distribution must be built from scratch.",
-          "The add-on probably depends on the core product, which may make the offer a two-step adoption.",
-          "Reporting touches sensitive financial data, so trust and auditability are likely the main objections.",
-          "Budget, hours and timeline are unknown and not assumed."
-        ],
-        "blind_spot": "The team's available selling hours and any existing foothold in the new segment: both decide which channels are viable, and the plan cannot be sized until they are known."
-      },
-      "decisions": [],
-      "challenges": [],
-      "opportunities": [],
-      "exclusions": [],
-      "thresholds": []
-    },
-    {
-      "model": {
-        "objective": {
-          "completeness": 25,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Win first customers for the reporting add-on in a new customer segment. The target outcome (number of customers, revenue, pilots) and its date are not stated.",
-          "evidence": "Client: \"We've built a reporting add-on for our existing B2B product and want a go-to-market plan for selling it into a customer segment we've never targeted before.\"",
+          "value": "Win first paying customers for the reporting add-on in a new customer segment (not yet named). Target outcome and date not stated.",
+          "evidence": "Request: 'go-to-market plan for selling it into a customer segment we've never targeted before.'",
           "test_plan": ""
         },
         "success_metric": {
@@ -351,55 +372,55 @@
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "No leading indicator named. It needs to be separate from the goal, with an explicit counting rule (e.g. whether free pilots or existing-customer upsells count).",
+          "evidence": "No leading indicator or counting rule given.",
           "test_plan": ""
         },
         "icp": {
           "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "A new segment, not yet named. Unknown: industry, company size, buyer role, and who it is not for.",
-          "evidence": "Client: \"a customer segment we've never targeted before\". The segment is not named.",
+          "value": "Segment is unnamed; only known to be new to the company and B2B.",
+          "evidence": "Request: 'a customer segment we've never targeted before.'",
           "test_plan": ""
         },
         "existing_distribution": {
-          "completeness": 20,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "The existing product's customer base and relationships likely exist, but they were gathered for a different segment. There is probably little or no direct reach into the new segment. Unknown whether any partners, communities or lists overlap with it.",
-          "evidence": "Deduced from \"existing B2B product\" and \"never targeted before\". Nothing stated about lists, partners or community.",
-          "test_plan": ""
-        },
-        "offer": {
           "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "A reporting add-on to the existing product. Unknown: packaging (standalone or bundled), price, trial or pilot terms, and whether the new segment must buy the core product too.",
-          "evidence": "Client: \"a reporting add-on for our existing B2B product\". If the add-on requires the core product, the new segment must adopt both, which changes the offer.",
+          "value": "Existing B2B customer base and product exist, but the segment is new, so the existing audience likely does not match the ICP. Whether any list, partner or community reaches the new segment is unknown.",
+          "evidence": "Request: 'existing B2B product' and 'never targeted before'. Match to new segment is deduced, not stated.",
+          "test_plan": ""
+        },
+        "offer": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "A reporting add-on to the existing product. Whether it is sold to new segment buyers who must also adopt the base product, or standalone, is unknown. Pricing and terms unknown.",
+          "evidence": "Request: 'reporting add-on for our existing B2B product'. Add-on dependency on the base product is a deduction. If the add-on needs the base product, the new segment may have to buy two things.",
           "test_plan": ""
         },
         "objections": {
           "completeness": 5,
-          "confidence": "testable",
+          "confidence": "empty",
           "impact": "high",
-          "value": "Unknown. Likely candidates: adopting the core product as a prerequisite, handing financial or operational data to a new vendor, switching cost from existing reports or spreadsheets, and trust in a vendor new to the segment. If the reports feed finance, auditability and traceability become a purchase criterion.",
-          "evidence": "No buyer conversations in this segment are mentioned. The add-on moves the buyer's data or workflow somewhere new, so the objection will decide conversion.",
-          "test_plan": "Run 8-10 discovery or demo calls with prospects from the new segment. Record the stated reason for not buying or switching, and whether the add-on is viable without the core product."
+          "value": "Unknown. The add-on likely moves financial or operational data into the product, so trust, data handling and switching cost are probable blockers. If reporting touches financial figures, auditability and export requirements may decide conversion.",
+          "evidence": "Not stated. Inferred risk from the nature of reporting add-ons (see financial-reporting context).",
+          "test_plan": ""
         },
         "alternatives": {
           "completeness": 5,
           "confidence": "empty",
           "impact": "high",
-          "value": "",
-          "evidence": "Not stated. What the new segment uses today (spreadsheets, BI tools, a competitor, an analyst) and what it costs defines positioning and the price anchor, so impact is raised from medium to high.",
+          "value": "Unknown what the new segment uses today (spreadsheets, BI tools, accountants, a competitor). Impact raised because the add-on will be priced and positioned against that.",
+          "evidence": "Not stated.",
           "test_plan": ""
         },
         "channels": {
           "completeness": 5,
           "confidence": "empty",
           "impact": "high",
-          "value": "",
-          "evidence": "No channels named. Impact is raised because no existing distribution reaches the new segment. Outbound cold contact may carry a legal regime (unsolicited-contact rules), and the segment may be regulated.",
+          "value": "No channels named. Impact raised because the segment is new and no existing distribution is confirmed to reach it. A channel with a legal regime (cold outreach) or a regulated segment would raise it further.",
+          "evidence": "Not stated.",
           "test_plan": ""
         },
         "unit_economics": {
@@ -407,15 +428,15 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No price, contract length, cost to serve or acquisition cost mentioned.",
+          "evidence": "No price, margin, retention or CAC given.",
           "test_plan": ""
         },
         "capacity": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "",
-          "evidence": "No team size, hours per week or number of weeks stated. This is the binding constraint on how many channels the plan can include.",
+          "value": "Unknown how many people and hours per week are available for go-to-market work, and for how many weeks.",
+          "evidence": "Not stated. This is the binding constraint on how many channels the plan can include.",
           "test_plan": ""
         },
         "budget": {
@@ -423,7 +444,7 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No budget stated, and nothing on whether it is committed or conditional on an early result.",
+          "evidence": "Not stated.",
           "test_plan": ""
         },
         "horizon": {
@@ -431,15 +452,15 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No deadline or review date stated.",
+          "evidence": "No date or review point given.",
           "test_plan": ""
         },
         "instrumentation": {
-          "completeness": 0,
-          "confidence": "empty",
+          "completeness": 10,
+          "confidence": "inferred",
           "impact": "low",
-          "value": "",
-          "evidence": "Nothing stated on CRM, product analytics or attribution. Low impact until a metric is chosen.",
+          "value": "Assume the existing product's analytics and CRM can count leads and conversions. Not confirmed.",
+          "evidence": "Deduced. Not stated.",
           "test_plan": ""
         },
         "decision_thresholds": {
@@ -447,52 +468,56 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No continue, change or stop criteria stated.",
+          "evidence": "No continue/change/stop criteria given.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "How many people will work on this go-to-market effort, for how many hours a week and for how many weeks (for example, 2 people at about 5 hours each for 12 weeks)?",
-          "slot": "capacity",
-          "why": "uncertainty \u00d7 impact: this is the binding constraint. Without it, any channel list may assume more hands than exist."
-        },
-        {
-          "q": "Which segment are you targeting (industry, company size, buyer role), and who would be a poor fit?",
+          "q": "Which customer segment is this (industry, company size, the buyer's role), and who is it explicitly not for?",
           "slot": "icp",
-          "why": "uncertainty \u00d7 impact: the segment is unnamed. It determines every other choice (channels, offer, objections, competitors)."
+          "why": "High uncertainty and high impact: every other choice (offer, objections, channels, alternatives) depends on who the segment is, and a regulated segment would change the channel rules."
         },
         {
-          "q": "What do you already have that touches this segment: current customers who look like it, partners, an email list, community presence, a reseller, or even a few warm contacts? Or is it a cold start?",
+          "q": "How many people will work on this go-to-market, and how many hours per week each, for how many weeks?",
+          "slot": "capacity",
+          "why": "High impact: the plan has to fit the hours that exist, and this decides how many channels it can include."
+        },
+        {
+          "q": "What already reaches this new segment today: an email list, a partner, a community, a few existing customers in the segment, or nothing?",
           "slot": "existing_distribution",
-          "why": "uncertainty \u00d7 impact: this decides which channels are even viable. Proposing a new channel before knowing it would be designing on top of an unknown."
+          "why": "High impact: this largely decides which channels are viable. Starting from nothing leads to a different plan than starting from a partner or a warm list."
         },
         {
-          "q": "Can the add-on be bought and used without the core product? If not, would a new-segment customer have to adopt both? And how do you expect to price it (included, per seat, flat fee, not decided)?",
+          "q": "Can the add-on be bought on its own, or only by customers who also use your base product? On what pricing and terms?",
           "slot": "offer",
-          "why": "uncertainty \u00d7 impact: a prerequisite on the core product turns an add-on sale into a full product sale. That is a different pitch, cycle and objection set."
+          "why": "High impact: if new-segment buyers must adopt the whole product, the sale and the objections are very different from a standalone add-on."
         },
         {
-          "q": "What outcome counts as success, and by when (for example, 5 paying customers in 6 months, or 10 pilots by year-end)? Do free pilots or sales to existing customers count?",
+          "q": "What is the one outcome you want from this and by when (for example, N paying customers or a revenue figure within X months), and what early signal would you count as progress?",
           "slot": "objective",
-          "why": "uncertainty \u00d7 impact: without a target and a deadline, there are no thresholds for deciding to continue, change or stop."
+          "why": "High impact: without a target and a clock, nothing can be judged as working or not."
         },
         {
-          "q": "What does this segment use for reporting today (spreadsheets, a BI tool, a competitor, an analyst), and do you know roughly what it costs them?",
+          "q": "What does this segment use today for reporting, and what does it cost them?",
           "slot": "alternatives",
-          "why": "uncertainty \u00d7 impact: positioning and the price anchor are defined against what the buyer already uses."
+          "why": "The add-on's price and pitch are defined against what the buyer already uses, so this sets positioning."
+        },
+        {
+          "q": "What would make a buyer in this segment hesitate: sending their data into your product, switching from what they have, or compliance and audit requirements?",
+          "slot": "objections",
+          "why": "High impact: for a reporting add-on that handles the customer's data, this objection often decides whether they buy."
         }
       ],
       "summary": {
-        "objective": "Build a go-to-market plan to sell the reporting add-on into a customer segment the company has never targeted. The success target and deadline are not yet defined.",
-        "scope": "Likely scope: define the segment and the offer, identify the reachable channels given available people and distribution, and set success metrics and decision thresholds. Out of scope for now: product changes to the add-on.",
+        "objective": "Build a go-to-market plan to sell the reporting add-on into a customer segment the company has never targeted. The target, the date and the success measure are not yet defined.",
+        "scope": "Likely scope: define the segment and its buyer, position the add-on against what the segment uses today, pick channels that fit the hours available, and set decision thresholds. Not yet scoped: the pricing, the product changes, and any compliance work.",
         "assumptions": [
-          "The existing customer base does not match the new segment, so there is little or no direct reach.",
-          "The add-on sits on top of the existing product, so the new segment may need to adopt the core product too (to confirm).",
-          "A buyer in the new segment will need proof of trust and data handling before switching (to test in buyer conversations).",
-          "A pricing model and willingness to pay in the new segment are unknown and will need to be tested."
+          "The add-on is sold as an extension of the existing B2B product, so new buyers may need the base product too.",
+          "The existing customer base and audience probably do not match the new segment.",
+          "The existing analytics and CRM can count leads and conversions."
         ],
-        "blind_spot": "Whether the add-on can be sold on its own. If the new segment must also adopt the core product, this is a full product sale to an unfamiliar audience with no existing distribution. Team hours are also unknown, so the plan cannot yet be sized to what the team can actually do."
+        "blind_spot": "Nothing is known about the segment, the available hours, or whether any existing distribution reaches it. The plan cannot choose channels until these are answered, and if the add-on needs the base product, the sale is a bigger one than the request suggests."
       },
       "decisions": [],
       "challenges": [],

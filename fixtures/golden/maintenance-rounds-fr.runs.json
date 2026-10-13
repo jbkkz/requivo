@@ -7,576 +7,627 @@
     {
       "model": {
         "problem": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Planifier les visites de maintenance chez les clients, organiser une tourn\u00e9e par technicien et replanifier quand un client annule au dernier moment. Le besoin r\u00e9el (gain de temps de planification, r\u00e9duction des kilom\u00e8tres, respect des engagements contractuels de maintenance, taux d'occupation des techniciens) n'est pas formul\u00e9.",
-          "evidence": "\u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb",
-          "test_plan": ""
-        },
-        "current_process": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : on ne sait pas comment les visites sont planifi\u00e9es aujourd'hui (Excel, agenda, outil existant, \u00e0 la main par un planificateur) ni comment les annulations sont g\u00e9r\u00e9es.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "existing_solutions": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : aucun outil existant, d\u00e9j\u00e0 licenci\u00e9 ou achetable (logiciel de planification d'interventions / field service, module de GMAO, fonction non activ\u00e9e de la plateforme) n'est mentionn\u00e9, ni de budget.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "success_metrics": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : pas de crit\u00e8re de r\u00e9ussite (temps de replanification, km parcourus, visites r\u00e9alis\u00e9es dans les d\u00e9lais contractuels, cr\u00e9neaux annul\u00e9s re-remplis).",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "payer": {
-          "completeness": 60,
-          "confidence": "inferred",
-          "impact": "low",
-          "value": "Outil interne ou module de la plateforme pour les propres clients de l'entreprise : le commanditaire est le payeur, pas de mod\u00e8le de revenu \u00e0 d\u00e9finir.",
-          "evidence": "\u00ab nos clients \u00bb, \u00ab nos techniciens \u00bb sugg\u00e8rent un usage interne",
-          "test_plan": ""
-        },
-        "actors": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Techniciens (ex\u00e9cutent les tourn\u00e9es), un planificateur / responsable d'exploitation (probable), clients (annulent, \u00e9ventuellement via un contact). Qui cr\u00e9e les visites, qui valide la replanification, qui est pr\u00e9venu : non pr\u00e9cis\u00e9.",
-          "evidence": "\u00ab une tourn\u00e9e par technicien \u00bb, \u00ab un client annule \u00bb",
-          "test_plan": ""
-        },
-        "business_objects": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "Visite de maintenance, Technicien, Client (et site / adresse d'intervention), Tourn\u00e9e (technicien \u00d7 jour), Annulation. Probablement li\u00e9es \u00e0 un contrat de maintenance ; les champs (dur\u00e9e, comp\u00e9tences requises, cr\u00e9neau, adresse) sont \u00e0 confirmer.",
-          "evidence": "D\u00e9duit de la demande ; contexte plateforme (Client, Contact, Contract, Mission)",
-          "test_plan": ""
-        },
-        "business_rules": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : crit\u00e8res de constitution d'une tourn\u00e9e (zone g\u00e9ographique, comp\u00e9tences / habilitations, dur\u00e9e des visites, horaires et fen\u00eatres d'acc\u00e8s clients, temps de trajet, charge max), d\u00e9finition de \u00ab dernier moment \u00bb (d\u00e9lai), r\u00e8gles de replanification (qui est d\u00e9plac\u00e9, priorit\u00e9 contractuelle, p\u00e9nalit\u00e9s), variation par client ou contrat.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "workflow": {
-          "completeness": 15,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Cycle de vie de la visite non d\u00e9fini (\u00e0 planifier \u2192 planifi\u00e9e \u2192 confirm\u00e9e \u2192 r\u00e9alis\u00e9e / annul\u00e9e / replanifi\u00e9e). L'origine des visites (\u00e9ch\u00e9ances de contrat r\u00e9currentes, demande client, cr\u00e9ation manuelle) est inconnue, ainsi que la fin de cycle (compte rendu, facturation).",
-          "evidence": "\u00ab planifier les visites \u00bb, \u00ab replanification quand un client annule \u00bb",
-          "test_plan": ""
-        },
-        "integrations": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : notification du technicien et du client lors d'un changement, agenda, cartographie / calcul d'itin\u00e9raire, GPS, application mobile, lien avec contrats et facturation de la plateforme.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "permissions": {
-          "completeness": 10,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Hypoth\u00e8se : un technicien ne voit que sa tourn\u00e9e, le planificateur voit et modifie toutes les tourn\u00e9es. \u00c0 confirmer, notamment qui peut d\u00e9placer une visite d'un autre technicien.",
-          "evidence": "D\u00e9duit ; contexte plateforme (permissions oubli\u00e9es jusqu'\u00e0 la recette)",
-          "test_plan": ""
-        },
-        "config_vs_custom": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : r\u00e8gles de planification identiques pour tous les clients/contrats ou sp\u00e9cifiques (fen\u00eatres, d\u00e9lais d'annulation, priorit\u00e9s).",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "constraints": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : \u00e9ch\u00e9ance, volume (nombre de techniciens, de visites par jour), contraintes r\u00e9glementaires (temps de travail, RGPD sur adresses et donn\u00e9es clients), d\u00e9pendances.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "edge_cases": {
-          "completeness": 10,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "\u00c0 traiter : annulation le jour m\u00eame alors que le technicien est d\u00e9j\u00e0 en route, technicien absent, plusieurs annulations simultan\u00e9es, client qui annule puis rappelle, visite contractuellement obligatoire \u00e0 ne pas d\u00e9caler, cr\u00e9neau lib\u00e9r\u00e9 \u00e0 remplir ou non, double replanification.",
-          "evidence": "D\u00e9duit de \u00ab annule au dernier moment \u00bb",
-          "test_plan": ""
-        },
-        "reporting": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "low",
-          "value": "Inconnu : suivi des annulations, historique des changements, export. Aucune obligation d'audit ou de conformit\u00e9 n'est mentionn\u00e9e \u00e0 ce stade.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "acceptance": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : sc\u00e9narios de recette (ex. : une annulation la veille produit une tourn\u00e9e recalcul\u00e9e et les personnes concern\u00e9es sont pr\u00e9venues).",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "risks": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Risques \u00e0 confirmer : adoption par les techniciens sur le terrain, qualit\u00e9 des adresses et dur\u00e9es de visite, tourn\u00e9es recalcul\u00e9es non r\u00e9alistes, d\u00e9ploiement progressif vs bascule unique.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "acquisition": {
-          "completeness": 70,
-          "confidence": "inferred",
-          "impact": "low",
-          "value": "D\u00e9ploiement aupr\u00e8s d'un ensemble connu d'utilisateurs internes (planificateurs, techniciens) : rel\u00e8ve du d\u00e9ploiement (risques), pas de l'acquisition.",
-          "evidence": "Usage interne suppos\u00e9",
-          "test_plan": ""
-        }
-      },
-      "questions": [
-        {
-          "q": "Comment planifiez-vous les visites et g\u00e9rez-vous les annulations aujourd'hui (Excel, agenda, un outil de planification d\u00e9j\u00e0 pay\u00e9 ou envisag\u00e9), et avez-vous un budget ou \u00e9cart\u00e9 des solutions du march\u00e9 ?",
-          "slot": "existing_solutions",
-          "why": "Incertitude \u00e9lev\u00e9e \u00d7 impact \u00e9lev\u00e9 : acheter ou activer un outil existant peut supprimer tout ou partie du d\u00e9veloppement, et le budget dimensionne le reste."
-        },
-        {
-          "q": "D'o\u00f9 viennent les visites \u00e0 planifier : sont-elles g\u00e9n\u00e9r\u00e9es automatiquement par les contrats de maintenance (p\u00e9riodicit\u00e9, \u00e9ch\u00e9ances \u00e0 respecter), demand\u00e9es par les clients, ou saisies \u00e0 la main ? Et qui les cr\u00e9e et les attribue aux techniciens ?",
-          "slot": "workflow",
-          "why": "L'origine des visites est le point amont qui peut transformer l'outil en un sous-syst\u00e8me complet (contrats, p\u00e9riodicit\u00e9, demandes) ; elle change fortement le p\u00e9rim\u00e8tre."
-        },
-        {
-          "q": "Quelles r\u00e8gles doivent respecter une tourn\u00e9e (zone, comp\u00e9tences ou habilitations, dur\u00e9e des visites, horaires d'acc\u00e8s chez le client, temps de trajet, charge maximale par jour) et ces r\u00e8gles varient-elles selon les clients ou les contrats ?",
-          "slot": "business_rules",
-          "why": "Ce sont ces r\u00e8gles qui d\u00e9cident si l'on construit un simple calendrier ou un moteur d'optimisation de tourn\u00e9es."
-        },
-        {
-          "q": "Qu'entendez-vous par \u00ab dernier moment \u00bb (veille, matin m\u00eame, technicien d\u00e9j\u00e0 en route) et que doit-il se passer alors : la visite est-elle d\u00e9cal\u00e9e automatiquement ou propos\u00e9e au planificateur ? Le cr\u00e9neau lib\u00e9r\u00e9 est-il combl\u00e9 par une autre visite ? Qui est pr\u00e9venu (technicien, client, quel contact) ?",
-          "slot": "edge_cases",
-          "why": "Le comportement attendu \u00e0 l'annulation (automatique ou valid\u00e9 par un humain, notifications) change la conception de la replanification et les r\u00e8gles de notification."
-        },
-        {
-          "q": "Combien de techniciens et de visites par jour sont concern\u00e9s, et qui utilisera l'outil (planificateur au bureau, techniciens sur mobile) ? Une \u00e9ch\u00e9ance est-elle fix\u00e9e ?",
-          "slot": "actors",
-          "why": "Le volume et les profils d'utilisateurs d\u00e9terminent l'effort (mobile ou non, calcul de tourn\u00e9e) et les permissions \u00e0 pr\u00e9voir."
-        }
-      ],
-      "summary": {
-        "objective": "Planifier les visites de maintenance chez les clients, avec une tourn\u00e9e par technicien et une replanification en cas d'annulation tardive d'un client.",
-        "scope": "Probable : cr\u00e9ation et affectation des visites, constitution des tourn\u00e9es par technicien et par jour, gestion des annulations avec replanification et notification. Hors p\u00e9rim\u00e8tre \u00e0 confirmer : optimisation pouss\u00e9e d'itin\u00e9raires, application mobile, g\u00e9n\u00e9ration automatique des visites depuis les contrats, facturation.",
-        "assumptions": [
-          "Outil interne : le commanditaire est le payeur, sans mod\u00e8le de revenu.",
-          "Les acteurs sont des techniciens, un planificateur et des clients ; le planificateur valide les changements.",
-          "Un technicien ne voit que sa tourn\u00e9e, le planificateur voit tout.",
-          "Les visites sont probablement li\u00e9es aux contrats de maintenance existants.",
-          "Aucune obligation de conformit\u00e9 ou d'audit n'a \u00e9t\u00e9 mentionn\u00e9e."
-        ],
-        "blind_spot": "On ignore s'il faut construire : un outil de planification d'interventions existant, d\u00e9j\u00e0 pay\u00e9 ou achetable, peut couvrir le besoin. Et si l'on construit, l'origine des visites (contrats p\u00e9riodiques, demandes clients) et la mani\u00e8re dont une annulation tardive est replanifi\u00e9e (automatique ou valid\u00e9e, cr\u00e9neau combl\u00e9 ou non, qui est pr\u00e9venu) font passer le projet d'un simple calendrier \u00e0 un moteur de planification."
-      },
-      "decisions": [],
-      "challenges": [],
-      "opportunities": [],
-      "exclusions": [],
-      "thresholds": []
-    },
-    {
-      "model": {
-        "problem": {
-          "completeness": 40,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Les visites de maintenance chez les clients ne sont pas planifi\u00e9es de fa\u00e7on structur\u00e9e par technicien, et une annulation tardive d\u00e9sorganise la tourn\u00e9e (cr\u00e9neau perdu, d\u00e9placements inutiles, visite \u00e0 reprogrammer \u00e0 la main). Le besoin r\u00e9el (r\u00e9duire les kilom\u00e8tres, tenir les engagements contractuels de maintenance, ne pas perdre de capacit\u00e9 technicien) n'est pas encore \u00e9nonc\u00e9.",
-          "evidence": "\u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb",
-          "test_plan": ""
-        },
-        "current_process": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : planification actuelle (Excel, agenda, outil existant, \u00e0 la main par un responsable ?) et gestion actuelle des annulations.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "existing_solutions": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : outil de planification/tourn\u00e9es d\u00e9j\u00e0 pay\u00e9 ou non activ\u00e9, solutions du march\u00e9 (field service management) envisag\u00e9es ou \u00e9cart\u00e9es, budget.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "success_metrics": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Non pr\u00e9cis\u00e9. Pistes \u00e0 confirmer : temps de replanification apr\u00e8s annulation, kilom\u00e8tres/temps de trajet par tourn\u00e9e, taux de visites tenues, cr\u00e9neaux lib\u00e9r\u00e9s re-remplis.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "payer": {
-          "completeness": 60,
-          "confidence": "inferred",
-          "impact": "low",
-          "value": "Outil interne : l'entreprise qui porte la demande finance. Pas de mod\u00e8le de revenu \u00e0 d\u00e9finir.",
-          "evidence": "\u00ab nos clients \u00bb : l'entreprise est le prestataire de maintenance, les clients ne paient pas l'outil.",
-          "test_plan": ""
-        },
-        "actors": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Technicien (ex\u00e9cute sa tourn\u00e9e), planificateur/responsable d'exploitation (construit et ajuste les tourn\u00e9es, probablement), client et son contact (demande ou annule une visite). Qui d\u00e9cide d'une replanification n'est pas \u00e9tabli.",
-          "evidence": "\u00ab une tourn\u00e9e par technicien \u00bb, \u00ab quand un client annule \u00bb",
-          "test_plan": ""
-        },
-        "business_objects": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "Visite de maintenance (client, adresse, dur\u00e9e, statut), Technicien (comp\u00e9tences, zone, disponibilit\u00e9s), Tourn\u00e9e (journ\u00e9e + technicien + ordre des visites), Client/Contact, Contrat de maintenance (probable source des visites), Annulation/Replanification.",
-          "evidence": "D\u00e9duit de la demande et de la fiche B2B (Contrat, Mission, Client, Contact).",
-          "test_plan": ""
-        },
-        "business_rules": {
-          "completeness": 15,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : d\u00e9finition de \u00ab dernier moment \u00bb (d\u00e9lai), p\u00e9nalit\u00e9 ou facturation d'une annulation tardive, r\u00e8gle de replanification (m\u00eame technicien, d\u00e9lai maximal, priorit\u00e9 aux contrats avec engagement), comp\u00e9tences requises par visite, cr\u00e9neaux impos\u00e9s par le client. Peut varier selon le client ou le contrat.",
-          "evidence": "\u00ab annule au dernier moment \u00bb",
-          "test_plan": ""
-        },
-        "workflow": {
-          "completeness": 25,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Cycle de vie probable d'une visite : \u00e0 planifier \u2192 planifi\u00e9e (dans une tourn\u00e9e) \u2192 r\u00e9alis\u00e9e, avec branche annul\u00e9e \u2192 \u00e0 replanifier. L'origine des visites (contrat r\u00e9current, demande client, ticket) et qui les affecte \u00e0 un technicien ne sont pas dits.",
-          "evidence": "Seuls la tourn\u00e9e par technicien et la replanification sur annulation sont \u00e9nonc\u00e9es.",
-          "test_plan": ""
-        },
-        "integrations": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : qui est notifi\u00e9 d'une annulation ou d'un changement de tourn\u00e9e (technicien, client, planificateur), par quel canal, lien avec agenda, GPS/cartographie ou facturation.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "permissions": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : qui peut modifier une tourn\u00e9e, qui peut annuler/replanifier, ce que voit un technicien (sa tourn\u00e9e seulement ?), acc\u00e8s client \u00e9ventuel.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "config_vs_custom": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : r\u00e8gles de planification identiques pour tous les clients de la plateforme ou param\u00e9trables par client/contrat.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "constraints": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : \u00e9ch\u00e9ance, nombre de techniciens et de visites par jour, zone g\u00e9ographique, d\u00e9pendances au module contrats existant.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "edge_cases": {
-          "completeness": 15,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "\u00c0 traiter : annulation le jour m\u00eame alors que le technicien est d\u00e9j\u00e0 en route, annulation de plusieurs visites d'une m\u00eame tourn\u00e9e, aucun technicien disponible ou comp\u00e9tent, client qui annule puis r\u00e9tablit, visite urgente \u00e0 ins\u00e9rer, technicien absent.",
-          "evidence": "D\u00e9duit du cas d'annulation tardive cit\u00e9.",
-          "test_plan": ""
-        },
-        "reporting": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "low",
-          "value": "Aucune exigence d'audit ou de tra\u00e7abilit\u00e9 r\u00e9glementaire mentionn\u00e9e. Possible besoin de suivi des annulations par client \u00e0 confirmer.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "acceptance": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "\u00c0 d\u00e9finir. Sc\u00e9nario type : un client annule la veille, la visite est replanifi\u00e9e et la tourn\u00e9e du technicien mise \u00e0 jour sans double r\u00e9servation.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "risks": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Risques probables : adoption par les techniciens sur le terrain, qualit\u00e9 des adresses et dur\u00e9es, replanification automatique non souhait\u00e9e par les clients. Mise en place progressive \u00e0 d\u00e9finir.",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "acquisition": {
-          "completeness": 70,
-          "confidence": "inferred",
-          "impact": "low",
-          "value": "D\u00e9ploiement aupr\u00e8s d'utilisateurs internes connus (planificateurs, techniciens) : rel\u00e8ve du rollout, pas de l'acquisition.",
-          "evidence": "Outil interne.",
-          "test_plan": ""
-        }
-      },
-      "questions": [
-        {
-          "q": "Comment planifiez-vous les visites et les tourn\u00e9es aujourd'hui (Excel, agenda, un outil d\u00e9di\u00e9 ?), et existe-t-il d\u00e9j\u00e0 un outil de planification ou de tourn\u00e9es que vous payez ou dont une fonction n'est pas activ\u00e9e ? Avez-vous regard\u00e9 des solutions du march\u00e9, avec quel budget ?",
-          "slot": "existing_solutions",
-          "why": "Incertitude \u00e9lev\u00e9e \u00d7 impact \u00e9lev\u00e9 : acheter ou activer un outil existant peut supprimer le d\u00e9veloppement, et le budget dimensionne tout le reste."
-        },
-        {
-          "q": "D'o\u00f9 viennent les visites \u00e0 planifier : sont-elles g\u00e9n\u00e9r\u00e9es par les contrats de maintenance (p\u00e9riodicit\u00e9), demand\u00e9es par les clients, ou les deux ? Et qui les cr\u00e9e et les affecte \u00e0 un technicien aujourd'hui ?",
-          "slot": "workflow",
-          "why": "Si l'origine des visites n'existe pas encore dans la plateforme, le p\u00e9rim\u00e8tre s'\u00e9tend \u00e0 un sous-syst\u00e8me complet (g\u00e9n\u00e9ration, affectation) bien au-del\u00e0 de la tourn\u00e9e."
-        },
-        {
-          "q": "Quand un client annule \u00ab au dernier moment \u00bb, que doit-il se passer ? \u00c0 partir de quel d\u00e9lai parle-t-on de dernier moment, la visite est-elle reprogramm\u00e9e automatiquement ou propos\u00e9e \u00e0 un planificateur qui valide, et le cr\u00e9neau lib\u00e9r\u00e9 doit-il \u00eatre re-rempli par une autre visite ?",
-          "slot": "business_rules",
-          "why": "C'est le c\u0153ur de la demande : une replanification automatique ou assist\u00e9e sont deux constructions tr\u00e8s diff\u00e9rentes, et la r\u00e8gle peut varier selon le client ou le contrat."
-        },
-        {
-          "q": "Que doit prendre en compte la tourn\u00e9e d'un technicien : simple liste ordonn\u00e9e \u00e0 la main, ou optimisation automatique des trajets avec comp\u00e9tences requises, cr\u00e9neaux impos\u00e9s par le client, dur\u00e9e de visite et point de d\u00e9part ? Combien de techniciens et de visites par jour environ ?",
-          "slot": "constraints",
-          "why": "Une optimisation d'itin\u00e9raire est un chantier d'un autre ordre de grandeur qu'un ordonnancement manuel, et le volume d\u00e9cide de la faisabilit\u00e9."
-        },
-        {
-          "q": "Qui doit \u00eatre pr\u00e9venu quand une visite est annul\u00e9e ou d\u00e9plac\u00e9e (technicien, client, quel contact selon son r\u00f4le), et par quel canal ? Le technicien doit-il consulter sa tourn\u00e9e sur mobile en d\u00e9placement ?",
-          "slot": "integrations",
-          "why": "Le routage des notifications d\u00e9pend du r\u00f4le du contact et des canaux : il conditionne l'interface terrain et les int\u00e9grations."
-        }
-      ],
-      "summary": {
-        "objective": "Planifier les visites de maintenance chez les clients, avec une tourn\u00e9e par technicien, et replanifier quand un client annule au dernier moment.",
-        "scope": "Probable : visites rattach\u00e9es \u00e0 des clients/contrats, tourn\u00e9e journali\u00e8re par technicien, gestion de l'annulation et de la replanification, notifications associ\u00e9es. Le niveau d'automatisation (optimisation d'itin\u00e9raire, replanification automatique) et l'origine des visites restent \u00e0 pr\u00e9ciser.",
-        "assumptions": [
-          "Outil interne financ\u00e9 par l'entreprise, sans mod\u00e8le de revenu",
-          "Les visites d\u00e9coulent probablement de contrats de maintenance existants dans la plateforme",
-          "Acteurs : technicien, planificateur/responsable, client et contact",
-          "Cycle de vie : \u00e0 planifier \u2192 planifi\u00e9e \u2192 r\u00e9alis\u00e9e, avec branche annul\u00e9e \u2192 \u00e0 replanifier",
-          "Aucune exigence r\u00e9glementaire ou d'audit particuli\u00e8re n'a \u00e9t\u00e9 mentionn\u00e9e"
-        ],
-        "blind_spot": "On ne sait pas si un outil existant couvre d\u00e9j\u00e0 ce besoin, ni d'o\u00f9 viennent les visites \u00e0 planifier. Sans origine claire des visites et sans r\u00e8gle pr\u00e9cise de replanification, le p\u00e9rim\u00e8tre peut passer d'un simple affichage de tourn\u00e9es \u00e0 un moteur complet de planification et d'optimisation."
-      },
-      "decisions": [],
-      "challenges": [],
-      "opportunities": [],
-      "exclusions": [],
-      "thresholds": []
-    },
-    {
-      "model": {
-        "problem": {
-          "completeness": 40,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Planifier les visites de maintenance chez les clients, organiser une tourn\u00e9e par technicien et r\u00e9agir aux annulations de derni\u00e8re minute. La douleur exacte (temps perdu, d\u00e9placements \u00e0 vide, cr\u00e9neaux non remplac\u00e9s, SLA manqu\u00e9s) n'est pas dite.",
-          "evidence": "\u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb",
-          "test_plan": ""
-        },
-        "current_process": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : planification manuelle, Excel, outil existant ou module de la plateforme ?",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "existing_solutions": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Inconnu : outil de planification/FSM, ERP, agenda ou fonction licenci\u00e9e non activ\u00e9e ? Budget ? Le besoin est formul\u00e9 comme une construction, sans comparaison avec l'achat.",
-          "evidence": "\u00ab Nous aimerions planifier\u2026 \u00bb : aucun outil, \u00e9diteur ni budget mentionn\u00e9",
-          "test_plan": ""
-        },
-        "success_metrics": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : visites par technicien/jour, kilom\u00e8tres parcourus, taux de cr\u00e9neaux annul\u00e9s re-remplis, d\u00e9lai de replanification, respect des engagements contractuels ?",
-          "evidence": "",
-          "test_plan": ""
-        },
-        "payer": {
-          "completeness": 60,
-          "confidence": "inferred",
-          "impact": "low",
-          "value": "Outil interne ou fonction de la plateforme : le payeur est l'entreprise elle-m\u00eame.",
-          "evidence": "\u00ab nos clients \u00bb, \u00ab nos \u00bb techniciens : usage interne d\u00e9duit",
-          "test_plan": ""
-        },
-        "actors": {
           "completeness": 35,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Techniciens (ex\u00e9cutent la tourn\u00e9e), clients (re\u00e7oivent la visite, annulent), probablement un planificateur/dispatcheur qui cr\u00e9e et affecte les visites. Qui cr\u00e9e, qui affecte, qui valide une replanification : non dit.",
-          "evidence": "\u00ab une tourn\u00e9e par technicien \u00bb, \u00ab un client annule \u00bb",
+          "value": "Planifier les visites de maintenance chez les clients, regrouper les visites en une tourn\u00e9e par technicien, et absorber les annulations tardives sans laisser de trou dans la journ\u00e9e du technicien ni perdre la visite. Le vrai besoin n'est pas dit : gain de temps de planification, r\u00e9duction des trajets, respect d'engagements contractuels de maintenance, ou limitation du manque \u00e0 gagner li\u00e9 aux annulations.",
+          "evidence": "Demande : \u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb.",
+          "test_plan": ""
+        },
+        "current_process": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : planification actuelle probablement manuelle (Excel, agenda, t\u00e9l\u00e9phone), non confirm\u00e9e.",
+          "evidence": "Rien n'est dit sur le fonctionnement actuel.",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : outil de planification d'interventions (FSM) d\u00e9j\u00e0 utilis\u00e9 ou licenci\u00e9, module existant de la plateforme (contrats, missions) r\u00e9utilisable, options du march\u00e9 \u00e9tudi\u00e9es, enveloppe budg\u00e9taire.",
+          "evidence": "Rien n'est dit sur l'existant ni sur le budget. Acheter ou r\u00e9utiliser peut supprimer tout ou partie du projet.",
+          "test_plan": ""
+        },
+        "success_metrics": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Hypoth\u00e8ses : moins de temps de planification, moins de kilom\u00e8tres ou de temps de trajet, taux de cr\u00e9neaux annul\u00e9s re-remplis, respect des \u00e9ch\u00e9ances de maintenance. Aucun objectif chiffr\u00e9 donn\u00e9.",
+          "evidence": "D\u00e9duit de la demande, rien de formul\u00e9 par le client.",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 70,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Outil interne ou module de la plateforme, financ\u00e9 par l'entreprise elle-m\u00eame.",
+          "evidence": "\u00ab nos clients \u00bb : l'organisation demandeuse planifie ses propres visites. Il ne s'agit pas d'une id\u00e9e de produit \u00e0 vendre.",
+          "test_plan": ""
+        },
+        "actors": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Probables : planificateur ou dispatcher (construit les tourn\u00e9es), techniciens (ex\u00e9cutent, consultent leur tourn\u00e9e), client et ses contacts (annulent ou demandent un report), manager (supervise). Qui cr\u00e9e les visites, qui valide une replanification et qui saisit l'annulation reste \u00e0 confirmer.",
+          "evidence": "Seuls \u00ab technicien \u00bb et \u00ab client \u00bb sont cit\u00e9s dans la demande.",
           "test_plan": ""
         },
         "business_objects": {
-          "completeness": 30,
+          "completeness": 25,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Visite de maintenance, Technicien, Client/Site (adresse, contact), Tourn\u00e9e (visites ordonn\u00e9es d'un technicien pour un jour), Annulation. Lien probable avec Contrat de maintenance et Contact (r\u00f4le op\u00e9rationnel).",
-          "evidence": "\u00ab visites de maintenance \u00bb, \u00ab tourn\u00e9e par technicien \u00bb, \u00ab annule \u00bb",
+          "value": "Visite de maintenance (client, site/adresse, dur\u00e9e estim\u00e9e, cr\u00e9neau, statut), Tourn\u00e9e (technicien, jour, ordre des visites), Technicien (comp\u00e9tences, zone, horaires), Client/Contact, Contrat de maintenance (p\u00e9riodicit\u00e9, SLA), Annulation (date, motif, auteur). Origine des donn\u00e9es (contrat, adresses, dur\u00e9es) non pr\u00e9cis\u00e9e.",
+          "evidence": "D\u00e9duit de la demande et du contexte plateforme (Contract, Client, Contact, Mission).",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 15,
+          "completeness": 10,
           "confidence": "empty",
           "impact": "high",
-          "value": "Inconnu : d\u00e9finition de \u00ab derni\u00e8re minute \u00bb (seuil), qui peut annuler, p\u00e9nalit\u00e9/facturation, replanification automatique ou propos\u00e9e, comp\u00e9tences/habilitations requises, cr\u00e9neaux impos\u00e9s par le client, engagements contractuels de p\u00e9riodicit\u00e9, r\u00e8gles variables selon client ou contrat.",
-          "evidence": "\u00ab une replanification quand un client annule au dernier moment \u00bb",
+          "value": "Inconnu : contraintes d'affectation (comp\u00e9tences, habilitations, zone), fen\u00eatres horaires client, dur\u00e9e des visites, temps de trajet, dur\u00e9e max de la journ\u00e9e, d\u00e9lai \u00e0 partir duquel une annulation est \u00ab tardive \u00bb, p\u00e9nalit\u00e9 ou facturation de l'annulation, r\u00e8gles variant par client ou contrat.",
+          "evidence": "Rien n'est pr\u00e9cis\u00e9 au-del\u00e0 de \u00ab tourn\u00e9e \u00bb et \u00ab annulation de derni\u00e8re minute \u00bb.",
           "test_plan": ""
         },
         "workflow": {
-          "completeness": 20,
+          "completeness": 15,
           "confidence": "empty",
           "impact": "high",
-          "value": "Cycle de vie de la visite non d\u00e9crit : origine (\u00e9ch\u00e9ance de contrat r\u00e9current, demande client, ticket ?), affectation, confirmation client, r\u00e9alisation, cl\u00f4ture, annulation, replanification. La tourn\u00e9e est-elle recalcul\u00e9e \u00e0 chaque changement ?",
-          "evidence": "Seule l'annulation et la tourn\u00e9e sont mentionn\u00e9es ; l'amont (cr\u00e9ation des visites) est absent",
+          "value": "Cycle de vie de la visite \u00e0 d\u00e9finir. Hypoth\u00e8se : \u00e0 planifier \u2192 planifi\u00e9e (dans une tourn\u00e9e) \u2192 confirm\u00e9e \u2192 r\u00e9alis\u00e9e, avec la branche annul\u00e9e \u2192 replanifi\u00e9e. Origine des visites inconnue (\u00e9ch\u00e9ance de contrat r\u00e9current, demande client, ticket ?). Replanification automatique ou propos\u00e9e au dispatcher pour validation : non pr\u00e9cis\u00e9.",
+          "evidence": "La demande d\u00e9crit la planification et la replanification, mais pas d'o\u00f9 viennent les visites ni ce qui se passe apr\u00e8s la visite.",
           "test_plan": ""
         },
         "integrations": {
           "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Inconnu : notification du technicien et du client (qui, quand, quel canal), agenda, cartographie/calcul d'itin\u00e9raire, lien avec contrats et facturation.",
-          "evidence": "",
+          "value": "\u00c0 pr\u00e9ciser : notification du technicien et du client (quel contact, quel r\u00f4le, quel canal) lors d'une planification ou d'un changement ; calcul de distances/temps de trajet (service cartographique) ; agenda ou outil existant ; acc\u00e8s mobile du technicien.",
+          "evidence": "Rien n'est dit.",
           "test_plan": ""
         },
         "permissions": {
           "completeness": 10,
-          "confidence": "empty",
+          "confidence": "inferred",
           "impact": "high",
-          "value": "Inconnu : qui voit toutes les tourn\u00e9es, un technicien voit-il seulement la sienne, qui peut modifier ou annuler une visite, le client a-t-il un acc\u00e8s ?",
-          "evidence": "",
+          "value": "Hypoth\u00e8se : le dispatcher voit et modifie toutes les tourn\u00e9es, le technicien ne voit que la sienne, le client ne voit que ses visites. Qui peut annuler ou d\u00e9placer une visite reste \u00e0 d\u00e9finir.",
+          "evidence": "D\u00e9duit des r\u00f4les probables, rien de stipul\u00e9.",
           "test_plan": ""
         },
         "config_vs_custom": {
-          "completeness": 10,
+          "completeness": 5,
           "confidence": "empty",
-          "impact": "medium",
-          "value": "Inconnu : r\u00e8gles de planification/annulation identiques pour tous les clients ou sp\u00e9cifiques par client/contrat ?",
-          "evidence": "",
+          "impact": "high",
+          "value": "Inconnu : r\u00e8gles de planification, de d\u00e9lai d'annulation et de notification identiques pour tous les clients, ou variables par client/contrat.",
+          "evidence": "Plateforme multi-clients configurable, rien n'est pr\u00e9cis\u00e9 sur ce point.",
           "test_plan": ""
         },
         "constraints": {
-          "completeness": 10,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Inconnu : \u00e9ch\u00e9ance, volum\u00e9trie (nombre de techniciens, visites/jour), zone g\u00e9ographique, horaires de travail l\u00e9gaux, d\u00e9pendances.",
-          "evidence": "",
+          "value": "Inconnu : \u00e9ch\u00e9ance, d\u00e9pendances avec les modules existants, r\u00e9glementation (temps de conduite et de repos des techniciens, RGPD sur les donn\u00e9es client).",
+          "evidence": "Aucune contrainte exprim\u00e9e.",
           "test_plan": ""
         },
         "edge_cases": {
-          "completeness": 15,
+          "completeness": 10,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "\u00c0 traiter : annulation apr\u00e8s d\u00e9part du technicien, annulation de plusieurs visites d'une m\u00eame tourn\u00e9e, aucun cr\u00e9neau de remplacement possible, technicien absent, visite d\u00e9j\u00e0 en cours, double annulation/replanification (idempotence).",
-          "evidence": "D\u00e9duit de \u00ab annule au dernier moment \u00bb",
+          "value": "\u00c0 traiter : annulation le jour m\u00eame alors que le technicien est d\u00e9j\u00e0 en route, aucun cr\u00e9neau de remplacement, plusieurs annulations successives, technicien absent ou malade, visite urgente qui s'intercale, client qui annule plusieurs fois, annulation apr\u00e8s le d\u00e9but de la tourn\u00e9e.",
+          "evidence": "D\u00e9duit de \u00ab annule au dernier moment \u00bb.",
           "test_plan": ""
         },
         "reporting": {
           "completeness": 5,
           "confidence": "empty",
           "impact": "low",
-          "value": "Inconnu : vue des tourn\u00e9es, export, historique des annulations. Aucune obligation d'audit nomm\u00e9e.",
-          "evidence": "",
+          "value": "Probablement : vue des tourn\u00e9es par jour et par technicien, historique des annulations. Aucune obligation d'audit ou de tra\u00e7abilit\u00e9 \u00e9voqu\u00e9e \u00e0 ce stade.",
+          "evidence": "Rien n'est dit, aucun signal de conformit\u00e9 dans la demande.",
           "test_plan": ""
         },
         "acceptance": {
           "completeness": 5,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Inconnu : sc\u00e9narios de recette (ex. annulation la veille \u2192 visite replanifi\u00e9e et technicien/client notifi\u00e9s).",
-          "evidence": "",
+          "value": "\u00c0 d\u00e9finir. Sc\u00e9nario type : un client annule la veille, la visite est replanifi\u00e9e et la tourn\u00e9e du technicien est recalcul\u00e9e sans conflit.",
+          "evidence": "Rien n'est formul\u00e9.",
           "test_plan": ""
         },
         "risks": {
-          "completeness": 10,
+          "completeness": 5,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Risque de p\u00e9rim\u00e8tre : un optimiseur de tourn\u00e9es complet est un sous-syst\u00e8me \u00e0 part enti\u00e8re. Risque d'adoption par les techniciens sur le terrain et de donn\u00e9es de localisation incompl\u00e8tes.",
-          "evidence": "D\u00e9duit de la demande",
+          "value": "Risques : tourn\u00e9es irr\u00e9alistes sur le terrain, techniciens qui refusent l'outil, replanification qui bouscule des clients d\u00e9j\u00e0 confirm\u00e9s, donn\u00e9es d'adresses ou de dur\u00e9es incompl\u00e8tes. D\u00e9ploiement \u00e0 d\u00e9finir (pilote sur une \u00e9quipe ou une zone ?).",
+          "evidence": "D\u00e9duit, rien n'est pr\u00e9cis\u00e9.",
           "test_plan": ""
         },
         "acquisition": {
-          "completeness": 50,
+          "completeness": 80,
           "confidence": "inferred",
           "impact": "low",
-          "value": "D\u00e9ploiement aupr\u00e8s d'utilisateurs internes connus (planificateurs, techniciens) : rel\u00e8ve du d\u00e9ploiement, pas de l'acquisition.",
-          "evidence": "Usage interne d\u00e9duit",
+          "value": "D\u00e9ploiement aupr\u00e8s d'un ensemble connu d'utilisateurs internes (dispatchers, techniciens), trait\u00e9 dans \u00ab risques et d\u00e9ploiement \u00bb.",
+          "evidence": "Outil interne, pas une id\u00e9e de produit.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "Qu'utilisez-vous aujourd'hui pour planifier ces visites (Excel, un outil de planification, un module de votre ERP/plateforme) et existe-t-il un outil d\u00e9j\u00e0 pay\u00e9 ou envisag\u00e9, avec quel budget ?",
+          "q": "Utilisez-vous d\u00e9j\u00e0 un outil (logiciel de planification d'interventions, module de votre plateforme, agenda partag\u00e9, Excel) pour planifier les visites, ou avez-vous \u00e9tudi\u00e9 des solutions du march\u00e9 ? Quel budget ou quelle enveloppe envisagez-vous ?",
           "slot": "existing_solutions",
-          "why": "Acheter ou r\u00e9utiliser peut supprimer tout ou partie du d\u00e9veloppement ; le budget dimensionne le reste. Impact \u00e9lev\u00e9, totalement inconnu."
+          "why": "Incertitude totale \u00d7 impact \u00e9lev\u00e9 : acheter ou r\u00e9utiliser peut supprimer ou r\u00e9duire fortement le d\u00e9veloppement, et le budget dimensionne tout le reste."
         },
         {
-          "q": "D'o\u00f9 viennent les visites \u00e0 planifier : des \u00e9ch\u00e9ances de contrats de maintenance r\u00e9currents, des demandes de clients, ou les deux ? Et qui les cr\u00e9e et les affecte aujourd'hui \u00e0 un technicien ?",
+          "q": "D'o\u00f9 viennent les visites \u00e0 planifier : des \u00e9ch\u00e9ances de contrats de maintenance r\u00e9currents, de demandes clients, de tickets ? Et qui les cr\u00e9e et les valide aujourd'hui ?",
           "slot": "workflow",
-          "why": "L'origine des visites n'est pas d\u00e9crite ; si elles doivent \u00eatre g\u00e9n\u00e9r\u00e9es automatiquement depuis les contrats, le p\u00e9rim\u00e8tre s'\u00e9largit fortement."
+          "why": "Si l'origine des visites n'existe pas dans la plateforme, le p\u00e9rim\u00e8tre s'\u00e9tend \u00e0 un sous-syst\u00e8me complet (contrats, p\u00e9riodicit\u00e9, demandes)."
         },
         {
-          "q": "Quand un client annule \u00ab au dernier moment \u00bb, que doit-il se passer ? Par exemple : \u00e0 partir de quel d\u00e9lai (veille, le jour m\u00eame) ; la visite est-elle replanifi\u00e9e automatiquement ou propos\u00e9e \u00e0 un planificateur ; le cr\u00e9neau lib\u00e9r\u00e9 est-il combl\u00e9 par une autre visite ; une annulation tardive est-elle factur\u00e9e ?",
+          "q": "Comment organisez-vous les tourn\u00e9es aujourd'hui, et qu'attendez-vous de l'outil : qu'il propose automatiquement l'ordre et l'affectation des visites que le planificateur valide, ou qu'il serve surtout \u00e0 saisir et visualiser une tourn\u00e9e construite \u00e0 la main ? Combien de techniciens et de visites par jour sont concern\u00e9s ?",
+          "slot": "current_process",
+          "why": "Optimisation automatique contre planification assist\u00e9e sont deux chantiers tr\u00e8s diff\u00e9rents, et le volume d\u00e9termine si un algorithme se justifie."
+        },
+        {
+          "q": "Quelles contraintes doivent \u00eatre respect\u00e9es dans une tourn\u00e9e : comp\u00e9tences ou habilitations du technicien, zone g\u00e9ographique, cr\u00e9neaux horaires impos\u00e9s par le client, dur\u00e9e de visite variable selon l'\u00e9quipement, dur\u00e9e maximale de la journ\u00e9e, temps de trajet ?",
           "slot": "business_rules",
-          "why": "C'est le c\u0153ur de la demande et les r\u00e8gles (seuil, d\u00e9cideur, p\u00e9nalit\u00e9) changent fortement le co\u00fbt. Je vous demande de confirmer la politique attendue."
+          "why": "Ces r\u00e8gles d\u00e9cident de ce qu'une tourn\u00e9e valide veut dire, donc de la complexit\u00e9 du calcul et des cas de replanification."
         },
         {
-          "q": "Qu'attendez-vous de la \u00ab tourn\u00e9e \u00bb : un simple ordre de passage choisi par un planificateur, ou un calcul automatique de l'itin\u00e9raire optimal selon les distances, les horaires impos\u00e9s par les clients et les comp\u00e9tences du technicien ?",
+          "q": "Qu'appelez-vous une annulation \u00ab de derni\u00e8re minute \u00bb (la veille, le jour m\u00eame, en cours de tourn\u00e9e) ? Qui l'enregistre (le client via un contact, le dispatcher) et que doit-il se passer ensuite : remplir le cr\u00e9neau avec une autre visite en attente, resserrer la tourn\u00e9e, reporter la visite annul\u00e9e \u00e0 une nouvelle date ? Une annulation tardive est-elle factur\u00e9e ou p\u00e9nalis\u00e9e ?",
           "slot": "business_rules",
-          "why": "Une tourn\u00e9e optimis\u00e9e automatiquement est un sous-syst\u00e8me \u00e0 part enti\u00e8re, tr\u00e8s diff\u00e9rent d'une liste ordonn\u00e9e \u00e0 la main."
+          "why": "C'est le c\u0153ur de la demande : le comportement attendu, l'automatisme (proposition ou application directe) et les cons\u00e9quences contractuelles changent la construction."
         },
         {
-          "q": "Combien de techniciens et de visites par jour cela repr\u00e9sente-t-il, et sur quelle zone g\u00e9ographique ?",
-          "slot": "constraints",
-          "why": "La volum\u00e9trie d\u00e9termine si un outil du march\u00e9 ou un calcul simple suffit, et \u00e0 quel point l'optimisation compte."
-        },
-        {
-          "q": "Qui doit \u00eatre pr\u00e9venu quand une visite est annul\u00e9e ou d\u00e9plac\u00e9e (technicien, client, planificateur, un contact de r\u00f4le pr\u00e9cis) et par quel canal ?",
+          "q": "Quand une visite est replanifi\u00e9e, qui doit \u00eatre pr\u00e9venu (technicien, contact du client, lequel selon son r\u00f4le) et par quel canal ? Le technicien consulte-t-il sa tourn\u00e9e sur mobile en d\u00e9placement ?",
           "slot": "integrations",
-          "why": "Le routage des notifications d\u00e9pend du r\u00f4le du contact et du canal ; c'est un oubli fr\u00e9quent qui appara\u00eet tard."
+          "why": "Les notifications et l'acc\u00e8s mobile p\u00e8sent sur le co\u00fbt, et le bon destinataire d\u00e9pend du r\u00f4le du contact chez le client."
+        },
+        {
+          "q": "Les r\u00e8gles (d\u00e9lai d'annulation, cr\u00e9neaux, notifications, p\u00e9nalit\u00e9s) sont-elles les m\u00eames pour tous vos clients, ou varient-elles selon le client ou le contrat ?",
+          "slot": "config_vs_custom",
+          "why": "Des r\u00e8gles variables par client imposent de la configuration plut\u00f4t qu'un comportement unique cod\u00e9 en dur."
+        },
+        {
+          "q": "Qui doit pouvoir voir et modifier quoi : le planificateur seul modifie-t-il les tourn\u00e9es, le technicien peut-il d\u00e9placer ou refuser une visite, le client peut-il annuler lui-m\u00eame depuis un portail ?",
+          "slot": "permissions",
+          "why": "Les droits sont souvent oubli\u00e9s jusqu'\u00e0 la recette, et l'annulation en libre-service par le client cr\u00e9e un autre p\u00e9rim\u00e8tre."
+        },
+        {
+          "q": "Y a-t-il une \u00e9ch\u00e9ance ou une contrainte particuli\u00e8re (d\u00e9but de saison, contrat \u00e0 honorer, r\u00e8gles sur le temps de conduite des techniciens), et comment mesurerez-vous que cela fonctionne (temps de planification, kilom\u00e8tres, taux de cr\u00e9neaux re-remplis) ?",
+          "slot": "success_metrics",
+          "why": "Une cible chiffr\u00e9e et une \u00e9ch\u00e9ance permettent de trancher entre une version simple et une version optimis\u00e9e."
         }
       ],
       "summary": {
-        "objective": "Planifier les visites de maintenance chez les clients, avec une tourn\u00e9e par technicien, et replanifier quand un client annule au dernier moment.",
-        "scope": "Probable : visites, techniciens, tourn\u00e9es journali\u00e8res, gestion des annulations avec replanification, notifications. \u00c0 confirmer : g\u00e9n\u00e9ration automatique des visites depuis les contrats, optimisation automatique des itin\u00e9raires, acc\u00e8s client.",
+        "objective": "Planifier les visites de maintenance chez les clients, construire une tourn\u00e9e par technicien et replanifier rapidement quand un client annule au dernier moment.",
+        "scope": "Probable : visites de maintenance, tourn\u00e9es quotidiennes par technicien, gestion des annulations avec replanification et notification des personnes concern\u00e9es. \u00c0 confirmer : origine des visites (contrats r\u00e9currents ou demandes), optimisation automatique des tourn\u00e9es ou planification assist\u00e9e, acc\u00e8s mobile pour les techniciens, portail client.",
         "assumptions": [
-          "Outil interne : le payeur est l'entreprise elle-m\u00eame.",
-          "Un planificateur cr\u00e9e et affecte les visites ; les techniciens consultent leur tourn\u00e9e.",
-          "Les objets principaux sont Visite, Technicien, Client/Site et Tourn\u00e9e, li\u00e9s aux contrats existants.",
-          "Les annulations tardives posent des cas limites (technicien d\u00e9j\u00e0 en route, aucun cr\u00e9neau de remplacement)."
+          "Outil interne financ\u00e9 par l'entreprise, rattach\u00e9 \u00e0 la plateforme existante (clients, contacts, contrats).",
+          "Les acteurs sont le dispatcher, les techniciens, les contacts clients et un manager.",
+          "Le dispatcher voit tout, le technicien ne voit que sa tourn\u00e9e, le client ne voit que ses visites.",
+          "La planification actuelle est vraisemblablement manuelle (Excel, agenda, t\u00e9l\u00e9phone), non confirm\u00e9.",
+          "Aucune obligation d'audit ou de conformit\u00e9 n'est \u00e9voqu\u00e9e pour l'instant."
         ],
-        "blind_spot": "On ne sait pas si un outil existant ou achetable couvre d\u00e9j\u00e0 le besoin, ni d'o\u00f9 viennent les visites : si elles doivent \u00eatre g\u00e9n\u00e9r\u00e9es depuis les contrats et les tourn\u00e9es optimis\u00e9es automatiquement, le projet devient un syst\u00e8me de planification complet, pas une simple fonctionnalit\u00e9."
+        "blind_spot": "L'existant et l'origine des visites : si un outil de planification d'interventions existe d\u00e9j\u00e0 ou peut s'acheter, ou si les visites ne sont pas d\u00e9j\u00e0 produites par les contrats de maintenance, le projet change de taille. Ensuite, \u00ab replanifier \u00bb peut vouloir dire proposer au dispatcher ou appliquer automatiquement, ce qui s\u00e9pare une aide \u00e0 la d\u00e9cision d'un moteur d'optimisation."
+      },
+      "decisions": [],
+      "challenges": [],
+      "opportunities": [],
+      "exclusions": [],
+      "thresholds": []
+    },
+    {
+      "model": {
+        "problem": {
+          "completeness": 30,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Planifier les visites de maintenance pr\u00e9ventive/r\u00e9currente chez les clients, organiser une tourn\u00e9e par technicien, et absorber les annulations de derni\u00e8re minute en replanifiant. Le besoin de fond (r\u00e9duire les d\u00e9placements perdus, tenir les \u00e9ch\u00e9ances de maintenance, \u00e9viter les trous dans les agendas) n'est pas formul\u00e9.",
+          "evidence": "\u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb",
+          "test_plan": ""
+        },
+        "current_process": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : planification manuelle (Excel, agenda), module existant ou autre outil ?",
+          "evidence": "Rien n'est dit sur le fonctionnement actuel.",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : outil de planification d'interventions (FSM/GMAO), ERP ou fonctionnalit\u00e9 d\u00e9j\u00e0 licenci\u00e9e non activ\u00e9e, solutions du march\u00e9 envisag\u00e9es, budget.",
+          "evidence": "La demande part du principe qu'on construit ; rien n'indique ce qui existe ou pourrait \u00eatre achet\u00e9.",
+          "test_plan": ""
+        },
+        "success_metrics": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Hypoth\u00e8se : moins de kilom\u00e8tres/temps de trajet, moins de cr\u00e9neaux perdus lors d'annulations, respect des \u00e9ch\u00e9ances de maintenance. Aucun objectif chiffr\u00e9.",
+          "evidence": "D\u00e9duit de l'objet de la demande ; non exprim\u00e9 par le client.",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 60,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Outil interne ou module de la plateforme existante : le payeur est l'entreprise demandeuse.",
+          "evidence": "\u00ab nos clients \u00bb : l'entreprise est le prestataire de maintenance.",
+          "test_plan": ""
+        },
+        "actors": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Planificateur/dispatcheur (construit et ajuste les tourn\u00e9es), techniciens (ex\u00e9cutent les visites), clients (demandent ou annulent), \u00e9ventuellement responsable d'exploitation. Qui re\u00e7oit l'annulation et qui d\u00e9cide de la replanification reste \u00e0 confirmer.",
+          "evidence": "D\u00e9duit : \u00ab une tourn\u00e9e par technicien \u00bb, \u00ab un client annule \u00bb.",
+          "test_plan": ""
+        },
+        "business_objects": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Client/site, Contrat de maintenance (p\u00e9riodicit\u00e9), Visite, Technicien (comp\u00e9tences, zone, horaires), Tourn\u00e9e (jour \u00d7 technicien, visites ordonn\u00e9es), Annulation/replanification. Source des donn\u00e9es client/contrat \u00e0 confirmer (plateforme existante ?).",
+          "evidence": "D\u00e9duit de la demande et de la fiche b2b-platform (Client, Contact, Contract, Mission).",
+          "test_plan": ""
+        },
+        "business_rules": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : crit\u00e8res d'affectation (comp\u00e9tences/habilitations, zone g\u00e9ographique, dur\u00e9e de visite, cr\u00e9neaux/fen\u00eatres horaires client, temps de trajet, charge max), tourn\u00e9e optimis\u00e9e automatiquement ou compos\u00e9e \u00e0 la main, r\u00e8gle de replanification (d\u00e9lai limite d'annulation, p\u00e9nalit\u00e9s, visites \u00e0 \u00e9ch\u00e9ance r\u00e9glementaire non reportables).",
+          "evidence": "Aucune r\u00e8gle cit\u00e9e.",
+          "test_plan": ""
+        },
+        "workflow": {
+          "completeness": 15,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Cycle de vie de la visite probable : \u00e0 planifier \u2192 planifi\u00e9e \u2192 (confirm\u00e9e) \u2192 r\u00e9alis\u00e9e / annul\u00e9e \u2192 \u00e0 replanifier. Origine des visites non pr\u00e9cis\u00e9e (g\u00e9n\u00e9ration automatique depuis la p\u00e9riodicit\u00e9 du contrat, demande client, saisie manuelle ?), ainsi que ce qui se passe apr\u00e8s r\u00e9alisation (rapport, facturation).",
+          "evidence": "Seuls la tourn\u00e9e et l'annulation sont mentionn\u00e9es ; l'amont (cr\u00e9ation des visites) est inconnu.",
+          "test_plan": ""
+        },
+        "integrations": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Inconnu : notification des techniciens et clients (canal, r\u00f4le de contact), cartographie/calcul d'itin\u00e9raires, agenda, application mobile technicien, ERP/facturation.",
+          "evidence": "Non \u00e9voqu\u00e9.",
+          "test_plan": ""
+        },
+        "permissions": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Hypoth\u00e8se : le planificateur voit et modifie toutes les tourn\u00e9es ; un technicien ne voit que la sienne ; le client n'agit que sur ses propres visites (si portail). \u00c0 confirmer.",
+          "evidence": "D\u00e9duit, non exprim\u00e9.",
+          "test_plan": ""
+        },
+        "config_vs_custom": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Inconnu : r\u00e8gles de planification identiques pour tous les clients/contrats ou variables (fen\u00eatres, d\u00e9lais d'annulation, SLA) ?",
+          "evidence": "Non \u00e9voqu\u00e9. Slot actif si cela s'inscrit dans la plateforme multi-clients.",
+          "test_plan": ""
+        },
+        "constraints": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Inconnu : volum\u00e9trie (nombre de techniciens, visites par jour), d\u00e9lai de mise en place, obligations r\u00e9glementaires de maintenance p\u00e9riodique, RGPD sur les donn\u00e9es de contact.",
+          "evidence": "Non \u00e9voqu\u00e9.",
+          "test_plan": ""
+        },
+        "edge_cases": {
+          "completeness": 15,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "\u00c0 traiter : annulation le jour m\u00eame alors que le technicien est d\u00e9j\u00e0 en route, technicien absent/malade, plusieurs annulations simultan\u00e9es, visite d\u00e9j\u00e0 commenc\u00e9e, client qui annule plusieurs fois, aucun cr\u00e9neau disponible avant l'\u00e9ch\u00e9ance du contrat.",
+          "evidence": "D\u00e9duit de \u00ab annule au dernier moment \u00bb.",
+          "test_plan": ""
+        },
+        "reporting": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "Inconnu : historique des annulations/replanifications, taux de respect des \u00e9ch\u00e9ances. Aucune obligation d'audit mentionn\u00e9e.",
+          "evidence": "Non \u00e9voqu\u00e9.",
+          "test_plan": ""
+        },
+        "acceptance": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "\u00c0 d\u00e9finir, par exemple : une annulation de derni\u00e8re minute produit une proposition de replanification sans perdre la visite ni d\u00e9passer l'\u00e9ch\u00e9ance.",
+          "evidence": "Non \u00e9voqu\u00e9.",
+          "test_plan": ""
+        },
+        "risks": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Risques probables : adoption par les techniciens sur le terrain, qualit\u00e9 des adresses/dur\u00e9es de visite, replanification automatique mal accept\u00e9e par les clients. D\u00e9ploiement non d\u00e9fini.",
+          "evidence": "Non \u00e9voqu\u00e9.",
+          "test_plan": ""
+        },
+        "acquisition": {
+          "completeness": 60,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Outil interne d\u00e9ploy\u00e9 aupr\u00e8s d'utilisateurs connus (planificateurs, techniciens) : rel\u00e8ve du d\u00e9ploiement, pas de l'acquisition.",
+          "evidence": "D\u00e9duit de \u00ab nos clients \u00bb et \u00ab par technicien \u00bb.",
+          "test_plan": ""
+        }
+      },
+      "questions": [
+        {
+          "q": "Utilisez-vous d\u00e9j\u00e0 un outil qui pourrait faire tout ou partie de cela (logiciel de planification d'interventions/GMAO, ERP, module de votre plateforme, simple Excel/agenda), ou avez-vous regard\u00e9 des solutions du march\u00e9 ? Avec quel budget approximatif ?",
+          "slot": "existing_solutions",
+          "why": "Incertitude totale \u00d7 impact \u00e9lev\u00e9 : acheter ou activer une fonction existante peut supprimer le projet, et l'enveloppe dimensionne tout le reste."
+        },
+        {
+          "q": "D'o\u00f9 viennent les visites \u00e0 planifier ? Sont-elles g\u00e9n\u00e9r\u00e9es automatiquement \u00e0 partir de la p\u00e9riodicit\u00e9 des contrats de maintenance, demand\u00e9es par les clients, ou saisies \u00e0 la main ? Et qui les cr\u00e9e aujourd'hui ?",
+          "slot": "workflow",
+          "why": "L'origine des visites est l'angle mort principal : sans amont d\u00e9fini, le p\u00e9rim\u00e8tre peut s'\u00e9tendre \u00e0 un sous-syst\u00e8me de gestion des contrats et des \u00e9ch\u00e9ances."
+        },
+        {
+          "q": "Comment composez-vous les tourn\u00e9es aujourd'hui et qu'attendez-vous de l'outil : qu'il propose automatiquement une tourn\u00e9e optimis\u00e9e que le planificateur valide, ou qu'il aide seulement \u00e0 la construire \u00e0 la main ? Quels crit\u00e8res comptent (comp\u00e9tences/habilitations, zone, dur\u00e9e de visite, cr\u00e9neaux impos\u00e9s par le client, temps de trajet) ?",
+          "slot": "business_rules",
+          "why": "Optimisation automatique ou assistance manuelle sont deux constructions tr\u00e8s diff\u00e9rentes ; les crit\u00e8res d\u00e9terminent le mod\u00e8le de donn\u00e9es et le co\u00fbt."
+        },
+        {
+          "q": "Quand un client annule au dernier moment, que doit-il se passer ? Par exemple : le syst\u00e8me propose automatiquement un nouveau cr\u00e9neau, ou comble le trou avec une autre visite, ou le planificateur d\u00e9cide seul ? Y a-t-il un d\u00e9lai au-del\u00e0 duquel l'annulation est factur\u00e9e ou refus\u00e9e, et des visites qui ne peuvent pas \u00eatre report\u00e9es (\u00e9ch\u00e9ance r\u00e9glementaire ou contractuelle) ?",
+          "slot": "business_rules",
+          "why": "C\u0153ur de la demande : la r\u00e8gle de replanification (automatique ou non, d\u00e9lais, \u00e9ch\u00e9ances imp\u00e9ratives) fixe le comportement et la complexit\u00e9."
+        },
+        {
+          "q": "Qui intervient dans le circuit : un planificateur central, les techniciens eux-m\u00eames sur mobile, les clients via un portail ? Qui re\u00e7oit l'annulation (t\u00e9l\u00e9phone, e-mail, portail) et qui doit \u00eatre pr\u00e9venu d'une replanification (technicien, client, quel contact) et par quel canal ?",
+          "slot": "actors",
+          "why": "Les acteurs et les notifications d\u00e9terminent les \u00e9crans, les droits et l'\u00e9ventuelle application mobile."
+        },
+        {
+          "q": "Combien de techniciens et de visites par jour/semaine cela concerne-t-il, et sur quelle \u00e9tendue g\u00e9ographique ? Y a-t-il une \u00e9ch\u00e9ance de mise en service ?",
+          "slot": "constraints",
+          "why": "La volum\u00e9trie d\u00e9cide si une optimisation simple suffit ou si un moteur d'itin\u00e9raires est n\u00e9cessaire."
+        },
+        {
+          "q": "Les techniciens ont-ils besoin de consulter leur tourn\u00e9e et de la mettre \u00e0 jour sur le terrain (mobile, hors connexion, cl\u00f4ture de visite), ou le planificateur g\u00e8re-t-il tout depuis un poste de bureau ?",
+          "slot": "integrations",
+          "why": "Une application terrain est un chantier majeur qui peut doubler le p\u00e9rim\u00e8tre."
+        },
+        {
+          "q": "Comment saurez-vous que \u00e7a fonctionne : quel probl\u00e8me concret rencontrez-vous aujourd'hui (kilom\u00e8tres perdus, cr\u00e9neaux vides apr\u00e8s annulation, \u00e9ch\u00e9ances manqu\u00e9es) et quel r\u00e9sultat viserez-vous ?",
+          "slot": "problem",
+          "why": "Le besoin r\u00e9el derri\u00e8re la solution demand\u00e9e oriente les priorit\u00e9s et peut montrer qu'une partie de la demande est inutile."
+        }
+      ],
+      "summary": {
+        "objective": "Planifier les visites de maintenance chez les clients, organiser une tourn\u00e9e par technicien et replanifier efficacement lorsqu'un client annule au dernier moment.",
+        "scope": "Probable : g\u00e9n\u00e9ration/gestion des visites \u00e0 planifier, construction des tourn\u00e9es par technicien et par jour, gestion des annulations avec replanification, notifications aux personnes concern\u00e9es. \u00c0 confirmer : optimisation automatique, application mobile technicien, portail client, facturation en aval.",
+        "assumptions": [
+          "Outil interne (ou module de la plateforme existante) : l'entreprise est le payeur et les utilisateurs sont connus.",
+          "Acteurs : un planificateur central, des techniciens, des clients qui annulent.",
+          "Les visites d\u00e9coulent de contrats de maintenance avec une p\u00e9riodicit\u00e9.",
+          "Un technicien ne voit que sa propre tourn\u00e9e ; le planificateur voit tout.",
+          "Aucune obligation d'audit ou de conformit\u00e9 n'a \u00e9t\u00e9 cit\u00e9e \u00e0 ce stade."
+        ],
+        "blind_spot": "L'amont et l'existant : d'o\u00f9 viennent les visites (p\u00e9riodicit\u00e9 des contrats ?) et existe-t-il d\u00e9j\u00e0 un outil ou une licence qui couvre le besoin ? Sans cela, le p\u00e9rim\u00e8tre peut s'\u00e9largir \u00e0 un sous-syst\u00e8me de contrats et d'\u00e9ch\u00e9ances, ou le projet peut \u00eatre remplac\u00e9 par un achat."
+      },
+      "decisions": [],
+      "challenges": [],
+      "opportunities": [],
+      "exclusions": [],
+      "thresholds": []
+    },
+    {
+      "model": {
+        "problem": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Planifier les visites de maintenance chez les clients de fa\u00e7on structur\u00e9e (une tourn\u00e9e par technicien) et absorber sans effort manuel les annulations de derni\u00e8re minute. Le probl\u00e8me de fond (temps perdu en planification manuelle ? visites non r\u00e9alis\u00e9es ? d\u00e9placements inutiles ?) n'est pas pr\u00e9cis\u00e9.",
+          "evidence": "Demande : \u00ab planifier les visites de maintenance chez nos clients, avec une tourn\u00e9e par technicien et une replanification quand un client annule au dernier moment \u00bb.",
+          "test_plan": ""
+        },
+        "current_process": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : planification actuelle (Excel, agenda, t\u00e9l\u00e9phone, autre module) et la fa\u00e7on dont une annulation est g\u00e9r\u00e9e aujourd'hui.",
+          "evidence": "Non mentionn\u00e9 dans la demande.",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : outil de planification d'interventions/FSM d\u00e9j\u00e0 licenci\u00e9, module de la plateforme non activ\u00e9, solutions du march\u00e9 envisag\u00e9es, budget.",
+          "evidence": "Non mentionn\u00e9. Acheter ou r\u00e9utiliser pourrait supprimer tout ou partie du d\u00e9veloppement.",
+          "test_plan": ""
+        },
+        "success_metrics": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Hypoth\u00e8se : moins de temps de planification, moins de kilom\u00e8tres/temps morts, taux de visites r\u00e9alis\u00e9es, cr\u00e9neaux annul\u00e9s repourvus. Aucun indicateur ni cible exprim\u00e9s.",
+          "evidence": "D\u00e9duit de l'objectif (tourn\u00e9es + replanification) ; rien de formul\u00e9 par le client.",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 80,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Outil interne / fonctionnalit\u00e9 de la plateforme : le payeur est l'entreprise demandeuse.",
+          "evidence": "\u00ab nos clients \u00bb : l'entreprise est le prestataire de maintenance ; pas une id\u00e9e de produit.",
+          "test_plan": ""
+        },
+        "actors": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Acteurs probables : planificateur/dispatcher, techniciens (re\u00e7oivent leur tourn\u00e9e), clients (annulent, via contact), responsable. Qui cr\u00e9e les visites, qui valide la replanification et qui est pr\u00e9venu reste \u00e0 confirmer.",
+          "evidence": "D\u00e9duit de \u00ab une tourn\u00e9e par technicien \u00bb et \u00ab un client annule \u00bb ; r\u00f4les non pr\u00e9cis\u00e9s.",
+          "test_plan": ""
+        },
+        "business_objects": {
+          "completeness": 30,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Visite de maintenance, Technicien, Tourn\u00e9e (technicien \u00d7 jour), Client/Site, Contact client, Contrat de maintenance (probable source des visites), Annulation/motif. Champs (dur\u00e9e, comp\u00e9tences requises, adresse, cr\u00e9neau) \u00e0 pr\u00e9ciser.",
+          "evidence": "D\u00e9duit de la demande et du contexte plateforme (Client, Contact, Contrat, Mission).",
+          "test_plan": ""
+        },
+        "business_rules": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : crit\u00e8res de construction d'une tourn\u00e9e (zone g\u00e9ographique, comp\u00e9tences, dur\u00e9e, plages horaires client, horaires/point de d\u00e9part du technicien), d\u00e9finition de \u00ab derni\u00e8re minute \u00bb, r\u00e8gles de replanification (combler le trou, d\u00e9caler, reporter), cons\u00e9quences contractuelles/facturation d'une annulation tardive.",
+          "evidence": "Non pr\u00e9cis\u00e9 ; \u00ab derni\u00e8re minute \u00bb non d\u00e9fini.",
+          "test_plan": ""
+        },
+        "workflow": {
+          "completeness": 15,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Cycle de vie probable d'une visite : \u00e0 planifier \u2192 planifi\u00e9e (affect\u00e9e \u00e0 une tourn\u00e9e) \u2192 confirm\u00e9e \u2192 r\u00e9alis\u00e9e / annul\u00e9e \u2192 \u00e0 replanifier. Origine des visites (p\u00e9riodicit\u00e9 du contrat, demande client, d\u00e9clenchement manuel) et destination apr\u00e8s r\u00e9alisation (rapport, facturation) inconnues.",
+          "evidence": "D\u00e9duit ; la demande ne dit pas d'o\u00f9 viennent les visites ni ce qui se passe apr\u00e8s.",
+          "test_plan": ""
+        },
+        "integrations": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Inconnu : notification du technicien et du client (canal, moment), calendrier, cartographie/calcul d'itin\u00e9raire, application mobile, lien avec facturation/contrats.",
+          "evidence": "Non mentionn\u00e9.",
+          "test_plan": ""
+        },
+        "permissions": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Hypoth\u00e8se : le planificateur voit et modifie toutes les tourn\u00e9es ; le technicien ne voit que la sienne ; le client ne voit que ses visites. \u00c0 confirmer.",
+          "evidence": "D\u00e9duit du contexte plateforme (r\u00f4les employ\u00e9/manager/client externe).",
+          "test_plan": ""
+        },
+        "config_vs_custom": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Inconnu : r\u00e8gles de planification identiques pour tous les clients ou propres \u00e0 certains (fen\u00eatres horaires, d\u00e9lais d'annulation, SLA).",
+          "evidence": "Plateforme multi-clients configurable ; non abord\u00e9 dans la demande.",
+          "test_plan": ""
+        },
+        "constraints": {
+          "completeness": 5,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Inconnu : \u00e9ch\u00e9ance, volum\u00e9trie (nombre de techniciens, visites/jour), obligations contractuelles ou r\u00e9glementaires de p\u00e9riodicit\u00e9 de maintenance.",
+          "evidence": "Non mentionn\u00e9.",
+          "test_plan": ""
+        },
+        "edge_cases": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "\u00c0 traiter : annulation le jour m\u00eame alors que le technicien est en route, plusieurs annulations simultan\u00e9es, aucun technicien disponible/comp\u00e9tent, visite obligatoire non repourvue, annulation r\u00e9p\u00e9t\u00e9e par un m\u00eame client, technicien absent.",
+          "evidence": "D\u00e9duit de \u00ab derni\u00e8re minute \u00bb ; rien d'exprim\u00e9.",
+          "test_plan": ""
+        },
+        "reporting": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "Inconnu ; aucune obligation d'audit ou de tra\u00e7abilit\u00e9 exprim\u00e9e \u00e0 ce stade (\u00e0 relever si des SLA contractuels existent).",
+          "evidence": "Non mentionn\u00e9.",
+          "test_plan": ""
+        },
+        "acceptance": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "\u00c0 d\u00e9finir ; sc\u00e9nario de base : un client annule la veille/le jour m\u00eame, la tourn\u00e9e est recalcul\u00e9e et le technicien et le planificateur sont inform\u00e9s.",
+          "evidence": "Non mentionn\u00e9.",
+          "test_plan": ""
+        },
+        "risks": {
+          "completeness": 5,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Risques : tourn\u00e9es irr\u00e9alistes si dur\u00e9es/trajets mal estim\u00e9s, replanifications en cascade, adoption par les techniciens sur le terrain, qualit\u00e9 des donn\u00e9es d'adresses.",
+          "evidence": "D\u00e9duit ; rien d'exprim\u00e9.",
+          "test_plan": ""
+        },
+        "acquisition": {
+          "completeness": 80,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "D\u00e9ploiement aupr\u00e8s d'utilisateurs internes connus (planificateurs, techniciens) : rel\u00e8ve du rollout, pas de l'acquisition.",
+          "evidence": "Outil interne d\u00e9duit de la demande.",
+          "test_plan": ""
+        }
+      },
+      "questions": [
+        {
+          "q": "Utilisez-vous d\u00e9j\u00e0 un outil de planification d'interventions (module de votre plateforme, ERP, logiciel de field service) ou avez-vous \u00e9tudi\u00e9 des solutions du march\u00e9 ? Et quel budget ou ordre de grandeur visez-vous ?",
+          "slot": "existing_solutions",
+          "why": "incertitude totale \u00d7 impact fort : acheter ou activer un outil existant peut supprimer ou r\u00e9duire fortement le d\u00e9veloppement."
+        },
+        {
+          "q": "D'o\u00f9 viennent les visites \u00e0 planifier : g\u00e9n\u00e9r\u00e9es automatiquement par les contrats (p\u00e9riodicit\u00e9), demand\u00e9es par les clients, cr\u00e9\u00e9es \u00e0 la main ? Et qui les cr\u00e9e et les affecte aujourd'hui ?",
+          "slot": "workflow",
+          "why": "l'origine des visites est l'angle mort : sans source claire, le p\u00e9rim\u00e8tre peut s'\u00e9tendre \u00e0 un sous-syst\u00e8me complet (contrats, demandes, g\u00e9n\u00e9ration)."
+        },
+        {
+          "q": "Quand un client annule au dernier moment, que doit-il se passer : le syst\u00e8me propose automatiquement une nouvelle tourn\u00e9e (combler le trou, avancer une autre visite, reporter), ou le planificateur d\u00e9cide-t-il avec une aide ? Et \u00e0 partir de quand une annulation est-elle \u00ab de derni\u00e8re minute \u00bb (m\u00eame jour, 24 h, 48 h) ?",
+          "slot": "business_rules",
+          "why": "automatique vs assist\u00e9 sont deux constructions tr\u00e8s diff\u00e9rentes ; le seuil de \u00ab derni\u00e8re minute \u00bb conditionne les r\u00e8gles."
+        },
+        {
+          "q": "Quels crit\u00e8res une tourn\u00e9e doit-elle respecter : zone g\u00e9ographique, comp\u00e9tences/habilitations du technicien, dur\u00e9e de chaque visite, plages horaires impos\u00e9es par le client, horaires et point de d\u00e9part du technicien ? Souhaitez-vous une optimisation de l'itin\u00e9raire ou un simple regroupement par jour/zone ?",
+          "slot": "business_rules",
+          "why": "l'optimisation d'itin\u00e9raire sous contraintes est un chantier d'un tout autre co\u00fbt qu'un planning par zone."
+        },
+        {
+          "q": "Comment la planification se fait-elle aujourd'hui (Excel, agenda, t\u00e9l\u00e9phone\u2026) et quel est le vrai probl\u00e8me \u00e0 r\u00e9soudre : temps perdu, kilom\u00e8tres inutiles, visites non r\u00e9alis\u00e9es, cr\u00e9neaux perdus lors des annulations ?",
+          "slot": "current_process",
+          "why": "le probl\u00e8me r\u00e9el et le processus actuel d\u00e9terminent ce qui doit \u00eatre am\u00e9lior\u00e9 et comment mesurer le succ\u00e8s."
+        },
+        {
+          "q": "Quelle est l'ampleur : combien de techniciens, de clients/sites et de visites par jour ou par semaine, et combien d'annulations tardives environ ?",
+          "slot": "constraints",
+          "why": "la volum\u00e9trie d\u00e9cide si une planification assist\u00e9e simple suffit ou si un moteur d'optimisation est n\u00e9cessaire."
+        },
+        {
+          "q": "Qui doit \u00eatre pr\u00e9venu d'une annulation ou d'un changement de tourn\u00e9e (technicien, planificateur, contact client de quel r\u00f4le), \u00e0 quel moment et par quel canal ? Le technicien a-t-il besoin d'une application mobile ?",
+          "slot": "integrations",
+          "why": "la notification en temps r\u00e9el au technicien sur le terrain implique canal, mobile et gestion des accus\u00e9s de r\u00e9ception."
+        },
+        {
+          "q": "Une annulation tardive a-t-elle des cons\u00e9quences contractuelles : facturation d'une p\u00e9nalit\u00e9, obligation de reprogrammer sous un d\u00e9lai (SLA, p\u00e9riodicit\u00e9 obligatoire de maintenance) ? Ces r\u00e8gles varient-elles selon le client ou le contrat ?",
+          "slot": "config_vs_custom",
+          "why": "des r\u00e8gles propres \u00e0 chaque client/contrat impliquent de la configuration et un lien avec la facturation, et peuvent imposer une tra\u00e7abilit\u00e9."
+        },
+        {
+          "q": "Qui intervient dans l'outil : un planificateur central, les techniciens eux-m\u00eames, les clients (qui annulent via un portail ou par appel) ? Qui voit et peut modifier quoi ?",
+          "slot": "actors",
+          "why": "les r\u00f4les et droits (qui annule, qui replanifie, qui voit les tourn\u00e9es) sont souvent oubli\u00e9s jusqu'\u00e0 la recette."
+        }
+      ],
+      "summary": {
+        "objective": "Planifier les visites de maintenance chez les clients, organiser une tourn\u00e9e par technicien et replanifier rapidement lorsqu'un client annule au dernier moment.",
+        "scope": "Probable : visites, techniciens, tourn\u00e9es journali\u00e8res, gestion des annulations avec proposition ou application d'une replanification, notifications. Reste \u00e0 fixer l'origine des visites, le niveau d'optimisation d'itin\u00e9raire, l'application mobile et les liens avec contrats et facturation.",
+        "assumptions": [
+          "Outil interne \u00e0 l'entreprise (le payeur est l'entreprise, pas de recherche de premiers utilisateurs)",
+          "Les visites d\u00e9coulent probablement de contrats de maintenance existants",
+          "Le planificateur voit toutes les tourn\u00e9es, le technicien la sienne, le client ses visites",
+          "Cycle de vie d'une visite : \u00e0 planifier \u2192 planifi\u00e9e \u2192 confirm\u00e9e \u2192 r\u00e9alis\u00e9e / annul\u00e9e \u2192 \u00e0 replanifier",
+          "Aucune obligation d'audit ou de tra\u00e7abilit\u00e9 exprim\u00e9e \u00e0 ce stade"
+        ],
+        "blind_spot": "L'origine des visites et l'existant : d'o\u00f9 viennent les visites \u00e0 planifier, et un outil d\u00e9j\u00e0 pay\u00e9 ou disponible sur le march\u00e9 couvre-t-il le besoin ? La r\u00e9ponse peut r\u00e9duire le projet ou, au contraire, l'\u00e9largir \u00e0 la g\u00e9n\u00e9ration des visites depuis les contrats."
       },
       "decisions": [],
       "challenges": [],
@@ -587,108 +638,505 @@
   ],
   "briefs": [
     {
-      "problem": "Maintenance visits at client sites are planned without a defined way to build each technician's route or to absorb late client cancellations, so the real need (less planning time, fewer kilometres, contractual visit deadlines met) is not yet stated.",
-      "solution": "A visit-planning tool that assigns maintenance visits to technicians, builds a daily route per technician, and proposes or applies a rescheduling when a client cancels late (proposed scope, to be confirmed).",
+      "problem": "Les visites de maintenance sont planifi\u00e9es sans m\u00e9thode partag\u00e9e : les tourn\u00e9es des techniciens se construisent \u00e0 la main et une annulation tardive laisse un trou dans la journ\u00e9e ou fait perdre la visite.",
+      "solution": "Un module de planification qui regroupe les visites en une tourn\u00e9e par technicien et aide le dispatcher \u00e0 replanifier quand un client annule au dernier moment.",
       "introduces": [
-        "a route-building capability (technician \u00d7 day) driven by zone, skills and visit duration",
-        "a rescheduling engine reacting to a cancellation event, with an automatic or planner-validated mode",
-        "a visit lifecycle (to plan, planned, confirmed, done, cancelled, rescheduled) with its own history",
-        "role-based notifications to technicians and client contacts on every change",
-        "possibly a link to maintenance contracts to generate recurring visits and protect contractual deadlines"
+        "un cycle de vie de la visite de maintenance (\u00e0 planifier, planifi\u00e9e, confirm\u00e9e, r\u00e9alis\u00e9e, annul\u00e9e, replanifi\u00e9e)",
+        "une construction de tourn\u00e9es par technicien et par jour, avec contraintes d'affectation",
+        "un m\u00e9canisme de replanification d\u00e9clench\u00e9 par une annulation tardive",
+        "des notifications au technicien et au contact client concern\u00e9",
+        "des droits d'acc\u00e8s distincts pour dispatcher, technicien et client"
       ],
       "challenges": [
         {
-          "id": "chl_cd572adaaf",
-          "headline": "Build versus buy a field-service tool",
-          "premise": "A custom planning and routing feature must be built, although the request names no analysis of existing tools.",
-          "alternative": "Route planning with rescheduling is a standard problem for field-service scheduling and maintenance-management software. Activating a feature already licensed, or buying such a tool, could cover the need without a build. A build then only covers what is specific, such as the link with our own contracts.",
-          "consequence": "Building a routing and rescheduling engine can consume most of the budget to reproduce what an existing tool already does, and leaves the team maintaining it.",
-          "recommendation": "Before any design, list what is already licensed or in use, shortlist two or three market options, and compare them to the stated needs. Decide to build only for the gap.",
+          "id": "chl_a0280f556b",
+          "headline": "Construire avant de regarder l'existant",
+          "premise": "Il faut d\u00e9velopper un outil de planification de tourn\u00e9es sur mesure.",
+          "alternative": "Un outil de planification d'interventions du march\u00e9, ou un module d\u00e9j\u00e0 pr\u00e9sent sur la plateforme (contrats, missions), peut couvrir tout ou partie du besoin. Seule la part non couverte, par exemple les r\u00e8gles propres \u00e0 vos annulations, serait alors d\u00e9velopp\u00e9e.",
+          "consequence": "Sans cet \u00e9tat des lieux, on risque de financer un moteur de tourn\u00e9es dont la valeur existe d\u00e9j\u00e0 sous licence, ou dont l'essentiel se r\u00e8gle avec une planification assist\u00e9e.",
+          "recommendation": "Inventorier les outils d\u00e9j\u00e0 utilis\u00e9s ou licenci\u00e9s et cadrer un budget avant toute estimation de d\u00e9veloppement.",
           "contests": [
             "existing_solutions",
             "current_process"
           ]
         },
         {
-          "id": "chl_6d7252b301",
-          "headline": "Optimised routes versus a simple calendar",
-          "premise": "A route per technician implies computing optimised itineraries.",
-          "alternative": "A first version where the planner assigns visits to a technician's day, sees them grouped by zone, and gets an ordered list without optimisation, avoids a routing engine. Optimisation can be added once the real constraints are known.",
-          "consequence": "Starting with automatic optimisation requires travel times, skills, visit durations and access windows that are all unknown today. A recalculated route built on poor data will look wrong to technicians and be rejected.",
-          "recommendation": "Confirm how many technicians and visits per day are involved, and what the planner does by hand today, to decide whether optimisation is worth it at all.",
+          "id": "chl_588192c146",
+          "headline": "Replanification automatique ou propos\u00e9e",
+          "premise": "L'outil doit replanifier de lui-m\u00eame quand un client annule.",
+          "alternative": "Proposer au dispatcher une ou deux options (combler le cr\u00e9neau avec une visite en attente, resserrer la tourn\u00e9e, reporter la visite) et lui laisser valider. Cela donne l'essentiel du gain sans moteur d'optimisation et sans bousculer des clients d\u00e9j\u00e0 confirm\u00e9s.",
+          "consequence": "Une replanification appliqu\u00e9e sans validation peut d\u00e9placer des visites d\u00e9j\u00e0 confirm\u00e9es et d\u00e9clencher des notifications erron\u00e9es. Un moteur d'optimisation complet est un chantier d'un ordre de grandeur sup\u00e9rieur \u00e0 une aide \u00e0 la d\u00e9cision.",
+          "recommendation": "D\u00e9marrer par une replanification propos\u00e9e et valid\u00e9e par le dispatcher, et n'envisager l'automatisme qu'apr\u00e8s mesure des volumes r\u00e9els.",
           "contests": [
-            "business_rules",
-            "constraints"
+            "workflow",
+            "business_rules"
           ]
         },
         {
-          "id": "chl_ce4361767b",
-          "headline": "Automatic rescheduling on cancellation",
-          "premise": "When a client cancels late, the system should reschedule by itself.",
-          "alternative": "On cancellation, the system could free the slot, flag the visit and propose options to the planner, who validates. This is a proposal, not something the client asked for, and automatic mode can be added later.",
-          "consequence": "Automatic rescheduling can push back a visit that a maintenance contract requires on a given date, move a technician already on the road, or notify clients wrongly, and nobody has defined what 'last minute' means.",
-          "recommendation": "Define 'last minute' (the day before, the same morning, technician already on the way) and which visits are contractually non-movable, then choose between planner-validated and automatic rescheduling per case.",
+          "id": "chl_1352cee28e",
+          "headline": "Le p\u00e9rim\u00e8tre amont est ignor\u00e9",
+          "premise": "Les visites \u00e0 planifier existent d\u00e9j\u00e0 et il suffit de les ordonnancer.",
+          "alternative": "Si les visites ne sont pas d\u00e9j\u00e0 produites par les \u00e9ch\u00e9ances des contrats de maintenance, il faut d'abord d\u00e9cider d'o\u00f9 elles naissent (p\u00e9riodicit\u00e9 du contrat, demande client, ticket), ou limiter la premi\u00e8re version \u00e0 la saisie manuelle des visites.",
+          "consequence": "D\u00e9couvrir en cours de route que les visites n'existent pas dans la plateforme \u00e9tend le projet \u00e0 un sous-syst\u00e8me complet de p\u00e9riodicit\u00e9 et de demandes.",
+          "recommendation": "Confirmer l'origine des visites avant de chiffrer, et traiter la g\u00e9n\u00e9ration automatique depuis les contrats comme une \u00e9tape ult\u00e9rieure.",
           "contests": [
-            "business_rules",
-            "edge_cases",
-            "workflow"
+            "workflow",
+            "business_objects"
           ]
         }
       ],
-      "complexity": "medium",
+      "complexity": "high",
       "complexity_reasons": [
-        "rescheduling rules that depend on cancellation timing and contract priority",
-        "route building under skills, zone and time constraints, if optimisation is in scope",
-        "notifications routed by role to technicians and client contacts",
-        "scope still open: from a simple calendar to a full planning engine"
+        "construction de tourn\u00e9es sous contraintes (comp\u00e9tences, zones, cr\u00e9neaux, dur\u00e9e de journ\u00e9e)",
+        "replanification sans bousculer les visites d\u00e9j\u00e0 confirm\u00e9es",
+        "r\u00e8gles possiblement variables par client ou contrat",
+        "notifications selon le r\u00f4le du contact client"
       ],
-      "cost_driver": "the scope of route building and rescheduling (simple calendar or optimisation engine)",
+      "cost_driver": "le niveau d'automatisme du calcul et de la replanification des tourn\u00e9es",
       "risks": [
-        "Building something that an already-licensed or purchasable tool would have covered, because no one has checked.",
-        "Rescheduling that breaks contractual maintenance deadlines if contract priority is not modelled.",
-        "Technicians' adoption in the field: a route changed at the last minute that is unrealistic or poorly communicated will be ignored.",
-        "Poor quality of addresses, visit durations and skills data, which makes any computed route unreliable.",
-        "Permissions (who can move another technician's visit) discovered late, at acceptance testing."
+        "Des tourn\u00e9es irr\u00e9alistes sur le terrain (dur\u00e9es de visite et temps de trajet mal estim\u00e9s, adresses incompl\u00e8tes) font rejeter l'outil par les techniciens.",
+        "Une replanification qui d\u00e9place des clients d\u00e9j\u00e0 confirm\u00e9s peut d\u00e9grader la relation, en l'absence de r\u00e8gles claires sur le d\u00e9lai d'annulation tardive.",
+        "Les r\u00e8gles d'annulation, de p\u00e9nalit\u00e9 et de notification peuvent varier par client ou contrat, ce qui impose de la configuration plut\u00f4t qu'un comportement unique.",
+        "Les droits d'acc\u00e8s (dispatcher, technicien, client) et les circuits de notification de la plateforme existante risquent de devoir \u00eatre \u00e9tendus, ce qui touche plusieurs \u00e9crans partag\u00e9s.",
+        "Un \u00e9ventuel portail d'annulation en libre-service pour le client ouvrirait un p\u00e9rim\u00e8tre suppl\u00e9mentaire non demand\u00e9."
       ],
       "opportunities": [
         {
-          "id": "opp_0ad6d8d48f",
-          "text": "Generate maintenance visits from contract schedules so that planning starts from contractual due dates, and make cancellation and rescheduling a reusable event other modules can subscribe to.",
-          "leverage": "medium",
-          "modules": [
-            "Contracts",
-            "Missions",
-            "Client / Contact directory"
-          ]
-        },
-        {
-          "id": "opp_de50a82547",
-          "text": "Reuse the contact roles (billing, HR, operational) already in the client directory to route cancellation and rescheduling notifications to the right person.",
+          "id": "opp_c716c9dc80",
+          "text": "R\u00e9utiliser les contrats de maintenance comme source des visites \u00e0 planifier (p\u00e9riodicit\u00e9, \u00e9ch\u00e9ances), plut\u00f4t que de cr\u00e9er un circuit de demandes s\u00e9par\u00e9.",
           "leverage": "high",
           "modules": [
-            "Client / Contact directory"
+            "Contracts",
+            "Clients"
           ]
         },
         {
-          "id": "opp_ddf1a33049",
-          "text": "Link a completed visit to final invoicing, as is done for the end of a mission, once planning is stable.",
+          "id": "opp_b4dc188689",
+          "text": "S'appuyer sur la fin d'une visite ou d'une mission comme \u00e9v\u00e9nement d\u00e9clencheur des notifications, en r\u00e9utilisant le routage par r\u00f4le de contact d\u00e9j\u00e0 pr\u00e9sent.",
+          "leverage": "medium",
+          "modules": [
+            "Missions",
+            "Contacts"
+          ]
+        },
+        {
+          "id": "opp_78dc3de460",
+          "text": "Isoler la logique de replanification (proposition d'options valid\u00e9es par un humain) pour qu'elle serve plus tard \u00e0 d'autres plannings de la plateforme.",
           "leverage": "future",
           "modules": [
-            "Invoicing",
-            "Missions"
+            "Missions",
+            "Absence"
           ]
         }
       ],
       "next_steps": [
-        "Run the build-or-buy check first: inventory tools already licensed or in use, shortlist market options and compare them to the need.",
-        "Interview the planner and observe the current process, including how a late cancellation is handled today, to turn the request into measurable goals (planning time, kilometres, deadlines met).",
-        "Settle the rules that decide the scope: definition of 'last minute', non-movable contractual visits, planner-validated or automatic rescheduling, number of technicians and visits per day.",
-        "If building, deliver a first version as a visit calendar with a daily list per technician, planner-validated rescheduling and role-based notifications, with no route optimisation."
+        "Inventorier les outils et modules d\u00e9j\u00e0 en place ou achetables, et obtenir une enveloppe budg\u00e9taire.",
+        "Confirmer l'origine des visites et le fonctionnement actuel des tourn\u00e9es, avec le volume de techniciens et de visites par jour.",
+        "D\u00e9finir avec les dispatchers ce qu'est une annulation tardive et le comportement attendu, puis arbitrer entre proposition valid\u00e9e et application directe.",
+        "Si le projet est maintenu, cadrer un pilote sur une \u00e9quipe ou une zone avec des crit\u00e8res d'acceptation chiffr\u00e9s."
       ],
       "decisions": [
         {
-          "id": "dec_8127394d92",
-          "decision": "Internal tool: the requesting company is the payer, with no revenue model to design",
+          "id": "dec_1907826ced",
+          "decision": "Traiter l'outil comme un module interne de la plateforme, financ\u00e9 par l'entreprise et d\u00e9ploy\u00e9 aupr\u00e8s d'utilisateurs connus (dispatchers, techniciens).",
+          "why": "La demande parle de \u00ab nos clients \u00bb : l'organisation planifie ses propres visites.",
+          "alternative": "Un produit vendu \u00e0 des tiers.",
+          "tradeoff": "Pas de logique de facturation ni d'acquisition, mais un d\u00e9ploiement \u00e0 r\u00e9ussir aupr\u00e8s d'utilisateurs peu enclins \u00e0 changer.",
+          "derived_from": [
+            "payer",
+            "acquisition"
+          ],
+          "source": "proposed"
+        }
+      ],
+      "exclusions": [],
+      "thresholds": [],
+      "open_decisions": [
+        "Outil existant ou achat possible, et enveloppe budg\u00e9taire",
+        "Origine des visites (contrats r\u00e9currents, demandes, tickets)",
+        "Replanification propos\u00e9e au dispatcher ou appliqu\u00e9e automatiquement",
+        "D\u00e9finition d'une annulation tardive et \u00e9ventuelle p\u00e9nalit\u00e9",
+        "R\u00e8gles identiques pour tous les clients ou variables par client ou contrat",
+        "Droits de chaque r\u00f4le, dont l'annulation en libre-service par le client",
+        "\u00c9ch\u00e9ance, contraintes r\u00e9glementaires et indicateurs de r\u00e9ussite"
+      ],
+      "page": {
+        "title": "Planifier les tourn\u00e9es : acheter, r\u00e9utiliser ou construire",
+        "recommendation": "Avant de lancer un d\u00e9veloppement, d\u00e9cidez d'abord si un outil existant couvre le besoin. Si ce n'est pas le cas, nous recommandons une planification assist\u00e9e : le dispatcher construit les tourn\u00e9es avec l'outil, et lors d'une annulation tardive, l'outil lui propose des options de replanification qu'il valide, sans moteur d'optimisation automatique.",
+        "why": "Votre demande d\u00e9crit un r\u00e9sultat (une tourn\u00e9e par technicien, une replanification) mais ne dit rien de l'existant, du budget, de l'origine des visites ni de ce que \u00ab derni\u00e8re minute \u00bb signifie. Acheter ou r\u00e9utiliser peut supprimer tout ou partie du projet, et une aide \u00e0 la d\u00e9cision valid\u00e9e par le dispatcher apporte l'essentiel du gain sans bousculer des clients d\u00e9j\u00e0 confirm\u00e9s.",
+        "cost_and_risk": "Le principal co\u00fbt est le niveau d'automatisme : un calcul de tourn\u00e9es sous contraintes est un chantier bien plus lourd qu'une saisie assist\u00e9e. Le risque qui compte le plus est de produire des tourn\u00e9es irr\u00e9alistes, que les techniciens n'utiliseraient pas.",
+        "open": [
+          {
+            "question": "Utilisez-vous d\u00e9j\u00e0 un outil de planification d'interventions, ou avez-vous \u00e9tudi\u00e9 des solutions du march\u00e9, et quel budget envisagez-vous ?",
+            "would_change": "Si un outil couvre le besoin, on l'adopte et on ne d\u00e9veloppe que le compl\u00e9ment, voire rien.",
+            "slots": [
+              "existing_solutions"
+            ]
+          },
+          {
+            "question": "D'o\u00f9 viennent les visites \u00e0 planifier (\u00e9ch\u00e9ances de contrats, demandes clients, tickets) et comment organisez-vous les tourn\u00e9es aujourd'hui ?",
+            "would_change": "Si les visites n'existent pas dans la plateforme, le p\u00e9rim\u00e8tre s'\u00e9tend \u00e0 un sous-syst\u00e8me de p\u00e9riodicit\u00e9 et de demandes.",
+            "slots": [
+              "workflow",
+              "current_process"
+            ]
+          },
+          {
+            "question": "Quelles contraintes doit respecter une tourn\u00e9e (comp\u00e9tences, zone, cr\u00e9neaux client, dur\u00e9e de journ\u00e9e) et qu'appelez-vous une annulation tardive, avec quelle cons\u00e9quence \u00e9ventuelle (p\u00e9nalit\u00e9, facturation) ?",
+            "would_change": "Des contraintes nombreuses ou une annulation factur\u00e9e font passer d'une saisie assist\u00e9e \u00e0 un calcul de tourn\u00e9es plus lourd.",
+            "slots": [
+              "business_rules"
+            ]
+          },
+          {
+            "question": "Les r\u00e8gles d'annulation, de cr\u00e9neaux et de notification sont-elles identiques pour tous vos clients ou varient-elles selon le client ou le contrat ?",
+            "would_change": "Des r\u00e8gles variables imposent une configuration par client, donc un chantier plus important.",
+            "slots": [
+              "config_vs_custom"
+            ]
+          },
+          {
+            "question": "Qui peut voir et modifier les tourn\u00e9es, et le client peut-il annuler lui-m\u00eame depuis un portail ?",
+            "would_change": "Un portail client en libre-service ajoute un p\u00e9rim\u00e8tre et des droits suppl\u00e9mentaires.",
+            "slots": [
+              "permissions",
+              "actors"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "La planification actuelle est manuelle (Excel, agenda, t\u00e9l\u00e9phone).",
+            "source": "assumed"
+          },
+          {
+            "text": "Les acteurs sont le dispatcher, les techniciens, les contacts clients et un manager ; le dispatcher voit tout, le technicien ne voit que sa tourn\u00e9e.",
+            "source": "assumed"
+          },
+          {
+            "text": "L'outil est un module interne financ\u00e9 par l'entreprise, rattach\u00e9 \u00e0 la plateforme existante.",
+            "source": "proposed"
+          },
+          {
+            "text": "La replanification est propos\u00e9e au dispatcher pour validation plut\u00f4t qu'appliqu\u00e9e automatiquement.",
+            "source": "proposed"
+          },
+          {
+            "text": "Aucune obligation d'audit ou de conformit\u00e9 n'est \u00e0 prendre en compte pour l'instant.",
+            "source": "assumed"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "Les visites de maintenance sont planifi\u00e9es sans moyen fiable de construire des tourn\u00e9es coh\u00e9rentes par technicien ni d'absorber une annulation tardive sans perdre un cr\u00e9neau ou manquer une \u00e9ch\u00e9ance (besoin de fond non formul\u00e9 par le client).",
+      "solution": "Un outil de planification qui construit une tourn\u00e9e journali\u00e8re par technicien \u00e0 partir des visites \u00e0 faire, et propose une replanification au planificateur lorsqu'un client annule au dernier moment.",
+      "introduces": [
+        "un moteur de construction de tourn\u00e9es (affectation par technicien, zone, dur\u00e9e, cr\u00e9neaux)",
+        "un cycle de vie de la visite (\u00e0 planifier, planifi\u00e9e, r\u00e9alis\u00e9e, annul\u00e9e, \u00e0 replanifier)",
+        "une logique de replanification d\u00e9clench\u00e9e par l'annulation, avec gestion des \u00e9ch\u00e9ances non reportables",
+        "des notifications cibl\u00e9es vers techniciens et contacts clients",
+        "une vue de tourn\u00e9e par technicien avec des droits distincts de ceux du planificateur"
+      ],
+      "challenges": [
+        {
+          "id": "chl_5d63839506",
+          "headline": "Construire avant de regarder l'existant",
+          "premise": "La demande part du principe qu'il faut d\u00e9velopper un outil de planification sur mesure.",
+          "alternative": "Un logiciel de planification d'interventions du march\u00e9, ou une fonction d\u00e9j\u00e0 licenci\u00e9e dans l'ERP ou la plateforme actuelle, couvre peut-\u00eatre tourn\u00e9es et replanification sans d\u00e9veloppement. Un d\u00e9veloppement ne se justifie que sur l'\u00e9cart restant.",
+          "consequence": "Construire un moteur de tourn\u00e9es et de replanification est un chantier lourd ; si un outil d\u00e9j\u00e0 pay\u00e9 ou achetable le couvre, l'effort est dupliqu\u00e9 et la maintenance reste \u00e0 votre charge.",
+          "recommendation": "Inventorier avant tout chiffrage les outils en place, les licences non activ\u00e9es et deux ou trois solutions du march\u00e9, avec le budget disponible.",
+          "contests": [
+            "existing_solutions",
+            "current_process"
+          ]
+        },
+        {
+          "id": "chl_12483d8e2d",
+          "headline": "Replanification automatique par d\u00e9faut",
+          "premise": "Une annulation de derni\u00e8re minute doit entra\u00eener une replanification, implicitement automatique.",
+          "alternative": "Le syst\u00e8me propose un ou plusieurs cr\u00e9neaux de remplacement et le planificateur valide. Les visites \u00e0 \u00e9ch\u00e9ance imp\u00e9rative sont signal\u00e9es et jamais d\u00e9plac\u00e9es sans d\u00e9cision humaine.",
+          "consequence": "Une replanification automatique mal calibr\u00e9e peut d\u00e9placer une visite r\u00e9glementaire au-del\u00e0 de son \u00e9ch\u00e9ance, ou imposer un nouveau cr\u00e9neau que le client refuse.",
+          "recommendation": "Faire confirmer qui d\u00e9cide de la replanification et quelles visites ne sont jamais reportables avant de concevoir la r\u00e8gle.",
+          "contests": [
+            "business_rules",
+            "workflow"
+          ]
+        },
+        {
+          "id": "chl_c603c768a4",
+          "headline": "Le vrai probl\u00e8me n'est pas pos\u00e9",
+          "premise": "Le client formule une solution (tourn\u00e9es et replanification) sans d\u00e9crire la douleur actuelle ni la mesure du succ\u00e8s.",
+          "alternative": "Partir d'un constat chiffr\u00e9 : kilom\u00e8tres perdus, cr\u00e9neaux vides apr\u00e8s annulation, \u00e9ch\u00e9ances manqu\u00e9es. L'un de ces trois points peut suffire \u00e0 justifier une version r\u00e9duite, par exemple seulement la replanification.",
+          "consequence": "Sans cible, le p\u00e9rim\u00e8tre d\u00e9rive vers l'optimisation d'itin\u00e9raires, l'application mobile et la gestion des contrats, sans crit\u00e8re d'arr\u00eat.",
+          "recommendation": "Obtenir un chiffrage de la situation actuelle et un objectif mesurable avant de fixer le p\u00e9rim\u00e8tre.",
+          "contests": [
+            "problem",
+            "success_metrics"
+          ]
+        }
+      ],
+      "complexity": "high",
+      "complexity_reasons": [
+        "construction de tourn\u00e9es sous contraintes (comp\u00e9tences, zone, cr\u00e9neaux, trajets)",
+        "replanification avec \u00e9ch\u00e9ances non reportables",
+        "p\u00e9rim\u00e8tre amont et aval (origine des visites, mobile technicien) non d\u00e9fini",
+        "notifications d\u00e9pendantes du r\u00f4le des contacts"
+      ],
+      "cost_driver": "le moteur de construction et de replanification des tourn\u00e9es",
+      "risks": [
+        "Le p\u00e9rim\u00e8tre peut s'\u00e9tendre \u00e0 un sous-syst\u00e8me de contrats et d'\u00e9ch\u00e9ances si l'origine des visites n'est pas cadr\u00e9e.",
+        "Une application terrain pour les techniciens, si elle est requise, peut doubler l'effort et soulever la question du hors connexion.",
+        "Des adresses ou dur\u00e9es de visite peu fiables d\u00e9gradent la qualit\u00e9 des tourn\u00e9es, quel que soit le moteur.",
+        "Une replanification mal accept\u00e9e par les clients ou les techniciens compromet l'adoption.",
+        "Les droits (le technicien ne voit que sa tourn\u00e9e) sont repris tardivement s'ils ne sont pas con\u00e7us d\u00e8s le d\u00e9part."
+      ],
+      "opportunities": [
+        {
+          "id": "opp_cab9ab9d3e",
+          "text": "Traiter la replanification comme un moteur de r\u00e8gles r\u00e9utilisable : une annulation ou une absence lib\u00e8re des cr\u00e9neaux et d\u00e9clenche des propositions, applicable aux visites comme aux missions.",
+          "leverage": "medium",
+          "modules": [
+            "Missions",
+            "Contracts"
+          ]
+        },
+        {
+          "id": "opp_4aca043a80",
+          "text": "S'appuyer sur le r\u00e9pertoire existant de clients et de contacts, avec leurs r\u00f4les, pour router les notifications d'annulation et de replanification.",
+          "leverage": "high",
+          "modules": [
+            "Client / Contact"
+          ]
+        },
+        {
+          "id": "opp_641636a4c9",
+          "text": "D\u00e9river les visites \u00e0 planifier de la p\u00e9riodicit\u00e9 des contrats de maintenance plut\u00f4t que de les saisir \u00e0 la main.",
+          "leverage": "future",
+          "modules": [
+            "Contracts"
+          ]
+        }
+      ],
+      "next_steps": [
+        "Inventorier l'existant et le budget : outils en place, licences non activ\u00e9es, solutions du march\u00e9, pour d\u00e9cider d'acheter ou de construire.",
+        "Cadrer le besoin en un atelier avec le planificateur : situation actuelle chiffr\u00e9e, origine des visites, r\u00e8gle de replanification et visites non reportables.",
+        "Si la construction est retenue, livrer d'abord une version pilot\u00e9e par le planificateur (tourn\u00e9e compos\u00e9e avec aide, replanification propos\u00e9e), sans application mobile ni portail client.",
+        "Valider les volumes (techniciens, visites par jour, zone) pour choisir entre une aide simple et un moteur d'itin\u00e9raires."
+      ],
+      "decisions": [
+        {
+          "id": "dec_cca922afea",
+          "decision": "Le planificateur valide les replanifications ; le syst\u00e8me propose, il ne d\u00e9place pas seul.",
+          "why": "Les \u00e9ch\u00e9ances non reportables et l'acceptation par les clients ne sont pas connues ; une validation humaine limite le risque.",
+          "alternative": "Replanification enti\u00e8rement automatique.",
+          "tradeoff": "Une \u00e9tape manuelle de plus, en \u00e9change d'un risque bien moindre sur les \u00e9ch\u00e9ances.",
+          "derived_from": [
+            "business_rules",
+            "actors",
+            "edge_cases"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_74eedd47f1",
+          "decision": "Premi\u00e8re version limit\u00e9e \u00e0 un poste planificateur, sans application mobile ni portail client.",
+          "why": "Le besoin terrain n'est pas \u00e9tabli et une application mobile peut doubler le p\u00e9rim\u00e8tre.",
+          "alternative": "Application technicien et portail client d\u00e8s la premi\u00e8re version.",
+          "tradeoff": "Les techniciens ne mettent pas \u00e0 jour leur tourn\u00e9e eux-m\u00eames au d\u00e9part, en \u00e9change d'une livraison plus rapide et moins risqu\u00e9e.",
+          "derived_from": [
+            "integrations",
+            "actors",
+            "risks"
+          ],
+          "source": "proposed"
+        }
+      ],
+      "exclusions": [],
+      "thresholds": [],
+      "open_decisions": [
+        "Acheter, activer une licence existante ou construire",
+        "Origine des visites (p\u00e9riodicit\u00e9 des contrats, demande client, saisie manuelle)",
+        "Optimisation automatique des tourn\u00e9es ou aide \u00e0 la composition manuelle",
+        "R\u00e8gle de replanification, d\u00e9lai d'annulation et visites non reportables",
+        "Volum\u00e9trie et \u00e9ch\u00e9ance de mise en service",
+        "Besoin d'une application terrain pour les techniciens",
+        "Objectifs chiffr\u00e9s de succ\u00e8s"
+      ],
+      "page": {
+        "title": "Acheter ou construire la planification des visites",
+        "recommendation": "Avant de lancer un d\u00e9veloppement, d\u00e9cidez si un outil existant ou du march\u00e9 peut couvrir le besoin. Si rien ne convient, nous recommandons un premier outil pilot\u00e9 par le planificateur : il compose les tourn\u00e9es par technicien avec une aide, et le syst\u00e8me lui propose une replanification quand un client annule, sans application mobile ni portail client dans cette premi\u00e8re \u00e9tape.",
+        "why": "Votre demande d\u00e9crit une solution mais ni l'existant, ni la douleur actuelle, ni l'origine des visites. Acheter ou activer une fonction d\u00e9j\u00e0 licenci\u00e9e pourrait supprimer le projet. Si la construction se confirme, une validation humaine des replanifications prot\u00e8ge les visites \u00e0 \u00e9ch\u00e9ance imp\u00e9rative et l'acceptation par vos clients, tant que ces r\u00e8gles ne sont pas \u00e9tablies.",
+        "cost_and_risk": "Le principal co\u00fbt est le moteur qui construit les tourn\u00e9es et propose les replanifications sous contraintes. Le risque majeur est l'\u00e9largissement du p\u00e9rim\u00e8tre vers la gestion des contrats et des \u00e9ch\u00e9ances, ou vers une application terrain pour les techniciens, qui peut doubler l'effort.",
+        "open": [
+          {
+            "question": "Utilisez-vous d\u00e9j\u00e0 un outil ou une licence qui pourrait couvrir tout ou partie du besoin, et quel budget envisagez-vous ?",
+            "would_change": "Si un outil existant convient, on l'active ou on l'ach\u00e8te et le d\u00e9veloppement dispara\u00eet ou se r\u00e9duit \u00e0 un compl\u00e9ment.",
+            "slots": [
+              "existing_solutions",
+              "current_process"
+            ]
+          },
+          {
+            "question": "D'o\u00f9 viennent les visites \u00e0 planifier : p\u00e9riodicit\u00e9 des contrats, demandes clients ou saisie manuelle ?",
+            "would_change": "Une g\u00e9n\u00e9ration automatique depuis les contrats ajoute un sous-syst\u00e8me d'\u00e9ch\u00e9ances et \u00e9largit nettement le p\u00e9rim\u00e8tre.",
+            "slots": [
+              "workflow"
+            ]
+          },
+          {
+            "question": "Quand un client annule, qui d\u00e9cide de la nouvelle date, et quelles visites ne peuvent jamais \u00eatre report\u00e9es ?",
+            "would_change": "Une replanification enti\u00e8rement automatique exigerait des r\u00e8gles d'\u00e9ch\u00e9ance et de priorit\u00e9 beaucoup plus pouss\u00e9es.",
+            "slots": [
+              "business_rules",
+              "actors"
+            ]
+          },
+          {
+            "question": "Les techniciens doivent-ils consulter et mettre \u00e0 jour leur tourn\u00e9e sur le terrain, \u00e9ventuellement hors connexion ?",
+            "would_change": "Si oui, une application mobile devient une partie centrale du chantier et change le co\u00fbt et le calendrier.",
+            "slots": [
+              "integrations",
+              "permissions"
+            ]
+          },
+          {
+            "question": "Combien de techniciens et de visites par jour, sur quelle zone, et avec quelle \u00e9ch\u00e9ance de mise en service ?",
+            "would_change": "De petits volumes suffisent \u00e0 une aide simple ; de grands volumes justifient un moteur d'itin\u00e9raires.",
+            "slots": [
+              "constraints",
+              "success_metrics",
+              "problem"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "Il s'agit d'un outil interne ou d'un module de la plateforme existante, dont l'entreprise est le payeur.",
+            "source": "assumed"
+          },
+          {
+            "text": "Les visites d\u00e9coulent de contrats de maintenance avec une p\u00e9riodicit\u00e9.",
+            "source": "assumed"
+          },
+          {
+            "text": "Un planificateur central construit les tourn\u00e9es ; chaque technicien ne voit que la sienne.",
+            "source": "assumed"
+          },
+          {
+            "text": "Le planificateur valide les replanifications propos\u00e9es par le syst\u00e8me.",
+            "source": "proposed"
+          },
+          {
+            "text": "La premi\u00e8re version se passe d'application mobile et de portail client.",
+            "source": "proposed"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "La planification des visites de maintenance et le rattrapage des annulations tardives sont, selon toute vraisemblance, g\u00e9r\u00e9s \u00e0 la main, avec des cr\u00e9neaux techniciens perdus ; le vrai probl\u00e8me (temps de planification, kilom\u00e8tres, visites non r\u00e9alis\u00e9es) n'est pas encore \u00e9tabli.",
+      "solution": "Un module de planification qui affecte les visites de maintenance \u00e0 une tourn\u00e9e par technicien et par jour, et aide le planificateur \u00e0 replanifier quand un client annule au dernier moment.",
+      "introduces": [
+        "un moteur de construction de tourn\u00e9es (technicien \u00d7 jour) sous contraintes de zone, comp\u00e9tences et dur\u00e9e",
+        "un cycle de vie de la visite (\u00e0 planifier, planifi\u00e9e, confirm\u00e9e, r\u00e9alis\u00e9e, annul\u00e9e, \u00e0 replanifier)",
+        "un m\u00e9canisme de replanification d\u00e9clench\u00e9 par un \u00e9v\u00e9nement d'annulation",
+        "des notifications au technicien et au client selon leur r\u00f4le, sur le terrain",
+        "une vue de tourn\u00e9e limit\u00e9e \u00e0 chaque technicien, avec des droits d'acc\u00e8s par r\u00f4le"
+      ],
+      "challenges": [
+        {
+          "id": "chl_4be8d726da",
+          "headline": "Construire avant de chercher l'existant",
+          "premise": "Il faut d\u00e9velopper un outil de planification de tourn\u00e9es sur mesure.",
+          "alternative": "Un outil de planification d'interventions d\u00e9j\u00e0 licenci\u00e9, un module de la plateforme non activ\u00e9 ou une solution du march\u00e9 pourrait couvrir tourn\u00e9es et replanification. Le d\u00e9veloppement se limiterait alors \u00e0 l'int\u00e9gration avec les contrats et les clients.",
+          "consequence": "Sans cette v\u00e9rification, on risque de financer un moteur de planification que l'entreprise poss\u00e8de d\u00e9j\u00e0 ou qui s'ach\u00e8te \u00e0 un co\u00fbt inf\u00e9rieur \u00e0 celui de la construction.",
+          "recommendation": "Inventorier les outils d\u00e9j\u00e0 pay\u00e9s et comparer 2 ou 3 solutions du march\u00e9 avant tout chiffrage de d\u00e9veloppement.",
+          "contests": [
+            "existing_solutions",
+            "problem"
+          ]
+        },
+        {
+          "id": "chl_dae5e3a7f5",
+          "headline": "Optimisation d'itin\u00e9raire pr\u00e9sum\u00e9e",
+          "premise": "Une tourn\u00e9e par technicien suppose une optimisation automatique des trajets.",
+          "alternative": "Un regroupement par zone et par jour, avec ajustement manuel assist\u00e9, couvre souvent le besoin \u00e0 bien moindre co\u00fbt. Il est suffisant tant que la volum\u00e9trie reste modeste, ce que la demande ne chiffre pas. L'optimisation sous contraintes se justifie si les kilom\u00e8tres et temps morts sont le vrai probl\u00e8me.",
+          "consequence": "Un moteur d'optimisation (comp\u00e9tences, plages horaires, dur\u00e9es, trajets) est le premier poste de co\u00fbt, et une tourn\u00e9e irr\u00e9aliste fait perdre la confiance des techniciens.",
+          "recommendation": "Commencer par un planning par zone et par jour, assist\u00e9 pour la replanification. N'ajouter l'optimisation qu'une fois la volum\u00e9trie et le gain attendu mesur\u00e9s.",
+          "contests": [
+            "business_rules",
+            "success_metrics",
+            "constraints"
+          ]
+        },
+        {
+          "id": "chl_d7a0d46ea1",
+          "headline": "Replanification automatique ou assist\u00e9e",
+          "premise": "Le syst\u00e8me doit replanifier seul quand un client annule au dernier moment.",
+          "alternative": "Une proposition de replanification (combler le trou, avancer une visite, reporter) que le planificateur valide \u00e9vite les cascades de changements impos\u00e9s \u00e0 des techniciens d\u00e9j\u00e0 en route.",
+          "consequence": "Une replanification automatique multiplie les notifications, les conflits et les cas o\u00f9 une visite obligatoire reste sans technicien, sans que personne ne l'ait d\u00e9cid\u00e9.",
+          "recommendation": "Fixer d'abord ce que \u00ab derni\u00e8re minute \u00bb veut dire (m\u00eame jour, 24 h, 48 h), puis valider avec le planificateur le niveau d'automatisme souhait\u00e9.",
+          "contests": [
+            "business_rules",
+            "workflow",
+            "edge_cases"
+          ]
+        }
+      ],
+      "complexity": "high",
+      "complexity_reasons": [
+        "construction de tourn\u00e9es sous contraintes (zone, comp\u00e9tences, dur\u00e9es, plages horaires)",
+        "replanification \u00e9v\u00e9nementielle avec risque de cascade",
+        "notification en temps r\u00e9el du technicien sur le terrain, probablement via mobile",
+        "r\u00e8gles possiblement propres \u00e0 chaque client ou contrat"
+      ],
+      "cost_driver": "le moteur de tourn\u00e9es et de replanification sous contraintes",
+      "risks": [
+        "Des dur\u00e9es de visite et de trajet mal estim\u00e9es produisent des tourn\u00e9es irr\u00e9alistes que les techniciens ne suivront pas.",
+        "L'origine des visites n'est pas connue : le p\u00e9rim\u00e8tre peut s'\u00e9tendre \u00e0 la g\u00e9n\u00e9ration des visites depuis les contrats de maintenance.",
+        "Une annulation tardive peut avoir des cons\u00e9quences contractuelles (p\u00e9nalit\u00e9, d\u00e9lai de reprogrammation obligatoire) qui touchent la facturation et les contrats.",
+        "Les droits d'acc\u00e8s (planificateur, technicien, client) et les r\u00f4les de contact pour les notifications sont souvent oubli\u00e9s jusqu'\u00e0 la recette.",
+        "La qualit\u00e9 des adresses des sites clients conditionne tout calcul de tourn\u00e9e."
+      ],
+      "opportunities": [
+        {
+          "id": "opp_728efc83bf",
+          "text": "Faire de l'annulation et de la replanification un \u00e9v\u00e9nement g\u00e9n\u00e9rique de la plateforme, r\u00e9utilisable par d'autres modules (fin de mission, absence d'un technicien).",
+          "leverage": "medium",
+          "modules": [
+            "Missions",
+            "Absence"
+          ]
+        },
+        {
+          "id": "opp_537ebc9d69",
+          "text": "Router les notifications selon le r\u00f4le du contact client (op\u00e9rationnel, facturation) en r\u00e9utilisant l'annuaire clients et contacts d\u00e9j\u00e0 en place.",
+          "leverage": "high",
+          "modules": [
+            "Clients",
+            "Contacts"
+          ]
+        },
+        {
+          "id": "opp_214d98e66b",
+          "text": "Rattacher la g\u00e9n\u00e9ration des visites aux contrats de maintenance, si la p\u00e9riodicit\u00e9 y est d\u00e9j\u00e0 port\u00e9e.",
+          "leverage": "future",
+          "modules": [
+            "Contracts"
+          ]
+        }
+      ],
+      "next_steps": [
+        "Inventorier les outils de planification d\u00e9j\u00e0 licenci\u00e9s ou activables et comparer 2 ou 3 solutions du march\u00e9, avant tout d\u00e9veloppement.",
+        "Cartographier le processus actuel avec le planificateur : origine des visites, gestion d'une annulation, volum\u00e9trie (techniciens, visites par jour, annulations tardives).",
+        "D\u00e9finir \u00ab derni\u00e8re minute \u00bb et le niveau d'automatisme de la replanification, avec les cons\u00e9quences contractuelles associ\u00e9es.",
+        "Si on construit, livrer un premier lot restreint : planning par zone et par jour, annulation, proposition de replanification valid\u00e9e par le planificateur."
+      ],
+      "decisions": [
+        {
+          "id": "dec_3e008dea51",
+          "decision": "Outil interne \u00e0 l'entreprise, d\u00e9ploy\u00e9 aupr\u00e8s d'utilisateurs connus (planificateurs, techniciens)",
           "why": "",
           "alternative": "",
           "tradeoff": "",
@@ -699,14 +1147,14 @@
           "source": "proposed"
         },
         {
-          "id": "dec_84b79c279e",
-          "decision": "The planner validates changes and rescheduling by default, until the team decides otherwise",
-          "why": "Late cancellations may hit contractual visits, and the rules are not defined yet.",
-          "alternative": "Fully automatic rescheduling on every cancellation.",
-          "tradeoff": "A manual step for the planner, in exchange for avoiding wrong moves while the rules are unknown.",
+          "id": "dec_b0c70d4207",
+          "decision": "Replanification propos\u00e9e au planificateur plut\u00f4t qu'appliqu\u00e9e automatiquement, au moins pour le premier lot",
+          "why": "Le seuil de derni\u00e8re minute et les r\u00e8gles contractuelles ne sont pas connus ; une validation humaine limite les erreurs co\u00fbteuses.",
+          "alternative": "Replanification enti\u00e8rement automatique avec notification imm\u00e9diate.",
+          "tradeoff": "Un d\u00e9lai de r\u00e9action humain, en \u00e9change de moins de cascades de changements impos\u00e9s aux techniciens.",
           "derived_from": [
             "business_rules",
-            "edge_cases",
+            "workflow",
             "actors"
           ],
           "source": "proposed"
@@ -715,256 +1163,111 @@
       "exclusions": [],
       "thresholds": [],
       "open_decisions": [
-        "Build, buy or activate an existing tool, and the available budget",
-        "How visits are planned and cancellations handled today",
-        "Origin of visits: generated from maintenance contracts, client requests or manual entry",
-        "Definition of 'last minute' and the expected behaviour (automatic or validated rescheduling, slot refilled or not, who is notified)",
-        "Route rules: zone, skills, durations, access windows, travel time, daily load, and whether they vary by client or contract",
-        "Volumes (technicians, visits per day), users (planner, technicians on mobile or not) and deadline",
-        "Success measures and acceptance scenarios",
-        "Permissions: what a technician sees and who can move another technician's visit"
-      ]
-    },
-    {
-      "problem": "Maintenance visits are not planned in a structured way per technician, and a late cancellation wastes a slot and travel and forces a manual re-plan.",
-      "solution": "An internal planning tool that assigns maintenance visits to a daily route per technician and handles late-cancellation re-planning, with the degree of automation still to be decided.",
-      "introduces": [
-        "a visit and route scheduling capability (visit, technician, daily route)",
-        "a cancellation and re-planning flow with a defined lifecycle (to plan, planned, done, cancelled, to re-plan)",
-        "role-based notifications to technician, client contact and planner",
-        "a technician-facing view of the day's route, probably mobile",
-        "a link between maintenance contracts and the visits they generate (to be confirmed)"
+        "Outil existant ou solution du march\u00e9 utilisable \u00e0 la place d'un d\u00e9veloppement",
+        "Origine des visites (contrats, demandes clients, saisie manuelle)",
+        "D\u00e9finition de \u00ab derni\u00e8re minute \u00bb et niveau d'automatisme de la replanification",
+        "Niveau d'optimisation d'itin\u00e9raire attendu",
+        "Notifications : qui, quand, quel canal, application mobile pour les techniciens",
+        "Cons\u00e9quences contractuelles d'une annulation tardive et variation par client",
+        "Volum\u00e9trie, \u00e9ch\u00e9ance et indicateurs de succ\u00e8s"
       ],
-      "challenges": [
-        {
-          "id": "chl_8ec164ef60",
-          "headline": "Build before checking existing tools",
-          "premise": "A custom route-planning feature is the right answer to this need.",
-          "alternative": "Field-service or route-planning tools, or an unused feature of a tool already licensed, may already cover per-technician routes and cancellation re-planning. Reusing one could shrink the build to an integration with the contract and client directory.",
-          "consequence": "Building a scheduling engine from scratch may duplicate something already paid for, and cost far more than the real need justifies.",
-          "recommendation": "Before any estimate, inventory current tools and licences and review two or three market options against the stated need and budget.",
-          "contests": [
-            "existing_solutions",
-            "current_process"
-          ]
-        },
-        {
-          "id": "chl_313769a297",
-          "headline": "Automatic re-planning assumed",
-          "premise": "A late cancellation should trigger re-planning of the visit and the route, with the level of automation left implicit.",
-          "alternative": "Assisted re-planning is a lower-risk first step: the system proposes slots and a planner validates. It avoids committing to a fully automatic engine before the rules (cut-off delay, same technician, contract priority) are known.",
-          "consequence": "Full automation without agreed rules can move visits clients did not accept, break contractual commitments, and requires a much heavier engine.",
-          "recommendation": "Define 'last minute' and the re-planning rules with the planners, then start with proposal plus human validation.",
-          "contests": [
-            "business_rules",
-            "workflow"
-          ]
-        },
-        {
-          "id": "chl_415a27f324",
-          "headline": "Route optimisation may not be needed",
-          "premise": "'A route per technician' implies optimised routes.",
-          "alternative": "A day list ordered by the planner, with visits grouped by zone and skill, delivers most of the value. Automatic optimisation can be added later if volumes justify it.",
-          "consequence": "Automatic route optimisation with skills, time windows and start points is an order of magnitude more work than manual ordering, and the volumes are unknown.",
-          "recommendation": "Get the number of technicians and visits per day, then decide between manual ordering and optimisation.",
-          "contests": [
-            "constraints",
-            "business_rules"
-          ]
-        }
-      ],
-      "complexity": "medium",
-      "complexity_reasons": [
-        "re-planning rules not yet defined and possibly varying by client or contract",
-        "optimisation versus manual ordering is undecided and swings the effort",
-        "origin of visits (contract-generated or on request) is unknown and may add a generation subsystem",
-        "notification routing depends on contact roles"
-      ],
-      "cost_driver": "the level of automation of routing and re-planning",
-      "risks": [
-        "Scope can slip from displaying routes to a full planning and optimisation engine if the rules stay vague.",
-        "Visits may need to be generated from maintenance contracts, which could touch the existing contracts module.",
-        "Poor data quality (addresses, visit durations, technician skills) will undermine the routes.",
-        "Technician adoption in the field depends on a usable mobile view.",
-        "Automatic re-planning could move visits against client or contractual expectations."
-      ],
-      "opportunities": [
-        {
-          "id": "opp_c8f9ea2ac0",
-          "text": "Reuse the existing contract and client/contact model as the source of visits and of notification routing by contact role, rather than creating parallel data.",
-          "leverage": "high",
-          "modules": [
-            "Contracts",
-            "Client",
-            "Contact"
-          ]
-        },
-        {
-          "id": "opp_69f4b4d4e4",
-          "text": "Make the cancellation-to-re-plan chain a generic event-driven lifecycle that other modules (missions, end-of-mission) could reuse.",
-          "leverage": "future",
-          "modules": [
-            "Missions",
-            "Contracts"
-          ]
-        }
-      ],
-      "next_steps": [
-        "Inventory current planning tools and licences and shortlist market options with a budget, before any build estimate.",
-        "Run a short workshop with planners to define the origin of visits, the 'last minute' delay and the re-planning rules.",
-        "Collect volumes (technicians, visits per day, zones) to choose between manual route ordering and optimisation.",
-        "If building, scope a first release as manual routes plus assisted re-planning with notifications."
-      ],
-      "decisions": [
-        {
-          "id": "dec_4f19aae7e0",
-          "decision": "Internal tool financed by the company, with no revenue model",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
-          "derived_from": [
-            "payer"
-          ],
-          "source": "proposed"
-        },
-        {
-          "id": "dec_ef68a35ddf",
-          "decision": "Start with assisted re-planning (system proposes, planner validates) rather than automatic",
-          "why": "Rules for late cancellations are unknown and vary possibly by client or contract.",
-          "alternative": "Fully automatic re-planning from the first release.",
-          "tradeoff": "Planner effort remains, in exchange for much lower risk of unwanted moves and a lighter first build.",
-          "derived_from": [
-            "business_rules",
-            "workflow"
-          ],
-          "source": "proposed"
-        }
-      ],
-      "exclusions": [],
-      "thresholds": [],
-      "open_decisions": [
-        "Does an existing or market tool already cover the need, and what is the budget?",
-        "Where do visits come from (maintenance contracts, client requests, both) and who assigns them?",
-        "What delay counts as 'last minute', and is there a penalty or billing on late cancellation?",
-        "Manual route ordering or automatic optimisation, at what volumes?",
-        "Who is notified of a change, through which channel, and does the technician need mobile access?",
-        "Do the rules vary by client or contract?",
-        "Success measures and deadline"
-      ]
-    },
-    {
-      "problem": "Maintenance visits at customer sites are planned without a stated, reliable way to organise each technician's day and to refill the slot when a customer cancels late; the exact pain (wasted travel, lost slots, missed commitments) has not been given.",
-      "solution": "A visit-planning capability that assigns maintenance visits to technicians, orders them into a daily route per technician, and handles a late customer cancellation by rescheduling the visit and notifying the people concerned.",
-      "introduces": [
-        "a visit lifecycle (planned, confirmed, in progress, done, cancelled, rescheduled) with its own state transitions",
-        "a daily route per technician, as an ordered set of visits that must be rebuilt when one changes",
-        "a late-cancellation and rescheduling flow that frees a slot and proposes or applies a replacement",
-        "role-based notifications to technician, customer contact and planner",
-        "technician-scoped views and permissions (own route versus all routes)",
-        "possibly a route-optimisation component, if automatic itinerary calculation is required"
-      ],
-      "challenges": [
-        {
-          "id": "chl_f22d32bb0a",
-          "headline": "Build versus buy planning tool",
-          "premise": "The request is phrased as something to build, with no mention of any scheduling or field-service tool already in place, already licensed, or evaluated.",
-          "alternative": "Assignment of visits to technicians, daily routes and cancellation-driven rescheduling is a self-contained scheduling problem. Reusing an existing module or buying a scheduling tool may cover most of it, leaving only the link to contracts and customers to build.",
-          "consequence": "Building a scheduling system from scratch can cost far more than the problem warrants, and could duplicate a feature the company already pays for but has not switched on.",
-          "recommendation": "Before any design, inventory what the company already uses or licenses for planning and shortlist two or three off-the-shelf options with a rough budget. Build only the gap.",
-          "contests": [
-            "existing_solutions",
-            "current_process"
-          ]
-        },
-        {
-          "id": "chl_99115f6fd5",
-          "headline": "Optimised route or ordered list?",
-          "premise": "The wording 'a route per technician' is taken to be the same thing whether a planner orders stops by hand or the system calculates the best itinerary.",
-          "alternative": "A planner-ordered list of the day's visits, with a map or distance hint, is a small build. Automatic optimisation under customer time windows, technician skills and working-hour limits is a subsystem of its own. Starting with the ordered list lets real data show whether optimisation is worth funding.",
-          "consequence": "If optimisation is assumed by default, it dominates cost and schedule, and it must be re-run on every late cancellation, which makes rescheduling more complex.",
-          "recommendation": "Ask the client which one they mean, and with what volume (technicians, visits per day, area), before estimating. Treat automatic optimisation as a separate, later decision.",
-          "contests": [
-            "business_rules",
-            "constraints",
-            "workflow"
-          ]
-        },
-        {
-          "id": "chl_5b2324e64c",
-          "headline": "Automatic rescheduling on cancellation",
-          "premise": "A late cancellation is assumed to trigger a rescheduling that the system can simply carry out.",
-          "alternative": "Cancellation could free the slot and propose options to a planner (reschedule, fill with another visit, or leave empty) rather than decide alone. The right behaviour depends on how 'late' is defined, whether the visit is contractually due, and whether the cancellation is billable.",
-          "consequence": "Automatic rescheduling can breach contractual maintenance commitments, double-book technicians, or notify customers and technicians of changes nobody validated. Retrying or repeating a cancellation could also create duplicate visits.",
-          "recommendation": "Define the lateness threshold, the decision-maker and the contractual consequences with the client first. Start with a planner-confirmed proposal, and automate only the cases that prove predictable.",
-          "contests": [
-            "business_rules",
-            "actors",
-            "edge_cases"
-          ]
-        }
-      ],
-      "complexity": "medium",
-      "complexity_reasons": [
-        "visit and route lifecycle where one cancellation ripples into the technician's whole day",
-        "rescheduling rules that may differ by customer or contract",
-        "notification routing by role and channel",
-        "complexity could jump to high if automatic route optimisation or generation of visits from contracts is in scope"
-      ],
-      "cost_driver": "whether routes are optimised automatically or ordered by a planner",
-      "risks": [
-        "Scope creep: the request can silently grow into a full field-service planning system if optimisation and automatic visit generation from contracts are included.",
-        "A late cancellation changes a technician's route after it has been communicated, so notifications, concurrent edits and repeated changes to the same visit need clear rules.",
-        "Rescheduling rules unknown today (lateness threshold, who decides, billing of late cancellations) could be contractual and vary by customer.",
-        "Customer addresses or contact roles may be incomplete in the existing directory, which undermines route ordering and notification routing.",
-        "Technician adoption in the field is uncertain: a route view that is hard to use on a phone, or that changes unexpectedly, will be bypassed."
-      ],
-      "opportunities": [
-        {
-          "id": "opp_c5929dfe6f",
-          "text": "Treat the visit and its cancel-and-reschedule lifecycle as a reusable scheduling core (states, slot release, notification on change), so it can serve other appointment-like work later.",
-          "leverage": "medium",
-          "modules": [
-            "Contracts",
-            "Clients and Contacts",
-            "Missions"
-          ]
-        },
-        {
-          "id": "opp_f32e13ba5c",
-          "text": "Route notifications on the operational role already held by each customer contact, so the right person is told about a cancellation or move without new contact data.",
-          "leverage": "high",
-          "modules": [
-            "Clients and Contacts"
-          ]
-        },
-        {
-          "id": "opp_33eef498da",
-          "text": "Generate expected maintenance visits from recurring maintenance contracts, once the manual planning flow is proven.",
-          "leverage": "future",
-          "modules": [
-            "Contracts"
-          ]
-        }
-      ],
-      "next_steps": [
-        "Inventory existing and licensable planning tools and their budget, and decide build, buy or hybrid before any design.",
-        "Run a short workshop with a planner and a technician to document today's process, the origin of visits, and what 'late cancellation' means in practice (threshold, decision-maker, billing).",
-        "Settle the route scope (planner-ordered versus optimised) together with volumes: number of technicians, visits per day, geographic area.",
-        "If building, deliver a first slice: visit lifecycle, assignment, an ordered daily route per technician, and cancellation with planner-confirmed rescheduling and role-based notifications."
-      ],
-      "decisions": [],
-      "exclusions": [],
-      "thresholds": [],
-      "open_decisions": [
-        "Build, buy or extend an existing tool, and the budget",
-        "Origin of visits: recurring contracts, customer requests, or both",
-        "Definition of 'last-minute' cancellation and the rescheduling policy (automatic or planner-confirmed)",
-        "Planner-ordered routes or automatic optimisation",
-        "Volumes: technicians, visits per day, geographic area",
-        "Who is notified of a cancellation or move, and through which channel",
-        "Who sees and edits which routes; whether customers get any access",
-        "Success measures and a deadline"
-      ]
+      "page": {
+        "title": "Planification des visites : acheter ou construire ?",
+        "recommendation": "Avant de lancer un d\u00e9veloppement, nous recommandons de v\u00e9rifier si un outil d\u00e9j\u00e0 pay\u00e9 ou disponible sur le march\u00e9 couvre les tourn\u00e9es et la replanification. Si ce n'est pas le cas, construire un premier lot restreint : planning par zone et par jour, gestion des annulations, et replanification propos\u00e9e au planificateur, qui la valide.",
+        "why": "Votre demande d\u00e9crit une solution (tourn\u00e9es, replanification) sans dire d'o\u00f9 viennent les visites, comment la planification se fait aujourd'hui ni ce qui fait perdre du temps ou de l'argent. Acheter ou activer un outil existant peut supprimer tout ou partie du d\u00e9veloppement, et ce point p\u00e8se plus que tout autre sur le co\u00fbt. Si l'on construit, une proposition valid\u00e9e par un humain est plus s\u00fbre qu'une replanification automatique tant que la notion de derni\u00e8re minute et les cons\u00e9quences contractuelles d'une annulation ne sont pas fix\u00e9es.",
+        "cost_and_risk": "Le principal poste de co\u00fbt est le moteur de tourn\u00e9es et de replanification sous contraintes (zone, comp\u00e9tences, dur\u00e9es, plages horaires), d'autant plus lourd si une optimisation d'itin\u00e9raire est attendue. Le risque principal est de construire un p\u00e9rim\u00e8tre qui s'\u00e9largit \u00e0 la g\u00e9n\u00e9ration des visites depuis les contrats, ou de produire des tourn\u00e9es irr\u00e9alistes que les techniciens n'appliqueront pas.",
+        "open": [
+          {
+            "question": "Utilisez-vous d\u00e9j\u00e0 un outil de planification d'interventions, ou avez-vous \u00e9tudi\u00e9 des solutions du march\u00e9, et avec quel budget ?",
+            "would_change": "Si un outil existant couvre le besoin, le d\u00e9veloppement se r\u00e9duit \u00e0 une int\u00e9gration, voire dispara\u00eet.",
+            "slots": [
+              "existing_solutions"
+            ]
+          },
+          {
+            "question": "Comment planifiez-vous aujourd'hui et quel est le vrai probl\u00e8me : temps perdu, kilom\u00e8tres inutiles, visites non r\u00e9alis\u00e9es, cr\u00e9neaux perdus ?",
+            "would_change": "Cela d\u00e9termine si l'on vise un simple planning ou une optimisation d'itin\u00e9raire, et comment mesurer le succ\u00e8s.",
+            "slots": [
+              "problem",
+              "current_process",
+              "success_metrics"
+            ]
+          },
+          {
+            "question": "D'o\u00f9 viennent les visites \u00e0 planifier, et qui les cr\u00e9e et les affecte aujourd'hui ?",
+            "would_change": "Si elles d\u00e9coulent automatiquement des contrats, le p\u00e9rim\u00e8tre s'\u00e9tend \u00e0 leur g\u00e9n\u00e9ration.",
+            "slots": [
+              "workflow",
+              "business_objects"
+            ]
+          },
+          {
+            "question": "\u00c0 partir de quand une annulation est-elle de derni\u00e8re minute, et que doit-il se passer : proposition ou replanification automatique ?",
+            "would_change": "Une replanification automatique est une construction nettement plus lourde qu'une aide au planificateur.",
+            "slots": [
+              "business_rules",
+              "edge_cases"
+            ]
+          },
+          {
+            "question": "Quels crit\u00e8res une tourn\u00e9e doit-elle respecter, et combien de techniciens et de visites par jour sont concern\u00e9s ?",
+            "would_change": "Une faible volum\u00e9trie justifie un regroupement par zone ; une forte volum\u00e9trie sous contraintes justifie un moteur d'optimisation.",
+            "slots": [
+              "business_rules",
+              "constraints"
+            ]
+          },
+          {
+            "question": "Qui intervient dans l'outil (planificateur, techniciens, clients) et qui voit et modifie quoi ?",
+            "would_change": "Cela fixe les droits d'acc\u00e8s et la n\u00e9cessit\u00e9 d'une vue ou application mobile pour les techniciens.",
+            "slots": [
+              "actors",
+              "permissions"
+            ]
+          },
+          {
+            "question": "Une annulation tardive a-t-elle des cons\u00e9quences contractuelles, et ces r\u00e8gles varient-elles selon le client ou le contrat ?",
+            "would_change": "Des r\u00e8gles propres \u00e0 chaque client imposent de la configuration, un lien avec la facturation et une tra\u00e7abilit\u00e9.",
+            "slots": [
+              "config_vs_custom",
+              "reporting"
+            ]
+          },
+          {
+            "question": "Qui doit \u00eatre pr\u00e9venu d'un changement de tourn\u00e9e, \u00e0 quel moment et par quel canal ?",
+            "would_change": "Une notification en temps r\u00e9el au technicien sur le terrain implique un canal mobile et des accus\u00e9s de r\u00e9ception.",
+            "slots": [
+              "integrations"
+            ]
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "Il s'agit d'un outil interne : le payeur est l'entreprise, sans recherche de premiers utilisateurs.",
+            "source": "assumed"
+          },
+          {
+            "text": "Les visites d\u00e9coulent de contrats de maintenance existants.",
+            "source": "assumed"
+          },
+          {
+            "text": "Le planificateur voit toutes les tourn\u00e9es, le technicien la sienne, le client ses visites.",
+            "source": "assumed"
+          },
+          {
+            "text": "Une visite passe par les \u00e9tats \u00e0 planifier, planifi\u00e9e, confirm\u00e9e, r\u00e9alis\u00e9e ou annul\u00e9e, puis \u00e0 replanifier.",
+            "source": "assumed"
+          },
+          {
+            "text": "Aucune obligation d'audit ou de tra\u00e7abilit\u00e9 n'est exprim\u00e9e \u00e0 ce stade.",
+            "source": "assumed"
+          },
+          {
+            "text": "Un premier lot avec replanification propos\u00e9e au planificateur et regroupement par zone suffit.",
+            "source": "proposed"
+          }
+        ]
+      }
     }
   ]
 }
