@@ -220,6 +220,13 @@ _SOURCE_PHRASE = {   # where an assumption on the client page came from (#751), 
 }
 
 
+def _still_to_settle(out: EngineOutput, sid: str, language: str) -> str:
+    """A blocker the client page left out (#814): the session's own question on it, else its topic inside a
+    sentence in `language`, never the schema's English probe. `test_a_french_page_that_leaves_a_blocker_out_carries_no_english_schema_probe`."""
+    asked = next((q.q for q in out.questions if q.slot == sid), "")
+    return asked or phrase(language, "Still to settle with you: {topic}.").replace("{topic}", slot_label(sid, DEFAULT_PERIMETER))
+
+
 def brief_markdown(out: EngineOutput, brief: Brief, language: str = DEFAULT_DOCS_LANGUAGE) -> str:
     """The decision brief the client reads (#814): one page of prose, each element once, in `language`.
     No readiness label, boilerplate or slot id, and a blocker the page leaves out is added in the client's
@@ -236,8 +243,7 @@ def brief_markdown(out: EngineOutput, brief: Brief, language: str = DEFAULT_DOCS
         open_points = [f"- {_line(p.question)} — {_line(p.would_change)}" for p in page.open]
         rests_on = [f"- {_line(a.text)} _({t(_SOURCE_PHRASE[a.source])})_" for a in page.assumptions]
     covered = {sid for p in (page.open if page else []) for sid in p.slots}
-    open_points += [f"- {_line(_in_words(out, sid, DEFAULT_PERIMETER))}"
-                    for sid in readiness_blockers(out) if sid not in covered]
+    open_points += [f"- {_line(_still_to_settle(out, sid, language))}" for sid in readiness_blockers(out) if sid not in covered]
     seen: set[str] = set()
     md = [f"# {t('Decision Brief')}" + (f": {_line(title)}" if title.strip() else ""), ""]
     md += [line for lead, text in said if text.strip()

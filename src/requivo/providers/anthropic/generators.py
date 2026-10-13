@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 
-from requivo.core.analysis import estimate_confidence, soft_slots, uncovered_slots
+from requivo.core.analysis import estimate_confidence, readiness_blockers, soft_slots, uncovered_slots
 from requivo.core.context import NO_CONTEXT, CardSummary, build_prompt, build_standalone_prompt, build_system_prompt
 from requivo.core.contracts import (
     PRD,
@@ -166,8 +166,18 @@ def advise(client, out: EngineOutput, only: list[str] | None = None, *, request:
     `brief.md` still says "solution assessment" (#166): renaming it is a golden-capture spend decision."""
     system = build_system_prompt("brief.md", only)
     user = _client_and_model(request, language, out, "Completed requirements model to advise on")
-    return _complete(client, system, [{"role": "user", "content": user}], Brief,
+    return _complete(client, system, [dict(role="user", content=user)], Brief, validate=lambda b: _page_covers_every_blocker(b, out),
                      reuse_system=reuse_system, model=model, operation="brief")
+
+
+def _page_covers_every_blocker(brief: Brief, out: EngineOutput) -> None:
+    """#814: a client page names every topic still blocking readiness as an open point (`slots`), or the reply is
+    refused and retried: `test_the_client_brief_carries_no_readiness_label_slot_id_or_repeat`."""
+    covered = {sid for p in (brief.page.open if brief.page else []) for sid in p.slots}
+    missing = [sid for sid in readiness_blockers(out) if sid not in covered] if brief.page else []
+    if missing:
+        raise ValueError(f"the page's open points leave out {missing}: add one for each, in the documents language, "
+                         "with its slot id in its slots")
 
 
 def advise_gtm(client, out: EngineOutput, only: list[str] | None = None, *, request: str, language: str = DEFAULT_DOCS_LANGUAGE,

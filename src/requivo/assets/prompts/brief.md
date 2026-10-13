@@ -124,7 +124,8 @@ extra.
     matters most.
   - `open`: each point still open that would change the recommendation: the `question` in the
     client's terms, `would_change` (how its answer would change the recommendation), and `slots` (the
-    slot ids it settles, never shown). Every high-impact topic not yet confirmed belongs here; a point
+    slot ids it settles, never shown). Every high-impact topic not yet confirmed belongs here, with its
+    slot id in `slots`, asked in the documents language (a page that leaves one out is refused); a point
     whose answer would not change the recommendation does not.
   - `assumptions`: what the recommendation rests on that the client has not confirmed, each `text`
     once with its `source`, as the model's claims carry it: `requester` (the client said it but has not
