@@ -53,7 +53,16 @@ def derive_slug(text: str) -> str:
     A session on disk keeps its name; the alphabet is `[a-z0-9-]`."""
     # A request title names the session; provenance below it does not (#774).
     title = text
+    fence = ""
     for line in text.splitlines():
+        if fence:
+            if re.fullmatch(r" {0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ \t]*", line):
+                fence = ""
+            continue
+        opening = re.match(r" {0,3}(`{3,}|~{3,})(.*)", line)
+        if opening and (opening[1][0] != "`" or "`" not in opening[2]):
+            fence = opening[1]
+            continue
         heading = re.match(r" {0,3}#{1,6}[ \t]", line)
         if heading:
             candidate = line[heading.end():].strip(" \t")
@@ -229,5 +238,4 @@ def _probe(marker: Path, slug: str) -> bool:
         raise SessionUnreadableError(
             f"could not determine whether session '{slug}' exists: {e}",
             details={"slug": slug}) from e
-
 

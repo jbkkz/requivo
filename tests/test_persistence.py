@@ -627,12 +627,19 @@ def test_a_denied_session_file_is_not_called_missing_on_py314(monkeypatch, kind)
             store.session_request(slug)
 
 
-@pytest.mark.parametrize("request_text", [
-    "# Invoice export\n\n_Drawn by a fictional tool from ten threads._\nExport invoices monthly.",
-    "\n## Invoice export ##\n\n_Drawn by a fictional tool._",
-    "# \t\t\n# Invoice export\n\n_Drawn by a fictional tool._",
-    "#" + "\t" * 100_000 + "\n# Invoice export\n",
-], ids=["provenance", "closing-marker", "empty-heading", "long-whitespace"])
-def test_request_heading_names_the_session_instead_of_provenance(request_text):
+@pytest.mark.parametrize("request_text, expected", [
+    ("# Invoice export\n\n_Drawn by a fictional tool from ten threads._\nExport invoices monthly.", "invoice-export"),
+    ("\n## Invoice export ##\n\n_Drawn by a fictional tool._", "invoice-export"),
+    ("# \t\t\n# Invoice export\n\n_Drawn by a fictional tool._", "invoice-export"),
+    ("#" + "\t" * 100_000 + "\n# Invoice export\n", "invoice-export"),
+    ("Export invoices monthly to the accountant.\n\n```sh\n# install deps\npip install requests\n```", "export-invoices-monthly-accountant-sh"),
+    ("~~~sh\n# install deps\n~~~\n# Invoice export", "invoice-export"),
+    ("````sh\n```\n# install deps\n````\n# Invoice export", "invoice-export"),
+    ("```sh\n~~~\n# install deps\n```\n# Invoice export", "invoice-export"),
+    ("  ~~~sh\n# install deps\n   ~~~~ \t\n# Invoice export", "invoice-export"),
+    ("Export invoices monthly to the accountant.\n~~~\n# install deps", "export-invoices-monthly-accountant-install"),
+], ids=["provenance", "closing-marker", "empty-heading", "long-whitespace",
+        "fenced-prose", "tilde-fence", "shorter-fence", "different-fence", "indented-fence", "unclosed-fence"])
+def test_request_heading_names_the_session_instead_of_provenance(request_text, expected):
     """A short title does not borrow words from the provenance below it (#774)."""
-    assert derive_slug(request_text) == "invoice-export"
+    assert derive_slug(request_text) == expected
