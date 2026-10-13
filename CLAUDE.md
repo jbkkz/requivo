@@ -15,7 +15,7 @@ engine's questions mirror the request's language and every buildable artifact an
 ## Run and test
 
 ```bash
-cp .env.example .env                    # ANTHROPIC_API_KEY; REQUIVO_MODEL defaults to claude-sonnet-5
+cp .env.example .env                    # ANTHROPIC_API_KEY; REQUIVO_MODEL defaults to claude-sonnet-5-5
 uv run requivo demo                     # replays a saved run: no key, no network
 uv run requivo run "We'd like a leave approval system."   # the whole conversation, one verb
 uv run requivo status <slug>            # readiness, offline; `docs <slug>` lists the seven documents

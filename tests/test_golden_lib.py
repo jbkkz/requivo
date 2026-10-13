@@ -257,6 +257,15 @@ def test_captured_perimeter_round_trips_and_defaults_to_software(tmp_path, monke
     assert all(captured_perimeter(json.dumps({"request": "r", "runs": [], **p})) == DEFAULT_PERIMETER for p in ({}, {"perimeter": ""}))
 
 
+def test_captured_transport_round_trips_and_defaults_to_the_api(tmp_path, monkeypatch):
+    """#767: both writers record it, and a key-less or empty value reads as `api` (the only transport before it)."""
+    monkeypatch.setattr(gl, "GOLDEN", tmp_path)
+    assert gl.captured_transport(gl.turn_envelope("r", {}, [[_turn(1, [])]], model="m", transport="claude-code")) == "claude-code"
+    assert gl.captured_transport(gl.dump_runs("r", "a request", [_HI], model="m").read_text(encoding="utf-8")) == gl.API
+    assert gl.captured_transport(gl.dump_runs("r2", "a request", [_HI], model="m", transport="claude-code").read_text(encoding="utf-8")) == "claude-code"
+    assert all(gl.captured_transport(json.dumps({"request": "r", "runs": [], **t})) == gl.API for t in ({}, {"transport": ""}))
+
+
 # ── #405/#410: baseline freshness. `_freshness_from_git_data` is the pure core behind three git calls ──
 
 _BASELINE = ("sha1", "2026-08-01T00:00:00+00:00")

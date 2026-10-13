@@ -8,6 +8,7 @@ to what it measures (#405, #410)."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -27,6 +28,7 @@ from requivo.streams import configure_streams, safe_write  # noqa: E402
 GOLDEN = REPO / "fixtures" / "golden"
 REQUESTS = GOLDEN / "requests.md"
 K = int(os.getenv("GOLDEN_K", "3"))  # runs per request; 3 is the approved default
+API = "api"  # the transport every capture before #767 ran over, and what an envelope without the key reads as
 
 
 def configure_output() -> None:
@@ -87,7 +89,6 @@ def partial_path(slug: str) -> Path:
 def dump_partial(slug: str, envelope: str, failure: dict) -> Path:
     """The envelope of a failed capture plus a `partial` marker, in its own file so a complete baseline is
         never replaced (#557, `test_a_failed_capture_keeps_its_completed_runs_beside_the_baseline_not_over_it`)."""
-    import json
     payload = {**json.loads(envelope), "partial": failure}
     path = partial_path(slug)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -96,16 +97,14 @@ def dump_partial(slug: str, envelope: str, failure: dict) -> Path:
 
 def load_partial(slug: str) -> dict | None:
     """The `partial` marker of the last failed capture of ``slug``, or None when its last capture completed."""
-    import json
     path = partial_path(slug)
     return json.loads(path.read_text(encoding="utf-8"))["partial"] if path.exists() else None
 
 
 def runs_envelope(request: str, models: list[EngineOutput], briefs: list[Brief] | None = None, *,
-                  model: str, perimeter: str = DEFAULT_PERIMETER) -> str:
+                  model: str, perimeter: str = DEFAULT_PERIMETER, transport: str = API) -> str:
     """The single-pass envelope as JSON; ``briefs`` is opt-in (``--brief``)."""
-    import json
-    payload = {"request": request, "model": model, "perimeter": perimeter,
+    payload = {"request": request, "model": model, "perimeter": perimeter, "transport": transport,
                "runs": [m.model_dump() for m in models]}
     if briefs is not None:
         payload["briefs"] = [b.model_dump() for b in briefs]
@@ -114,7 +113,7 @@ def runs_envelope(request: str, models: list[EngineOutput], briefs: list[Brief] 
 
 def dump_runs(slug: str, request: str, models: list[EngineOutput],
               briefs: list[Brief] | None = None, *, model: str,
-              perimeter: str = DEFAULT_PERIMETER) -> Path:
+              perimeter: str = DEFAULT_PERIMETER, transport: str = API) -> Path:
     """Persist the K captured models for one request as a single JSON envelope.
 
         ``model`` is keyword-only and required — the id the call was given, never re-read (#515,
@@ -123,7 +122,7 @@ def dump_runs(slug: str, request: str, models: list[EngineOutput],
     """
     path = runs_path(slug)
     # Explicitly UTF-8: the baseline is provider prose, and a locale codec would fake a regression (#11).
-    path.write_text(runs_envelope(request, models, briefs, model=model, perimeter=perimeter),
+    path.write_text(runs_envelope(request, models, briefs, model=model, perimeter=perimeter, transport=transport),
                     encoding="utf-8")
     partial_path(slug).unlink(missing_ok=True)  # a complete capture supersedes an earlier failed one (#557)
     return path
@@ -131,16 +130,20 @@ def dump_runs(slug: str, request: str, models: list[EngineOutput],
 
 def captured_model(text: str) -> str | None:
     """The model id a `.runs.json` envelope was captured on, or **None** before #515 — never agreement."""
-    import json
     value = json.loads(text).get("model")
     return value if isinstance(value, str) and value else None
 
 
 def captured_perimeter(text: str) -> str:
     """The perimeter a `.runs.json` envelope was captured under; a missing key is software (#621, #608)."""
-    import json
     value = json.loads(text).get("perimeter")
     return value if isinstance(value, str) and value else DEFAULT_PERIMETER
+
+
+def captured_transport(text: str) -> str:
+    """What a `.runs.json` envelope was captured over (`api`, `claude-code`); a missing key is the API (#767)."""
+    value = json.loads(text).get("transport")
+    return value if isinstance(value, str) and value else API
 
 
 def load_runs(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[EngineOutput]:
@@ -151,7 +154,6 @@ def load_runs(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[EngineOu
         go-to-market capture's slots fail against software's schema (#621,
         `test_a_first_go_to_market_capture_is_read_back_and_reported_honestly`).
     """
-    import json
     payload = json.loads(text)
     ctx = {"perimeter": perimeter}
     if "runs" in payload:
@@ -161,14 +163,12 @@ def load_runs(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[EngineOu
 
 def load_briefs(text: str) -> list[Brief]:
     """The assessments captured alongside the models, or [] if this request doesn't watch them."""
-    import json
     payload = json.loads(text)
     return [Brief.model_validate(b) for b in payload.get("briefs", [])]
 
 
 def load_answers(text: str) -> dict[str, list[str]]:
     """The answer sheet a capture was taken with, or `{}`: it is *input*, needed by the #163 diagnosis."""
-    import json
     payload = json.loads(text)
     return {sid: list(vals) for sid, vals in payload.get("answers", {}).items()}
 
@@ -417,13 +417,13 @@ def answers_for_turn(questions, sheet: AnswerSheet) -> tuple[str | None, list[st
 
 
 def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Turn]],
-                  *, model: str, perimeter: str = DEFAULT_PERIMETER) -> str:
-    """Serialize an interactive capture, with its answer sheet (input) and its `model`/`perimeter`, as `dump_runs`."""
-    import json
+                  *, model: str, perimeter: str = DEFAULT_PERIMETER, transport: str = API) -> str:
+    """Serialize an interactive capture, with its answer sheet (input) and its conditions, as `dump_runs`."""
     return json.dumps({
         "request": request,
         "model": model,
         "perimeter": perimeter,
+        "transport": transport,
         "answers": {sid: list(vals) for sid, vals in layers.items()},
         "turns": [[{"index": t.index, "answered": t.answered, "model": t.model.model_dump()}
                    for t in run] for run in runs],
@@ -432,10 +432,10 @@ def turn_envelope(request: str, layers: dict[str, list[str]], runs: list[list[Tu
 
 def dump_turn_runs(slug: str, request: str, layers: dict[str, list[str]],
                    runs: list[list[Turn]], *, model: str,
-                   perimeter: str = DEFAULT_PERIMETER) -> Path:
+                   perimeter: str = DEFAULT_PERIMETER, transport: str = API) -> Path:
     """Persist an interactive capture. Explicitly UTF-8 for the reason `dump_runs` gives (#11)."""
     path = runs_path(slug)
-    path.write_text(turn_envelope(request, layers, runs, model=model, perimeter=perimeter),
+    path.write_text(turn_envelope(request, layers, runs, model=model, perimeter=perimeter, transport=transport),
                     encoding="utf-8")
     partial_path(slug).unlink(missing_ok=True)
     return path
@@ -446,7 +446,6 @@ def load_turns(text: str, *, perimeter: str = DEFAULT_PERIMETER) -> list[list[Tu
 
         ``perimeter``: as `load_runs` (#621).
     """
-    import json
     payload = json.loads(text)
     raw = payload.get("turns")
     if raw is None:

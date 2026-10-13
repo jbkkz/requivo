@@ -355,7 +355,7 @@ def test_failed_reply_dumps_stay_on_unless_explicitly_turned_off(workspace, monk
 def test_current_model_name_reads_env_override(monkeypatch):
     monkeypatch.delenv("REQUIVO_MODEL", raising=False)
     monkeypatch.delenv("MODEL", raising=False)
-    assert current_model_name() == "claude-sonnet-5"
+    assert current_model_name() == "claude-sonnet-5-5"
 
 
 def test_current_model_name_prefers_requivo_model_over_the_default(monkeypatch):

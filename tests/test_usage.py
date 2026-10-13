@@ -99,6 +99,13 @@ def test_a_call_is_priced_at_the_rate_in_force_when_it_was_made(launch_priced_mo
     assert costs == pytest.approx([12.0, 18.0])  # launch 2 + 10, standard 3 + 15
 
 
+def test_a_row_read_later_is_stamped_with_its_own_date():
+    """#767: the 5.5 rows were read after the table's date; a 5.5 call says so, and older rows keep theirs."""
+    assert [(r.rate_per_mtok, r.priced_as_of) for r in (priced("claude-sonnet-5-5"), priced("claude-opus-5-5"))] == [
+        ((2.00, 10.00), "2026-10-13"), ((4.00, 20.00), "2026-10-13")]
+    assert priced("claude-sonnet-5").priced_as_of == PRICING_AS_OF
+
+
 def test_usage_ledger_cost_is_none_for_unpriced_model():
     """An unknown model leaves both rate and date absent: half a provenance is none (invariant 6)."""
     ledger = UsageLedger()

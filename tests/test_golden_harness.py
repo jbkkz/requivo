@@ -6,6 +6,7 @@ import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import anthropic
 import httpx
@@ -22,9 +23,11 @@ from golden_lib import GOLDEN, REQUESTS, Turn, captured_model, load_turns, parse
 from golden_run import planned_calls, select_runs  # noqa: E402
 
 from requivo.core.analysis import slot_label  # noqa: E402
+from requivo.core.context import SystemPrompt  # noqa: E402
 from requivo.core.contracts import Brief, Challenge, EngineOutput, Impact, Level, Question, Slot, Summary  # noqa: E402
 from requivo.core.errors import ProviderOutputError  # noqa: E402
 from requivo.core.perimeters import DEFAULT_PERIMETER  # noqa: E402
+from requivo.providers.anthropic.completion import MAX_OUTPUT_TOKENS, _complete  # noqa: E402
 from requivo.providers.errors import EngineError  # noqa: E402
 from requivo.services.discovery import DiscoveryService  # noqa: E402
 
@@ -140,15 +143,15 @@ _SINGLE, _INTERACTIVE = _req("single-pass-a"), _req("interactive-a", answers={"p
 @pytest.fixture
 def golden_main(tmp_path, monkeypatch):
     """`golden_run.main([])` with the client and the capture loop stubbed out: the rc and what `capture` saw."""
-    def run(requests: list[dict], **patches):
+    def run(requests: list[dict], argv: tuple[str, ...] = (), **patches):
         seen: list[tuple[str, str]] = []
         (tmp_path / "requests.md").write_text("stub", encoding="utf-8")
         stubs = dict(GOLDEN=tmp_path, REPO=tmp_path.parent, REQUESTS=tmp_path / "requests.md",
                      Anthropic=lambda *a, **k: object(), parse_requests=lambda _path: list(requests),
-                     capture=lambda _client, req, _with_brief, *, model: seen.append((req["slug"], model)), **patches)
-        for name, value in stubs.items():
+                     capture=lambda _client, req, _with_brief, *, model, transport: seen.append((req["slug"], model)))
+        for name, value in (stubs | patches).items():
             monkeypatch.setattr(golden_run, name, value)
-        return golden_run.main([]), seen
+        return golden_run.main(list(argv)), seen
     return run
 
 
@@ -257,12 +260,14 @@ def _briefs(contested: list[str], complexity: Level = Level.high, *, runs: int =
 
 
 def _capture(*, impact: Impact = Impact.medium, completeness: int = 80, briefs: list[dict] | None = None,
-             model: str | None = None, perimeter: str | None = None, slot_id: str = "problem") -> str:
+             model: str | None = None, perimeter: str | None = None, slot_id: str = "problem",
+             transport: str | None = None) -> str:
     """A `.runs.json` envelope with K identical runs, and optionally K assessments (#515)."""
     slot = Slot(value="v", completeness=completeness, confidence="explicit", impact=impact, evidence="e")
     run = EngineOutput.model_validate({"model": {slot_id: slot}, "questions": [], "summary": Summary()},
                                       context={"perimeter": perimeter or DEFAULT_PERIMETER}).model_dump(mode="json")
-    body = {"request": "r", "runs": [run] * K, "model": model, "perimeter": perimeter, "briefs": briefs}
+    body = {"request": "r", "runs": [run] * K, "model": model, "perimeter": perimeter, "briefs": briefs,
+            "transport": transport}
     return json.dumps({k: v for k, v in body.items() if v is not None}, indent=2)
 
 
@@ -320,6 +325,19 @@ def test_a_baseline_with_no_perimeter_key_is_comparable_with_an_explicit_softwar
     """A baseline written before #621 carries no `perimeter` key and reads as `software`."""
     verdict, lines = diff(_80, _capture(completeness=70, perimeter="software"))
     assert verdict != "perimeter_mismatch" and _line(lines, "captured under perimeter", "software", "agree"), lines
+
+
+def test_a_transport_mismatch_refuses_like_a_perimeter_mismatch(diff):
+    """#767, must-fire: a Claude Code capture against an API baseline moves no verdict and prints no slot line."""
+    verdict, lines = diff(_80, _capture(completeness=70, transport="claude-code"))
+    assert verdict == "transport_mismatch" and _line(lines, "cannot compare", "api", "claude-code"), lines
+    assert all(_line(lines, s) is None for s in ("no change above the noise floor", "strong", "weak")), lines
+
+
+def test_two_captures_over_one_transport_actually_compare(diff):
+    """#767, must-not-fire: the same transport on both sides is diffed slot by slot."""
+    verdict, lines = diff(_capture(transport="claude-code"), _capture(completeness=70, transport="claude-code"))
+    assert verdict != "transport_mismatch" and _line(lines, "captured over transport", "claude-code", "agree"), lines
 
 
 def test_the_assessment_lens_runs_when_the_slot_consensus_held_still(diff):
@@ -575,3 +593,80 @@ def test_golden_diff_reports_a_partial_capture_as_not_re_captured(tmp_path, monk
     verdict: list[str] = []
     out = printed(lambda: verdict.append(golden_diff.diff_one("forged")))
     assert verdict == ["stale"] and "partial capture" in out and "not re-captured" in out and "run 3" in out
+
+
+# ── the Claude Code transport: the API path's own `_complete`, over a fake `claude -p` (#767) ─────────
+
+def _claude(*replies, code: int = 0):
+    """A fake `subprocess.run` answering call n with replies[n] (a dict is JSON-encoded): `(run, calls)`."""
+    calls: list[dict] = []
+
+    def run(argv, **kw):
+        calls.append(dict(kw, argv=argv))
+        reply = replies[min(len(calls), len(replies)) - 1]
+        return SimpleNamespace(returncode=code, stdout=reply if isinstance(reply, str) else json.dumps(reply), stderr="boom")
+    return run, calls
+
+
+def _result(text: str) -> dict:
+    return dict(type="result", subtype="success", is_error=False, result=text, stop_reason="end_turn")
+
+
+def test_the_claude_code_transport_sends_the_assembled_prompt_and_drops_the_key(monkeypatch):
+    """#767: the same system prompt and message, no tools, settings, MCP, skills or session, and no API key."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-reach-the-child")
+    run, calls = _claude(_result(_asking("problem").model_dump_json()))
+    out = _complete(golden_run.ClaudeCodeClient(run), SystemPrompt("SHARED ", "SPECIFIC"),
+                    [dict(role="user", content="a request")], EngineOutput, model="claude-sonnet-5-5")
+    assert out.questions[0].slot == "problem" and len(calls) == 1
+    argv, env = calls[0]["argv"], calls[0]["env"]
+    assert argv == ["claude", "-p", "--model", "claude-sonnet-5-5", "--system-prompt", "SHARED SPECIFIC", "--tools", "",
+                    "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                    "--output-format", "json"]
+    assert calls[0]["input"] == "a request" and "ANTHROPIC_API_KEY" not in env
+    assert env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == str(MAX_OUTPUT_TOKENS)
+
+
+def test_the_claude_code_transport_rides_the_api_paths_extraction_validate_hook_and_retry():
+    """#767: a fenced reply is extracted, the hook's refusal is nudged, and the retry's history is flattened."""
+    verdicts = iter([ValueError("refused by the hook"), None])
+
+    def validate(_out):
+        verdict = next(verdicts)
+        if verdict is not None:
+            raise verdict
+
+    fenced = _result("```json\n" + _asking().model_dump_json() + "\n```")
+    run, calls = _claude(fenced, fenced)
+    _complete(golden_run.ClaudeCodeClient(run), "sys", [dict(role="user", content="a request")], EngineOutput,
+              validate=validate, model="m")
+    retry = calls[1]["input"]
+    assert len(calls) == 2 and retry.index("[user]\na request") < retry.index("[assistant]\n```json")
+    assert "refused by the hook" in retry.rsplit("[user]", 1)[1]
+
+
+def _missing(*_a, **_k):
+    raise FileNotFoundError("claude")
+
+
+@pytest.mark.parametrize("run, said", [
+    pytest.param(_claude(dict(is_error=True, result="Not logged in"))[0], "Not logged in", id="is-error"),
+    pytest.param(_claude("", code=1)[0], "exit 1", id="nonzero-exit"),
+    pytest.param(_missing, "could not run", id="no-claude-on-path"),
+])
+def test_a_failed_claude_code_call_is_an_engine_error_naming_why(run, said):
+    with pytest.raises(EngineError, match=said):
+        _complete(golden_run.ClaudeCodeClient(run), "sys", [dict(role="user", content="r")], EngineOutput, model="m")
+
+
+def test_main_captures_over_the_transport_it_was_given(golden_main, capsys):
+    """#767: the API by default; `--transport claude-code` builds that client and names it; a typo is refused."""
+    got: list[tuple[str, str]] = []
+
+    def capture(client, _req, _with_brief, *, model, transport):
+        got.append((type(client).__name__, transport))
+
+    assert golden_main([_SINGLE], capture=capture)[0] == 0 and got == [("object", "api")]
+    assert golden_main([_SINGLE], argv=("--transport", "claude-code"), capture=capture)[0] == 0
+    assert got[1] == ("ClaudeCodeClient", "claude-code") and "over claude-code" in capsys.readouterr().out
+    assert golden_main([_SINGLE], argv=("--transport", "cloud"))[0] == 2 and len(got) == 2

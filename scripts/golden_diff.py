@@ -6,8 +6,8 @@ slot dimension *moved* only when the old baseline was unanimous on it and the ne
 **strong** if the new runs are unanimous too, **weak** on a bare majority. With no baseline yet it
 prints the noise floor. Interactive requests add the deep-turn lens (#137), ``--brief`` captures the
 assessment lens; every lens runs and the verdict is their union (#162,
-`test_the_verdict_is_the_union_of_the_lenses_that_ran`). Captures under different perimeters are
-refused before either side is parsed (#621). The manual is ``docs/evaluations.md``.
+`test_the_verdict_is_the_union_of_the_lenses_that_ran`). Captures under different perimeters, or over
+different transports, are refused before either side is parsed (#621, #767). The manual is ``docs/evaluations.md``.
 
 Usage:
     python scripts/golden_diff.py              # every request
@@ -30,6 +30,7 @@ from golden_lib import (  # noqa: E402
     brief_movements,
     captured_model,
     captured_perimeter,
+    captured_transport,
     configure_output,
     load_answers,
     load_briefs,
@@ -126,8 +127,24 @@ def _perimeters_comparable(old_text: str, new_text: str) -> bool:
     return False
 
 
+def _transports_comparable(old_text: str, new_text: str) -> bool:
+    """Print each side's transport and whether a comparison is possible at all (#767).
+
+        A transport carries its own harness around the same prompt, so its movement is not an asset's: a
+        mismatch is refused like a perimeter's (`test_a_transport_mismatch_refuses_like_a_perimeter_mismatch`).
+    """
+    old_t, new_t = captured_transport(old_text), captured_transport(new_text)
+    if old_t == new_t:
+        print(f"  · captured over transport {display_token(old_t)} (baseline and candidate agree)")
+        return True
+    print(f"  ! cannot compare — baseline captured over transport {display_token(old_t)}, this capture "
+          f"over {display_token(new_t)}; a movement below could be the transport rather than an asset "
+          f"(commit this as a first capture over {display_token(new_t)} instead)")
+    return False
+
+
 def diff_one(slug: str) -> str:
-    """Print the signal for one request; returns ``moved``, ``flat``, ``stale`` or ``perimeter_mismatch``.
+    """Print the signal for one request: ``moved``, ``flat``, ``stale``, ``perimeter_mismatch`` or ``transport_mismatch``.
 
         ``stale`` is no capture on disk, or one byte-identical to HEAD. The perimeter check reads the raw
         envelopes *before* either side is parsed: parsing first crashed on a real go-to-market capture
@@ -181,6 +198,8 @@ def diff_one(slug: str) -> str:
     # The gate: envelope metadata only, no `EngineOutput` built on either side yet.
     if not _perimeters_comparable(old_text, new_text):
         return "perimeter_mismatch"
+    if not _transports_comparable(old_text, new_text):
+        return "transport_mismatch"
 
     # Reachable only once both sides are confirmed to agree, so `perimeter` below is unambiguous.
     old = load_runs(old_text, perimeter=new_perimeter)
@@ -333,6 +352,7 @@ def questions_one(slug: str) -> None:
     _show_model(old_text, new_text)
     # Informational here: this view lists questions rather than diffing slot ids (#621).
     _perimeters_comparable(old_text, new_text)
+    _transports_comparable(old_text, new_text)
     for title, text in (("HEAD", old_text), ("working tree", new_text)):
         print(f"\n{slug} — {title}")
         # Each side parses against its own recorded perimeter: this view never gates on agreement (#621).
@@ -384,8 +404,8 @@ def main(argv: list[str]) -> int:
 
     print("Golden diff — working tree vs HEAD (strong = every run agrees, before and after)")
     results = [diff_one(slug) for slug in slugs]
-    moved, weak, stale, mismatched = (
-        results.count(k) for k in ("moved", "weak", "stale", "perimeter_mismatch"))
+    moved, weak, stale, mismatched, transported = (
+        results.count(k) for k in ("moved", "weak", "stale", "perimeter_mismatch", "transport_mismatch"))
     line = f"{moved}/{len(slugs)} request(s) moved on strong signal."
     if weak:
         line += f"  {weak} moved on weak signal only (watch, don't act)."
@@ -395,6 +415,8 @@ def main(argv: list[str]) -> int:
         # A perimeter change is its own count, not `stale` (#621).
         line += (f"  ⚠ {mismatched} could not be compared — captured under a different perimeter "
                  f"than its baseline.")
+    if transported:
+        line += f"  ⚠ {transported} could not be compared — captured over a different transport than its baseline."
     print(f"\n{'─' * 60}\n{line}")
     return 0
 

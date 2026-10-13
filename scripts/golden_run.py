@@ -11,26 +11,35 @@ A bare invocation captures single-pass requests and skips interactive ones, nami
 (`test_a_capture_that_dropped_the_assessment_says_so_without_manufacturing_a_signal`). A request with
 ``answer.<slot>:`` lines is driven through `DiscoveryService.draft_turn` for ``GOLDEN_TURNS`` turns
 (#137). The call ceiling is derived and printed before the first call (#290,
-`test_the_announced_call_count_moves_with_the_request_set`). Needs ANTHROPIC_API_KEY.
+`test_the_announced_call_count_moves_with_the_request_set`). Needs ANTHROPIC_API_KEY, or, with
+``--transport claude-code``, a signed-in ``claude`` CLI: the same prompt, billed to the subscription (#767).
 
 Usage:
     python scripts/golden_run.py              # every single-pass request; interactive ones skipped
     python scripts/golden_run.py <slug>...    # only the named one(s), interactive included
     python scripts/golden_run.py --all        # every request, interactive ones included
     python scripts/golden_run.py <slug> --brief   # also capture the assessment
+    python scripts/golden_run.py --transport claude-code   # through `claude -p`, not the API
     GOLDEN_K=5 python scripts/golden_run.py   # override runs-per-request
     GOLDEN_TURNS=8 python scripts/golden_run.py <slug>   # override turns-per-run"""
 
 from __future__ import annotations
 
+import contextlib
+import json
+import os
+import subprocess
 import sys
+import tempfile
 import time
+from types import SimpleNamespace
 
 from anthropic import Anthropic, APIConnectionError
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
 from golden_lib import (  # noqa: E402
+    API,
     GOLDEN,
     MEASURABLE_DEPTH,
     REPO,
@@ -111,7 +120,69 @@ def capture_model() -> str:
     return current_model_name()
 
 
-def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
+# ── the Claude Code transport (#767): the same assembled prompt, through `claude -p` on the subscription ──
+
+CLAUDE_CODE = "claude-code"
+TRANSPORTS = (API, CLAUDE_CODE)
+CLAUDE_CODE_TIMEOUT = 600.0  # seconds: the SDK's own default request timeout
+
+
+def prompt_text(messages: list[dict]) -> str:
+    """The one prompt `claude -p` reads on stdin: a lone user message verbatim, else the history flattened.
+
+        `claude -p` takes no prior assistant turn, so a refinement's or a schema retry's history is rendered
+        oldest first under role headings: one more reason the transport is part of a capture's identity.
+    """
+    if len(messages) == 1 and messages[0]["role"] == "user":
+        return messages[0]["content"]
+    turns = "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in messages)
+    return f"The conversation so far, oldest first. Reply to its last user turn as the assistant.\n\n{turns}"
+
+
+class ClaudeCodeClient:
+    """`Anthropic()`'s `messages.stream`, answered by `claude -p`, so `_complete` runs on it unchanged (#767).
+
+        The JSON extraction, the `validate` hook and the schema retry are therefore the API path's own. The
+        child gets the assembled system prompt and nothing else: no tools, settings, MCP, skills or saved
+        session, and no ANTHROPIC_API_KEY, so it bills the subscription (`--bare` would force the key).
+        `test_the_claude_code_transport_sends_the_assembled_prompt_and_drops_the_key`.
+    """
+
+    def __init__(self, run=subprocess.run) -> None:
+        self._run = run
+        self.messages = self
+
+    @contextlib.contextmanager
+    def stream(self, *, model: str, max_tokens: int, system: list[dict], messages: list[dict]):
+        reply = self.create(model=model, max_tokens=max_tokens, system=system, messages=messages)
+        yield SimpleNamespace(get_final_message=lambda: reply)
+
+    def create(self, *, model: str, max_tokens: int, system: list[dict], messages: list[dict]) -> SimpleNamespace:
+        argv = ["claude", "-p", "--model", model, "--system-prompt", "".join(b["text"] for b in system),
+                "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands",
+                "--no-session-persistence", "--output-format", "json"]
+        child = dict(os.environ)
+        child.pop("ANTHROPIC_API_KEY", None)  # so the call bills the subscription, never the key
+        child["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(max_tokens)  # the API path's ceiling, held here too
+        try:
+            with tempfile.TemporaryDirectory() as workdir:  # no project around the child for it to discover
+                done = self._run(argv, input=prompt_text(messages), capture_output=True, encoding="utf-8",
+                                 env=child, cwd=workdir, timeout=CLAUDE_CODE_TIMEOUT)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise EngineError(f"`claude -p` could not run ({type(exc).__name__}: {exc})") from exc
+        try:
+            payload = json.loads(done.stdout)
+        except ValueError:
+            payload = None
+        if done.returncode != 0 or not isinstance(payload, dict) or payload.get("is_error"):
+            said = payload.get("result") if isinstance(payload, dict) else None
+            lines = str(said or done.stderr or done.stdout or "no output").strip().splitlines() or ["no output"]
+            raise EngineError(f"`claude -p` failed (exit {done.returncode}): {lines[-1]}")
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=str(payload.get("result") or ""))],
+                               stop_reason=payload.get("stop_reason"))
+
+
+def capture_interactive(client: Anthropic, req: dict, model: str, *, transport: str = API) -> None:
     """K interactive conversations, each answered off this request's answer sheet.
 
         Through `DiscoveryService.draft_turn`, the production interactive path — the measurement's whole
@@ -135,7 +206,7 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
                 # The in-flight run keeps the turns it finished (#557).
                 keep_partial(req["slug"], turn_envelope(req["request"], req["answers"],
                                                         runs + ([turns] if turns else []), model=model,
-                                                        perimeter=perimeter),
+                                                        perimeter=perimeter, transport=transport),
                              {"run": i + 1, "turn": index}, exc)
                 raise
             print(f"    run {i + 1}/{K}  turn {index}/{TURNS}", end="\r", flush=True)
@@ -149,7 +220,7 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
             answers = block
         runs.append(turns)
     dump_turn_runs(req["slug"], req["request"], req["answers"], runs, model=model,
-                   perimeter=perimeter)
+                   perimeter=perimeter, transport=transport)
 
     lens = turn_lens(runs, req["answers"], perimeter=perimeter)
     depth = "/".join(str(d) for d in lens["depths"])
@@ -171,7 +242,7 @@ def capture_interactive(client: Anthropic, req: dict, model: str) -> None:
 
 
 def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
-            model: str | None = None) -> None:
+            model: str | None = None, transport: str = API) -> None:
     model = model or capture_model()
     # A pre-#621 request dict has no `perimeter` key: software, as in `capture_interactive`.
     perimeter = req.get("perimeter", DEFAULT_PERIMETER)
@@ -181,7 +252,7 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
             print(f"  ! {req['slug']:<20} --brief is not captured for an interactive request "
                   f"(it would double a {K * TURNS}-call capture); the turn lens follows",
                   file=sys.stderr)
-        return capture_interactive(client, req, model)
+        return capture_interactive(client, req, model, transport=transport)
 
     if with_brief and perimeter != SOFTWARE:
         # `advise()` reasons software's `brief.md` with no perimeter, so the assessment lens is software-only
@@ -201,13 +272,13 @@ def capture(client: Anthropic, req: dict, with_brief: bool = False, *,
         except Exception as exc:
             # A run counts only once its assessment (if asked for) landed too (#557).
             keep_partial(req["slug"], runs_envelope(req["request"], models, briefs, model=model,
-                                                    perimeter=perimeter), {"run": i + 1}, exc)
+                                                    perimeter=perimeter, transport=transport), {"run": i + 1}, exc)
             raise
         models.append(out)
         if with_brief:
             briefs.append(brief)
         print(f"    run {i + 1}/{K} done", end="\r", flush=True)
-    dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter)
+    dump_runs(req["slug"], req["request"], models, briefs, model=model, perimeter=perimeter, transport=transport)
     st = stability(models, perimeter=perimeter)
     # The noise floor up front: how much of the model was stable across the K runs.
     print(f"  ✓ {req['slug']:<20} {st['unanimous']['impact']}/{st['total_slots']} slots "
@@ -246,12 +317,24 @@ def select_runs(runs: list[dict], wanted: set[str], capture_all: bool) -> tuple[
     return selected, skipped
 
 
+def parse_transport(argv: list[str]) -> tuple[str, list[str]]:
+    """`(transport, rest)`: ``--transport NAME`` picks how the calls are sent, the API by default (#767)."""
+    if "--transport" not in argv:
+        return API, argv
+    at = argv.index("--transport")
+    return (argv[at + 1] if at + 1 < len(argv) else ""), argv[:at] + argv[at + 2:]
+
+
 def main(argv: list[str]) -> int:
     # First: a glyph the console cannot encode must not kill a run that already paid (invariant 16, #164).
     configure_output()
     if not REQUESTS.exists():
         print(f"Missing request set: {REQUESTS}", file=sys.stderr)
         return 1
+    transport, argv = parse_transport(argv)
+    if transport not in TRANSPORTS:
+        print(f"--transport takes one of {', '.join(TRANSPORTS)}, not {transport!r}", file=sys.stderr)
+        return 2
     with_brief = "--brief" in argv
     capture_all = "--all" in argv
     argv = [a for a in argv if a not in ("--brief", "--all")]
@@ -265,25 +348,27 @@ def main(argv: list[str]) -> int:
         slug = r["slug"]
         print(f"  ! skipped {slug:<20} interactive request (K x GOLDEN_TURNS = "
               f"{K * TURNS} calls) -- capture it on its own: "
-              f"python scripts/golden_run.py {slug}", file=sys.stderr)
+              f"python scripts/golden_run.py {slug}{'' if transport == API else ' --transport ' + transport}",
+              file=sys.stderr)
     if not runs:
         print("Nothing to capture.", file=sys.stderr)
         return 1
 
     GOLDEN.mkdir(parents=True, exist_ok=True)
-    client = Anthropic()
+    client = ClaudeCodeClient() if transport == CLAUDE_CODE else Anthropic()
     # Resolved once, so every envelope records the id the calls were given (#515); printed with the
     # budget because re-capturing on a different model is a decision, not an inherited environment.
     model = capture_model()
     # Computed for the set actually selected — see `planned_calls`.
     calls = planned_calls(runs, with_brief)
     print(f"Capturing {len(runs)} request(s) × {K} runs → {GOLDEN.relative_to(REPO)}/  "
-          f"(up to {calls} API calls{', assessment included' if with_brief else ''}; "
+          f"(up to {calls} {'API' if transport == API else '`claude -p`'} calls"
+          f"{', assessment included' if with_brief else ''}; "
           f"a transport failure retries its call once, so up to {2 * calls}) "
-          f"on {model}")
+          f"on {model} over {transport}")
     for req in runs:
         try:
-            capture(client, req, with_brief, model=model)
+            capture(client, req, with_brief, model=model, transport=transport)
         except Exception as exc:  # one bad request should not lose the others
             print(f"  ✗ {req['slug']:<20} FAILED: {exc}", file=sys.stderr)
     return 0

@@ -23,8 +23,9 @@ available — but **what counts as a credential is the SDK's answer**: `ANTHROPI
 
 ## Models
 
-Developed and measured against `claude-sonnet-5` (the default). Any current Claude model works via the
-`REQUIVO_MODEL` environment variable:
+The default is `claude-sonnet-5-5` (#767). The golden baselines and the cost figures below were measured
+on `claude-sonnet-5`, the previous default, and say so until they are re-captured. Any current Claude
+model works via the `REQUIVO_MODEL` environment variable:
 
 ```bash
 REQUIVO_MODEL=claude-opus-4-8 requivo run "…"

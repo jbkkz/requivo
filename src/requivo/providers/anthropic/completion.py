@@ -81,7 +81,8 @@ def _prune_debug_dir(root: Path) -> None:
 
 # Output-token ceiling per call, and the worst case one call can bill. The call streams (#638), so HTTP
 # timeouts do not bound it; what does is spend and wait: a reply cut at the ceiling is refused whole and
-# paid for (#256), so the ceiling sits above what a rich multi-feature discovery writes.
+# paid for (#256), so the ceiling sits above what a rich multi-feature discovery writes. Sonnet 5.5's adaptive
+# thinking counts against it too (#767): the headroom over the largest reply in fixtures/ledger/ is room to think.
 MAX_OUTPUT_TOKENS = 32000
 
 

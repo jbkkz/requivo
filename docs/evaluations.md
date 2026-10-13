@@ -35,6 +35,16 @@ discovery call and records it in the `.runs.json` envelope, where a missing key 
 different things in each schema — naming both and moving no verdict. `expand-into-new-segment` is
 the one go-to-market request.
 
+## The transport a capture runs over
+
+`--transport claude-code` sends the same assembled system prompt and messages through `claude -p`
+(no tools, settings, MCP or skills, no saved session) instead of the API, with `ANTHROPIC_API_KEY`
+removed from its environment so it bills the Claude subscription; the reply goes through the same JSON
+extraction and the same `validate` hook (#767). `claude -p` takes no prior assistant turn, so a
+multi-turn history (a refinement, a schema retry) is flattened into one prompt. The transport is
+recorded in the envelope, where a missing key reads as `api`, and `golden_diff.py` refuses to compare
+two transports as it refuses two perimeters.
+
 ## What it reports, and why
 
 - **Consensus over K runs.** A slot dimension is a reference only if all K runs agree; the

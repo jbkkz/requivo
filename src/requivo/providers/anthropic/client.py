@@ -46,7 +46,7 @@ def _http_transport_errors() -> tuple[type[Exception], ...]:
 
 STREAM_TRANSPORT_ERRORS = _http_transport_errors() if Anthropic is not None else ()
 
-MODEL_DEFAULT = "claude-sonnet-5"
+MODEL_DEFAULT = "claude-sonnet-5-5"
 
 # A remedy in _NO_KEY_MESSAGE, not a decision -- _resolve_client asks the SDK's own chain (#334).
 _AUTH_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
