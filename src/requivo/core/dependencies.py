@@ -34,8 +34,8 @@ def _all_slot_ids(perimeter: str = DEFAULT_PERIMETER) -> set[str]:
 # a judgment over the whole model, and a saved copy stays marked fresh otherwise (invariant 1).
 _ARTIFACT_SLOTS_RAW: dict[str, set[str] | str] = {
     "brief": "*",
-    "prd": {"problem", "success_metrics", "payer", "actors", "business_objects", "business_rules",
-            "workflow", "integrations", "permissions", "constraints", "edge_cases",
+    "prd": {"problem", "existing_solutions", "success_metrics", "payer", "actors", "business_objects",
+            "business_rules", "workflow", "integrations", "permissions", "constraints", "edge_cases",
             "acceptance", "risks", "acquisition"},
     "stories": {"actors", "business_objects", "business_rules", "workflow", "permissions"},
     "estimate": {"existing_solutions", "payer", "business_objects", "business_rules", "workflow",

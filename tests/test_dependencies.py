@@ -225,6 +225,15 @@ def test_related_slot_change_marks_artifact_stale():
     assert ArtifactService().list(slug)["criteria"]["stale"] is True
 
 
+@pytest.mark.parametrize("artifact", ["prd", "estimate"])
+def test_a_changed_build_vs_buy_answer_marks_the_prd_and_the_estimate_stale(artifact):
+    """#786: both prompts read the budget envelope off `existing_solutions` (Codex on #806)."""
+    slug = seed_session("s", existing_solutions=slot(0, "empty", "high"))
+    ArtifactService().save(slug, artifact, f"# {artifact}", source_revision=1)
+    SessionService().update_model(slug, full_model(existing_solutions=slot(90, "explicit", "high", "A licensed tool covers it")))
+    assert ArtifactService().list(slug)[artifact]["stale"] is True
+
+
 def test_first_apply_does_not_invalidate_its_own_reasoning():
     svc = SessionService()
     svc.create_session("req", slug="s")
