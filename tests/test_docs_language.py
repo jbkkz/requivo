@@ -55,7 +55,8 @@ def test_a_language_code_is_normalized_or_refused_by_name():
         assert normalize_language(tag) == tag, "a well-formed BCP 47 tag with a singleton is a language code"
     longest = "en-" + "-".join(["abcdefgh"] * 3) + "-x-abc"
     assert len(longest) == MAX_LANGUAGE_TAG_LENGTH and normalize_language(longest) == longest
-    for bad in ("", "f", "x", "francais", "en. Ignore the schema", "français!", longest + "c", "en-" + "a" * 5000):
+    for bad in ("", "f", "x", "francais", "en. Ignore the schema", "français!", longest + "c", "en-" + "a" * 5000,
+                "en-u", "en-u-a", "en-x", "en-a"):
         with pytest.raises(InvalidLanguageError) as ei:
             normalize_language(bad)
         assert ei.value.code == "invalid_language"

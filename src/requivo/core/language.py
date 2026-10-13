@@ -10,12 +10,16 @@ from requivo.core.errors import InvalidLanguageError
 
 DEFAULT_DOCS_LANGUAGE = "en"
 
-# A BCP 47 shape, lower-cased: a 2-3 letter language subtag, or `x` for a private-use tag, then any
-# subtags of 1-8 letters or digits, so extension and private-use singletons (`en-u-ca-gregory`,
-# `x-klingon`) pass. The code reaches a paid prompt, so nothing else gets through (invariant 14), and
-# nothing longer than BCP 47's practical maximum either (invariant 3: refused, never cut).
+# The BCP 47 (RFC 5646) langtag grammar, lower-cased: language, script, region, variants, extensions
+# (a singleton followed by at least one 2-8 subtag) and private use, or a private-use tag alone, so
+# `en-u-ca-gregory` and `x-klingon` pass while `en-u` or `en-x` do not. The code reaches a paid prompt,
+# so nothing else gets through (invariant 14), and nothing longer than BCP 47's practical maximum
+# either (invariant 3: refused, never cut).
 MAX_LANGUAGE_TAG_LENGTH = 35
-_CODE = re.compile(r"(?:[a-z]{2,3}(?:-[a-z0-9]{1,8})*|x(?:-[a-z0-9]{1,8})+)\Z")
+_PRIVATE = r"x(?:-[a-z0-9]{1,8})+"
+_CODE = re.compile(
+    r"(?:[a-z]{2,3}(?:-[a-z]{4})?(?:-(?:[a-z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*"
+    r"(?:-[a-wy-z0-9](?:-[a-z0-9]{2,8})+)*(?:-" + _PRIVATE + r")?|" + _PRIVATE + r")\Z")
 
 LANGUAGE_NAMES = {"en": "English", "fr": "French", "es": "Spanish", "de": "German"}
 
