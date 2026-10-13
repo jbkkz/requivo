@@ -5,6 +5,7 @@ from typing import Any
 
 from requivo.core.contracts import (
     IMPACT_RANK,
+    MAX_QUESTIONS,
     SOFT_COMPLETENESS,
     ClaimSource,
     Confidence,
@@ -242,11 +243,13 @@ def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> l
     """The turn's questions by descending information value, the order every surface asks and shows
     them in (#771), plus the probe the schema gives each blocker the turn left unasked (#815), so a
     blocker always carries a question: `test_no_turn_can_stop_not_ready_with_nothing_to_ask`. `sorted`
-    is stable, so a tie keeps the provider's order."""
+    is stable, so a tie keeps the provider's order. Capped at `MAX_QUESTIONS`, the most a checkpoint asks,
+    so nothing shown goes unasked: `test_derived_probes_never_push_a_turn_past_the_question_cap`."""
     probes = {s["id"]: s["probe"] for s in schema_slots(perimeter)}
     # An omitted slot (a session older than the slot) blocks at its baseline impact, so it is probed too.
     derived = [Question(q=probes[sid], slot=sid, why=UNASKED_BLOCKER_WHY) for sid in unasked_blockers(out, perimeter)]
-    return sorted(list(out.questions) + derived, key=lambda q: -information_value(out, q.slot, perimeter))
+    ranked = sorted(list(out.questions) + derived, key=lambda q: -information_value(out, q.slot, perimeter))
+    return ranked[:MAX_QUESTIONS]
 
 
 def pillar_completeness(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> dict[str, int]:

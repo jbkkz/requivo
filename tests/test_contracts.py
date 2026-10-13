@@ -367,6 +367,15 @@ def test_no_turn_can_stop_not_ready_with_nothing_to_ask(workflow, derived):
     assert {b["slot"] for b in status["readiness"]["blocking_slots"]} <= {q["slot"] for q in status["questions"]}
 
 
+def test_derived_probes_never_push_a_turn_past_the_question_cap():
+    """#815: a full turn of questions plus more unasked blank blockers still shows at most `MAX_QUESTIONS`,
+    the most a checkpoint asks, so no displayed question is silently left unasked."""
+    required = sorted(schema_slot_ids()[1])
+    blank = {sid: slot(0, "empty", "high") for sid in required}
+    model = EngineOutput.model_validate({**full_model(**blank), "questions": [_q(sid) for sid in required[:MAX_QUESTIONS]]})
+    assert len(required) > MAX_QUESTIONS and len(model_status(model)["questions"]) == MAX_QUESTIONS
+
+
 @pytest.mark.parametrize("s, state", [
     (Slot(completeness=90, confidence="explicit", impact="high"), "confirmed"),
     (Slot(completeness=50, confidence="inferred", impact="high"), "inferred"),
