@@ -61,10 +61,14 @@ REASONING.md's *Source tags*:
     **recommended next steps**.
 
 Sections 3 and 4 are read off the model: a topic whose evidence is `explicit` is confirmed, one that
-is `inferred` is an assumption. Do not promote an assumption to a fact because it sounds settled —
-that distinction is the most useful thing on the page. **Propose and label** (REASONING.md's honesty
-rules): a concrete default or a domain fact that changes the case belongs here, tagged `[proposed]`
-or `[domain]`, never as the requester's word.
+is `inferred` is an assumption. An `explicit` topic the client did not state — its `evidence` opens
+`Client delegated:`, or a claim on it is `let_stand` — is a default chosen on their behalf: list it
+under *Defaults chosen on your behalf*, between the two, with that source, never as confirmed (#809).
+An open question is a question in the client's terms, never a stored value under a prefix such as
+"Confirm:", and each item appears once across sections. Do not promote an assumption to a fact
+because it sounds settled — that distinction is the most useful thing on the page. **Propose and
+label** (REASONING.md's honesty rules): a concrete default or a domain fact that changes the case
+belongs here, tagged `[proposed]` or `[domain]`, never as the requester's word.
 
 **Every opportunity is a premise too** (#749): "this would be valuable". Put it through the check a
 challenge gets: what would have to be true, and what if it is not? One that survives with a material

@@ -12,6 +12,7 @@ from requivo.core.contracts import (
     AcceptanceCriteria,
     Brief,
     Challenge,
+    Claim,
     DesignDecision,
     EngineOutput,
     Epic,
@@ -24,6 +25,7 @@ from requivo.core.contracts import (
     Slot,
     Summary,
     Threshold,
+    schema_slot_ids,
 )
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.recap import build_recap
@@ -139,16 +141,17 @@ def test_a_newline_in_a_reasoning_item_cannot_open_a_forged_heading_in_the_brief
     """Self-review finding on #599; the free-text fields of both briefs, from the 3.4.0 release audit."""
     i = "x\n# INJECTED"
     model = out(_MODEL)
-    model.summary = Summary(objective=i, scope=i, assumptions=[i], blind_spot=i)
+    model.summary = Summary(objective=i, scope=i, assumptions=[f"a{i}"], blind_spot=i)
     model.exclusions = [Exclusion(option=i, reason=i)]
     model.thresholds = [Threshold(condition=i, measure="m", action=i, rests_on=["problem"])]
-    brief = Brief(problem=i, solution=i, complexity="low", complexity_reasons=[i], cost_driver=i, introduces=[i],
-                  risks=[i], open_decisions=[i], next_steps=[i], decisions=[DesignDecision(decision=i)],
+    # Each list item its own text, or the one-item-once rule (#809) would drop the copies this test counts.
+    brief = Brief(problem=i, solution=i, complexity="low", complexity_reasons=[i], cost_driver=i, introduces=[f"b{i}"],
+                  risks=[f"c{i}"], open_decisions=[f"d{i}"], next_steps=[f"e{i}"], decisions=[DesignDecision(decision=i)],
                   challenges=[Challenge(headline=i, premise="p", alternative="a", consequence="c", recommendation="r")],
                   opportunities=[Opportunity(text=i, leverage="high")])
     md = brief_markdown(model, brief)
     assert "\n# INJECTED" not in md and md.count("INJECTED") == 19
-    gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=[i], open_decisions=[i]))
+    gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=[f"c{i}"], open_decisions=[f"d{i}"]))
     assert "\n# INJECTED" not in gtm and gtm.count("INJECTED") == 10
 
 
@@ -156,16 +159,16 @@ def test_a_newline_in_a_slot_value_or_an_opportunity_module_cannot_open_a_forged
     """#660: `_stated` and the opportunity modules were the two free-text sites #655's `_line()` missed;
     the positive control is that each injected value still reaches the output, flattened."""
     forged = "x\n# FORGED"
-    model = out({"problem": slot(80, "explicit", "high", forged), "actors": slot(60, "inferred", "high", forged)})
+    model = out({"problem": slot(80, "explicit", "high", forged), "actors": slot(60, "inferred", "high", f"y{forged}")})
     brief = Brief(problem="P", solution="S", complexity="low",
                   opportunities=[Opportunity(text="o", leverage="high", modules=[forged])])
     md = brief_markdown(model, brief)
-    assert "\n# FORGED" not in md and md.count("FORGED") == 4   # the inferred blocker's value twice (#783)
+    assert "\n# FORGED" not in md and md.count("FORGED") == 3   # a blocker reads as its probe, not its value (#809)
     # the go-to-market brief reads its own slot ids, which the default-schema `out()` refuses
     model.model["objective"] = model.model["problem"].model_copy()
     model.model["icp"] = model.model["actors"].model_copy()
     gtm = gtm_plan_markdown(model, GoToMarketPlan(plan=["p"]))
-    assert "\n# FORGED" not in gtm and gtm.count("FORGED") == 3
+    assert "\n# FORGED" not in gtm and gtm.count("FORGED") == 2
 
 
 @pytest.mark.parametrize("field, item, heading, line", [
@@ -212,10 +215,55 @@ def test_the_decision_brief_states_values_and_names_what_blocks_in_plain_words()
                  "workflow": slot(0, "empty", "high"), "permissions": slot(0, "empty", "high")})
     model.questions = [Question(q="Who approves when the manager is away?", slot="workflow", why="w")]
     md = brief_markdown(model, Brief(complexity="low"))
-    for line in ("- Approvals get lost in email.", "- Confirm: Employees and line managers.",
+    for line in ("- Approvals get lost in email.", "- Employees and line managers.", "- Who triggers, who executes, who approves?",
                  "- Who approves when the manager is away?", "- Who sees what, who can do what?"):
         assert line in md, line
     assert " · " not in md and not [label for label in slot_meta()[1].values() if f"**{label}**" in md], md
+
+
+def _client_brief(perimeter: str) -> str:
+    """A brief carrying each thing the #809 judge refused: a thin and an unconfirmed blocker, a delegated
+    default, a let-stand proposal, slot ids in the provider prose, one item said twice."""
+    stated, delegated, proposed, assumed, thin = (("problem", "constraints", "reporting", "actors", "workflow")
+                                                  if perimeter == "software" else
+                                                  ("objective", "budget", "channels", "icp", "offer"))
+    let_stand = Claim(text="Weekly CSV export.", source="proposed", confirmation="let_stand", answered_by="requester")
+    model = out(_MODEL)
+    model.model = {
+        stated: Slot.model_validate(slot(90, "explicit", "high", "Approvals get lost in email.")),
+        delegated: Slot(completeness=80, confidence="explicit", impact="high", value="Escalate after five working days.",
+                        evidence="Client delegated: you decide. Default chosen: five working days."),
+        proposed: Slot(completeness=80, confidence="explicit", impact="medium", value="Weekly CSV export.", claims=[let_stand]),
+        assumed: Slot.model_validate(slot(60, "inferred", "high", "Employees and line managers.")),
+        thin: Slot.model_validate(slot(40, "explicit", "high", "Managers approve.")),
+    }
+    model.summary.assumptions = ["Employees and line managers"]
+    bare = "business_rules or success_metrics" if perimeter == "software" else "unit_economics or success_metric"
+    risks = [f"\x60{thin}\x60 is vague", f"No owner for {bare} yet."]
+    twice = ["Name the escalation owner.", "name the escalation  owner"]
+    if perimeter == "software":
+        return brief_markdown(model, Brief(complexity="low", risks=risks, open_decisions=twice))
+    return gtm_plan_markdown(model, GoToMarketPlan(plan=["p"], risks=risks, open_decisions=twice))
+
+
+def _section(md: str, heading: str) -> str:
+    return md.split(f"## {heading}\n", 1)[1].split("\n## ", 1)[0] if f"## {heading}\n" in md else ""
+
+
+@pytest.mark.parametrize("perimeter", ["software", "go-to-market"])
+def test_the_client_brief_is_sendable_as_is(perimeter):
+    """#809: no tool prefix, no slot id, a default the client did not state never under What is confirmed
+    (it is listed with its source instead), and each item once."""
+    md = _client_brief(perimeter)
+    assert not re.search(r"^- (More detail needed on|Confirm):", md, re.MULTILINE), md
+    ids = schema_slot_ids("software")[0] | schema_slot_ids("go-to-market")[0]
+    assert not [sid for sid in ids if f"\x60{sid}\x60" in md or ("_" in sid and re.search(rf"\b{sid}\b", md))], md
+    confirmed, defaults = _section(md, "What is confirmed"), _section(md, "Defaults chosen on your behalf")
+    assert "Approvals get lost in email." in confirmed and "Managers approve." in confirmed
+    assert "five working days" not in confirmed and "Weekly CSV export" not in confirmed
+    assert "- Escalate after five working days. _(you left this decision to us)_" in defaults
+    assert "- Weekly CSV export. _(proposed, and you let it stand)_" in defaults
+    assert md.count("Employees and line managers") == 1 and md.lower().count("escalation owner") == 1, md
 
 
 # ── the perimeter recap a first discovery opens with (#709) ──────────────────────

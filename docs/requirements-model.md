@@ -161,9 +161,10 @@ Requivo splits its outputs by reader:
 
 **The saved brief is bilingual on purpose** (`decision: the-decision-briefs-quoted-half`, #491):
 `brief_markdown` also receives the `EngineOutput`, and its projected sections — the objective, the
-current understanding, *What is confirmed*, the first half of *Important assumptions*, *Out of scope*
-(#599) and *Decision thresholds* (#604) — are the model's own words, quoted, while the judgment is
-English. So a French request yields French questions and understanding, and an English PRD.
+current understanding, *What is confirmed*, *Defaults chosen on your behalf* (#809), the first half of
+*Important assumptions*, *Out of scope* (#599) and *Decision thresholds* (#604) — are the model's own
+words, quoted, while the judgment is English. So a French request yields French questions and
+understanding, and an English PRD.
 
 The policy is one sentence in each prompt asset's *Output format* block — `engine.md` for the
 mirroring half, the six artifact prompts for the English half. Requivo does **not** detect the

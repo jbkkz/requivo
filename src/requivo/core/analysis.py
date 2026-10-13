@@ -7,6 +7,7 @@ from requivo.core.contracts import (
     IMPACT_RANK,
     SOFT_COMPLETENESS,
     Confidence,
+    Confirmation,
     EngineOutput,
     Impact,
     Question,
@@ -110,6 +111,21 @@ def blocking_reason(s: Slot | None) -> str:
     if s is None or s.confidence is Confidence.empty:
         return "unknown"
     return "thin" if is_thin(s) else "unconfirmed"
+
+
+# How the engine marks a slot the client delegated (`engine.md`, the run skill): its evidence opens with it.
+DELEGATED_EVIDENCE = "client delegated"
+
+
+def default_source(s: Slot) -> str:
+    """Why an `explicit` slot holds a value the client did not state (#809): `delegated` (its evidence
+    opens `Client delegated:`), `let_stand` (a claim shown as a default and not overturned), or "" for
+    the client's own word. A naming over what is recorded, never a second confidence."""
+    if s.confidence is not Confidence.explicit:
+        return ""
+    if s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE):
+        return "delegated"
+    return "let_stand" if any(c.confirmation is Confirmation.let_stand for c in s.claims) else ""
 
 
 def state_of(s: Slot) -> str:

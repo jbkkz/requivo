@@ -81,14 +81,14 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 - Whether this is a one-off build or the first instance of a reusable event kit
 - Whether freelancer contracts and rates already live in another system requiring integration
 - What already exists, is already paid for, or could be bought instead of building this, and within what budget?
-- More detail needed on: Door staff see live approval status; someone is alerted on a mismatch; reconciliation is clean at close so finance stops chasing.
-- Confirm: Two actor sets: (1) attendees/guests being checked in, (2) freelancers acting as door staff whose own contracts/hours/invoices must reconcile. Finance and an unnamed alert recipient (event manager?) are downstream actors.
+- How will the client know it worked?
+- Who triggers, who executes, who approves?
 - When you say 'alerted when there's a mismatch,' what exactly is being compared — guest check-ins against the approval list, or freelancer hours worked against contract/invoice terms (or both)? And who receives that alert?
 - On the offline requirement: do you need each door device to hold its own local snapshot of the approval list and sync check-ins later, and is a brief 'pending/unconfirmed' state on-screen acceptable during the event, or must every scan be instantly certain?
-- Confirm: Door staff need read access to approval status only; someone (event manager/finance) needs to see and act on mismatch alerts; finance needs reconciliation view. Exact split not stated.
-- More detail needed on: Event in six weeks (hard, immovable deadline); venue wifi is effectively unusable, so the check-in path must work offline.
-- Confirm: Needs an auditable trail tying guest check-ins to freelancer hours to invoice lines, since finance's core complaint is inability to reconcile after the fact — this is close to a compliance/audit need, not just a nice dashboard.
-- Confirm: Six-week timeline plus offline requirement plus fixing two intertwined problems (attendee check-in AND freelancer time/invoice reconciliation) is a lot to build and rehearse; risk of scope creep if both problems are solved with equal depth.
+- Who sees what, who can do what?
+- Deadline, dependencies, regulatory?
+- Filter, export, dashboard, audit of changes?
+- What can break, how do we roll out?
 - Least explored: The request bundles two structurally different problems — attendee check-in (needing offline resilience, throughput, fuzzy identification) and freelancer contract/invoice reconciliation (needing traceable hours-to-invoice linkage, likely tied to another system of record) — under one word, 'mismatch.' Building a single undifferentiated alert without first separating these two rule sets risks solving neither well within six weeks, and the unsigned-contract-freelancer-at-the-door scenario is a compliance gap nobody has explicitly decided how to handle.
 
 ## Opportunities

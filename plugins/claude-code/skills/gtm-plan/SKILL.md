@@ -151,6 +151,12 @@ with, so a plan reads the same wherever it was reasoned. Labels come from step 2
 
 - <value>
 
+## Defaults chosen on your behalf
+
+- <value> _(you left this decision to us)_   or   _(proposed, and you let it stand)_
+
+_You did not state these. Each stands unless you change it._
+
 ## Important assumptions
 
 - <value>
@@ -191,7 +197,7 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 ## Unresolved questions
 
 - <open decision>
-- <one line per blocking topic: the session's question on it, else "Confirm: <value>", else its schema probe>
+- <one line per blocking topic: the session's question on it, else its schema probe, never its value>
 - Least explored: <the summary's blind spot>
 
 ## Are we ready?
@@ -200,12 +206,14 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 ```
 
 Read off the model, never restated: *What is confirmed* lists the values of the slots stated outright
-(`explicit`), *Important assumptions* the `inferred` ones, each as the value alone, never under its
-label (#783); *Out of scope* and *Decision thresholds* the exclusions and thresholds as applied in
-step 4, and the blocking topics come from that apply's `readiness`. The title carries "— Draft:
-unresolved topics remain" only while something blocks. With nothing blocking, *Are we ready?* reads
-**Ready.** Nothing that could change the solution is still open. — unless an open decision is listed,
-when it reads **Decisions to make first.** and points at them: never Ready beside an open decision.
+(`explicit`), *Defaults chosen on your behalf* the `explicit` ones the user did not state (`evidence`
+opening `Client delegated:`, or a `let_stand` claim), *Important assumptions* the `inferred` ones, each
+as the value alone, never under its label (#783), and each item once across sections (#809); *Out of
+scope* and *Decision thresholds* the exclusions and thresholds as applied in step 4, and the blocking
+topics come from that apply's `readiness`. The title carries "— Draft: unresolved topics remain" only
+while something blocks. With nothing blocking, *Are we ready?* reads **Ready.** Nothing that could
+change the solution is still open. — unless an open decision is listed, when it reads **Decisions to
+make first.** and points at them: never Ready beside an open decision.
 
 ## 6. Save it as a tracked artifact
 ```bash

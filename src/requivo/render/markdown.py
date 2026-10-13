@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import functools
 import re
 from collections.abc import Sequence
 
-from requivo.core.analysis import is_thin, readiness_blockers, slot_label, slot_meta
+from requivo.core.analysis import default_source, readiness_blockers, slot_label, slot_meta
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
@@ -60,23 +61,74 @@ def _block_line(text: str) -> str:
 
 def _stated(out: EngineOutput, confidence: Confidence, perimeter: str = DEFAULT_PERIMETER) -> list[str]:
     """The values stated at a given provenance, in `perimeter`'s schema order, as business statements:
-    read off the model, never restated by the provider, never framed by a slot label (#783, Voice rule)."""
+    read off the model, never restated by the provider, never framed by a slot label (#783, Voice rule).
+    A default the client did not state is never among them: `_defaults` lists it (#809)."""
     order = slot_meta(perimeter)[1]
     return [f"- {_line(out.model[sid].value)}"
             for sid in order
             if sid in out.model and out.model[sid].confidence is confidence
-            and out.model[sid].value.strip()]
+            and not default_source(out.model[sid]) and out.model[sid].value.strip()]
+
+
+_DEFAULT_TAG = {"delegated": "you left this decision to us", "let_stand": "proposed, and you let it stand"}
+
+
+def _defaults(out: EngineOutput, perimeter: str) -> list[str]:
+    """The settled values the client did not state, in schema order, each with its source (#809)."""
+    slots = [out.model[sid] for sid in slot_meta(perimeter)[1] if sid in out.model]
+    return [f"- {_line(s.value)} _({_DEFAULT_TAG[default_source(s)]})_"
+            for s in slots if default_source(s) and s.value.strip()]
 
 
 def _in_words(out: EngineOutput, sid: str, perimeter: str) -> str:
-    """What a readiness blocker leaves to decide, in the client's words (#783): the session's own question
-    on it, else its stated value to confirm or detail, else the schema's probe; never the slot label."""
-    s = out.model.get(sid)
+    """What a readiness blocker leaves to decide, as a question in the client's terms (#783, #809): the
+    session's own question on it, else the schema's probe; never its stored value under a tool prefix."""
     asked = next((q.q for q in out.questions if q.slot == sid), "")
-    if not asked and s is not None and s.confidence is not Confidence.empty and s.value.strip():
-        asked = f"{'More detail needed on' if is_thin(s) else 'Confirm'}: {s.value}"
     probe = next((p.get("probe", "") for p in schema_slots(perimeter) if p["id"] == sid), "")
     return asked or (probe.split("?", 1)[0] + "?" if "?" in probe else probe) or slot_label(sid, perimeter)
+
+
+_SOURCE_TAG = re.compile(r"\s+_\([^)]*\)_$")
+
+
+def _once(lines: list[str], seen: set[str]) -> list[str]:
+    """`lines` less each bullet already in `seen`, which it extends: one item appears once (#809), whatever
+    its case, spacing, end punctuation or source tag."""
+    kept = []
+    for line in lines:
+        key = " ".join(_SOURCE_TAG.sub("", line[2:]).casefold().split()).rstrip(".;:!?")
+        if line.startswith("- ") and key in seen:
+            continue
+        seen.update([key] if line.startswith("- ") else [])
+        kept.append(line)
+    return kept
+
+
+@functools.cache
+def _slot_ids(perimeter: str) -> re.Pattern[str]:
+    ids = sorted(slot_meta(perimeter)[1], key=len, reverse=True)
+    coded, bare = "|".join(map(re.escape, ids)), "|".join(re.escape(i) for i in ids if "_" in i)
+    return re.compile(rf"`({coded})`|\b({bare})\b")
+
+
+def _unjargoned(document: str, perimeter: str) -> str:
+    """A slot id the provider let through, said by its label (#809): a code-quoted one, and a bare one only
+    where it cannot be an English word, i.e. it carries an underscore."""
+    return _slot_ids(perimeter).sub(lambda m: slot_label(m.group(1) or m.group(2), perimeter), document)
+
+
+def _known(out: EngineOutput, perimeter: str, seen: set[str], of: str) -> list[tuple[str, list[str]]]:
+    """What the client stated, the defaults chosen on their behalf, then what was inferred: the three
+    projected sections, each item once against `seen` (#809)."""
+    confirmed = _once(_stated(out, Confidence.explicit, perimeter), seen)
+    defaults = _once(_defaults(out, perimeter), seen)
+    if defaults:
+        defaults += ["", "_You did not state these. Each stands unless you change it._"]
+    assumed = _once(_stated(out, Confidence.inferred, perimeter) + [f"- {_line(a)}" for a in out.summary.assumptions], seen)
+    if assumed:
+        assumed += ["", f"_Each of these was inferred, not stated. Confirm the ones that would change the {of}._"]
+    return [("What is confirmed", confirmed), ("Defaults chosen on your behalf", defaults),
+            ("Important assumptions", assumed)]
 
 
 def _unresolved(out: EngineOutput, open_decisions: list[str], perimeter: str) -> list[str]:
@@ -160,7 +212,7 @@ def _challenges(challenges: list[Challenge]) -> list[str]:
 
 def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     """Render the decision brief: what is settled and what is assumed first, then the judgment.
-    Half of it is deterministic: the confirmed, assumed, excluded, threshold and blocking sections are
+    Half of it is deterministic: the confirmed, default, assumed, excluded, threshold and blocking sections are
     projected off the model, because a restatement can drift and a projection cannot. No slot ids or
     confidence labels in either half (Voice rule), nor slot labels framing a value (#783)."""
     blockers = readiness_blockers(out)
@@ -186,16 +238,11 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
     section("Request and objective", summary)
 
     section("Current understanding", [_block_line(out.summary.scope)] if out.summary.scope else [])
-    section("What is confirmed", _stated(out, Confidence.explicit))
-
-    assumed = _stated(out, Confidence.inferred)
-    if out.summary.assumptions:
-        assumed += [f"- {_line(a)}" for a in out.summary.assumptions]
-    if assumed:
-        assumed = [*assumed, "",
-                   "_Each of these was inferred, not stated. Confirm the ones that would change the "
-                   "build._"]
-    section("Important assumptions", assumed)
+    # An open point stays where the verdict points; any earlier copy of it goes (#809).
+    seen: set[str] = set()
+    open_items = _once(_unresolved(out, brief.open_decisions, DEFAULT_PERIMETER), seen)
+    for heading, lines in _known(out, DEFAULT_PERIMETER, seen, "build"):
+        section(heading, lines)
 
     # `_line()`-flattened, or a newline in a provider decision opens a forged heading (#599).
     decisions: list[str] = []
@@ -210,7 +257,7 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
             decisions.append(f"  - _Trade-off accepted:_ {_line(d.tradeoff)}")
     section("Decisions made", decisions)
 
-    section("Scope implications", [f"- {_line(i)}" for i in brief.introduces])
+    section("Scope implications", _once([f"- {_line(i)}" for i in brief.introduces], seen))
 
     section("Out of scope", _excluded(out))
 
@@ -218,9 +265,9 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     section("Assumptions worth contesting", _challenges(brief.challenges))
 
-    section("Main risks", [f"- {_line(r)}" for r in brief.risks])
+    section("Main risks", _once([f"- {_line(r)}" for r in brief.risks], seen))
 
-    section("Unresolved questions", _unresolved(out, brief.open_decisions, DEFAULT_PERIMETER))
+    section("Unresolved questions", open_items)
 
     section("Opportunities", [
         f"- **{_line(o.text)}** (leverage: {o.leverage.value})"
@@ -229,9 +276,9 @@ def brief_markdown(out: EngineOutput, brief: Brief) -> str:
 
     # Not a second readiness question (#165): `test_every_surface_asks_the_same_readiness_question`.
     section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before estimating")])
-    section("Recommended next steps", [f"- {_line(s)}" for s in brief.next_steps])
+    section("Recommended next steps", _once([f"- {_line(s)}" for s in brief.next_steps], seen))
 
-    return "\n".join(md).rstrip() + "\n"
+    return _unjargoned("\n".join(md).rstrip() + "\n", DEFAULT_PERIMETER)
 
 
 def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
@@ -252,16 +299,10 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     section("Objective", summary)
 
     section("Current understanding", [_block_line(out.summary.scope)] if out.summary.scope else [])
-    section("What is confirmed", _stated(out, Confidence.explicit, GO_TO_MARKET))
-
-    assumed = _stated(out, Confidence.inferred, GO_TO_MARKET)
-    if out.summary.assumptions:
-        assumed += [f"- {_line(a)}" for a in out.summary.assumptions]
-    if assumed:
-        assumed = [*assumed, "",
-                   "_Each of these was inferred, not stated. Confirm the ones that would change the "
-                   "plan._"]
-    section("Important assumptions", assumed)
+    seen: set[str] = set()
+    open_items = _once(_unresolved(out, brief.open_decisions, GO_TO_MARKET), seen)
+    for heading, lines in _known(out, GO_TO_MARKET, seen, "plan"):
+        section(heading, lines)
 
     section("Resource envelope", _envelope_lines(brief.envelope, GO_TO_MARKET))
 
@@ -273,13 +314,13 @@ def gtm_plan_markdown(out: EngineOutput, brief: GoToMarketPlan) -> str:
     section("Out of scope", _excluded(out, GO_TO_MARKET))
     section("Decision thresholds", _thresholds(out, GO_TO_MARKET))
     section("Assumptions worth contesting", _challenges(brief.challenges))
-    section("Main risks", [f"- {_line(r)}" for r in brief.risks])
+    section("Main risks", _once([f"- {_line(r)}" for r in brief.risks], seen))
 
-    section("Unresolved questions", _unresolved(out, brief.open_decisions, GO_TO_MARKET))
+    section("Unresolved questions", open_items)
     # Not a second readiness question, as in `brief_markdown`.
     section("Are we ready?", [_verdict(bool(blockers), bool(brief.open_decisions), "before committing to the plan")])
 
-    return "\n".join(md).rstrip() + "\n"
+    return _unjargoned("\n".join(md).rstrip() + "\n", GO_TO_MARKET)
 
 
 def _envelope_lines(elements: list[EnvelopeElement], perimeter: str = DEFAULT_PERIMETER) -> list[str]:
