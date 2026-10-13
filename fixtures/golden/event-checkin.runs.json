@@ -1,341 +1,199 @@
 {
   "request": "We need an app for staff to check attendees in at the venue entrance on the event day.",
-  "model": "claude-sonnet-5",
+  "model": "claude-sonnet-5-5",
   "perimeter": "software",
+  "transport": "claude-code",
   "runs": [
     {
       "model": {
         "problem": {
-          "completeness": 20,
+          "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Likely need reliable, fast, accurate admission control at the door to avoid queues and produce trustworthy attendance data",
-          "evidence": "Request only states the surface action ('check attendees in'); no stated pain point or success measure",
+          "value": "Staff need to identify arriving attendees at the venue entrance and record their arrival on the event day. The underlying driver (queues, headcount, attendance data for the client, access control) is not stated.",
+          "evidence": "Request: 'an app for staff to check attendees in at the venue entrance on the event day.'",
           "test_plan": ""
         },
         "current_process": {
-          "completeness": 10,
+          "completeness": 0,
           "confidence": "empty",
-          "impact": "medium",
-          "value": "",
-          "evidence": "No mention of how the attendee list is produced/maintained today (registration system, spreadsheet, none)",
+          "impact": "high",
+          "value": "Unknown how check-in is done today (paper list, spreadsheet, existing registration tool, nothing).",
+          "evidence": "Not mentioned.",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown whether a registration/ticketing platform already in use offers check-in, or whether off-the-shelf check-in apps were considered; budget unknown.",
+          "evidence": "Not mentioned. Request takes building as its premise.",
           "test_plan": ""
         },
         "success_metrics": {
           "completeness": 10,
           "confidence": "empty",
           "impact": "medium",
-          "value": "",
-          "evidence": "No stated measure of success (speed, accuracy, headcount, zero door incidents)",
+          "value": "Unknown. Likely: no queue at peak, accurate attendance record.",
+          "evidence": "Not mentioned.",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 20,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Internal/commissioned build; the requester is the payer.",
+          "evidence": "'We need an app' implies a commissioned or internal tool.",
           "test_plan": ""
         },
         "actors": {
           "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Staff/hostess as primary operator (explicit); event manager, security, and attendee likely involved as secondary roles",
-          "evidence": "'staff to check attendees in' is explicit; other roles are inferred from standard event-ops context",
+          "value": "Staff/hostesses operate the check-in; attendees are checked in. Event manager, security and client stakeholders are likely but unconfirmed.",
+          "evidence": "Request: 'for staff to check attendees in'.",
           "test_plan": ""
         },
         "business_objects": {
-          "completeness": 20,
+          "completeness": 25,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Attendee, Event, Check-in event implied by the request",
-          "evidence": "Deduced from context card's standard entity set; not confirmed by requester",
+          "value": "Event, Attendee (with category), Registration, Check-in. Source of the attendee list unknown.",
+          "evidence": "Implied by 'attendees' and 'check in'; list origin not stated.",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
-          "value": "",
-          "evidence": "No mention of attendee categories (VIP, press, staff) or whether access rules differ by category/zone",
+          "value": "Unknown: what a second scan means (duplicate, re-entry, different zone/session), category-based access, walk-in policy.",
+          "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "workflow": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "'Check attendees in' doesn't say whether a second scan means duplicate, re-entry, or a different zone/session \u2014 a core data-model fork",
-          "test_plan": ""
-        },
-        "integrations": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "No mention of offline/sync behaviour between devices, or of any upstream registration system feeding the attendee list",
-          "test_plan": ""
-        },
-        "permissions": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "",
-          "evidence": "Not addressed: who can check in, who can see attendee data, device-level access",
-          "test_plan": ""
-        },
-        "config_vs_custom": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "Not stated whether this is a one-off build for this event or the first instance of a reusable event kit \u2014 the context flags this as the first question to settle, changing the whole build",
-          "test_plan": ""
-        },
-        "constraints": {
           "completeness": 15,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Hard, immovable event-day deadline implied; venue connectivity (offline capability) is unstated but almost always decisive",
-          "evidence": "'check in... at the venue entrance on the event day' implies a fixed date; connectivity not mentioned, a classic assumed-away constraint per context",
-          "test_plan": ""
-        },
-        "edge_cases": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "",
-          "evidence": "No mention of concurrent scans at multiple entrances, failed scans, or on-the-spot registration for people not on the list",
-          "test_plan": ""
-        },
-        "reporting": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "",
-          "evidence": "Post-event attendance data is typically a client deliverable (who came, when, where) but not mentioned here; no compliance/audit language present in this request, so impact kept at default medium rather than raised to high",
-          "test_plan": ""
-        },
-        "acceptance": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "",
-          "evidence": "No acceptance scenarios named",
-          "test_plan": ""
-        },
-        "risks": {
-          "completeness": 10,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "Fixed event date means no 'fix it next sprint'; a manual fallback and on-site rehearsal are likely required",
-          "evidence": "Inferred from the fixed-date nature of event-day operations; not confirmed by requester",
-          "test_plan": ""
-        }
-      },
-      "questions": [
-        {
-          "q": "Does the check-in app need to work without reliable venue wifi/network \u2014 holding a local copy of the attendee list and syncing scans later \u2014 or can we assume solid connectivity throughout the venue?",
-          "slot": "constraints",
-          "why": "high impact, fully unaddressed: offline vs online-only is an architecture decision, not a setting, and is almost always assumed away until the day it fails"
-        },
-        {
-          "q": "Is this app a one-off build for this single event, or the first instance of a reusable kit you'll reuse for future events?",
-          "slot": "config_vs_custom",
-          "why": "high impact, empty: this single answer changes configurability, data model (single-event vs multi-event) and cost, and clients rarely volunteer it"
-        },
-        {
-          "q": "When a badge is scanned a second time, should the app treat it as a blocked duplicate, an allowed re-entry, or a check-in to a different zone/session?",
-          "slot": "workflow",
-          "why": "high impact, empty: 'check in' hides three different data models; getting this wrong at the door is the most common naive-build failure"
-        },
-        {
-          "q": "How will the expected attendee list be produced and kept current before and during the event (import from a registration tool, spreadsheet, manual entry), and can staff add walk-ins on the spot?",
-          "slot": "current_process",
-          "why": "high impact, empty: the list is 'never final' in practice \u2014 if there's no on-site add/correct path, the app breaks on arrival day"
-        },
-        {
-          "q": "If two staff at different entrances scan the same attendee within seconds of each other, what should happen \u2014 a warning, a refusal, or should it just go through silently?",
-          "slot": "edge_cases",
-          "why": "high impact, empty: concurrency across entrances is the first thing that breaks in a naive build and needs a defined business answer"
-        },
-        {
-          "q": "Do different attendee categories (VIP, press, staff, standard) need different access rights or a different check-in flow at the entrance?",
-          "slot": "business_rules",
-          "why": "high impact, empty: category routinely drives access and greeter instructions, and changes late \u2014 worth settling before UI/data model is fixed"
-        }
-      ],
-      "summary": {
-        "objective": "Give on-site staff a way to identify and record attendee arrivals at the venue entrance on the event day, producing a reliable admission control and an accurate attendance record.",
-        "scope": "Likely covers: staff-facing check-in UI (scan + manual search fallback), an attendee list held on-device, a check-in event model (duplicate/re-entry/zone handling), and a basic post-event attendance view/export. Scope could expand significantly depending on offline requirements and whether this must be reusable across events.",
-        "assumptions": [
-          "The event has a fixed, non-movable date, making a manual fallback and on-site rehearsal part of the build.",
-          "Staff are the primary operators and are not trained users (first-time, possibly one-handed, low light).",
-          "Core objects are Attendee, Event and a Check-in record, following the standard event-ops model.",
-          "Some secondary roles (event manager, security) likely need visibility, though not confirmed."
-        ],
-        "blind_spot": "Whether the app must work offline (local snapshot + later sync) is not mentioned at all, yet it is the single biggest driver of architecture, cost and failure mode on the day \u2014 if assumed away and the venue has patchy connectivity, the whole check-in path can fail in front of the client."
-      },
-      "decisions": [],
-      "challenges": [],
-      "opportunities": [],
-      "exclusions": [],
-      "thresholds": []
-    },
-    {
-      "model": {
-        "problem": {
-          "completeness": 20,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "Likely replacing a manual/paper or spreadsheet entrance process to speed up entry and get accurate attendance data.",
-          "evidence": "Request only states the need for a check-in app, no stated pain point.",
-          "test_plan": ""
-        },
-        "current_process": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Unknown \u2014 not stated whether there is an existing check-in method (paper list, spreadsheet, prior tool).",
-          "evidence": "Not mentioned in request.",
-          "test_plan": ""
-        },
-        "success_metrics": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "medium",
-          "value": "Unknown \u2014 no stated metric (speed per attendee, zero duplicates, accurate headcount).",
-          "evidence": "Not mentioned in request.",
-          "test_plan": ""
-        },
-        "actors": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "high",
-          "value": "On-site staff is the stated primary operator; event manager, security, exhibitor roles not confirmed.",
-          "evidence": "\"staff to check attendees in\" names staff only.",
-          "test_plan": ""
-        },
-        "business_objects": {
-          "completeness": 30,
-          "confidence": "inferred",
-          "impact": "medium",
-          "value": "Implies Attendee and Check-in entities; Event/Zone/Session and Category not confirmed.",
-          "evidence": "Implicit from 'check attendees in at the venue entrance'.",
-          "test_plan": ""
-        },
-        "business_rules": {
-          "completeness": 0,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown \u2014 whether categories (VIP, press, staff...) drive different access rights or flows at the door.",
-          "evidence": "Not mentioned in request; context flags categories as a frequent late-changing driver.",
-          "test_plan": ""
-        },
-        "workflow": {
-          "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown \u2014 what a second scan means (duplicate block, re-entry, different zone/session) is undefined.",
-          "evidence": "Only 'check-in' named, no lifecycle detail.",
+          "value": "Identify attendee at the entrance, then record arrival. Where the attendee list comes from and how it changes up to and during the day is unknown.",
+          "evidence": "Request: 'check attendees in at the venue entrance'.",
           "test_plan": ""
         },
         "integrations": {
           "completeness": 0,
           "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown \u2014 where the attendee list originates, and whether the app must work offline with later sync.",
-          "evidence": "Not mentioned; context flags connectivity as the most commonly assumed-away constraint.",
+          "impact": "medium",
+          "value": "Unknown: registration system feeding the list, badge printing, export to client or CRM.",
+          "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "permissions": {
           "completeness": 10,
-          "confidence": "empty",
-          "impact": "high",
-          "value": "Unknown \u2014 whether staff only check in, or also edit/register attendees on the spot, and what managers/security can see.",
-          "evidence": "Only 'staff' named as actor, no rights specified.",
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Staff access only; whether staff see attendee personal data and who can see attendance numbers is unknown. GDPR applies to attendee data.",
+          "evidence": "Context: GDPR on attendee data.",
           "test_plan": ""
         },
         "config_vs_custom": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown \u2014 one-off app for this single event vs. first instance of a reusable event kit.",
-          "evidence": "Not addressed in request; context flags this as the first thing to settle, changing almost every build decision.",
+          "value": "Unknown whether this is a throwaway app for one event or the first instance of a reusable event kit.",
+          "evidence": "Not mentioned; the context flags this as a decision to settle early.",
           "test_plan": ""
         },
         "constraints": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "The event date is an immovable deadline with no 'fix it later' option; venue connectivity is likely imperfect.",
-          "evidence": "Inherent to on-site event operations per context, not stated by client.",
+          "value": "Event date is a fixed, immovable deadline (date unknown). Venue connectivity and staff devices unknown.",
+          "evidence": "'on the event day' implies a hard date.",
           "test_plan": ""
         },
         "edge_cases": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
-          "value": "Unknown \u2014 concurrent scans of the same attendee at different doors, walk-ins, name mismatches not addressed.",
-          "evidence": "Not mentioned; context flags concurrency and identification failures as near-certain real-world events.",
+          "value": "Unknown: offline operation, unreadable or missing badge/QR, name not found, walk-ins, substitutions, same attendee at two entrances.",
+          "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "reporting": {
-          "completeness": 10,
-          "confidence": "inferred",
+          "completeness": 5,
+          "confidence": "empty",
           "impact": "medium",
-          "value": "Attendance data (who came, when, where) is likely wanted post-event, per typical event deliverables.",
-          "evidence": "Not requested explicitly, inferred from domain norm.",
+          "value": "Unknown whether a live headcount or a post-event attendance export is required.",
+          "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "acceptance": {
           "completeness": 0,
           "confidence": "empty",
           "impact": "medium",
-          "value": "Unknown \u2014 no acceptance scenarios defined yet.",
+          "value": "Unknown. A rehearsal on real devices in the venue is likely needed.",
           "evidence": "Not mentioned.",
           "test_plan": ""
         },
         "risks": {
           "completeness": 10,
           "confidence": "inferred",
-          "impact": "medium",
-          "value": "Likely needs a manual fallback and an on-site rehearsal, given the single-shot nature of the event day.",
-          "evidence": "Inferred from event-ops context, not stated by client.",
+          "impact": "high",
+          "value": "Failure on the day means a queue at the door in front of the client. A manual fallback is needed.",
+          "evidence": "Context: event-ops domain.",
+          "test_plan": ""
+        },
+        "acquisition": {
+          "completeness": 0,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Not a product idea; the users are the event's own staff, so this is rollout and staff briefing.",
+          "evidence": "Internal tool.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "Is this app a one-off build for this single event, or the first version of a kit you'll reuse for future events?",
-          "slot": "config_vs_custom",
-          "why": "Empty \u00d7 high impact: this single answer reshapes the data model, configurability and cost of nearly everything else below."
-        },
-        {
-          "q": "Where does the attendee list come from, and does check-in need to work without reliable venue network (local list + later sync), or is online-only acceptable?",
-          "slot": "integrations",
-          "why": "Empty \u00d7 high impact: offline vs. online is an architecture decision, not a setting, and is almost always assumed away by the client."
-        },
-        {
-          "q": "If the same badge is scanned twice, should the app treat it as a blocked duplicate, an allowed re-entry, or access to a different zone/session?",
+          "q": "Where does the attendee list come from today (a ticketing or registration tool, a spreadsheet, a client file), and does it keep changing up to and during the event?",
           "slot": "workflow",
-          "why": "Empty \u00d7 high impact: these are three different data models and behaviors, and 'check-in' alone doesn't say which is meant."
+          "why": "High uncertainty \u00d7 high impact: the origin of the list decides whether we build an import, an integration or a full registration function, and whether walk-ins and substitutions need an on-site path."
         },
         {
-          "q": "When two staff at different entrances scan the same attendee within seconds of each other, what should happen \u2014 warning, refusal, or silently accepted?",
-          "slot": "edge_cases",
-          "why": "Empty \u00d7 high impact: this is the first thing that breaks in a naive build and is rarely anticipated by the client."
+          "q": "Is there already a tool you pay for (the registration platform, an events suite) that has a check-in feature, or have you looked at off-the-shelf check-in apps? What budget do you have?",
+          "slot": "existing_solutions",
+          "why": "Buying or switching on an existing feature could remove the whole build; the budget sizes everything else."
         },
         {
-          "q": "Do attendee categories (VIP, press, exhibitor, staff...) need different access rights, badge treatment or check-in flow at the door?",
+          "q": "Will the venue entrance have reliable connectivity, and should check-in keep working if the network drops?",
+          "slot": "constraints",
+          "why": "Offline capability is an architecture decision, not a setting, and it is often assumed but never stated."
+        },
+        {
+          "q": "What counts as a check-in: one entry per person, re-entry after stepping out, or entry to specific zones or sessions? If someone is scanned twice, should the app warn, refuse or allow it?",
           "slot": "business_rules",
-          "why": "Empty \u00d7 high impact: category-driven rules change routing, UI and permissions, and tend to arrive/change late."
+          "why": "These meanings lead to different data models and behaviour at the door."
+        },
+        {
+          "q": "Is this for one event on a given date, or the first of several events you will reuse it for? When is the event, and how many people do you expect at peak?",
+          "slot": "config_vs_custom",
+          "why": "Throwaway versus reusable changes configuration, data model and cost; date and volume set the scope cut and the speed needed per attendee."
+        },
+        {
+          "q": "How do staff identify people (QR code on a ticket or badge, name search), and what should happen when someone has no code or is not on the list?",
+          "slot": "edge_cases",
+          "why": "Scanning fails in real conditions; the fallback paths are a large share of real arrivals and must be in scope."
         }
       ],
       "summary": {
-        "objective": "Build an app letting on-site staff identify and check in attendees at the venue entrance on the day of the event.",
-        "scope": "Likely covers: badge/QR scanning with manual fallback, recording arrival against an expected attendee list, basic duplicate/re-entry handling, and producing an attendance record \u2014 scope and architecture depend heavily on answers below.",
+        "objective": "Give entrance staff a simple app to check in attendees on the event day and record who arrived.",
+        "scope": "Likely scope: an attendee list, identification at the door (scan plus manual search), a check-in record, and probably a live headcount and a post-event attendance export. Badge printing, zone or session access and a registration function are unconfirmed.",
         "assumptions": [
-          "The app is meant to replace or formalize a manual/ad-hoc entrance process (inferred, not stated).",
-          "Staff are the only confirmed actor; other roles (event manager, security) are not yet confirmed.",
-          "Attendee and Check-in are the core objects; Event/Zone/Session/Category are assumed but unconfirmed.",
-          "The event date is a hard, immovable deadline (inherent to the domain).",
-          "Attendance data is probably wanted as a post-event deliverable, though not stated."
+          "Internal or commissioned tool; the requester pays.",
+          "Staff operate the app, mostly untrained, on their own or provided devices.",
+          "The event date is fixed and cannot move.",
+          "Attendee data falls under GDPR.",
+          "The attendee list comes from elsewhere and keeps changing until and during the event."
         ],
-        "blind_spot": "Whether this is a disposable single-event app or a reusable kit, and whether the device must work offline at the venue \u2014 neither is stated, and both decide the entire architecture, not just a feature list."
+        "blind_spot": "Whether something already exists or can be bought, and whether the app must work offline. The request assumes building and assumes good connectivity, and either assumption can change the project's size and cost significantly."
       },
       "decisions": [],
       "challenges": [],
@@ -346,11 +204,208 @@
     {
       "model": {
         "problem": {
+          "completeness": 30,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Staff need a fast, reliable way to identify arriving attendees at the venue entrance and record their arrival on the event day. The underlying driver (queues, headcount, access control, or an attendance deliverable) is not stated.",
+          "evidence": "Request: \"an app for staff to check attendees in at the venue entrance on the event day.\" The underlying need is deduced, not stated.",
+          "test_plan": ""
+        },
+        "current_process": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown. It is not stated how check-in is done today (paper list, spreadsheet, another tool) or where the attendee list comes from.",
+          "evidence": "Not mentioned in the request.",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown. Nothing says whether a registration or ticketing tool, or a check-in feature already licensed, could cover this, or what budget applies. Off-the-shelf check-in apps are a common alternative to a build.",
+          "evidence": "The request takes building as its premise and names no tool, vendor or budget.",
+          "test_plan": ""
+        },
+        "success_metrics": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unknown. Candidates are seconds per attendee at the door, no queue at peak, and an accurate attendance record afterwards.",
+          "evidence": "Not mentioned in the request.",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 20,
+          "confidence": "inferred",
+          "impact": "low",
+          "value": "Likely the requesting organisation or its event client. This is a commissioned or internal build, not a product idea.",
+          "evidence": "Deduced from the phrasing \"We need an app\".",
+          "test_plan": ""
+        },
+        "actors": {
+          "completeness": 40,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Primary operator: on-site staff or hostess. Attendees are checked in. Likely also an event manager who sees numbers. Whether anyone sets up the list or handles exceptions is unknown.",
+          "evidence": "Request: \"staff to check attendees in\". The other roles are deduced from the event-ops context.",
+          "test_plan": ""
+        },
+        "business_objects": {
+          "completeness": 20,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Event, Attendee (probably with a category), Registration, Check-in. Zones, sessions and badges are unknown. The attendee list source and fields are unknown.",
+          "evidence": "Deduced from the event-ops context. Only \"attendees\" and \"check in\" are stated.",
+          "test_plan": ""
+        },
+        "business_rules": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown. Open points: who is admitted, whether categories (VIP, press, speaker) change access, and what happens on a duplicate scan.",
+          "evidence": "Not mentioned in the request.",
+          "test_plan": ""
+        },
+        "workflow": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Likely goal is controlling who enters and producing a reliable attendance record, not just 'checking a box'",
-          "evidence": "Request names the action (check-in) but not the underlying need (access control? headcount? billing proof for sponsors?)",
+          "value": "Identify attendee, record arrival. It is unclear whether check-in is a single arrival or also covers re-entry and separate zones or sessions, which would mean several check-in events per person.",
+          "evidence": "Request says \"check attendees in at the venue entrance\". Whether this is one entrance or several, and the single-vs-multiple meaning, are not stated.",
+          "test_plan": ""
+        },
+        "integrations": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unknown. Possible links are the registration or ticketing system (list import or sync), badge printing, and a live dashboard or notifications to the client.",
+          "evidence": "Not mentioned in the request.",
+          "test_plan": ""
+        },
+        "permissions": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "Staff can check in. Presumably managers see counts and exports. Attendee personal data is limited to what the door needs.",
+          "evidence": "Deduced. GDPR applies to attendee data per the context.",
+          "test_plan": ""
+        },
+        "config_vs_custom": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown whether this is a throwaway app for one event or the first instance of a reusable event kit. The answer changes the data model and cost.",
+          "evidence": "The request says \"the event day\", which is singular but not conclusive.",
+          "test_plan": ""
+        },
+        "constraints": {
+          "completeness": 10,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "Unknown: the event date (immovable), venue connectivity (offline need), the devices staff will use, and budget. Offline capability is an architecture decision.",
+          "evidence": "No date, venue or device mentioned. Connectivity and date are known high-risk constraints from the event-ops context.",
+          "test_plan": ""
+        },
+        "edge_cases": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Likely to matter: person not on the list or walk-ins, name differences, a failing QR scan, a duplicate scan on two devices, substitutions, and a list that changes up to the day.",
+          "evidence": "Deduced from the event-ops context. Nothing stated by the requester.",
+          "test_plan": ""
+        },
+        "reporting": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unknown. Attendance data is often a post-event deliverable (who came, when, where) with a live count during the event. Whether this is required here is not stated.",
+          "evidence": "Not mentioned. Impact is raised from low because attendance data is usually the deliverable in this domain.",
+          "test_plan": ""
+        },
+        "acceptance": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "medium",
+          "value": "Unknown. A rehearsal on real devices at the venue is a likely acceptance scenario.",
+          "evidence": "Not mentioned in the request.",
+          "test_plan": ""
+        },
+        "risks": {
+          "completeness": 10,
+          "confidence": "inferred",
+          "impact": "medium",
+          "value": "The main risk is failure at the door on the event day, with no second chance. This points to a manual fallback and a rehearsal. Staff will be untrained.",
+          "evidence": "Deduced from the event-ops context.",
+          "test_plan": ""
+        },
+        "acquisition": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "Not applicable. This is a system rolled out to a known set of staff, so it falls under rollout (risks).",
+          "evidence": "The request is a commissioned need, not a product idea.",
+          "test_plan": ""
+        }
+      },
+      "questions": [
+        {
+          "q": "Do you already have a registration or ticketing tool (or a licensed check-in feature) that holds the attendee list, and have you looked at off-the-shelf event check-in apps? If so, what ruled them out, and what budget applies?",
+          "slot": "existing_solutions",
+          "why": "uncertainty \u00d7 impact: buying or switching on an existing feature could remove the build entirely, and the budget sizes everything else."
+        },
+        {
+          "q": "What is the event date, and how reliable is the network at the venue? Should check-in keep working if the connection drops, or can we assume staff are always online?",
+          "slot": "constraints",
+          "why": "uncertainty \u00d7 impact: working offline is a different architecture from online-only, and the date cannot move, so scope has to be cut against it."
+        },
+        {
+          "q": "Where does the attendee list come from today, and can it still change up to and during the event (late registrations, substitutions, name corrections)?",
+          "slot": "current_process",
+          "why": "uncertainty \u00d7 impact: the list's source decides the integration, and a moving list means the door needs an edit path rather than a one-time import."
+        },
+        {
+          "q": "What does \"checked in\" mean for you: a single arrival per person, or can people leave and re-enter, or enter different zones or sessions that must be recorded separately? And if the same person is scanned twice, should staff be warned or blocked?",
+          "slot": "workflow",
+          "why": "uncertainty \u00d7 impact: these are different data models, and a duplicate scan at two entrances is the first thing that breaks."
+        },
+        {
+          "q": "If someone is not on the list or their badge or QR code won't scan, what should staff be able to do: search by name, register them on the spot, or send them to a manager?",
+          "slot": "edge_cases",
+          "why": "uncertainty \u00d7 impact: failed scans and walk-ins make up a meaningful share of arrivals, and the fallback is part of the scope."
+        },
+        {
+          "q": "Is this app for this one event only, or should it be reusable for future events?",
+          "slot": "config_vs_custom",
+          "why": "uncertainty \u00d7 impact: a reusable kit needs multi-event configuration and a different cost from a one-off build."
+        }
+      ],
+      "summary": {
+        "objective": "Give entrance staff an app to identify attendees and record their arrival at the venue on the event day.",
+        "scope": "Likely scope: an attendee list on staff devices, a fast identify-and-check-in flow (scan plus manual name search), and a way to handle people not on the list. An attendance record and live count are probably needed afterwards. Badges, zones and sessions, and integrations are not yet in or out of scope.",
+        "assumptions": [
+          "Primary operators are on-site staff who are not trained users.",
+          "This is a commissioned or internal build, not a product idea.",
+          "The attendee list is supplied from elsewhere (registration or ticketing) and keeps changing up to the event.",
+          "Attendance data will be needed after the event.",
+          "The event date is fixed and the door has no room for failure."
+        ],
+        "blind_spot": "Build versus buy and connectivity. Nothing says whether an existing tool could do this, or whether it must work offline at the venue. Both can change the project's shape and cost more than any feature detail."
+      },
+      "decisions": [],
+      "challenges": [],
+      "opportunities": [],
+      "exclusions": [],
+      "thresholds": []
+    },
+    {
+      "model": {
+        "problem": {
+          "completeness": 25,
+          "confidence": "inferred",
+          "impact": "high",
+          "value": "Staff need to identify arriving attendees at the entrance and record their arrival on the event day; the underlying need (queue speed, headcount, access control, attendance report) is not stated.",
+          "evidence": "Request: 'an app for staff to check attendees in at the venue entrance on the event day.'",
           "test_plan": ""
         },
         "current_process": {
@@ -358,47 +413,63 @@
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "No mention of today's process \u2014 paper list, spreadsheet, another tool, or nothing at all; this changes whether there's a migration/integration need",
+          "evidence": "Not stated: paper list, spreadsheet, or an existing registration tool?",
+          "test_plan": ""
+        },
+        "existing_solutions": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "high",
+          "value": "",
+          "evidence": "Not stated. Check-in apps are widely sold off the shelf, and the registration platform may already offer one; buying could delete the build.",
           "test_plan": ""
         },
         "success_metrics": {
-          "completeness": 10,
-          "confidence": "inferred",
+          "completeness": 5,
+          "confidence": "empty",
           "impact": "medium",
-          "value": "Probably: no queue at the door, no double counting, accurate post-event attendance",
-          "evidence": "Context: throughput and accuracy are functional requirements in event check-in, not stated by client",
+          "value": "",
+          "evidence": "Not stated (door throughput, accurate headcount, post-event attendance report?).",
+          "test_plan": ""
+        },
+        "payer": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "",
+          "evidence": "Looks like a commissioned or internal build, so the payer is the client.",
           "test_plan": ""
         },
         "actors": {
           "completeness": 30,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Staff/hostess as primary operator; event manager and security likely secondary stakeholders",
-          "evidence": "Only 'staff' is named explicitly in the request",
+          "value": "Door staff/hostesses scan or search; an event manager supervises; attendees are checked in. Who manages the list and who handles exceptions is unknown.",
+          "evidence": "Request: 'staff ... check attendees in'. Roles inferred from the event-ops context.",
           "test_plan": ""
         },
         "business_objects": {
           "completeness": 20,
           "confidence": "inferred",
           "impact": "medium",
-          "value": "Attendee, Check-in event, possibly Zone/Session",
-          "evidence": "Deduced from domain model; request doesn't name any entity beyond 'attendees'",
+          "value": "Event, Attendee (with category), Registration, Check-in, Staff device. Source of the attendee list unknown.",
+          "evidence": "Inferred from the event-ops context.",
           "test_plan": ""
         },
         "business_rules": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Duplicate-scan, re-entry, and multi-zone semantics are completely unaddressed \u2014 these define the data model",
+          "evidence": "Not stated: what a second scan means (duplicate, re-entry, other zone), whether categories change access, who is refused.",
           "test_plan": ""
         },
         "workflow": {
-          "completeness": 10,
-          "confidence": "empty",
+          "completeness": 15,
+          "confidence": "inferred",
           "impact": "high",
-          "value": "",
-          "evidence": "No stated identification method (badge/QR vs manual search) or fallback path when scanning fails",
+          "value": "Identify attendee \u2192 record arrival \u2192 (possibly) badge/access. Where the attendee list originates and how late changes or walk-ins arrive is unknown.",
+          "evidence": "Inferred from the request wording.",
           "test_plan": ""
         },
         "integrations": {
@@ -406,15 +477,15 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "Unclear if attendee list comes from an existing registration/badge system or must be built from scratch",
+          "evidence": "Not stated: does the list come from a registration system, and does attendance flow back to it?",
           "test_plan": ""
         },
         "permissions": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Who can perform check-ins, and how devices/staff/entrances map to each other, is unstated",
+          "evidence": "Not stated: who may override a refusal, add walk-ins, or see the attendee data (GDPR).",
           "test_plan": ""
         },
         "config_vs_custom": {
@@ -422,31 +493,31 @@
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Whether this is a throwaway single-event app or the first instance of a reusable kit is unasked and reshapes nearly every decision",
+          "evidence": "Not stated: one-off app for this event, or the first instance of a reusable event kit?",
           "test_plan": ""
         },
         "constraints": {
-          "completeness": 30,
+          "completeness": 20,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Hard, immovable event date; venue connectivity and device conditions only discoverable on site",
-          "evidence": "Standard trait of event-ops builds per domain notes, not stated by client",
+          "value": "Fixed event date (immovable). Venue connectivity, devices and attendee volume unknown. GDPR applies to attendee data.",
+          "evidence": "Request: 'on the event day'. Connectivity and GDPR from the event-ops context.",
           "test_plan": ""
         },
         "edge_cases": {
-          "completeness": 0,
+          "completeness": 5,
           "confidence": "empty",
           "impact": "high",
           "value": "",
-          "evidence": "Offline operation, concurrent scans at multiple entrances, and manual fallback are unaddressed \u2014 the most common failure points on the day",
+          "evidence": "Not stated: QR failure, name not on the list, duplicates, simultaneous scans at several doors, walk-ins.",
           "test_plan": ""
         },
         "reporting": {
-          "completeness": 10,
-          "confidence": "inferred",
+          "completeness": 0,
+          "confidence": "empty",
           "impact": "medium",
-          "value": "Post-event attendance export (who came, when, where) likely expected as a deliverable",
-          "evidence": "Standard expectation in event-ops per context, not requested explicitly",
+          "value": "",
+          "evidence": "Not stated: live headcount, post-event attendance export for the client or sponsors?",
           "test_plan": ""
         },
         "acceptance": {
@@ -454,60 +525,69 @@
           "confidence": "empty",
           "impact": "medium",
           "value": "",
-          "evidence": "No acceptance scenario named yet",
+          "evidence": "Not stated.",
           "test_plan": ""
         },
         "risks": {
           "completeness": 10,
           "confidence": "inferred",
           "impact": "high",
-          "value": "Connectivity failure and peak-arrival bottleneck at the entrance are the main on-the-day risks",
-          "evidence": "Recurring failure modes in event check-in builds per context",
+          "value": "Failure at the door in front of the client on a date that cannot move; needs a manual fallback and a rehearsal at the venue.",
+          "evidence": "Inferred from the event-ops context.",
+          "test_plan": ""
+        },
+        "acquisition": {
+          "completeness": 0,
+          "confidence": "empty",
+          "impact": "low",
+          "value": "",
+          "evidence": "Staff are a known set of users, so this is rollout (risks), not acquisition.",
           "test_plan": ""
         }
       },
       "questions": [
         {
-          "q": "Is this a one-off build for this single event, or the first version of a check-in app you'll reuse for future events?",
-          "slot": "config_vs_custom",
-          "why": "uncertainty \u00d7 impact: completely unanswered and high-impact \u2014 it changes the data model, configurability and cost of everything else"
-        },
-        {
-          "q": "Does the entrance have reliable network connectivity, or must staff be able to check attendees in even if the connection drops?",
-          "slot": "edge_cases",
-          "why": "uncertainty \u00d7 impact: offline capability is an architecture decision, not a setting, and is almost always assumed rather than stated"
-        },
-        {
-          "q": "If the same attendee is scanned twice, could that mean a mistake (block it), a re-entry after stepping out (allow it), or access to a different zone (record separately)? Which should the app assume by default?",
-          "slot": "business_rules",
-          "why": "uncertainty \u00d7 impact: this single behaviour decides the whole check-in data model and is never stated by default"
-        },
-        {
-          "q": "Where does the attendee list come from, and can it still change (walk-ins, substitutions, corrections) on the event day itself?",
-          "slot": "current_process",
-          "why": "uncertainty \u00d7 impact: an upstream list that keeps moving needs an on-site edit path, not just an import \u2014 a common scope expander"
-        },
-        {
-          "q": "If a QR code or badge fails to scan (bad light, crumpled printout, no email opened), what should staff do \u2014 search by name, register on the spot, both?",
+          "q": "Where does the list of expected attendees come from today (a registration platform, a spreadsheet, a client file), and does it keep changing up to and during the event, with walk-ins, substitutions and cancellations?",
           "slot": "workflow",
-          "why": "uncertainty \u00d7 impact: identification will fail in practice; the fallback path is core functionality, not an edge case"
+          "why": "uncertainty \u00d7 impact: the origin of the list is the upstream of the whole check-in. If it is a live registration system, the build is an integration; if it is a fixed file, it is an import. Walk-ins mean an on-site registration path."
         },
         {
-          "q": "Will multiple staff be checking people in at the same time from different entrances, and does a device belong to one staff member or is it shared?",
-          "slot": "permissions",
-          "why": "uncertainty \u00d7 impact: concurrency across entrances is the first thing that breaks in a naive build if not designed for"
+          "q": "Have you already looked at ready-made check-in tools, or does your registration platform have a check-in feature you pay for but do not use? What is the budget and what ruled them out?",
+          "slot": "existing_solutions",
+          "why": "uncertainty \u00d7 impact: buying or switching on an existing feature can remove the need to build, and the budget sizes everything else."
+        },
+        {
+          "q": "Will the entrance have reliable internet? If not, should check-in keep working with no connection and sync later?",
+          "slot": "constraints",
+          "why": "uncertainty \u00d7 impact: offline-capable and online-only are two different architectures, and venues often have poor signal."
+        },
+        {
+          "q": "What counts as checked in: one scan at the entrance, or also entering specific zones or sessions? If someone is scanned twice, should it be refused, allowed as a re-entry, or recorded separately?",
+          "slot": "business_rules",
+          "why": "uncertainty \u00d7 impact: this changes the data model, not just a rule, and it is the first thing that breaks with several doors."
+        },
+        {
+          "q": "How many attendees, how many doors and staff devices, and how fast must a check-in be at the peak (for example, seconds per person)? Which devices will staff use?",
+          "slot": "success_metrics",
+          "why": "uncertainty \u00d7 impact: throughput at the peak 20 minutes is a functional requirement and decides device and design choices."
+        },
+        {
+          "q": "Is this a one-off for a single event or the start of something you will reuse for future events?",
+          "slot": "config_vs_custom",
+          "why": "uncertainty \u00d7 impact: it decides whether to build a throwaway or a configurable multi-event kit, with very different cost."
         }
       ],
       "summary": {
-        "objective": "Give on-site staff a way to check attendees in at the venue entrance on the day of the event.",
-        "scope": "Likely includes: attendee identification (scan + manual fallback), recording arrival (with a defined rule for duplicates/re-entry/zones), and probably a post-event attendance export; architecture must account for venue connectivity, peak-arrival throughput, and possibly multiple simultaneous entrances.",
+        "objective": "Give door staff an app to identify arriving attendees and record their check-in on the event day.",
+        "scope": "Likely: an attendee list, a fast scan/search check-in on staff devices, handling of duplicates and walk-ins, and a live headcount with an attendance export. The boundaries (zones, offline, integrations, reuse) are not yet defined.",
         "assumptions": [
-          "Staff (not attendees themselves) operate the check-in device",
-          "The event date is fixed and cannot slip \u2014 failure on the day is the main risk",
-          "Attendance data will be wanted as a deliverable after the event",
-          "The attendee list may still change (walk-ins, substitutions) up to and during the event"
+          "Staff are untrained and use phones or tablets at the door.",
+          "The event date is fixed and cannot move.",
+          "Attendee personal data falls under GDPR.",
+          "The payer is the client (commissioned or internal build).",
+          "A manual search fallback is needed when scanning fails."
         ],
-        "blind_spot": "Whether this is a disposable single-event app or the first build of a reusable event-check-in kit \u2014 and whether it must work offline \u2014 are unanswered. Both are foundational architecture decisions the client is unlikely to raise on their own, yet they reshape the data model, cost and timeline more than any feature choice."
+        "blind_spot": "Where the attendee list comes from and whether buying an existing check-in tool would do. Offline use and what a second scan means can each change the architecture."
       },
       "decisions": [],
       "challenges": [],
@@ -518,475 +598,409 @@
   ],
   "briefs": [
     {
-      "problem": "There is no defined way to reliably identify and admit attendees at the venue entrance, or to produce a trustworthy record of who actually arrived.",
-      "solution": "A staff-facing check-in app that identifies attendees at the door (scan plus manual fallback), records their arrival against an event attendee list, and produces an attendance record afterward.",
+      "problem": "Staff need to identify arriving attendees quickly at the door and keep an accurate record of who came, on a date that cannot move.",
+      "solution": "A staff-operated check-in app for one event day: an attendee list, scan plus manual-search identification, a check-in record, and a manual fallback if scanning or the network fails.",
       "introduces": [
-        "an offline-capable local attendee snapshot with background sync to a central record",
-        "concurrency handling across multiple entrance devices scanning independently",
-        "a manual search / on-the-spot registration fallback for failed scans and walk-ins",
-        "a check-in data model distinguishing duplicate, re-entry, and multi-zone access",
-        "a post-event attendance export as a client deliverable"
+        "a check-in record that distinguishes duplicate, re-entry and different-zone scans",
+        "an attendee list that can change up to and during the event, including walk-ins and substitutions",
+        "multi-device concurrency across several entrances",
+        "a degraded-connectivity mode: offline snapshot and later sync, if required",
+        "an attendance record that doubles as a post-event deliverable"
       ],
       "challenges": [
         {
-          "id": "chl_d93cdc624e",
-          "headline": "Connectivity assumed, not confirmed",
-          "premise": "The request describes 'staff check attendees in at the venue entrance' as if the device will always be online.",
-          "alternative": "Treating offline capability as the default design assumption \u2014 local snapshot of the attendee list plus deferred, conflict-aware sync \u2014 protects the check-in path even if it turns out the venue has good wifi.",
-          "consequence": "If connectivity is assumed and the venue has the patchy wifi event venues typically have, the check-in path can fail visibly in front of the client with no fallback, on a day that cannot be repeated.",
-          "recommendation": "Settle the offline requirement before any architecture work starts, and if in doubt, build for offline as the safer default.",
+          "id": "chl_d8078b3b9c",
+          "headline": "Building before checking existing tools",
+          "premise": "The request says 'we need an app', taking a custom build as given.",
+          "alternative": "If the registration or ticketing platform already in use has a check-in feature, or a bought check-in app covers the need, switching it on or buying it could replace most of the build. A custom build then only covers the gaps.",
+          "consequence": "Building something that already exists, or is already paid for, spends the budget and the limited time before a fixed date on a solved problem.",
+          "recommendation": "Before any design, find out what registration tool supplies the list, whether it has check-in, and what budget exists. Build only the gap between that and the need.",
           "contests": [
-            "constraints",
-            "integrations"
+            "existing_solutions",
+            "current_process"
           ]
         },
         {
-          "id": "chl_c8dc65a4de",
-          "headline": "'Check in' is not one action",
-          "premise": "The request treats check-in as a single boolean action per attendee.",
-          "alternative": "Defining upfront whether a second scan means a blocked duplicate, an allowed re-entry, or a separate zone/session check-in lets the data model and the concurrency rule be designed once, correctly.",
-          "consequence": "Building a naive boolean check-in first and retrofitting duplicate/re-entry/zone logic later touches the data model, the UI, and the sync layer all at once, under a date that cannot move.",
-          "recommendation": "Resolve the check-in semantics and the concurrent-scan outcome with the client before the data model is fixed.",
+          "id": "chl_b729584533",
+          "headline": "Assumed good connectivity",
+          "premise": "The request reads as if scanning and recording simply work at the entrance.",
+          "alternative": "Treat offline operation as a decision to make explicitly. Either the venue connectivity is verified, or the devices hold a local copy of the list and sync check-ins later.",
+          "consequence": "Offline and online-only are different architectures. Discovering the venue has a weak signal late means a rebuild, or a queue at the door in front of the client.",
+          "recommendation": "Ask about venue connectivity now and, if possible, test it on site. Decide online-only or offline-capable before estimating.",
           "contests": [
-            "workflow",
+            "constraints",
             "edge_cases"
           ]
         },
         {
-          "id": "chl_9f13e73d76",
-          "headline": "One-off vs. reusable kit unresolved",
-          "premise": "The request reads as a single-event build, but this is never stated.",
-          "alternative": "Confirming scope now \u2014 one event or the first instance of a kit \u2014 lets configurability, the data model (single-event vs. multi-event), and cost be sized correctly from the start.",
-          "consequence": "Building single-event and discovering later that reuse is expected means re-architecting the attendee/category/zone model and the configuration surface after the fact.",
-          "recommendation": "Ask directly whether other events are planned before scoping or quoting.",
+          "id": "chl_046792e875",
+          "headline": "Check-in as a single event",
+          "premise": "Checking in is treated as one simple act per person.",
+          "alternative": "Define the cases separately: first entry, a repeat scan that is a duplicate, re-entry after stepping out, and entry to a different zone or session. The simplest option is one check-in per person with a clear warning on repeat scans.",
+          "consequence": "Without a decision, the data model may not support what the client later wants, such as per-zone attendance, and two devices may disagree on the same person.",
+          "recommendation": "Get the client to choose the meaning of a second scan and write down what the app does for each case.",
           "contests": [
-            "config_vs_custom",
-            "constraints"
+            "business_rules",
+            "workflow"
           ]
         }
       ],
-      "complexity": "high",
+      "complexity": "medium",
       "complexity_reasons": [
-        "offline/sync architecture is a foundational decision, not a toggle",
-        "concurrency across independent entrance devices needs a defined, tested outcome",
-        "fixed, non-movable event date leaves no room for post-launch fixes",
-        "check-in semantics (duplicate/re-entry/zone) are undefined and shape the data model"
+        "offline or online-only is still undecided and drives the architecture",
+        "several devices recording the same attendee at once",
+        "a changing attendee list with on-site additions",
+        "fixed date leaves no room to fix problems afterwards"
       ],
-      "cost_driver": "the offline-capable sync and conflict-resolution layer across entrance devices",
+      "cost_driver": "offline capability and multi-device sync",
       "risks": [
-        "The connectivity requirement is entirely unaddressed \u2014 building online-only and hitting a dead venue network on the day is the single biggest failure mode this context flags.",
-        "No defined outcome for simultaneous scans at different entrances means two devices admitting the same attendee twice is currently unhandled.",
-        "The attendee list's source and on-site correction path are unknown \u2014 if there's no way to add walk-ins or fix names at the door, the app breaks against real arrivals.",
-        "No success metric or throughput target is defined, so there is no way to validate the build is fast enough at peak arrival before the event day itself proves it.",
-        "A fixed, immovable date means any gap discovered late (offline, concurrency, fallback) cannot be fixed after the fact \u2014 it must be caught in rehearsal."
+        "A queue at the door if scanning fails and no manual fallback exists, in front of the client on a date that cannot move.",
+        "Venue connectivity and staff devices are unknown, and may only be discoverable on site.",
+        "The same attendee processed on two devices within seconds gives inconsistent records unless the outcome is defined.",
+        "Attendee personal data falls under GDPR, and what is kept after the event and shared with sponsors is undecided.",
+        "Staff will mostly be untrained, so a flow that needs explanation will slow the door at peak."
       ],
       "opportunities": [
         {
-          "id": "opp_006654b3da",
-          "text": "If multiple events are confirmed, generalize the Event/Attendee/Category/Zone model and the check-in engine into a reusable kit rather than a one-off build.",
+          "id": "opp_f0e3edf57a",
+          "text": "Keep the attendee, category and check-in model generic so a second event can reuse it, if the client confirms more events are planned.",
           "leverage": "future",
           "modules": []
         },
         {
-          "id": "opp_54b54e5f6f",
-          "text": "Build the manual fallback and on-the-spot registration path as a first-class flow, not an afterthought \u2014 it is a meaningful share of real arrivals, not an edge case.",
-          "leverage": "high",
-          "modules": []
-        },
-        {
-          "id": "opp_0999931b40",
-          "text": "Design the post-event attendance export now as a defined client deliverable (who came, when, where) rather than an ad hoc report assembled after the fact.",
+          "id": "opp_c74ab29b34",
+          "text": "Treat the check-in record as the source for both a live headcount and the post-event attendance export, so one dataset serves both.",
           "leverage": "medium",
           "modules": []
         }
       ],
       "next_steps": [
-        "Settle whether this is a one-off build or the first instance of a reusable event kit \u2014 this changes the data model and cost before anything else is scoped.",
-        "Confirm the connectivity assumption for the venue and decide offline vs. online-only as an architecture decision, not a setting.",
-        "Define check-in semantics (duplicate / re-entry / zone) and the required outcome for concurrent scans at different entrances, since both drive the same data model.",
-        "Confirm how the attendee list is produced and kept current (import source, walk-ins, on-site corrections) so the manual fallback and registration path can be scoped."
+        "Hold a short call with the client to settle the open points: where the attendee list comes from, what tools already exist, the event date and expected peak, and venue connectivity.",
+        "Decide build versus buy or switch on an existing feature, using the answers on existing tools and budget.",
+        "If building, agree the check-in rules (second scan, walk-ins, substitutions) and online-only versus offline, then fix a minimal scope with a manual fallback.",
+        "Plan a rehearsal on the real devices in the venue before the event date, and treat it as part of the scope."
       ],
       "decisions": [
         {
-          "id": "dec_129690fa60",
-          "decision": "A manual search fallback must exist alongside scanning",
-          "why": "Staff are not trained users and scanning fails routinely in real venue conditions (dim screens, crumpled printouts, misspelled names).",
+          "id": "dec_cdfc53d8c2",
+          "decision": "Include a manual name search and an on-the-spot path for people not on the list, alongside scanning",
+          "why": "Scanning fails in real conditions, and the date cannot move.",
           "alternative": "Scan-only identification.",
-          "tradeoff": "Extra UI and data-matching work, in exchange for not stalling the line when a scan fails.",
+          "tradeoff": "More to build, in exchange for a door that keeps moving when a scan fails.",
           "derived_from": [
-            "actors",
+            "edge_cases",
             "risks"
-          ]
+          ],
+          "source": "proposed"
         },
         {
-          "id": "dec_7fcf01ad91",
-          "decision": "A hardware rehearsal at the actual venue is part of the build, not a separate ask",
-          "why": "The event date cannot move and the venue's real network and device conditions are only discoverable on site.",
-          "alternative": "Ship and validate on the event day itself.",
-          "tradeoff": "Added schedule and cost for rehearsal time, in exchange for not discovering a fatal gap in front of the client.",
+          "id": "dec_9590a401dd",
+          "decision": "Treat the event date as a fixed line and cut scope against it",
+          "why": "The request refers to the event day, which cannot move.",
+          "alternative": "",
+          "tradeoff": "",
           "derived_from": [
-            "constraints",
-            "risks"
-          ]
-        }
-      ],
-      "exclusions": [
-        {
-          "id": "exc_b2476f84b1",
-          "option": "Architecting a fully generalized, multi-event reusable kit right now",
-          "reason": "Whether this will be reused at all is still unconfirmed, and the fixed event date leaves no slack to build speculative generalization before the one event that must work.",
-          "rests_on": [
-            "config_vs_custom",
             "constraints"
-          ]
-        },
-        {
-          "id": "exc_6e98aec358",
-          "option": "A full live attendance dashboard with advanced analytics in this phase",
-          "reason": "The core check-in path (offline behavior, duplicate/re-entry handling) is still undefined; building visibility features on top of an unsettled core risks rework.",
-          "rests_on": [
-            "reporting",
-            "workflow"
-          ]
+          ],
+          "source": "proposed"
         }
       ],
-      "thresholds": [
-        {
-          "id": "thr_d263674f3d",
-          "condition": "A venue network test shows unreliable or absent coverage at the entrances",
-          "measure": "on-site connectivity test ahead of the event",
-          "action": "build the offline-first local snapshot and sync path rather than an online-only check-in",
-          "rests_on": [
-            "constraints",
-            "integrations"
-          ]
-        },
-        {
-          "id": "thr_e139d05caa",
-          "condition": "The client confirms additional events are planned beyond this one",
-          "measure": "client's stated event roadmap",
-          "action": "generalize the attendee/category/zone model and configuration surface into a reusable kit",
-          "rests_on": [
-            "config_vs_custom"
-          ]
-        }
-      ],
+      "exclusions": [],
+      "thresholds": [],
       "open_decisions": [
-        "Success metrics for the check-in experience (speed per attendee, accuracy, zero-incident threshold)",
-        "Whether attendee categories (VIP, press, staff, standard) drive different access rights or check-in flows",
-        "Who can see attendee data and perform check-ins (staff-only, event manager, security)",
-        "Acceptance scenarios to validate before the event day",
-        "Format and content of the post-event attendance export"
+        "Does a tool already exist or can one be bought, and what is the budget?",
+        "Where does the attendee list come from, and how does it change up to and during the event?",
+        "Online-only or offline-capable?",
+        "What does a second scan mean: duplicate, re-entry or different zone or session?",
+        "One event or a reusable kit?",
+        "Event date, expected peak volume and staff devices",
+        "Is a live headcount or post-event attendance export required, and in what format?",
+        "What attendee data is kept after the event and who may receive it?",
+        "Success measures, such as seconds per attendee at peak and accuracy of the record"
       ]
     },
     {
-      "problem": "There is no reliable, fast way to identify arriving attendees against an expected list and record their arrival at the venue entrance \u2014 today's process is unconfirmed but almost certainly manual or ad hoc.",
-      "solution": "A staff-operated check-in app that scans a badge or QR code (with a manual search fallback) against an attendee list and records arrival at the entrance.",
+      "problem": "Staff at the venue entrance need a fast, reliable way to identify arriving attendees and record their arrival on a fixed event day. The underlying driver (queues, headcount, access control, or an attendance deliverable) was not stated and is assumed.",
+      "solution": "A staff-facing check-in app that holds the attendee list on the device, identifies people by scan or name search, records arrival, and handles people not on the list, with a live count and attendance record afterwards (assumed, not yet requested).",
       "introduces": [
-        "an offline-capable local attendee snapshot with later sync to the server",
-        "concurrency handling across multiple entrance devices scanning in parallel",
-        "a manual identification fallback (name search / on-the-spot registration)",
-        "category-driven access and flow logic at the door (VIP, press, staff...)",
-        "a post-event attendance export as a client deliverable"
+        "an attendee list held on staff devices, with a defined freshness and sync model",
+        "a check-in event record that can hold duplicate, re-entry and per-zone arrivals",
+        "a manual fallback path: fuzzy name search and on-the-spot registration for walk-ins",
+        "a multi-device rule for the same person processed at two entrances within seconds",
+        "an attendance record and export that serves as a post-event deliverable"
       ],
       "challenges": [
         {
-          "id": "chl_b4ccddd277",
-          "headline": "One-off app vs reusable kit",
-          "premise": "The request reads as a single app for one event, with no mention of future events.",
-          "alternative": "Settling explicitly whether this is the first instance of a reusable event kit changes the data model (single-event vs multi-event), the configurability layer, and the pricing \u2014 it is cheaper to decide this before writing code than to retrofit it.",
-          "consequence": "Building single-event assumptions into the data model now makes a later pivot to multi-event reuse a rebuild, not an extension.",
-          "recommendation": "Ask the client directly whether more events are planned before any architecture decision is made.",
+          "id": "chl_02b41cfe09",
+          "headline": "Build versus buy",
+          "premise": "A custom app is needed for entrance check-in.",
+          "alternative": "If the attendee list already sits in a registration or ticketing tool, that tool's check-in feature or an off-the-shelf event check-in app may cover scanning, name search, walk-ins and a live count. That would replace the build with configuration plus a rehearsal.",
+          "consequence": "Building a door app that duplicates a feature already licensed spends a fixed, immovable timeline on offline sync, concurrency and fallbacks that a mature product has already solved. The request names no tool and no reason an existing one was ruled out, so this has not been tested.",
+          "recommendation": "Before any design work, list the registration tools in use and the off-the-shelf check-in options considered, and record why each was rejected. Build only against a concrete gap, such as a custom rule, a required integration or a budget limit.",
           "contests": [
-            "config_vs_custom",
-            "constraints"
+            "existing_solutions",
+            "problem"
           ]
         },
         {
-          "id": "chl_85bce2e69a",
-          "headline": "Connectivity assumed reliable",
-          "premise": "Nothing in the request addresses venue network conditions, implying an always-online check-in flow is acceptable.",
-          "alternative": "Designing for a local attendee snapshot with check-ins queued and synced later removes the single point of failure that venue wifi and saturated 4G represent.",
-          "consequence": "If the venue network degrades during the event's only few hours of use, an online-only app fails visibly in front of the client with no chance to fix it afterward.",
-          "recommendation": "Test connectivity at the actual venue (or assume the worst) and commit to the offline-or-online architecture before building, since it drives the whole build differently.",
+          "id": "chl_15cc2e33ae",
+          "headline": "Assuming the venue is online",
+          "premise": "Staff will have a working connection at the entrance, so the app can run online-only.",
+          "alternative": "Treat offline operation as a decision to be made explicitly. An offline-capable app holds a snapshot of the list and syncs check-ins later. An online-only app is simpler, but the door stops if the network drops. A middle path is a snapshot loaded before doors open, with check-ins queued and synced when possible.",
+          "consequence": "Online-only is cheaper to build and fails in front of the client on a day that cannot be rescheduled. Offline-capable is a different architecture, with conflict rules, a visible pending state and stale-list risk, and it cannot be bolted on late.",
+          "recommendation": "Ask for the venue's real connectivity at the entrances and settle online-only versus offline before estimating. If connectivity is unknown, plan for the snapshot-plus-sync model and test it at the venue.",
           "contests": [
-            "integrations",
-            "constraints"
+            "constraints",
+            "edge_cases"
           ]
         },
         {
-          "id": "chl_308bfec9e1",
-          "headline": "Check-in treated as one action",
-          "premise": "\"Check attendees in\" is treated as a single scan-and-done action.",
-          "alternative": "Explicitly defining what a second scan means \u2014 blocked duplicate, allowed re-entry, or access to a different zone/session \u2014 lets the data model and UI be built once instead of patched after the first real conflict.",
-          "consequence": "A naive single-state check-in model breaks the first time someone re-enters or the event has multiple zones, which is a near-certainty per the event's own structure.",
-          "recommendation": "Define the check-in semantics and whether zones/sessions exist before finalizing the data model.",
+          "id": "chl_9cf66c5a15",
+          "headline": "What \"check in\" means",
+          "premise": "Check-in is a single arrival per attendee.",
+          "alternative": "Decide up front whether a second scan is a duplicate to block, a re-entry to allow, or an arrival at a different zone or session to record separately. A simple one-arrival version can be shipped first if that is genuinely all that is needed.",
+          "consequence": "The three meanings need different data models. Choosing a single-arrival flag and discovering later that zones or re-entry matter means reworking the data model and the exports built on it.",
+          "recommendation": "Get the client to state the rule for a repeat scan and whether zones or sessions exist, and record it as the first business rule.",
           "contests": [
             "workflow",
             "business_rules"
           ]
         }
       ],
-      "complexity": "high",
+      "complexity": "medium",
       "complexity_reasons": [
-        "offline-first architecture with later sync and conflict resolution",
-        "concurrent scans of the same attendee across multiple entrance devices",
-        "manual fallback identification required for real-world scan failures",
-        "a hard, immovable event date with no post-launch fix window"
+        "offline snapshot and sync if connectivity requires it",
+        "same attendee processed on two devices within seconds",
+        "a moving attendee list with walk-ins and substitutions",
+        "a fixed date with rehearsal on real devices inside the scope"
       ],
-      "cost_driver": "the offline/sync and multi-device concurrency layer behind the scan flow",
+      "cost_driver": "the offline and multi-device sync model",
       "risks": [
-        "If offline capability turns out to be required but isn't designed in from the start, the app can fail publicly at the one moment it cannot be fixed.",
-        "Category-driven access rules (context flags these as arriving and changing late) could force last-minute changes to routing, UI and permissions right before the event.",
-        "No confirmed source for the attendee list means an integration gap could surface late, with no time to absorb it.",
-        "Without a rehearsal and a defined manual fallback, any scan-path failure becomes a visible queue at the door with no workaround.",
-        "Undefined duplicate/re-entry semantics risk a naive build that silently double-counts or wrongly blocks attendees."
+        "Failure at the door on a date that cannot move; a queue forms in front of the client with no second chance.",
+        "The venue network and the staff devices are unknown, and are only fully discoverable on site.",
+        "Staff are untrained, so a flow that needs explanation will slow the door at peak.",
+        "The attendee list source and format are unknown; a late or messy import can block the build.",
+        "Attendee personal data is covered by GDPR, so retention after the event and what sponsors may receive need an owner."
       ],
       "opportunities": [
         {
-          "id": "opp_07cb4ba270",
-          "text": "If the client confirms more events are planned, generalize the check-in flow (scan, fallback, offline sync) into a reusable event kit rather than a one-off build.",
-          "leverage": "future",
+          "id": "opp_99868495a5",
+          "text": "Keep the check-in event model flexible (person, time, zone or session, device) from the start, so one-arrival, re-entry and per-zone cases all fit without a rebuild.",
+          "leverage": "high",
           "modules": [
-            "Accreditation / Badge generation",
-            "Attendee import / registration",
-            "Live attendance dashboard"
+            "Check-in",
+            "Attendee",
+            "Access Right"
           ]
         },
         {
-          "id": "opp_c136d00af7",
-          "text": "Build the post-event attendance export as a defined, reusable format now, since it's already flagged as a client deliverable.",
+          "id": "opp_47485db295",
+          "text": "Make the attendance record and export a first-class output, since it is likely the post-event deliverable for the client and sponsors.",
           "leverage": "medium",
           "modules": [
-            "Live attendance dashboard"
+            "Check-in",
+            "Event"
+          ]
+        },
+        {
+          "id": "opp_a9d0614f97",
+          "text": "If more events are expected, make attendee categories, zones and badge layout per-event configuration, and consider a reusable event kit.",
+          "leverage": "future",
+          "modules": [
+            "Event",
+            "Attendee",
+            "Accreditation / Badge"
           ]
         }
       ],
       "next_steps": [
-        "Settle whether this is a single-event build or the first instance of a reusable event kit before any architecture decision \u2014 it reshapes the data model and cost.",
-        "Determine the attendee list source and test (or assume) venue connectivity to decide offline-vs-online architecture.",
-        "Define check-in semantics (duplicate, re-entry, multi-zone) and whether attendee categories drive different access or flows, since both decide the data model."
+        "Settle build versus buy: inventory registration tools already in use and off-the-shelf check-in options, and record why each is rejected.",
+        "Confirm the event date, the venue connectivity at each entrance, the staff devices and the budget; decide online-only versus offline.",
+        "Define the check-in rule (single arrival, re-entry, zones) and the outcome of a repeat scan on two devices.",
+        "If building, ship the core loop first (list on device, scan plus name search, walk-in registration, live count) and schedule a rehearsal at the venue before the event."
       ],
       "decisions": [
         {
-          "id": "dec_3ab91aaee8",
-          "decision": "On-site staff will be the primary operators performing check-in at the entrance.",
-          "why": "",
+          "id": "dec_6926ddee16",
+          "decision": "The primary operator is on-site staff who are not trained users, so the door flow must need no training.",
+          "why": "The request names staff as the users, and the event-day setting implies first-time use.",
           "alternative": "",
           "tradeoff": "",
           "derived_from": [
-            "actors"
-          ]
+            "actors",
+            "risks"
+          ],
+          "source": "proposed"
         },
         {
-          "id": "dec_cd58fbb3a7",
-          "decision": "Attendee and Check-in will be the core entities the build is organized around.",
-          "why": "",
-          "alternative": "",
-          "tradeoff": "",
+          "id": "dec_50ea384b54",
+          "decision": "A manual fallback (name search and on-the-spot registration) is part of the scope, not an extra.",
+          "why": "Scans will fail on the day and the list will not be final; the fallback avoids a stalled door.",
+          "alternative": "Scan-only identification with unmatched people sent to a manager.",
+          "tradeoff": "Extra build effort in exchange for a door that keeps moving.",
           "derived_from": [
-            "business_objects"
-          ]
+            "edge_cases",
+            "risks"
+          ],
+          "source": "proposed"
         }
       ],
-      "exclusions": [
-        {
-          "id": "exc_57ad7c7537",
-          "option": "Designing and building a fully reusable, multi-event configuration layer in this phase",
-          "reason": "Whether this client will run more events isn't established, and the event date is a fixed, immovable deadline \u2014 spending scope on generalization before that's confirmed risks missing the date for uncertain future payoff.",
-          "rests_on": [
-            "config_vs_custom",
-            "constraints"
-          ]
-        }
-      ],
-      "thresholds": [
-        {
-          "id": "thr_e7b3c6f699",
-          "condition": "The client confirms additional events are planned beyond this one.",
-          "measure": "number of future events the client intends to run with this app",
-          "action": "revisit the architecture to generalize the check-in engine into a reusable event kit",
-          "rests_on": [
-            "config_vs_custom"
-          ]
-        },
-        {
-          "id": "thr_8462885c64",
-          "condition": "Venue connectivity testing shows the network cannot be relied on at the entrance.",
-          "measure": "actual network reliability measured at the venue before the event",
-          "action": "commit to an offline-first design with local snapshot and deferred sync",
-          "rests_on": [
-            "integrations",
-            "constraints"
-          ]
-        }
-      ],
+      "exclusions": [],
+      "thresholds": [],
       "open_decisions": [
-        "Whether this is a one-off app or the first instance of a reusable event kit",
-        "Offline vs online architecture and attendee list source",
-        "What a second scan means: duplicate, re-entry, or a different zone/session",
-        "Whether attendee categories drive different access rights or flows",
-        "Success metrics for the check-in process",
-        "Current entrance process, if any, that this replaces",
-        "Permissions beyond staff: can staff edit/register attendees on the spot, what can managers or security see"
+        "Build, buy or switch on an existing feature, and the budget",
+        "Event date and the venue's connectivity; online-only or offline",
+        "Meaning of check-in: single arrival, re-entry, zones or sessions; behaviour on a repeat scan",
+        "Source and format of the attendee list, and whether it changes up to the event day",
+        "One event only or a reusable event kit",
+        "Success measures such as seconds per attendee and peak-time behaviour",
+        "Post-event attendance export: format, recipients and GDPR retention",
+        "Staff devices and the rehearsal plan"
       ]
     },
     {
-      "problem": "On-site staff need a reliable way to identify and record attendee arrivals at a fixed-date event, without the specifics of connectivity, duplicate handling, or fallback identification yet defined.",
-      "solution": "A staff-operated check-in app for the event entrance, covering scan + manual-fallback identification, a defined rule for duplicate/re-entry/zone scans, and a post-event attendance export.",
+      "problem": "Staff at the venue entrance cannot quickly and reliably confirm who is arriving and record that they came, on a day that cannot be rerun.",
+      "solution": "A staff-facing check-in app for the entrance that identifies an attendee by scan or name search, records arrival, and gives a manual fallback when identification fails. Zones, offline use and reuse are not yet decided.",
       "introduces": [
-        "an offline-capable local snapshot + sync engine with conflict resolution",
-        "manual fallback identification (fuzzy name search, on-the-spot registration)",
-        "concurrency handling across multiple staff devices and entrances",
-        "an on-site attendee-list editing path (walk-ins, substitutions, corrections)",
-        "a post-event attendance export as a client deliverable"
+        "an attendee list that is loaded or synced from a source still to be identified, and keeps changing on the day",
+        "a check-in event record that must define duplicate scans, re-entry and zone access",
+        "multi-device concurrency across several doors, with a defined outcome when the same person is processed twice",
+        "a manual identification path (fuzzy name search, on-the-spot registration) alongside scanning",
+        "a live headcount and a post-event attendance export that serves as the client deliverable"
       ],
       "challenges": [
         {
-          "id": "chl_0dca08b5b0",
-          "headline": "One-off app vs reusable kit",
-          "premise": "The request is framed as building a check-in app for this event, with no mention of future events.",
-          "alternative": "If more events are planned, building the attendee/category model and check-in flow as a configurable kit from the start avoids re-architecting later; if this truly is a single event, a lighter, disposable build is cheaper and faster.",
-          "consequence": "Guessing wrong either over-engineers a one-off or forces a costly rebuild the moment a second event appears.",
-          "recommendation": "Ask directly whether this event is a one-time need or the first of several before committing to an architecture.",
+          "id": "chl_af11200e84",
+          "headline": "Building rather than buying",
+          "premise": "A custom app is needed for door check-in.",
+          "alternative": "Ready-made check-in tools exist, and the registration platform, if there is one, may already include a check-in feature that is paid for but not switched on. Using one of these could cover the core scan-and-record loop with no build. The request does not say whether either was looked at.",
+          "consequence": "If an existing tool covers the need, a custom build spends money and rehearsal time on a door-critical path that someone else has already hardened. If none fits, the reasons for rejecting them become the real requirements.",
+          "recommendation": "Before any design, check the registration platform for a check-in feature and shortlist two or three off-the-shelf tools. Record exactly what each fails to do (offline use, categories, export format) and build only that gap.",
           "contests": [
-            "config_vs_custom",
-            "constraints"
+            "existing_solutions",
+            "problem"
           ]
         },
         {
-          "id": "chl_a2ac04e8eb",
-          "headline": "Assumed venue connectivity",
-          "premise": "The request describes scanning attendees without addressing whether the venue network can be trusted during check-in.",
-          "alternative": "Designing for offline-first operation (local snapshot of the attendee list, check-ins queued and synced later) protects the door from network failure; this is an architecture decision, not a setting added afterward.",
-          "consequence": "If connectivity fails on the day and the app assumed a live connection, the failure happens in front of the client with no fallback \u2014 the worst possible failure mode for this kind of build.",
-          "recommendation": "Test the actual venue network before finalizing the architecture, and default to offline-first unless the test proves otherwise.",
+          "id": "chl_50b4ad4641",
+          "headline": "Online-only door assumption",
+          "premise": "Staff scan at the entrance as if the venue network will be reliable all day.",
+          "alternative": "Decide offline behaviour explicitly. Either the devices hold a local copy of the attendee list and sync check-ins later, or the build commits to online-only with a manual paper fallback. This is a choice about architecture, not a setting added late.",
+          "consequence": "Venue entrances can have weak or saturated signal. An online-only build then fails at the peak, in front of the client, and the offline sync layer, which is where correctness problems concentrate, would have to be retrofitted close to a fixed date.",
+          "recommendation": "Ask the venue or test signal at the actual doors, then choose offline-capable or online-only before estimating. If offline, define how fresh the local list must be and how conflicts between devices resolve.",
           "contests": [
-            "edge_cases",
-            "constraints"
+            "constraints",
+            "workflow",
+            "risks"
           ]
         },
         {
-          "id": "chl_1188c43dbc",
-          "headline": "Check-in treated as boolean",
-          "premise": "The request implies a simple 'scan = checked in' action.",
-          "alternative": "Modeling a second scan explicitly as duplicate, re-entry, or a different zone/session access produces a data model that holds up under real conditions, where attendees cross multiple checkpoints.",
-          "consequence": "A naive single-scan model breaks the moment two staff scan the same attendee from different entrances within seconds, with no defined outcome.",
-          "recommendation": "Settle the duplicate/re-entry/zone semantics before any data model is built \u2014 it is the single decision with the widest downstream effect.",
+          "id": "chl_a1921b5bcd",
+          "headline": "Check-in as a single event",
+          "premise": "Checking in means recording one arrival per person.",
+          "alternative": "Define a second scan explicitly: refuse it as a duplicate, allow it as re-entry, or record it as access to a different zone or session. Each needs a different data model, and the request does not say which applies.",
+          "consequence": "A one-arrival model must be reworked if zones or re-entry turn up later, and with several doors the same person scanned twice within seconds becomes an undefined outcome.",
+          "recommendation": "Settle the meaning of a second scan and whether any zones or sessions exist before modelling check-in. If the answer is unclear, start with entrance-only check-in and a defined duplicate warning.",
           "contests": [
             "business_rules",
-            "business_objects"
+            "business_objects",
+            "edge_cases"
           ]
         }
       ],
-      "complexity": "high",
+      "complexity": "medium",
       "complexity_reasons": [
-        "offline/sync architecture with conflict resolution across devices",
-        "concurrency handling at multiple simultaneous entrances",
-        "manual fallback identification flow alongside scanning",
-        "fixed, immovable event date leaves no room to fix failures after the fact"
+        "an unknown offline versus online choice that changes the architecture",
+        "multi-device concurrency at several doors",
+        "an attendee list that keeps changing, with an on-site path for walk-ins and substitutions",
+        "peak throughput measured on the actual devices"
       ],
-      "cost_driver": "the offline-capable check-in engine (local snapshot, sync, and conflict resolution across devices)",
+      "cost_driver": "the offline and sync decision combined with multi-door concurrency",
       "risks": [
-        "Venue connectivity is unverified and can only be tested on site \u2014 a late surprise here invalidates the chosen architecture.",
-        "Duplicate-scan semantics are undefined; without a decision, the first concurrent double-scan at two entrances produces undefined behaviour.",
-        "Peak-arrival throughput has no target; without one, the team can't know if the scan flow is fast enough until the actual rush at the door.",
-        "No current process is named, so it's unclear whether the attendee list must integrate with an existing registration/badge system or be built from scratch.",
-        "The one-off-vs-kit decision is still open; building before it's answered risks wasted abstraction or a costly later rebuild."
+        "Failure at the door in front of the client on an immovable date, with no second attempt. Every automated path needs a manual fallback.",
+        "Weak venue connectivity may only be discovered on site, after the architecture has been fixed.",
+        "Attendee personal data (GDPR) sits on staff devices and in exports. Retention after the event and what sponsors may receive are unspecified.",
+        "The operators are untrained staff seeing the app for the first time that morning, so anything that needs explanation will slow the queue.",
+        "The attendee list source is unknown, so the effort for import versus live integration could change substantially once it is identified."
       ],
       "opportunities": [
         {
-          "id": "opp_81542092ac",
-          "text": "Architect the check-in flow, attendee/category model, and offline-sync layer as a configurable kit rather than a single-event build.",
-          "leverage": "high",
-          "modules": [
-            "badge & accreditation generation",
-            "zone/session access",
-            "post-event export"
-          ]
-        },
-        {
-          "id": "opp_95adb50516",
-          "text": "Generalize the offline snapshot + sync engine so it can serve any zone/session access point, not just the main entrance.",
-          "leverage": "medium",
-          "modules": [
-            "zone/session access",
-            "live attendance dashboard"
-          ]
-        },
-        {
-          "id": "opp_500fecaf94",
-          "text": "Extend the post-event export into a standard attendance-reporting module reusable across future events.",
+          "id": "opp_4bcaa414d8",
+          "text": "Keep the check-in flow, attendee and category model and offline/sync layer separate from event-specific branding, zones and export format, so a second event is configuration rather than a rebuild. Worth deciding only once the client confirms there will be more events.",
           "leverage": "future",
           "modules": [
-            "post-event export"
+            "Check-in",
+            "Attendee",
+            "Access Right"
+          ]
+        },
+        {
+          "id": "opp_6c88640254",
+          "text": "Treat the check-in records as the source for the live headcount and the post-event attendance export, so one accurate dataset serves the door, the dashboard and the client deliverable.",
+          "leverage": "high",
+          "modules": [
+            "Check-in",
+            "Attendee",
+            "Registration"
           ]
         }
       ],
       "next_steps": [
-        "Settle whether this is a one-off build or the first instance of a reusable event kit \u2014 it changes the data model and cost basis for everything that follows.",
-        "Run a connectivity test at the actual venue to decide offline-first vs online-only before any check-in logic is written.",
-        "Define the duplicate/re-entry/zone-access semantics and the manual-fallback identification flow as the first concrete design artifact."
+        "Run the build-or-buy check first: look at the registration platform's check-in feature and shortlist off-the-shelf tools, and stop here if one covers the need.",
+        "In the same conversation, confirm where the attendee list comes from, how it changes up to the event, the expected attendee count, number of doors and devices, and the target seconds per person at peak.",
+        "Check signal at the actual entrances and decide offline-capable versus online-only, and what a second scan means.",
+        "Agree acceptance scenarios for the door (QR failure, name not on the list, duplicate scan, two doors at once) and book a rehearsal on real devices in the venue before the date."
       ],
       "decisions": [
         {
-          "id": "dec_39c33b948b",
-          "decision": "On-site staff, not attendees themselves, operate the check-in device.",
+          "id": "dec_a613d172e1",
+          "decision": "The event date is fixed and cannot move, so scope is cut against it and a venue rehearsal is part of the scope",
+          "why": "A failed check-in on the day has no recovery, so reliability is worth more than extra features.",
+          "alternative": "Plan for a later fix after launch.",
+          "tradeoff": "Fewer features in exchange for a rehearsed, conservative check-in path.",
+          "derived_from": [
+            "constraints",
+            "risks"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_1857a96a07",
+          "decision": "Every scan path has a manual fallback (name search, on-the-spot registration)",
+          "why": "Scanning will fail for some arrivals in real conditions, and a stuck queue is the visible failure.",
+          "alternative": "Scan-only identification.",
+          "tradeoff": "More to build and rehearse, in exchange for not blocking the door when a scan fails.",
+          "derived_from": [
+            "edge_cases",
+            "risks",
+            "workflow"
+          ],
+          "source": "proposed"
+        },
+        {
+          "id": "dec_1cf5512fd2",
+          "decision": "The app is for door staff, who are a known set of users reached through rollout rather than acquisition",
           "why": "",
           "alternative": "",
           "tradeoff": "",
           "derived_from": [
-            "actors"
-          ]
+            "actors",
+            "acquisition"
+          ],
+          "source": "requester"
         }
       ],
-      "exclusions": [
-        {
-          "id": "exc_0f63dcee0f",
-          "option": "Building the full reusable, multi-event configurable architecture from day one",
-          "reason": "Whether this client will run more events at all is still unanswered; committing to that abstraction now, under a fixed and immovable event date, risks spending the available time on generality the client may never use.",
-          "rests_on": [
-            "config_vs_custom",
-            "constraints"
-          ]
-        },
-        {
-          "id": "exc_2f16c83e73",
-          "option": "Building out the full post-event reporting/dashboard suite in this phase",
-          "reason": "The event date can't move and the core check-in path (identification, fallback, duplicate handling, offline resilience) is the one thing that must not fail on the day; reporting polish should not compete with it for the remaining time.",
-          "rests_on": [
-            "constraints"
-          ]
-        }
-      ],
-      "thresholds": [
-        {
-          "id": "thr_df345f608d",
-          "condition": "The venue connectivity test shows the network cannot be trusted during check-in hours",
-          "measure": "on-site network reliability test at the actual entrance(s)",
-          "action": "commit to an offline-first architecture (local snapshot + queued sync) rather than an online-only design",
-          "rests_on": [
-            "edge_cases",
-            "constraints"
-          ]
-        },
-        {
-          "id": "thr_8624e88769",
-          "condition": "The client confirms they intend to run further events beyond this one",
-          "measure": "stated number/frequency of future events",
-          "action": "invest in the configurable, reusable event-kit architecture instead of a disposable single-event build",
-          "rests_on": [
-            "config_vs_custom"
-          ]
-        }
-      ],
+      "exclusions": [],
+      "thresholds": [],
       "open_decisions": [
-        "One-off app vs reusable event kit",
-        "Offline vs online architecture, pending venue connectivity test",
-        "Duplicate / re-entry / zone-access semantics for a repeated scan",
-        "Source and freshness of the attendee list, and how on-site edits are handled",
-        "Fallback identification approach when scanning fails",
-        "Device-to-staff-to-entrance mapping and who can perform check-ins"
+        "Build, buy or switch on an existing check-in feature, and the budget",
+        "Source and update pattern of the attendee list, including walk-ins and substitutions",
+        "Offline-capable or online-only",
+        "Meaning of a second scan, and whether zones or sessions exist",
+        "Expected attendee volume, number of doors and devices, and target seconds per person at peak",
+        "One-off event or the first instance of a reusable kit",
+        "Success measures and the post-event attendance deliverable (format, recipients, sponsor access)",
+        "Who may override a refusal, add walk-ins and see attendee data, and the retention period after the event"
       ]
     }
   ]
