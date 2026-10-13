@@ -341,6 +341,17 @@ def test_a_written_card_is_kept_only_on_consent(user_cards):
         disco.keep_card("dental-nothing")
 
 
+def test_saving_on_a_rerun_promotes_the_identical_draft_instead_of_forking_it(user_cards):
+    """Same card, same stem (#765): `--save-card` after an unsaved run keeps that draft's name and session."""
+    first, unsaved, _c, _r = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None)
+    again, saved, cards, _r = DiscoveryService(_Judge(_uncovered())).claim_and_ground(
+        "a dental billing request", cards=None, slug=None, save_card=True)
+    assert cards == ["dental-billing"] and saved.written == user_cards / "dental-billing.md", "the save forked to -2"
+    assert saved.written.read_text(encoding="utf-8") == unsaved.written.read_text(encoding="utf-8")
+    assert again.slug == first.slug and len(SessionService().list_sessions()) == 1, "a second session was claimed"
+
+
 def test_keeping_a_card_never_pulls_it_from_under_a_reader(user_cards):
     """A session that looked the card up before it was kept still reads it after (#765): the draft stays."""
     disco = DiscoveryService(_Judge(_uncovered()))

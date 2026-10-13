@@ -174,8 +174,9 @@ def write_generated_card(card: GeneratedCard, *, keep: bool) -> Path:
     """Write an engine-authored card (#598): kept in `user_context_dir()` only on consent, otherwise
     unsaved under the store, where only its session's selection finds it. Re-validated, since the
     caller's instance may never have been; a taken name moves to `<stem>-2`…`-9`, never shadowing;
-    an identical unsaved card is reused, so one card is one identity.
-    `test_a_written_card_never_shadows_an_installed_one`."""
+    an identical unsaved card is reused, or kept under its own name, so one card is one identity.
+    `test_a_written_card_never_shadows_an_installed_one`,
+    `test_saving_on_a_rerun_promotes_the_identical_draft_instead_of_forking_it`."""
     card = GeneratedCard.model_validate(card.model_dump())
     text = card.markdown()
     drafts = _draft_paths()
@@ -184,10 +185,11 @@ def write_generated_card(card: GeneratedCard, *, keep: bool) -> Path:
     root = _user_card_root() if keep else ensure_store_dir(card_draft_root())
     for stem in [card.stem, *(f"{card.stem}-{n}" for n in range(2, 10))]:
         # An installed card wins the lookup, so a draft under its stem would not be what is read.
-        if (not keep and stem not in installed and stem in drafts
-                and drafts[stem].read_text(encoding="utf-8") == text):
+        identical = (stem not in installed and stem in drafts
+                     and drafts[stem].read_text(encoding="utf-8") == text)
+        if identical and not keep:
             return drafts[stem]
-        if stem not in taken and _publish(root, stem, text):
+        if (identical or stem not in taken) and _publish(root, stem, text):
             return root / f"{stem}.md"
     raise ValueError(f"every name from {card.stem!r} to '{card.stem}-9' is already taken")
 
