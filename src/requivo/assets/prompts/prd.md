@@ -103,8 +103,8 @@ State the resource envelope this document is planned within — budget, deadline
 size), horizon — as structured data in `envelope`, not as prose buried in `assumptions` or `risks`.
 For each element you state:
 
-- If the model says it (almost always via `constraints`), set `origin` to `"slot"` and `source_slot`
-  to the slot id it came from.
+- If the model says it (almost always via `constraints`, or `existing_solutions` for the budget), set
+  `origin` to `"slot"` and `source_slot` to the slot id it came from.
 - If the model says nothing about it but the plan you are writing still depends on one — you had to
   pick a team size or a horizon to make the workflow or the requirements concrete — set `origin` to
   `"assumption"`, leave `source_slot` unset, and say what you assumed in `value`.

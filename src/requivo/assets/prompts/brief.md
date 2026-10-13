@@ -32,9 +32,10 @@ both, and keep what the client said apart from what was inferred:
 
 Compress before you propose: `next_steps` and `opportunities` are not everything defensible — they
 are what the model's own constraints (deadline, budget, regulatory, dependencies — whatever
-`constraints` and the rest of the model actually state) let this client fund **together**, in the
-order a lead would commit to it. An option that is reasonable on its own but does not survive that
-cut belongs in `exclusions` below, not padded into either list as a lower-priority extra.
+`constraints`, `existing_solutions` and the rest of the model actually state) let this client fund
+**together**, in the order a lead would commit to it. An option that is reasonable on its own but does
+not survive that cut belongs in `exclusions` below, not padded into either list as a lower-priority
+extra.
 
 - `problem`: one line — the underlying problem being solved (not the requested solution).
 - `solution`: one line — what's being built, in plain terms.
@@ -43,7 +44,8 @@ cut belongs in `exclusions` below, not padded into either list as a lower-priori
 - `challenges`: 0–3 premises in the request worth **contesting** before build — this is the most
   valuable part. Not "what did we learn" but "what should we question". A good challenge is what an
   experienced PM who has *built this kind of system before* would raise: a default that looks
-  innocent but drives complexity or risk downstream. Each has:
+  innocent but drives complexity or risk downstream. Building at all is one such premise when the
+  model names a tool already in place, already paid for, or available off the shelf. Each has:
   - `headline`: 3–6 words naming the thing being challenged.
   - `premise`: the assumption the request takes for granted (e.g. "invoice the moment a contract is
     signed").

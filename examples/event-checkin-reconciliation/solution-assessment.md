@@ -19,14 +19,15 @@ EXECUTIVE SUMMARY
   Risks     No confirmed source of truth for freelancer contracts/rates — could
             mean building contract and invoicing data from scratch instead of
             integrating   (+4 more below)
-  Unknowns  Actors & roles · Business rules · Workflow / lifecycle · Permissions
-            · Reporting & visibility · Risks & rollout · What exactly defines a
-            guest as 'approved' and where that status originates · Whether
-            unsigned-contract freelancers are permitted to work the door · Who
-            receives and acts on mismatch alerts — event manager, finance, or
-            both · Whether this is a one-off build or the first instance of a
-            reusable event kit · Whether freelancer contracts and rates already
-            live in another system requiring integration
+  Unknowns  Existing solutions & budget · Actors & roles · Business rules ·
+            Workflow / lifecycle · Permissions · Reporting & visibility · Risks
+            & rollout · What exactly defines a guest as 'approved' and where
+            that status originates · Whether unsigned-contract freelancers are
+            permitted to work the door · Who receives and acts on mismatch
+            alerts — event manager, finance, or both · Whether this is a one-
+            off build or the first instance of a reusable event kit · Whether
+            freelancer contracts and rates already live in another system
+            requiring integration
   Next      Split 'mismatch' into two explicit rule sets — guest approval
             mismatch and freelancer hours/contract/invoice mismatch — each with
             its own owner and alert channel, before designing workflow.   (+3
@@ -39,8 +40,9 @@ UNDERSTANDING
                Constraints
   🟡 Inferred   Actors & roles · Business objects · Workflow / lifecycle ·
                Permissions · Reporting & visibility · Risks & rollout
-  ⚪ Unknown   Business rules · Integrations & notifications · Config vs
-               customization · Edge cases · Acceptance criteria
+  ⚪ Unknown   Existing solutions & budget · Payer & revenue model · Business
+               rules · Integrations & notifications · Config vs customization ·
+               Edge cases · Acceptance criteria · First users & acquisition
 
 DESIGN DECISIONS
   ✓ The check-in path must work offline with a local device snapshot and later
@@ -158,11 +160,13 @@ RECOMMENDED NEXT STEPS
 
 ARE WE READY?
   Status               Not ready
-  Blocking decision    Success criteria (too thin), Actors & roles
-                       (unconfirmed), Business rules (unknown), Workflow /
-                       lifecycle (unconfirmed), Permissions (unconfirmed),
-                       Constraints (too thin), Reporting & visibility
-                       (unconfirmed), Risks & rollout (unconfirmed)
-  Remaining gaps       Business objects, Integrations & notifications, Config vs
-                       customization, Edge cases, Acceptance criteria
+  Blocking decision    Existing solutions & budget (unknown), Success criteria
+                       (too thin), Actors & roles (unconfirmed), Business rules
+                       (unknown), Workflow / lifecycle (unconfirmed),
+                       Permissions (unconfirmed), Constraints (too thin),
+                       Reporting & visibility (unconfirmed), Risks & rollout
+                       (unconfirmed)
+  Remaining gaps       Payer & revenue model, Business objects, Integrations &
+                       notifications, Config vs customization, Edge cases,
+                       Acceptance criteria, First users & acquisition
 ```

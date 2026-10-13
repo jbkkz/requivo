@@ -14,15 +14,17 @@
     "testable": "unknown, and NOT answerable by asking — only a real test or experiment would settle it. This is the default state of a half-formed idea, not an edge case. Requires test_plan naming what would settle it, or the slot is refused. Does not block readiness: a named test still to run is compatible with 'precise enough to build from'."
   },
   "pillars": {
-    "why": "Why? The real problem and the measure of success.",
+    "why": "Why? The real problem, what already exists or could be bought, who pays, and the measure of success.",
     "what": "What? The actors, objects, rules, lifecycle.",
     "how": "How? Integrations, permissions, configurability, constraints.",
-    "validate": "Validation. Edge cases, reporting, acceptance criteria, risks."
+    "validate": "Validation. Edge cases, reporting, acceptance criteria, risks, and how the first users are reached."
   },
   "slots": [
     { "id": "problem",        "pillar": "why",      "impact_default": "high",   "label": "Real problem",            "probe": "What problem is behind the request? The client asks for a solution, not a need." },
     { "id": "current_process","pillar": "why",      "impact_default": "high",   "label": "Current process (as-is)", "probe": "How is it handled today? Manual, Excel, another module, nothing?" },
+    { "id": "existing_solutions","pillar": "why",   "impact_default": "high",   "label": "Existing solutions & budget", "probe": "What already exists, is already paid for, or could be bought instead of building this, and within what budget? Name any licensed tool or feature never switched on, and the off-the-shelf options considered and why they were rejected.", "impact_signals": "→ highest when the request names a tool, a vendor, a price, a budget, or the refusal of one (a commission, a subscription): buying or reusing can delete the build, and the envelope sizes everything else. For a product idea it is also what its users would switch from." },
     { "id": "success_metrics","pillar": "why",      "impact_default": "medium", "label": "Success criteria",        "probe": "How will the client know it worked?" },
+    { "id": "payer",          "pillar": "why",      "impact_default": "low",    "label": "Payer & revenue model",   "probe": "Who pays for this, and how: a subscription, a one-off fee, a commission, a sponsor, nobody?", "impact_signals": "→ high when the request is a product idea rather than a spec (a builder's own product, whose users must choose to adopt it): who pays and how changes the product (accounts, billing, a free tier, who the buyer is) as much as the segment does, and can decide whether to build at all. Stays low for an internal tool or a commissioned system, where the payer is the client." },
     { "id": "actors",         "pillar": "what",     "impact_default": "high",   "label": "Actors & roles",          "probe": "Who triggers, who executes, who approves?" },
     { "id": "business_objects","pillar": "what",    "impact_default": "medium", "label": "Business objects",        "probe": "Which entities, which fields, where does the data come from?" },
     { "id": "business_rules", "pillar": "what",     "impact_default": "high",   "label": "Business rules",          "probe": "Who is allowed, under what conditions, which exceptions, does the rule change by client/country/contract?" },
@@ -30,10 +32,11 @@
     { "id": "integrations",   "pillar": "how",      "impact_default": "medium", "label": "Integrations & notifications", "probe": "Who is notified, which other system is updated, which webhook/API?" },
     { "id": "permissions",    "pillar": "how",      "impact_default": "high",   "label": "Permissions",             "probe": "Who sees what, who can do what?" },
     { "id": "config_vs_custom","pillar": "how",     "impact_default": "high",   "label": "Config vs customization", "probe": "Hardcoded, configurable, client-specific, or reusable for all? (configurable platforms only)", "optional": true },
-    { "id": "constraints",    "pillar": "how",      "impact_default": "medium", "label": "Constraints",             "probe": "Deadline, dependencies, regulatory, budget?" },
+    { "id": "constraints",    "pillar": "how",      "impact_default": "medium", "label": "Constraints",             "probe": "Deadline, dependencies, regulatory?" },
     { "id": "edge_cases",     "pillar": "validate", "impact_default": "medium", "label": "Edge cases",              "probe": "What if empty / multiple / concurrent / retroactive / cancelled?" },
     { "id": "reporting",      "pillar": "validate", "impact_default": "low",    "label": "Reporting & visibility",  "probe": "Filter, export, dashboard, audit of changes?", "impact_signals": "→ high when the solution must be audited, traced, or proven for compliance/regulatory reasons: an audit trail, a who-changed-what history, or a mandated export is a different build, not a nice-to-have." },
     { "id": "acceptance",     "pillar": "validate", "impact_default": "medium", "label": "Acceptance criteria",     "probe": "Which acceptance scenarios validate delivery?" },
-    { "id": "risks",          "pillar": "validate", "impact_default": "medium", "label": "Risks & rollout",         "probe": "What can break, how do we roll out?" }
+    { "id": "risks",          "pillar": "validate", "impact_default": "medium", "label": "Risks & rollout",         "probe": "What can break, how do we roll out?" },
+    { "id": "acquisition",    "pillar": "validate", "impact_default": "low",    "label": "First users & acquisition", "probe": "How are the first users reached, and how do they get from hearing of it to using it: an existing audience, a partner, a marketplace, direct outreach?", "impact_signals": "→ high when the request is a product idea rather than a spec: the channel decides sign-up, onboarding and what the first release must contain, and having no way to reach users can be a reason not to build yet. Stays low for a system rolled out to a known set of users, which is rollout (risks)." }
   ]
 }

@@ -14,12 +14,26 @@
       "value": "Freelancers manually check guests in at the door with no live approval reference; contracts frequently unsigned pre-event; finance manually reconciles invoices vs. worked hours weeks later.",
       "evidence": "As described in the request; no system in place today"
     },
+    "existing_solutions": {
+      "completeness": 10,
+      "confidence": "empty",
+      "impact": "high",
+      "value": "Not asked: nothing is in place today, but whether an off-the-shelf check-in or timesheet tool could cover the event inside six weeks, and the budget envelope, were never raised.",
+      "evidence": "This run predates the slot (issue 786); the request says nothing about buying, reusing or a budget."
+    },
     "success_metrics": {
       "completeness": 55,
       "confidence": "explicit",
       "impact": "high",
       "value": "Door staff see live approval status; someone is alerted on a mismatch; reconciliation is clean at close so finance stops chasing.",
       "evidence": "'door staff should see approval status live... alerted when there's a mismatch... reconcile cleanly'"
+    },
+    "payer": {
+      "completeness": 0,
+      "confidence": "empty",
+      "impact": "low",
+      "value": "",
+      "evidence": "This run predates the slot (issue 775). A commissioned system, not a product idea: it stays at its low baseline."
     },
     "actors": {
       "completeness": 45,
@@ -104,6 +118,13 @@
       "impact": "high",
       "value": "Six-week timeline plus offline requirement plus fixing two intertwined problems (attendee check-in AND freelancer time/invoice reconciliation) is a lot to build and rehearse; risk of scope creep if both problems are solved with equal depth.",
       "evidence": "Fixed event date + poor connectivity + dual scope (guests + freelancer ops) stated together"
+    },
+    "acquisition": {
+      "completeness": 0,
+      "confidence": "empty",
+      "impact": "low",
+      "value": "",
+      "evidence": "This run predates the slot (issue 775). Used by the client's own door staff and finance, a known set of users: it stays at its low baseline."
     }
   },
   "questions": [

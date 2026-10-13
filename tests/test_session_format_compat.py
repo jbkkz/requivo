@@ -20,7 +20,7 @@ from requivo.core.contracts import (
     PersistedEngineOutput,
     schema_slots,
 )
-from requivo.core.errors import RequivoError
+from requivo.core.errors import MissingRequiredSlotError, RequivoError
 from requivo.core.perimeters import GO_TO_MARKET
 from requivo.providers.anthropic.provider import AnthropicProvider
 from requivo.services.discovery import DiscoveryService
@@ -96,6 +96,25 @@ def test_a_go_to_market_session_from_before_729_loads_and_blocks_only_on_the_una
     result = DiscoveryService(provider=AnthropicProvider(client=client), sessions=svc).generate("gtm-729", "gtm_plan")
     assert result.status.stale is False and [c.headline for c in svc.load_model("gtm-729").challenges] == ["Cold start assumed"]
     assert set(svc.load_model("gtm-729").model) == set(legacy)
+
+
+def test_a_software_session_from_before_786_and_775_loads_and_blocks_only_on_build_vs_buy():
+    """#786, #775: the three slots read at their baseline, so `existing_solutions` (high) blocks and `payer` and
+    `acquisition` (low, raised only for a product idea) do not; a proposal without them is refused; a brief still generates."""
+    new = ("existing_solutions", "payer", "acquisition")
+    meta = {s["id"]: s for s in schema_slots()}
+    assert [(meta[s]["pillar"], meta[s]["impact_default"]) for s in new] == [("why", "high"), ("why", "low"), ("validate", "low")]
+    legacy = {s: slot(90, "explicit", "high") for s in meta if s not in new}
+    svc = SessionService()
+    svc.create_session("a leave approval tool", slug="sw-786")
+    with pytest.raises(MissingRequiredSlotError) as refused:
+        svc.update_model("sw-786", {"model": legacy, "questions": [], "summary": {"objective": "o"}})
+    assert refused.value.details["slots"] == list(new)
+    svc.update_model("sw-786", {"model": legacy, "questions": [], "summary": {"objective": "o"}}, require_complete=False)
+    assert [g["slot"] for g in svc.status("sw-786")["readiness"]["blocking_slots"]] == ["existing_solutions"]
+    client = FakeClient(json.dumps(dict(complexity="low", solution="S")))
+    result = DiscoveryService(provider=AnthropicProvider(client=client), sessions=svc).generate("sw-786", "brief")
+    assert result.status.stale is False and set(svc.load_model("sw-786").model) == set(legacy)
 
 
 # ── the malformed-session family (#82) ───────────────────────────────────────

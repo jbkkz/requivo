@@ -39,7 +39,8 @@ both, and keep what the client said apart from what was inferred:
   slots). This is the traceability from effort back to the model.
 - `note`: one terse line — what makes it S vs L, or which unknown widens it.
 - `risks`: 2–5 batch-level delivery risks / unknowns (dependencies, soft slots that could blow
-  scope, regulatory, shared modules).
+  scope, regulatory, shared modules, a tool already in place or buyable per `existing_solutions` that
+  would replace a story, a budget envelope the total would break).
 - Estimate **only** the stories given. Do not invent stories or scope. A high-impact slot no story
   covers is outside this estimate: name it in `risks` as uncosted scope, never fold it into an item.
 - Do **not** output totals or an overall confidence — those are computed downstream.

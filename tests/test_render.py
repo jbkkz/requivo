@@ -267,9 +267,9 @@ def test_status_shows_per_pillar_completeness():
     """#771: each pillar's mean completeness in schema order; an omitted required slot counts 0."""
     model = EngineOutput(model={"problem": Slot(completeness=80, confidence="explicit", impact="high"),
                                 "actors": Slot(completeness=60, confidence="inferred", impact="high")}, summary=Summary())
-    assert pillar_completeness(model) == {"why": 27, "what": 15, "how": 0, "validate": 0}
+    assert pillar_completeness(model) == {"why": 16, "what": 15, "how": 0, "validate": 0}
     assert model_status(model)["pillars"] == pillar_completeness(model)
-    assert "Progress  Why 27% · What 15% · How 0% · Validate 0%" in printed(render_turn_state, model)
+    assert "Progress  Why 16% · What 15% · How 0% · Validate 0%" in printed(render_turn_state, model)
 
 
 def test_the_recap_never_calls_a_session_with_unresolved_bets_closed():

@@ -11,10 +11,10 @@ it to someone new.
 
 | Pillar | Question | Slots |
 |---|---|---|
-| **Why** | Why are we doing this? | Real problem · Current process · Success criteria |
+| **Why** | Why are we doing this? | Real problem · Current process · Existing solutions & budget · Success criteria · Payer |
 | **What** | What is the system? | Actors & roles · Business objects · Business rules · Workflow |
 | **How** | How does it work? | Integrations · Permissions · Config vs custom · Constraints |
-| **Validate** | How do we know it's right? | Edge cases · Reporting · Acceptance · Risks & rollout |
+| **Validate** | How do we know it's right? | Edge cases · Reporting · Acceptance · Risks & rollout · First users & acquisition |
 
 Pillars are for navigation. The unit that actually gets filled and tracked is the slot.
 
@@ -77,6 +77,26 @@ Most discovery tools assume a single-tenant, greenfield build and never raise th
 it's one of the highest-impact questions there is: it's the difference between behavior that scales
 to every client and behavior that ends up forked per client. Turning the slot on lets the engine
 surface the decision early, while it's still cheap to make.
+
+## Build vs buy: the cheapest outcome of scoping
+
+`existing_solutions` asks what already exists, is already paid for, or could be bought, and within
+what budget (#786). It defaults to high impact because the cheapest outcome of scoping is not to build
+at all: a licensed tool nobody switched on, or an off-the-shelf option rejected for a reason worth
+re-examining, can delete the project, and the budget envelope sizes the estimate and the architecture.
+A request that says "build us…" takes building as its premise, so this slot is asked, not left to the
+client to volunteer.
+
+## Who pays, and how the first users are reached
+
+`payer` and `acquisition` are for requests that are product ideas rather than specs (#775). For a
+builder's own product, who pays and how, and how the first users are reached, change the product as
+much as the segment does, and can decide whether to build at all. Both are required but default to low
+impact: for an internal tool or a commissioned system the payer is the client and the users are a
+known set rolled out to, so they stay explicit assumptions. Their `impact_signals` raise them to high
+when the request is a product idea, and a required slot at high impact blocks readiness until it is
+settled, which an optional slot never does. A request that asks whether something is worth building at
+all is usually better served by the go-to-market perimeter.
 
 ## What the engine produces
 

@@ -80,6 +80,7 @@ _Each of these was inferred, not stated. Confirm the ones that would change the 
 - Who receives and acts on mismatch alerts — event manager, finance, or both
 - Whether this is a one-off build or the first instance of a reusable event kit
 - Whether freelancer contracts and rates already live in another system requiring integration
+- What already exists, is already paid for, or could be bought instead of building this, and within what budget?
 - More detail needed on: Door staff see live approval status; someone is alerted on a mismatch; reconciliation is clean at close so finance stops chasing.
 - Confirm: Two actor sets: (1) attendees/guests being checked in, (2) freelancers acting as door staff whose own contracts/hours/invoices must reconcile. Finance and an unnamed alert recipient (event manager?) are downstream actors.
 - When you say 'alerted when there's a mismatch,' what exactly is being compared — guest check-ins against the approval list, or freelancer hours worked against contract/invoice terms (or both)? And who receives that alert?

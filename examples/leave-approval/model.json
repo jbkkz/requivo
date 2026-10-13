@@ -14,12 +14,26 @@
       "value": "Fully manual, ad hoc email chain between employee and manager; no enforced response, no record HR can rely on, discrepancies surface only at payroll time.",
       "evidence": "Client explicit description of the as-is process."
     },
+    "existing_solutions": {
+      "completeness": 10,
+      "confidence": "empty",
+      "impact": "high",
+      "value": "Not asked: a legacy HR tool already holds the balances, but whether it, or an off-the-shelf leave tool, could carry the approval flow itself, and the budget envelope, were never discussed.",
+      "evidence": "This run predates the slot (issue 786); the legacy tool comes from the integration answer, nothing was said about buying, reusing or a budget."
+    },
     "success_metrics": {
       "completeness": 90,
       "confidence": "explicit",
       "impact": "medium",
       "value": "Pilot success = every leave request reaches an explicit, recorded decision (no silent drops), zero unresolved balance mismatches at month end, median approval turnaround under 2 working days, full manager adoption (no email approvals) in pilot scope.",
       "evidence": "Prior answer 4, reinforced by the newly stated core problem (a decision that always happens)."
+    },
+    "payer": {
+      "completeness": 0,
+      "confidence": "empty",
+      "impact": "low",
+      "value": "",
+      "evidence": "This run predates the slot (issue 775). An internal HR tool, not a product idea: it stays at its low baseline."
     },
     "actors": {
       "completeness": 80,
@@ -104,6 +118,13 @@
       "impact": "medium",
       "value": "Main residual risk is adoption — the tool only solves the email-chain problem if managers stop approving by email in practice; secondary risk is the at-risk flag on mismatch-window requests being ignored or mismanaged by HR each morning.",
       "evidence": "Inferred from the core problem statement and the mismatch-handling answer."
+    },
+    "acquisition": {
+      "completeness": 0,
+      "confidence": "empty",
+      "impact": "low",
+      "value": "",
+      "evidence": "This run predates the slot (issue 775). Rolled out to a known set of employees, which is rollout under risks: it stays at its low baseline."
     }
   },
   "questions": [],
