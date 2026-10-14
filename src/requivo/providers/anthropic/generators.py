@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 
-from requivo.core.analysis import estimate_confidence, readiness_blockers, soft_slots, uncovered_slots
+from requivo.core.analysis import estimate_confidence, readiness_blockers, soft_slots, unasked_blockers, uncovered_slots
 from requivo.core.context import NO_CONTEXT, CardSummary, build_prompt, build_standalone_prompt, build_system_prompt
 from requivo.core.contracts import (
     PRD,
@@ -44,6 +44,17 @@ def _require_complete_model(out: ModelProposal, perimeter: str = DEFAULT_PERIMET
         raise ValueError(gap.message)
 
 
+def _asks_every_blocker(resolved: EngineOutput, perimeter: str, nudged: list[bool]) -> None:
+    """#824: a blocker no question targets is asked by the engine itself, nudged once; after that the
+    schema probe stands in (`ranked_questions`): `test_the_engine_is_nudged_once_to_ask_a_blocker_itself`."""
+    missing = unasked_blockers(resolved, perimeter)
+    if missing and not nudged:
+        nudged.append(True)
+        raise ValueError(f"these slots can still change the solution and no question targets them: {missing}. For each, "
+                         "ask one question in the request's language, set the slot of a question you already ask that "
+                         "covers it, or settle it by the delegation or cannot-answer-yet rules")
+
+
 def run(client, messages: list[dict], retries: int = 2, only: list[str] | None = None,
         carry_from: EngineOutput | None = None, *, reuse_system: bool = True,
         model: str | None = None, perimeter: str = DEFAULT_PERIMETER, first: bool = False) -> EngineOutput:
@@ -52,9 +63,15 @@ def run(client, messages: list[dict], retries: int = 2, only: list[str] | None =
     grounds the prompt and the validation context. `reuse_system` is the caller's: only the
     interactive loop re-sends this prompt (#9, #58, #77). `first`: a turn no answer has reached.
     `test_the_provider_seam_is_single_call_on_both_analyze_branches`."""
+    nudged: list[bool] = []
+
+    def _validate(o: ModelProposal) -> None:
+        _require_complete_model(o, perimeter, first, carry_from)
+        _asks_every_blocker(o.resolve(carry_from, perimeter=perimeter), perimeter, nudged)
+
     proposal = _complete(
         client, build_system_prompt("engine.md", only, perimeter=perimeter), messages, ModelProposal,
-        retries, validate=lambda o: _require_complete_model(o, perimeter, first, carry_from), reuse_system=reuse_system,
+        retries, validate=_validate, reuse_system=reuse_system,
         model=model, operation="analyze", context={"perimeter": perimeter})
     return proposal.resolve(carry_from, perimeter=perimeter)
 

@@ -105,6 +105,11 @@ You do **not** start over: you **update** the existing model.
   {{SOFT_COMPLETENESS}} and `evidence` beginning `Client delegated:`, then the default chosen. It
   no longer blocks, and stays visible as a choice made on the client's behalf. Never leave a
   delegated slot `inferred`: no later answer can confirm it.
+- An answer saying the client **does not know or must check** ("I don't know", "I'll ask finance",
+  "je vous reviens") settles the asking, not the fact: write the most plausible working assumption in
+  `value`, grade the slot `inferred`, and begin `evidence` with `Client cannot answer yet:`, then who
+  could answer if the client said. Never ask about that slot again, in any wording — it stands as an
+  assumption to confirm, and a later answer that does settle it replaces the evidence.
 - An answer reporting a test's result on a `testable` slot → grade the outcome (`explicit` if it
   conclusively settles the slot, `inferred` if it only narrows it) and clear `test_plan`; fold the
   result into `value` / `evidence` like any other confirmation. A test result is a real model change,
@@ -122,8 +127,9 @@ You do **not** start over: you **update** the existing model.
   turn. Drop resolved ones, add ones a fresh answer just revealed.
 - **Stop signal**: when no high-impact slot is still open, return `"questions": []`. A high-impact
   slot is open while it is `empty`, `inferred`, or `explicit` with `completeness` below
-  {{SOFT_COMPLETENESS}} — unless it is `testable` or delegated (`evidence` beginning `Client
-  delegated:`): ask the client to confirm the assumption, to say what is missing, or to delegate it.
+  {{SOFT_COMPLETENESS}} — unless it is `testable`, delegated (`evidence` beginning `Client
+  delegated:`) or beyond what the client can say yet (`Client cannot answer yet:`): ask the client
+  to confirm the assumption, to say what is missing, or to delegate it.
   A default you stop asking about stands as an assumption, so keep asking while the answer could still
   change the solution.
   On the turn you stop — *especially* then — the `summary` MUST be fully populated. The final turn is

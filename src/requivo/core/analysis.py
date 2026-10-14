@@ -97,8 +97,8 @@ def readiness_blockers(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) ->
         s = out.model.get(sid)
         impact = s.impact if s is not None else _default_impacts(perimeter).get(sid, Impact.low)
         confirmed = s is not None and s.confidence is Confidence.explicit and not is_thin(s)
-        # Deferred to a named test (#610), handed to us by the client, or a default the turn stopped asking about (#815).
-        settled = s is not None and (s.confidence is Confidence.testable or is_delegated(s)
+        # Deferred to a named test (#610), handed to us, beyond what the client can say yet (#824), or a default no longer asked (#815).
+        settled = s is not None and (s.confidence is Confidence.testable or is_delegated(s) or is_deferred(s)
                                      or (sid not in asked and s.confidence is not Confidence.empty
                                          and bool(s.value.strip())))
         if impact is Impact.high and not confirmed and not settled:
@@ -136,6 +136,16 @@ def is_delegated(s: Slot) -> bool:
     grade the turn gave it, since no later answer can confirm a choice the client declined to make."""
     return (s.confidence is not Confidence.empty and bool(s.value.strip())
             and s.evidence.lstrip().casefold().startswith(DELEGATED_EVIDENCE))
+
+
+# How the engine marks a slot the client said they cannot answer yet (`engine.md`, #824): its evidence opens with it.
+DEFERRED_EVIDENCE = "client cannot answer yet"
+
+
+def is_deferred(s: Slot) -> bool:
+    """The client said they do not know or must check (#824): asked, so never asked again, and settled for
+    readiness; what stands in it is an assumption to confirm. `test_what_the_client_cannot_answer_is_never_asked_again`."""
+    return s.evidence.lstrip().casefold().startswith(DEFERRED_EVIDENCE)
 
 
 def stated_and_defaults(s: Slot) -> tuple[list[str], list[tuple[str, str]]]:
@@ -235,8 +245,8 @@ def information_value(out: EngineOutput, slot_id: str, perimeter: str = DEFAULT_
     return round(uncertainty * (IMPACT_RANK[s.impact] + 1) / 3, 2)
 
 
-# The `why` of a question asked for a blocker the turn left unasked (#815), so the dead end has an exit.
-UNASKED_BLOCKER_WHY = "It still blocks readiness and no question asked about it: answer it, or delegate it."
+# The `why` of the schema probe standing in for a blocker the engine left unasked even when nudged (#815, #824).
+UNASKED_BLOCKER_WHY = "This can still change the solution: tell us what you know, or let us choose."
 
 
 def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> list[Question]:
@@ -248,7 +258,9 @@ def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> l
     probes = {s["id"]: s["probe"] for s in schema_slots(perimeter)}
     # An omitted slot (a session older than the slot) blocks at its baseline impact, so it is probed too.
     derived = [Question(q=probes[sid], slot=sid, why=UNASKED_BLOCKER_WHY) for sid in unasked_blockers(out, perimeter)]
-    ranked = sorted(list(out.questions) + derived, key=lambda q: -information_value(out, q.slot, perimeter))
+    # What the client said they cannot answer is never asked again, in any wording (#824).
+    asked = [q for q in out.questions if not (q.slot in out.model and is_deferred(out.model[q.slot]))]
+    ranked = sorted(asked + derived, key=lambda q: -information_value(out, q.slot, perimeter))
     return ranked[:MAX_QUESTIONS]
 
 
