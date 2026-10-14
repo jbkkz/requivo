@@ -61,9 +61,11 @@ off the model you loaded in step 1.
 - **Delivery work beyond the stories**, each a day range with its basis: environments, CI and hosting;
   design; QA and acceptance with the client; project management; rollout, migration and training —
   sized for this build. Whatever you leave out is listed under *Not included*, never silently absent.
-- **What this prices**: the stories follow the recommended path, so the total prices it; give the
-  alternative its own rough figure (the custom build's day range when the path is buying or
-  configuring) and any recurring licence per month or year, outside the day total.
+- **What this prices**: the stories follow the recommended path, so the total prices it. Then the
+  **alternative** path with its own rough day range (the custom build when the path is buying or
+  configuring) and any recurring licence per month or year, outside the day totals. Configuring costs
+  a fraction of building: a configure total near the build figure means build-sized ranges — resize.
+  Turn days into money only as days × the day rate, in the *Cost* and *Alternative* lines.
 - **Calibrate**: the high end covers one round of rework; an unseen API starts with a spike; offline
   sync, payments, health or financial data carry security testing and a pilot; configuring is days.
 - **Day rate**: from the model when it states one, otherwise a typical rate for the client's market,
@@ -97,7 +99,9 @@ Write the estimate as Markdown:
 
 **Budget:** The stated budget of <amount> <currency> <covers the whole range | buys about <n> days at this rate: …>.
 
-**What this prices.** <the path this number is for, and what would replace it>
+**What this prices.** <the path this number is for, and why that one>
+
+**Alternative — <the other path>:** <low>–<high> days (about <low × rate>–<high × rate> <currency>); <its recurring cost>.
 
 ## How to read these figures
 

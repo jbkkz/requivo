@@ -652,6 +652,19 @@ class Swing(StrictModel):
         return self
 
 
+class Alternative(StrictModel):
+    # The path the total does not price, with its own rough days (#821); Requivo turns them into money.
+    path: NonEmpty
+    days_low: float = Field(ge=0)
+    days_high: float = Field(ge=0)
+    recurring: str = ""                 # a licence or running cost, per month or year, outside the days
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        _check_range(f"alternative {self.path!r}", self.days_low, self.days_high)
+        return self
+
+
 class EstimateDraft(StrictModel):
     """What the LLM produces; totals, money, confidence and the uncovered soft slots are computed in
     Python. The #821 fields are optional and stay off the wire while empty, so an older draft reads as written."""
@@ -660,7 +673,8 @@ class EstimateDraft(StrictModel):
     risks: list[str] = Field(default_factory=list)
     basis: Optional[EstimateBasis] = None
     delivery: list[DeliveryItem] = Field(default_factory=list[DeliveryItem])
-    prices: str = ""                    # the path this number is for, and what would replace it
+    prices: str = ""                    # the path this number is for, and why that one
+    alternative: Optional[Alternative] = None
     day_rate: Optional[Money] = None
     budget: Optional[Money] = None      # a one-off budget the model states for this work
     swings: list[Swing] = Field(default_factory=list[Swing])
@@ -682,7 +696,8 @@ class EstimateDraft(StrictModel):
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        return _without(handler(self), basis=None, delivery=[], prices="", day_rate=None, budget=None, swings=[])
+        return _without(handler(self), basis=None, delivery=[], prices="", alternative=None, day_rate=None,
+                        budget=None, swings=[])
 
 
 class Leverage(str, Enum):

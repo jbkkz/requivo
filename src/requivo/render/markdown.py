@@ -492,6 +492,17 @@ def estimate_money_lines(draft: EstimateDraft) -> list[str]:
     return lines
 
 
+def estimate_alternative_line(draft: EstimateDraft) -> str:
+    """The path the total does not price, its days turned into money at the same rate (#821), or ''."""
+    alt, rate = draft.alternative, draft.day_rate
+    if alt is None:
+        return ""
+    money = (f" (about {_money(alt.days_low * rate.amount, rate.currency)}–{_money(alt.days_high * rate.amount, rate.currency)})"
+             if rate is not None else "")
+    recurring = f"; {_line(alt.recurring)}" if alt.recurring else ""
+    return f"**Alternative — {_line(alt.path)}:** {alt.days_low:g}–{alt.days_high:g} days{money}{recurring}."
+
+
 def estimate_markdown(draft: EstimateDraft, soft: list[str], confidence: str,
                       uncovered: Sequence[str] = ()) -> str:
     """Render the uncertainty-aware estimate as Markdown from the provider's draft and the facts
@@ -507,6 +518,8 @@ def estimate_markdown(draft: EstimateDraft, soft: list[str], confidence: str,
     out += [line for m in estimate_money_lines(draft) for line in (m, "")]
     if draft.prices:
         out += [f"**What this prices.** {_line(draft.prices)}", ""]
+    if draft.alternative:
+        out += [estimate_alternative_line(draft), ""]
 
     basis = draft.basis
     if basis and (basis.unit or basis.team or basis.excludes):

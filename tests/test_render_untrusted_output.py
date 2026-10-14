@@ -199,6 +199,7 @@ def _forged_renders() -> dict[str, str]:
                                      "drives": [FORGED]}], risks=[FORGED], prices=FORGED,
                              delivery=[{"title": FORGED, "days_low": 1, "days_high": 2}],
                              day_rate={"amount": 500, "currency": FORGED, "origin": "assumption"},
+                             alternative={"path": FORGED, "days_low": 1, "days_high": 2, "recurring": FORGED},
                              swings=[{"question": FORGED, "days_low": 1, "days_high": 2}])
     # A claim's text, and a source only a newer Requivo knows, as a mix line and a moved line (#751).
     claimed = dict(d["model"])

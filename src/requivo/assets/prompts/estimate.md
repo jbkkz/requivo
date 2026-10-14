@@ -57,12 +57,18 @@ work around them. Size that work too, so the total is what the client will actua
   data migration and training. Size each for **this** build: a small internal tool needs little, an
   integration or a regulated domain needs more. Anything you leave out goes in `basis.excludes`,
   never silently absent.
-- `prices`: one or two sentences — which path this number is for, and the alternative with **its own
-  rough figure**. The stories follow the path the model recommends, so the total prices that path:
-  when it is buying or configuring a tool, say so and give the custom build's rough day range as the
-  fallback; when it is a build, give the buy or configure option's rough cost if the model names one.
-  A recurring licence is a cost too: state it per month or per year here, outside the day total. An
-  alternative left as "a few days" or "far more" is not a figure.
+- `prices`: one or two sentences — which path this number is for and why that one. The stories follow
+  the path the model recommends, so the total prices that path.
+- `alternative`: the other path, with its own rough day range — the custom build when the total
+  prices buying or configuring a tool, the buy or configure option when it prices a build (leave it
+  out if the model names none). `recurring`: its licence or running cost per month or year, and the
+  recommended path's own licence goes in `prices`; both stay outside the day totals.
+- **The two paths must be coherent.** Configuring a tool costs a fraction of building it: if the
+  configure total you are writing comes near the build alternative, your story ranges are build
+  ranges — size them again as configuration (hours to a few days each), or say plainly in `prices`
+  why this configuration is unusually heavy.
+- Never convert days into money in prose, for either path, and never say whether a budget is met:
+  Requivo multiplies by `day_rate` and weighs `budget` itself, and prose arithmetic contradicts it.
 - `day_rate`: the cost of one day, as `amount` and `currency`. From the model when it says one
   (`origin: "slot"` and its `source_slot`); otherwise assume a typical rate for the client's market
   and currency (`origin: "assumption"`, no `source_slot`). Leave it out only when no currency can be
@@ -104,6 +110,7 @@ written in that language.
     { "title": "…", "days_low": 3, "days_high": 5, "note": "…" }
   ],
   "prices": "…",
+  "alternative": { "path": "…", "days_low": 30, "days_high": 55, "recurring": "…" },
   "day_rate": { "amount": 600, "currency": "EUR", "origin": "assumption" },
   "budget": { "amount": 20000, "currency": "EUR", "origin": "slot", "source_slot": "existing_solutions" },
   "swings": [

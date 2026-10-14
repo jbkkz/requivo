@@ -35,7 +35,7 @@ from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.recap import DocumentState, Recap
 from requivo.core.selectors import display_text, display_token
-from requivo.render.markdown import estimate_money_lines, estimate_totals
+from requivo.render.markdown import estimate_alternative_line, estimate_money_lines, estimate_totals
 from requivo.usage import CallRecord, UsageLedger
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
@@ -691,6 +691,8 @@ def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str,
         print(display_text(line.replace("**", "")))
     if draft.prices:
         print(f"What this prices: {display_text(draft.prices)}")
+    if draft.alternative:
+        print(display_text(estimate_alternative_line(draft).replace("**", "")))
     if draft.swings:
         print("\nWhat would move this number:")
         for s in draft.swings:

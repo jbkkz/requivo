@@ -316,6 +316,7 @@ _PRICED_ESTIMATE = dict(
     delivery=[dict(title="Environments, CI and hosting", days_low=2, days_high=3, note="Standard setup."),
               dict(title="QA and acceptance with HR", days_low=3, days_high=5)],
     prices="This prices the custom build; a market leave tool would replace it.",
+    alternative=dict(path="A market leave tool", days_low=3, days_high=5, recurring="about 4 EUR per employee per month"),
     day_rate=dict(amount=500, currency="EUR", origin="assumption"),
     budget=dict(amount=5000, currency="EUR", origin="slot", source_slot="constraints"),
     swings=[dict(question="Must payroll receive a file or an API feed?", days_low=-1, days_high=4, slots=["workflow"])])
@@ -334,6 +335,7 @@ def test_the_estimate_prices_delivery_work_and_confronts_the_budget():
     assert "**Cost:** about 3,500 EUR–6,000 EUR at 500 EUR a day (assumed)." in md, md
     assert "**Budget:** The stated budget of 5,000 EUR buys about 10 days at this rate: the low end fits, the high end does not." in md
     assert "| QA and acceptance with HR | 3–5 |" in md and "**What this prices.** This prices the custom build" in md
+    assert "**Alternative — A market leave tool:** 3–5 days (about 1,500 EUR–2,500 EUR); about 4 EUR per employee per month." in md
     assert "- Must payroll receive a file or an API feed? — -1 to +4 days" in md and "- **Not included:**" in md
     assert "Also still open, not priced above: Integrations & notifications." in md and "Spread driven by" not in md
     assert not [sid for sid in ("workflow", "integrations", "constraints") if sid in md], md
