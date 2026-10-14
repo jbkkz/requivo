@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import textwrap
 from collections import Counter
 from collections.abc import Sequence
@@ -744,15 +745,16 @@ def render_impact(report) -> None:
     # model.json (`stale_artifacts is None`) cannot tell, so every type is listed as before.
     stale = report.artifacts if report.stale_artifacts is None else report.stale_artifacts
     changes = {c.artifact: c for c in report.stale_changes or []}
+    if changes:   # #827: each move said once, then the documents it reaches
+        _render_moves(list(changes.values()))
     if stale:
         print("\nARTIFACTS THAT GO STALE")
         for name in stale:
             f = ARTIFACT_FILENAMES.get(name)
             where = f" ({f})" if f else " (regenerate on demand)"
-            print(f"  • {name}{where}")
-            if name in changes:
-                _render_stale_change(changes[name])
-        print("\n  → " + ("Patch the parts named above, or regenerate" if changes else "Regenerate these")
+            since = f", written from revision {changes[name].revision}" if name in changes else ""
+            print(f"  • {name}{where}{since}")
+        print("\n  → " + ("Patch the parts that hold what moved above, or regenerate" if changes else "Regenerate these")
               + " after confirming the change.")
     not_generated = [t for t in report.artifacts if t not in stale]
     if not_generated:
@@ -763,27 +765,70 @@ def render_impact(report) -> None:
 _EMPTY = "(empty)"
 
 
+def render_change_note(note) -> None:
+    """What an applied answer means for each stale document (#827): where to edit, what stays valid, the days."""
+    print("\nWHAT THIS CHANGE MEANS FOR YOUR DOCUMENTS")
+    print(_bullet(note.summary, marker=" ", indent=" "))
+    untouched = []
+    for d in note.documents:
+        name = ARTIFACT_FILENAMES.get(d.document) or d.document
+        if not d.edits:
+            untouched.append(name)
+            continue
+        print(f"\n  {display_text(name)}")
+        for e in d.edits:
+            now = f"“{e.now}” → " if e.now else ""
+            print(_bullet(f"{e.where}: {now}{e.change}", indent="    "))
+    if untouched:
+        print(f"\n  No edit needed, despite the stale flag: {', '.join(display_text(n) for n in untouched)}")
+    if note.still_valid:
+        print("\n  Still valid:")
+        for line in note.still_valid:
+            print(_bullet(line, indent="    "))
+    if note.estimate:
+        print(_bullet(f"Estimate: {note.estimate}", indent="  "))
+
+
 def _moved_line(label: str, m: dict) -> str:
     """One moved field of a slot, before → after; the value carries the label alone (#810)."""
     name = label if m["field"] == "value" else f"{label} {m['field']}"
     return f"{name}: {m['before'] or _EMPTY} → {m['after'] or _EMPTY}"
 
 
-def _render_stale_change(change) -> None:
-    """What to patch in one stale document (#810): each named slot it consumes, then → now, and the moved claims."""
-    print(f"    written from revision {change.revision}")
-    claimed = {m["slot"] for m in change.claims}
-    for s in change.slots:   # _bullet escapes the whole line, the model values included (#40)
-        if s.before is None:
-            lines = [f"{s.label}: now {s.after or _EMPTY} (revision {change.revision} could not be read)"]
-        elif not s.moved and s.slot not in claimed:
-            lines = [f"{s.label}: unchanged since then: {s.after or _EMPTY}"]
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?;])\s+", text or "") if s.strip()]
+
+
+def _value_diff(label: str, before: str, after: str) -> list[str]:
+    """A value move as the sentences it removed and added (#827), whole when nothing is shared."""
+    b, a = _sentences(before), _sentences(after)
+    removed, added = [s for s in b if s not in a], [s for s in a if s not in b]
+    if not removed and not added or len(removed) == len(b) and len(added) == len(a):
+        return [f"{label}: {before or _EMPTY} → {after or _EMPTY}"]
+    return [f"{label}: − {s}" for s in removed] + [f"{label}: + {s}" for s in added]
+
+
+def _render_moves(changes: list) -> None:
+    """What moved since the stale documents were written (#810), each slot's move once across them (#827)."""
+    seen: dict[tuple, list[str]] = {}
+    for c in changes:
+        for s in c.slots:   # _bullet escapes the whole line, the model values included (#40)
+            key = (s.label, s.before, s.after, tuple((m["field"], m["before"], m["after"]) for m in s.moved))
+            seen.setdefault(key, []).append(c.artifact)
+    claims = {(m["change"], m["text"]) for c in changes for m in c.claims}
+    print("\nWHAT MOVED SINCE THESE DOCUMENTS WERE WRITTEN")
+    for (label, before, after, moved), _artifacts in seen.items():
+        if before is None:
+            lines = [f"{label}: now {after or _EMPTY} (the revision it was written from could not be read)"]
+        elif not moved:
+            lines = []
         else:   # every material field that moved, so a stale slot never reads as unchanged
-            lines = [_moved_line(s.label, m) for m in s.moved] or [f"{s.label}: its claims moved"]
+            lines = [line for f, b, a in moved for line in
+                     (_value_diff(label, b or "", a or "") if f == "value" else [_moved_line(label, {"field": f, "before": b, "after": a})])]
         for line in lines:
-            print(_bullet(line, marker="↳", indent="    "))
-    for m in change.claims:
-        print(_bullet(f"claim {m['change']}: {m['text']}", marker="↳", indent="    "))
+            print(_bullet(line, marker="↳", indent="  "))
+    for change, text in sorted(claims):
+        print(_bullet(f"claim {change}: {text}", marker="↳", indent="  "))
 
 
 def render_evidence(report) -> None:

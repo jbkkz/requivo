@@ -17,12 +17,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, NamedTuple, TypeVar, cast, overload
 
-from requivo.core.analysis import uncovered_slots
+from requivo.core.analysis import slot_label, uncovered_slots
 from requivo.core.context import card_summaries, keep_generated_card, resolve_cards, write_generated_card
 from requivo.core.contracts import (
     PRD,
     AcceptanceCriteria,
     Brief,
+    ChangeNote,
     ContextDecision,
     ContextJudgment,
     EngineOutput,
@@ -35,7 +36,7 @@ from requivo.core.contracts import (
     ReleaseNotes,
     Stories,
 )
-from requivo.core.dependencies import ARTIFACT_FILENAMES
+from requivo.core.dependencies import ARTIFACT_FILENAMES, COMPANION_OF
 from requivo.core.errors import (
     AmbiguousPerimeterError,
     ArtifactWriteFailedError,
@@ -52,7 +53,7 @@ from requivo.core.persistence.lock import require_lock_file_contained
 from requivo.core.selectors import display_text
 from requivo.core.validation import require_input_within_bounds
 from requivo.paths import workspace_root
-from requivo.providers.base import ContextJudge, PerimeterJudge
+from requivo.providers.base import ChangeExplainer, ContextJudge, PerimeterJudge
 from requivo.render.markdown import (
     brief_markdown,
     consultant_view_markdown,
@@ -79,6 +80,12 @@ try:  # Windows
     import msvcrt
 except ImportError:  # pragma: no cover - POSIX
     msvcrt = None  # type: ignore[assignment]
+
+def _said(model: EngineOutput, slot_id: str) -> str:
+    """A slot's value as a change note quotes it (#827), `(empty)` for a blank or absent one."""
+    s = model.model.get(slot_id)
+    return s.value.strip() if s is not None and s.value.strip() else "(empty)"
+
 
 def _estimate_document(estimate: tuple[EstimateDraft, list[str], str, list[str]], language: str) -> str:
     """The estimate's writer over the `(draft, soft, confidence, uncovered)` tuple, so every writer takes `(artifact, language)`."""
@@ -738,6 +745,29 @@ class DiscoveryService:
             expected_revision=expected_revision if expected_revision is not None else snap.revision,
             provenance=self._provenance("analyze", cards=snap.context_cards, surface=surface,
                                         usage=_usage_since(before), perimeter=snap.perimeter))
+
+    def change_note(self, slug: str, result: UpdateResult) -> ChangeNote | None:
+        """What an applied answer means for the documents it left stale (#827): one call, from one snapshot,
+        or None when nothing generated went stale, the earlier revision cannot be read, or the provider
+        cannot say. A reading of the graph's stale list, never a staleness rule (invariant 1).
+        `test_an_answer_that_stales_documents_says_what_to_change_in_each`."""
+        stale = [t for t in result.stale_artifacts if t not in COMPANION_OF]
+        provider = self._need_provider() if stale else None
+        if provider is None or not isinstance(provider, ChangeExplainer):
+            return None
+        snap = self.sessions.snapshot(slug)
+        now = _require_a_model(slug, snap)
+        try:
+            before = self.sessions.load_revision(slug, result.revision - 1)
+        except RequivoError:
+            return None
+        perimeter = resolve_perimeter(snap.perimeter)
+        moves = [f"- {slot_label(sid, perimeter)}: {_said(before, sid)} → {_said(now, sid)}" for sid in result.changed_slots]
+        documents = {t: self.artifacts.show(slug, t) for t in stale}
+        self._check_spend()
+        with self._provider_call("change_note"):
+            return provider.explain_change(snap.request, changes="\n".join(moves), documents=documents,
+                                           language=resolve_docs_language(snap.docs_language))
 
     # ── generation ───────────────────────────────────────────────────────────────
     def reason(self, slug: str, artifact_type: str, **kwargs):

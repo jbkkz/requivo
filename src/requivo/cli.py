@@ -50,6 +50,7 @@ from requivo.render.terminal import (
     DOC_TYPES,
     docs_menu_rows,
     render_brief,
+    render_change_note,
     render_context_judgment,
     render_dependency_map,
     render_docs_menu,
@@ -417,6 +418,14 @@ def _cmd_answer(a, client) -> None:
     if n_reasoning and reasoning_type:
         breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
         print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}{workspace_flag()}`.")
+    if result.stale_artifacts:   # #827: the turn is saved; a failed note costs the note, never the answer
+        try:
+            note = disco.change_note(slug, result)
+        except RequivoError as e:
+            print(f"\nWhat this change means for your documents could not be written: {_why(e)}", file=sys.stderr)
+        else:
+            if note is not None:
+                render_change_note(note)
     print(f"\nSaved session → {store.canonical_dir(slug)}")
     ref = f"{slug}{workspace_flag()}"
     render_next_turn(out, perimeter, ref, ask=f'\n→ Keep going: requivo answer {ref} "<your answers>"',

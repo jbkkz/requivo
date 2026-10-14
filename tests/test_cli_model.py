@@ -191,16 +191,17 @@ def test_impact_splits_what_goes_stale_from_what_would_rest_on(tmp_path):
     stale, rest = text.split("ARTIFACTS THAT GO STALE")[1].split("NOT GENERATED YET")
     assert "prd" in stale and "stories" not in stale and "stories" in rest and "prd" not in rest
     assert json.loads(run_cli(["model", "show", "s", "--json"]))["model"]["workflow"]["confidence"] == "empty"
-    # #810: once the slot moves, each stale document names it, then → now, so one part is patched, not five regenerated.
+    # #810: once the slot moves, the report names it, then → now, so one part is patched, not five regenerated;
+    # #827: each move is said once above the stale documents, not once under each of them.
     run_cli(["model", "apply", "s", _write(tmp_path / "moved.json", full_model(**_MOVED))])
     [prd] = run_cli_json(["impact", "s", "workflow", "--json"])["stale_changes"]
     assert (prd["artifact"], prd["revision"], prd["slots"][0]["before"], prd["slots"][0]["after"]) == ("prd", 1, "", "new")
-    stale = run_cli(["impact", "s", "workflow"]).split("ARTIFACTS THAT GO STALE")[1]
-    assert "written from revision 1" in stale and "(empty) → new" in stale and "confidence: empty → explicit" in stale, stale
+    moved, stale = run_cli(["impact", "s", "workflow"]).split("WHAT MOVED")[1].split("ARTIFACTS THAT GO STALE")
+    assert "written from revision 1" in stale and "(empty) → new" in moved and "confidence: empty → explicit" in moved, moved
     run_cli(["artifact", "save", "s", "--type", "stories", "--file", str(doc), "--revision", "2"])
     run_cli(["model", "apply", "s", _write(tmp_path / "graded.json", full_model(workflow=slot(80, "inferred", "high", "new")))])
-    stale = run_cli(["impact", "s", "workflow"]).split("ARTIFACTS THAT GO STALE")[1]   # a re-grade alone is never "unchanged"
-    assert "confidence: explicit → inferred" in stale and "unchanged" not in stale, stale
+    moved = run_cli(["impact", "s", "workflow"]).split("WHAT MOVED")[1]   # a re-grade alone is never "unchanged"
+    assert "confidence: explicit → inferred" in moved and "unchanged" not in moved and moved.count("(empty) → new") == 1, moved
 
 
 def test_a_discovery_turn_records_a_challenge_that_impact_then_traces(monkeypatch):
