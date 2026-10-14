@@ -407,25 +407,28 @@ def _cmd_answer(a, client) -> None:
     except RequivoError:  # test_a_saved_answer_survives_an_unreadable_earlier_revision
         previous = None
     render_turn(out, perimeter, previous)  # the defaults it moved (#731)
-    if result.stale_artifacts:
-        render_stale([(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts], [slot_label(sid, perimeter) for sid in result.changed_slots])
-    # Every invalidated collection is counted, or an exclusion-only change reports nothing here (invariant 1).
-    # test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path.
-    parts = [(result.invalidated_decisions, "decision(s)"), (result.invalidated_challenges, "premise(s)"),
-             (result.invalidated_exclusions, "exclusion(s)"), (result.invalidated_thresholds, "threshold(s)")]
-    n_reasoning = sum(len(items) for items, _ in parts)
-    reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
-    if n_reasoning and reasoning_type:
-        breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
-        print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}{workspace_flag()}`.")
+    note = None
     if result.stale_artifacts:   # #827: the turn is saved; a failed note costs the note, never the answer
         try:
             note = disco.change_note(slug, result)
         except RequivoError as e:
             print(f"\nWhat this change means for your documents could not be written: {_why(e)}", file=sys.stderr)
-        else:
-            if note is not None:
-                render_change_note(note)
+    reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
+    if note is not None:   # the note reads the graph document by document, so the blanket warnings give way to it
+        moved = ", ".join(slot_label(sid, perimeter) for sid in result.changed_slots)
+        print(f"\n⚠  {len(result.stale_artifacts)} document(s) rest on what moved ({moved}).")
+        render_change_note(note)
+    else:
+        if result.stale_artifacts:
+            render_stale([(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts], [slot_label(sid, perimeter) for sid in result.changed_slots])
+        # Every invalidated collection is counted, or an exclusion-only change reports nothing here (invariant 1).
+        # test_an_exclusion_only_invalidation_is_still_announced_on_the_apply_path.
+        parts = [(result.invalidated_decisions, "decision(s)"), (result.invalidated_challenges, "premise(s)"),
+                 (result.invalidated_exclusions, "exclusion(s)"), (result.invalidated_thresholds, "threshold(s)")]
+        n_reasoning = sum(len(items) for items, _ in parts)
+        if n_reasoning and reasoning_type:
+            breakdown = ", ".join(f"{len(items)} {noun}" for items, noun in parts if items)
+            print(f"\n⚠  This change unseats {n_reasoning} piece(s) of the {_LABEL[reasoning_type]}'s reasoning ({breakdown}) — regenerate with `requivo {reasoning_type} {slug}{workspace_flag()}`.")
     print(f"\nSaved session → {store.canonical_dir(slug)}")
     ref = f"{slug}{workspace_flag()}"
     render_next_turn(out, perimeter, ref, ask=f'\n→ Keep going: requivo answer {ref} "<your answers>"',
