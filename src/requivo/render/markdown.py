@@ -480,7 +480,7 @@ def estimate_money_lines(draft: EstimateDraft) -> list[str]:
                      f"at {_money(rate.amount, rate.currency)} a day ({said}).")
     if budget is None:
         return lines
-    stated = f"The {'stated' if budget.origin is EnvelopeOrigin.slot else 'assumed'} budget of {_money(budget.amount, budget.currency)}"
+    stated = f"The stated budget of {_money(budget.amount, budget.currency)}"
     if rate is None or rate.currency.strip().casefold() != budget.currency.strip().casefold():
         lines.append(f"**Budget:** {stated} is not compared with these days: no day rate in its currency.")
         return lines

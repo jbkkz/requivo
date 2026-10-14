@@ -685,6 +685,13 @@ class EstimateDraft(StrictModel):
         return self
 
     @model_validator(mode="after")
+    def _budget_is_stated(self):
+        # A budget is the client's, never assumed: `test_a_stated_budget_is_weighed_only_in_the_day_rates_currency`.
+        if self.budget is not None and self.budget.origin is not EnvelopeOrigin.slot:
+            raise ValueError("a budget must be one the model states (origin 'slot'); leave it out otherwise")
+        return self
+
+    @model_validator(mode="after")
     def _validate_slot_vocabulary(self, info: ValidationInfo):
         allowed, _ = schema_slot_ids(_context_perimeter(info))
         bad = sorted({sid for s in self.swings for sid in s.slots if sid not in allowed}

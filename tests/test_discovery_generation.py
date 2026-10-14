@@ -347,9 +347,11 @@ def test_the_estimate_prices_delivery_work_and_confronts_the_budget():
     (dict(amount=9000, currency="USD", origin="slot", source_slot="constraints"), "not compared with these days"),
 ])
 def test_a_stated_budget_is_weighed_only_in_the_day_rates_currency(budget, verdict):
-    """#821: covered, short, or in another currency and so never compared; an older draft dumps as it did."""
+    """#821: covered, short, or in another currency and so never compared; never assumed; an older draft dumps as it did."""
     draft = EstimateDraft.model_validate(dict(_PRICED_ESTIMATE, budget=budget))
     assert verdict in estimate_markdown(draft, [], "low")
+    with pytest.raises(ValidationError, match="a budget must be one the model states"):
+        EstimateDraft.model_validate(dict(_PRICED_ESTIMATE, budget=dict(budget, origin="assumption", source_slot=None)))
     assert set(EstimateDraft(items=_draft().items).model_dump()) == {"items", "risks"}
 
 
