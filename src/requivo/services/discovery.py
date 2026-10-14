@@ -80,16 +80,16 @@ try:  # Windows
 except ImportError:  # pragma: no cover - POSIX
     msvcrt = None  # type: ignore[assignment]
 
-def _estimate_document(estimate: tuple[EstimateDraft, list[str], str, list[str]]) -> str:
-    """The estimate's writer over the `(draft, soft, confidence, uncovered)` tuple, so the registry stays one-argument."""
+def _estimate_document(estimate: tuple[EstimateDraft, list[str], str, list[str]], language: str) -> str:
+    """The estimate's writer over the `(draft, soft, confidence, uncovered)` tuple, so every writer takes `(artifact, language)`."""
     draft, soft, confidence, uncovered = estimate
-    return estimate_markdown(draft, soft, confidence, uncovered)
+    return estimate_markdown(draft, soft, confidence, uncovered, language=language)
 
 
 # artifact type → the writer that turns its contract into the saved Markdown, in the order a user meets
-# them (`stories`/`estimate` since #519, `decision: the-estimate-graduates`).
+# them (`stories`/`estimate` since #519, `decision: the-estimate-graduates`), each told the documents language (#823).
 # The annotation is load-bearing: without it pyright infers a union no argument satisfies. `decision: typed-generation-seam`
-_WRITERS: dict[str, Callable[[Any], str]] = {
+_WRITERS: dict[str, Callable[[Any, str], str]] = {
     "prd": prd_markdown,
     "stories": stories_markdown,
     "criteria": criteria_markdown,
@@ -857,7 +857,7 @@ class DiscoveryService:
         with self._provider_call(artifact_type):
             artifact = provider.generate(artifact_type, out, request=snap.request, language=language, only=cards,
                                          **kwargs)
-        status = self._save_generated(slug, artifact_type, writer(artifact), source_revision)
+        status = self._save_generated(slug, artifact_type, writer(artifact, language), source_revision)
         return Generated(status=status, artifact=artifact, model=out, language=language)
 
     def _generate_estimate(self, slug: str, out: EngineOutput, request: str, cards: list[str] | None,
@@ -878,7 +878,7 @@ class DiscoveryService:
         with self._provider_call("stories"):
             stories = cast(Stories, provider.generate("stories", out, request=request, language=language,
                                                       only=cards))
-        stories_status = self._save_generated(slug, "stories", _WRITERS["stories"](stories),
+        stories_status = self._save_generated(slug, "stories", _WRITERS["stories"](stories, language),
                                               source_revision)
         if on_stories is not None:
             on_stories(stories)
@@ -888,7 +888,7 @@ class DiscoveryService:
                                                         only=cards, stories=stories)
         uncovered = uncovered_slots(out, stories)  # #782: named beside the provider's confidence
         status = self._save_generated(
-            slug, "estimate", _WRITERS["estimate"]((draft, soft, confidence, uncovered)), source_revision)
+            slug, "estimate", _WRITERS["estimate"]((draft, soft, confidence, uncovered), language), source_revision)
         return Generated(status=status, model=out, language=language,
                          artifact=SavedEstimate(draft=draft, soft=soft, confidence=confidence,
                                                 uncovered=uncovered, stories=stories,

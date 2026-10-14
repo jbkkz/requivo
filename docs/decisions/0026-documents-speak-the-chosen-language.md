@@ -27,9 +27,9 @@ keeps what it had.
   and a paid call to name a language the user is about to confirm is the wrong price.
 - **The language travels in the user message, not the system prompt.** One cached prompt per
   operation whatever the language, and `prompt_version` keeps meaning "which instructions".
-- **The documents' own words follow.** The brief and the go-to-market plan render their headings,
-  labels and verdict through `render/phrases.py` (French, Spanish, German); with the default, their
-  projection and their judgment are one language, so the brief no longer mixes two.
+- **The documents' own words follow.** Every saved document renders its headings, labels, verdicts
+  and computed lines through `render/phrases.py` (French, Spanish, German; the build documents since
+  #823); with the default, projection and judgment are one language, so no document mixes two.
 - **Not identity, not staleness.** Re-recording a language makes no new session and stales no
   document: staleness stays the dependency graph (invariant 1).
 

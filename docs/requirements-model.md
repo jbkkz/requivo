@@ -182,12 +182,13 @@ its system prompt, so the cached prompt stays one per operation; the prompts say
 in the language named there, and to leave ids, slot ids, enum values, JSON keys and code as they are.
 The keyless skills read the same field from `status --json`.
 
-**The decision brief and the go-to-market plan no longer mix languages.** Their projected sections
+**The saved documents no longer mix languages.** The brief's and the plan's projected sections
 quote the model's own words, which are in the request's language; with the default those match the
-judgment the provider writes. Their fixed words — title, headings, labels, the readiness verdict — come
-from `render/phrases.py` in French, Spanish and German, and stay English for any other code. Two edges
-remain: a slot's label (in *rests on* and the envelope) and a schema probe standing in for a question
-nobody asked are the schema's English, and the other six documents keep their few English headings.
+judgment the provider writes. Every saved document's fixed words — title, headings, labels, verdicts,
+the estimate's computed lines and their numbers (#823) — come from `render/phrases.py` in French,
+Spanish and German, and stay English for any other code; the terminal views stay English. Two edges
+remain: a slot's label (in *rests on*, *traces to* and the envelope) and a schema probe standing in
+for a question nobody asked are the schema's English.
 
 Requivo Web declares `lang="en"` for its chrome and an empty `lang` on the regions that mirror the
 request — the honest claim, since the request's own language is still not recorded. That removes a
