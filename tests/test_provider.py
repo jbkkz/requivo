@@ -10,6 +10,7 @@ import httpx
 import pytest
 from _fakes import _ENGINE_REPLY, FakeClient, RaisingClient, full_slots, out, slot
 
+from requivo.core.analysis import ranked_questions
 from requivo.core.contracts import PRD, EngineOutput, Stories, Story
 from requivo.core.errors import ProviderOutputError
 from requivo.core.persistence import load_model
@@ -157,6 +158,21 @@ def test_the_estimate_sees_the_model_and_is_never_high_with_an_area_no_story_cov
     assert model.model_dump_json() in user and user.endswith("name each in the risks:\nworkflow")
     covering = Stories(stories=[Story(id="S1", title="T", slots=["workflow"])])
     assert estimate(FakeClient(reply), model, covering, request="r")[2] == "high"
+
+
+_STALLED = {"model": {"workflow": slot(0, "empty", "high")}, "questions": [], "summary": {"objective": "o"}}
+_ASKED = {**_STALLED, "questions": [{"q": "Qui valide une demande ?", "slot": "workflow", "why": "Le circuit en dépend."}]}
+
+
+@pytest.mark.parametrize("second, asked", [(_ASKED, "Qui valide une demande ?"), (_STALLED, None)], ids=["asks-itself", "probe-stands-in"])
+def test_the_engine_is_nudged_once_to_ask_a_blocker_itself(second, asked):
+    """#824: a blocker no question targets earns one nudge, so the engine asks in the request's language; if it
+    still does not, the schema probe stands in with a rationale in plain words, never a third call."""
+    fake = FakeClient(json.dumps(_STALLED), json.dumps(second))
+    questions = ranked_questions(answer_turn(fake, _MODEL, "req", "answers"))
+    assert len(fake.calls) == 2 and "no question targets them: ['workflow']" in fake.calls[1]["messages"][-1]["content"]
+    assert [q.slot for q in questions] == ["workflow"]
+    assert questions[0].q == asked if asked else "answer it, or delegate" not in questions[0].why
 
 
 @pytest.mark.parametrize("call, only, absent", [

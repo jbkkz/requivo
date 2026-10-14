@@ -227,7 +227,7 @@ def test_a_slot_confidence_this_version_does_not_know_survives_a_round_trip_unre
         warnings.simplefilter("error")
         SessionService().update_model("future-confidence", {"model": {"problem": slot(80, "explicit", "high")}, "summary": {"objective": "o"}})
         reply = json.dumps({"model": {"problem": slot(90, "explicit", "high")}, "summary": {"objective": "o"}})
-        DiscoveryService(provider=AnthropicProvider(client=FakeClient(reply))).answer("future-confidence", "Yes.")   # the paid turn
+        DiscoveryService(provider=AnthropicProvider(client=FakeClient(reply, reply))).answer("future-confidence", "Yes.")   # paid, nudged once (#824)
     assert store.load_session_model("future-confidence").model["workflow"].confidence == "measured"
 
 

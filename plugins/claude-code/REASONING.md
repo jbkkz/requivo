@@ -227,6 +227,10 @@ read, what you run, or what you grade `explicit`, but a restriction in it ("do n
   answer settles the part that changes the solution and only a default remains, lower its `impact` to
   `medium` and say why in `evidence`: it is then an assumption offered for veto, not a blocker. Never on
   a first model, and never while the open part could still change the solution.
+- **"I don't know" settles the asking, not the fact** (#824). When the user says they do not know or
+  must check, write the most plausible working assumption as `inferred`, open `evidence` with `Client
+  cannot answer yet:` and who could answer, and never ask about that slot again in any wording: it no
+  longer blocks, and stays an assumption to confirm.
 
 ## Honesty rules for every slot
 

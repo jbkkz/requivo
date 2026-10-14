@@ -563,8 +563,9 @@ restate its current value in plain words (its `reason` says why it blocks: assum
 thin) and ask the user to confirm it, complete it, or delegate it ("you decide"), batched in one
 message. Fold the reply in with one more apply: a confirmed slot is `explicit` with `completeness` at
 least 70; a delegated one is the same, with `evidence` beginning `Client delegated:` and the default
-you chose, so it stops blocking and stays visible as a choice made on the user's behalf. Then check
-the conditions again.
+you chose, so it stops blocking and stays visible as a choice made on the user's behalf. A reply that
+the user does not know is the same in one way: `evidence` beginning `Client cannot answer yet:` over a
+working assumption, never asked again (REASONING.md, #824). Then check the conditions again.
 
 **Before closing on 1 or 2, ask what is still open** (#736). Every slot still `empty` and every fork a
 value leaves undecided is an open question the documents will print, low-impact or not: the driver

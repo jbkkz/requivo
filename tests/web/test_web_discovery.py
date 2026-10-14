@@ -194,7 +194,8 @@ def test_only_the_top_questions_lead_the_page(client, with_provider):
 
 
 def test_readiness_is_one_action_state_with_reasons(client, with_provider):
-    _discovered(client, with_provider, engine_reply(converged=True, problem=HIGH_INFERRED))   # a high-impact topic unresolved
+    stalled = engine_reply(converged=True, problem=HIGH_INFERRED)   # a high-impact topic unresolved, unasked even when nudged (#824)
+    _discovered(client, with_provider, stalled, stalled)
     page = _page(client)
     assert "Not ready to produce a reliable scope" in page and "Real problem" in page   # the reason, by its label
     assert "Ready for a first decision brief" not in page

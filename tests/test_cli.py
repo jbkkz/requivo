@@ -610,7 +610,7 @@ def test_a_turn_that_asks_nothing_while_still_blocked_says_how_to_settle_it():
     #815 the blocker the turn left unasked carries the probe from the schema as its question."""
     with _model_in_out("clitest-stall") as p:
         reply = {"model": {"problem": slot(50, "explicit", "high")}, "questions": [], "summary": {"objective": "o"}}
-        text = run_cli(["answer", p.parent.name, "No strong view."], client=FakeClient(json.dumps(reply)))
+        text = run_cli(["answer", p.parent.name, "No strong view."], client=FakeClient(json.dumps(reply), json.dumps(reply)))  # #824: nudged once
         assert "Discovery converged" not in text and "Real problem (too thin)" in text
         assert "What problem is behind the request?" in text and "No question is left" not in text
         assert f"requivo answer {p.parent.name}" in text
