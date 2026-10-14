@@ -61,8 +61,11 @@ off the model you loaded in step 1.
 - **Delivery work beyond the stories**, each a day range with its basis: environments, CI and hosting;
   design; QA and acceptance with the client; project management; rollout, migration and training —
   sized for this build. Whatever you leave out is listed under *Not included*, never silently absent.
-- **What this prices**: which path the number is for and what would replace it. When the model leans
-  towards buying or configuring a tool, say this prices the build path and what the other path costs.
+- **What this prices**: the stories follow the recommended path, so the total prices it; give the
+  alternative its own rough figure (the custom build's day range when the path is buying or
+  configuring) and any recurring licence per month or year, outside the day total.
+- **Calibrate**: the high end covers one round of rework; an unseen API starts with a spike; offline
+  sync, payments, health or financial data carry security testing and a pilot; configuring is days.
 - **Day rate**: from the model when it states one, otherwise a typical rate for the client's market,
   marked *assumed*. **Budget**: only a one-off amount the model states; compare it with the cost range.
 - **What would move this number**: 2–6 questions the client can answer, each with the days its answer

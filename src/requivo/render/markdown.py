@@ -427,6 +427,7 @@ def prd_markdown(prd: PRD) -> str:
         *[f"  - {_line(r)}" for r in e.rules])])
     section("Permissions", bullets(prd.permissions))
     section("Integrations & notifications", bullets(prd.integrations))
+    section("Proposed technical approach", bullets(prd.technical_approach))
     section("Non-functional requirements", bullets(prd.non_functional))
     section("Edge cases", bullets(prd.edge_cases))
     section("Acceptance criteria", [f"- [ ] {_line(a)}" for a in prd.acceptance_criteria])

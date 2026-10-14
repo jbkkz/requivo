@@ -45,6 +45,9 @@ both, and keep what the client said apart from what was inferred:
   invent a definitive criterion — put the open point in `open_questions` instead. A criterion QA
   can't objectively pass or fail is worthless.
 - Every `then` must be **observable and checkable** — a concrete outcome, not an intention.
+- When the model settles on — or recommends — buying or configuring an existing tool, the criteria
+  verify **that tool as configured**: each must-have checked on it, the integrations and data moving
+  correctly, the rules behaving with real values. Never a build's internals (race conditions, schema).
 
 # Voice
 

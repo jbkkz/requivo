@@ -52,6 +52,11 @@ both, and keep what the client said apart from what was inferred:
 - `data_model`: the entities the build stores — `name`, its key `fields` (plain words, no types
   needed) and the `rules` that hold on it (uniqueness, immutability once sent, retention). Only what
   the model supports or a developer cannot start without; a provisional entity says "to confirm".
+- `technical_approach`: for the one to three hardest technical problems the model names or implies
+  (offline sync, an integration with an unknown API, payment capture, concurrency, a silent failure
+  that would recreate the original problem), a concrete proposed design — the mechanism, how a failure
+  is detected and recovered, how it is verified before go-live. Each reads as a proposal. When the
+  path is buying or configuring, it is how the tool is integrated and how its gaps are covered.
 - `non_functional`: the qualities the build must have, each concrete — volume and response time,
   availability and offline behaviour, security and access, privacy and retention, accessibility for
   the actual users. Draw them from the model's constraints and actors; leave out what nothing supports.
@@ -149,6 +154,7 @@ written in that language.
   "integrations": ["…"],
   "edge_cases": ["…"],
   "data_model": [{ "name": "…", "fields": ["…"], "rules": ["…"] }],
+  "technical_approach": ["…"],
   "non_functional": ["…"],
   "acceptance_criteria": ["…"],
   "assumptions": ["…"],

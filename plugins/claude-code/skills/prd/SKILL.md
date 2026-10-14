@@ -35,7 +35,9 @@ The rules:
 - **Write what a developer builds from.** The data model names the entities, their key fields and the
   rules on them. Each integration is a contract: the other system, the direction, the trigger, the
   data and format, and what happens on failure. Edge cases include the failure modes (offline, partial
-  sync, duplicate, external system down). Non-functional requirements are concrete: volume, response
+  sync, duplicate, external system down). A *Proposed technical approach* gives the one to three
+  hardest problems a concrete design: the mechanism, how failure is detected and recovered, how it is
+  verified before go-live. Non-functional requirements are concrete: volume, response
   time, availability, security, retention, accessibility for the actual users. When the model leans
   towards buying or configuring, the summary says so and the requirements double as the evaluation
   checklist.

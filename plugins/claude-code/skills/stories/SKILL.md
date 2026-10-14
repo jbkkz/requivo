@@ -37,6 +37,9 @@ when you save.
 - One story = one shippable slice of behavior, independently testable. Split by workflow step / actor
   / rule, **not** by technical layer (no "build the database" story). Platform work (environments,
   hosting, design, QA) is not a story: `/requivo:estimate` sizes it as delivery work.
+- **Follow the path the model recommends.** When it settles on, or the reasoning recommends, buying or
+  configuring a tool, the stories are that path's work — evaluating the tool against the must-haves,
+  configuring, integrating, migrating, rolling out — never a custom build of what the tool does.
 - As many stories as the build really needs, usually 4–12, ordered by delivery priority. Each has an
   `id` (`S1`, `S2`, …), a title, an `as a / I want / so that`, and 2–5 checkable acceptance lines with
   real values where the model gives them.

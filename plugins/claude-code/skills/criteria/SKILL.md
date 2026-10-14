@@ -43,7 +43,9 @@ when you save.
   meaningful failure modes beats twenty trivial checks.
 - Use only what the model supports. Where it is thin or uncertain about a behaviour, do **not** invent
   a definitive criterion — put the open point in `open_questions` instead. A criterion QA can't
-  objectively pass or fail is worthless, and every `then` must be observable and checkable. A
+  objectively pass or fail is worthless, and every `then` must be observable and checkable. When the
+  model settles on buying or configuring a tool, the criteria verify that tool as configured, never a
+  build's internals (#821). A
   behaviour the model holds as a proposal or a domain fact (`proposed:` or `domain:` evidence) gets a
   scenario tagged from REASONING.md's *Source tags*, expected and to confirm; a new proposal of yours
   is an open question carrying your recommendation.

@@ -41,6 +41,15 @@ both, and keep what the client said apart from what was inferred:
 - If a high-impact slot is still `empty` or `inferred`, still write the story, but keep its
   acceptance criteria honest about the open question — do not paper over the gap.
 
+# The path the model recommends
+
+Read where the model leans before slicing: `config_vs_custom`, `existing_solutions`, and the
+`decisions` and `challenges`. When they settle on — or the reasoning recommends — buying or
+configuring an existing tool, the stories are **the work of that path**: checking the shortlisted
+tool against the must-haves, configuring it, integrating it, migrating data, rolling it out. Never
+write a custom build of what the tool already does. A build that would only follow a failed
+evaluation is not sliced here; the estimate names it as the alternative.
+
 # What a developer needs
 
 A developer picks a story up and builds it. `dev_notes` carries what the acceptance criteria do not,

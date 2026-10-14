@@ -926,11 +926,12 @@ class PRD(StrictModel):
     # The envelope this document was planned within (#603); empty when the model has no constraint content.
     envelope: list[EnvelopeElement] = Field(default_factory=list[EnvelopeElement])
     data_model: list[DataEntity] = Field(default_factory=list[DataEntity])  # #821, off the wire while empty
+    technical_approach: list[str] = Field(default_factory=list)  # the proposed design for the hardest parts
     non_functional: list[str] = Field(default_factory=list)
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        return _without(handler(self), data_model=[], non_functional=[])
+        return _without(handler(self), data_model=[], technical_approach=[], non_functional=[])
 
     @model_validator(mode="after")
     def _validate_unique_requirement_ids(self):

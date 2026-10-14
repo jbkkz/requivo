@@ -355,8 +355,9 @@ def test_the_prd_and_the_stories_carry_what_a_developer_builds_from():
     """#821: the data model, the non-functional requirements and each story's developer notes are rendered,
     and stay off the wire while empty."""
     prd = PRD(title="T", problem="P", data_model=[dict(name="Leave request", fields=["employee", "dates"], rules=["Locked once approved"])],
-              non_functional=["Usable on a phone"])
+              non_functional=["Usable on a phone"], technical_approach=["Payroll export is queued and retried"])
     md = prd_markdown(prd)
+    assert "## Proposed technical approach\n\n- Payroll export is queued and retried" in md
     assert "## Data model" in md and "- **Leave request** — employee, dates\n  - Locked once approved" in md, md
     assert "## Non-functional requirements" in md and "- Usable on a phone" in md
     stories = Stories(stories=[Story(id="S1", title="T", dev_notes=["Writes a LeaveRequest; payroll export retried on failure"])])

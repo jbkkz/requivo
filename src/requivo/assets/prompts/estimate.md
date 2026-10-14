@@ -57,11 +57,12 @@ work around them. Size that work too, so the total is what the client will actua
   data migration and training. Size each for **this** build: a small internal tool needs little, an
   integration or a regulated domain needs more. Anything you leave out goes in `basis.excludes`,
   never silently absent.
-- `prices`: one or two sentences — which path this number is for, and what would replace it. When
-  the model leans towards buying or configuring something (`existing_solutions`, a decision, a
-  challenge), say that this prices the build path, what the buy or configure path would cost instead
-  (licence, setup days) as far as the model supports it, and which one the reasoning favours. An
-  estimate that prices a build while the analysis recommends buying must say so here.
+- `prices`: one or two sentences — which path this number is for, and the alternative with **its own
+  rough figure**. The stories follow the path the model recommends, so the total prices that path:
+  when it is buying or configuring a tool, say so and give the custom build's rough day range as the
+  fallback; when it is a build, give the buy or configure option's rough cost if the model names one.
+  A recurring licence is a cost too: state it per month or per year here, outside the day total. An
+  alternative left as "a few days" or "far more" is not a figure.
 - `day_rate`: the cost of one day, as `amount` and `currency`. From the model when it says one
   (`origin: "slot"` and its `source_slot`); otherwise assume a typical rate for the client's market
   and currency (`origin: "assumption"`, no `source_slot`). Leave it out only when no currency can be
@@ -75,6 +76,14 @@ work around them. Size that work too, so the total is what the client will actua
   client can answer ("Must payroll receive a file or a direct API feed?"), never a topic name.
 - `risks`: 2–5 delivery risks the swings do not already say (dependencies, regulatory exposure,
   adoption, a budget the total would break).
+
+Calibrate against how such work really goes: the high end covers one round of rework or a moderate
+surprise; an integration with an API nobody has seen yet starts with a spike; offline sync, payments,
+health or financial data carry security testing and a pilot; configuring a tool is days, not weeks.
+
+**Voice.** Write the prose (`note`, `basis`, `prices`, `swings`, `risks`) for a client: never a slot
+id, a completeness percentage or a confidence label — say the business thing. Slot ids belong only
+in `drives`, `slots` and `source_slot`.
 
 # Output format
 
