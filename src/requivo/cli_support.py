@@ -137,6 +137,8 @@ def _resolve_ref(ref: str) -> tuple[EngineOutput, str]:
     if p.is_file():
         return load_model(p), p.parent.name
     svc = SessionService()
+    if "/" in ref or os.sep in ref or ref.endswith(".json"):
+        raise svc.no_session(ref, what="model file or session", details={"ref": ref})
     if svc.exists(ref):
         slug = svc.resolve_slug(ref)
         try:
