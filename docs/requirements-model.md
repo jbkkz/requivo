@@ -70,11 +70,14 @@ from the product context**, so the engine is only as sharp as the [context cards
 it's given.
 
 Readiness reads the same rule the other way (#815): it waits only on what would still change the
-solution. A high-impact slot blocks until it is confirmed, deferred to a test, or delegated by the
-client — or until the engine stops asking about the default it holds. A gap below high impact, or a
-default nobody asks about any more, is an assumption offered for veto, never a blocker; a blank one
-nobody asks about gets the probe from the schema as its question, so "not ready" always comes with
-something to ask. A turn asks every question above the bar at once, and none below it.
+solution. A high-impact slot blocks until it is confirmed, deferred to a test, delegated by the
+client, or beyond what the client can say yet (`Client cannot answer yet:`, #824) — or until the
+engine stops asking about the default it holds. A gap below high impact, or a default nobody asks
+about any more, is an assumption offered for veto, never a blocker; a delegated or cannot-answer
+slot is never asked again. A blank blocker the turn leaves unasked earns the engine one nudge to ask
+it in the request's language, and only then gets the probe from the schema as its question, so "not
+ready" always comes with something to ask. A turn asks every question above the bar at once, and
+none below it.
 
 ## Evidence vs coverage
 
