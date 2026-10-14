@@ -9,7 +9,7 @@ allowed-tools: Bash(requivo doctor:*), Bash(requivo model show:*), Bash(requivo 
 Decompose the model into **implementable user stories** — the units a dev team would actually build
 and ship. **You** do the decomposition; Requivo tracks the document. This mirrors
 `src/requivo/assets/prompts/stories.md` and the `Stories` contract in `core/contracts.py`, at commit
-`969cfd9` — the same rules the CLI's `requivo stories` gives its own reasoning call, restated here
+`969cfd9` plus #821's developer notes — the same rules the CLI's `requivo stories` gives its own reasoning call, restated here
 because the plugin cannot import that file at runtime (`decision:
 plugin-skills-mirror-a-pinned-cli-commit`). Read `${CLAUDE_PLUGIN_ROOT}/REASONING.md` unless you already hold it from an earlier
 `/requivo:*` in this conversation — and read it again whenever you are unsure you still do.
@@ -35,9 +35,15 @@ when you save.
   yours goes to `/requivo:prd` or `/requivo:run`, which write it back (REASONING.md, *a document that
   proposes*).
 - One story = one shippable slice of behavior, independently testable. Split by workflow step / actor
-  / rule, **not** by technical layer (no "build the database" story).
-- Aim for 3–8 stories, ordered by delivery priority. Each has an `id` (`S1`, `S2`, …), a title, an
-  `as a / I want / so that`, and 2–5 checkable acceptance lines.
+  / rule, **not** by technical layer (no "build the database" story). Platform work (environments,
+  hosting, design, QA) is not a story: `/requivo:estimate` sizes it as delivery work.
+- As many stories as the build really needs, usually 4–12, ordered by delivery priority. Each has an
+  `id` (`S1`, `S2`, …), a title, an `as a / I want / so that`, and 2–5 checkable acceptance lines with
+  real values where the model gives them.
+- **For the developer**, 1–4 short lines where they apply: the data the story creates or changes, the
+  integration contract it relies on (which system, which direction, what triggers it, what data moves,
+  what happens on failure or a duplicate), a non-functional constraint specific to it. "To confirm"
+  where the model is inferred; none at all for a story that needs none — never restate the acceptance.
 - Every story lists the topics it traces back to — say them in plain business language (the slot's
   `label`, e.g. "business rules", never the raw slot id like `business_rules`; run `requivo schema
   --framework` if you need the label for one you are unsure of).
@@ -73,6 +79,10 @@ As a <as_a>, I want <i_want>, so that <so_that>.
 
 - [ ] <criterion>
 - [ ] <criterion>
+
+**For the developer**
+
+- <note>
 
 _Traces to: <label>, <label>_
 ```

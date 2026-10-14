@@ -35,6 +35,7 @@ from requivo.core.perimeters import DEFAULT_PERIMETER, get_perimeter
 from requivo.core.persistence import ArtifactStatus
 from requivo.core.recap import DocumentState, Recap
 from requivo.core.selectors import display_text, display_token
+from requivo.render.markdown import estimate_money_lines, estimate_totals
 from requivo.usage import CallRecord, UsageLedger
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 
@@ -665,14 +666,15 @@ def render_stories(s: Stories) -> None:
                   f"so that {display_text(st.so_that)}.")
         for ac in st.acceptance:
             print(f"  ✓ {display_text(ac)}")
+        for note in st.dev_notes:
+            print(f"  · {display_text(note)}")
         if st.slots:
             print(f"  ↳ from: {', '.join(st.slots)}")
 
 
 def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str,
                     uncovered: Sequence[str] = ()) -> None:
-    total_low = sum(i.days_low for i in draft.items)
-    total_high = sum(i.days_high for i in draft.items)
+    total_low, total_high = estimate_totals(draft)
     print(f"\n=== ESTIMATE (from the model)   Confidence: {confidence.upper()} ===")
     print(f"{'Task':<44} {'Cplx':<5} {'Estimate':<11} Drives")
     for i in draft.items:
@@ -681,9 +683,19 @@ def render_estimate(draft: EstimateDraft, soft: list[str], confidence: str,
         title = display_text(i.title)[:43]
         print(f"{title:<44} {i.complexity.value:<5} {est:<11} "
               f"{', '.join(display_text(d) for d in i.drives)}")
+    for d in draft.delivery:  # #821: work the total needs that no story is
+        print(f"{display_text(d.title)[:43]:<44} {'':<5} {f'{d.days_low:g}–{d.days_high:g} d':<11} (delivery)")
     print(f"{'─' * 43:<44} {'':<5} {'─' * 9:<11}")
     print(f"{'TOTAL':<44} {'':<5} {total_low:g}–{total_high:g} d")
-    if soft:
+    for line in estimate_money_lines(draft):
+        print(display_text(line.replace("**", "")))
+    if draft.prices:
+        print(f"What this prices: {display_text(draft.prices)}")
+    if draft.swings:
+        print("\nWhat would move this number:")
+        for s in draft.swings:
+            print(f"  - {display_text(s.question)} — {s.days_low:+g} to {s.days_high:+g} d")
+    elif soft:
         print(f"\nSpread driven by unresolved slots: {', '.join(slot_label(s) for s in soft)}")
     if uncovered:  # #782
         print(f"Not covered by any story (outside the total): {', '.join(slot_label(s) for s in uncovered)}")

@@ -27,7 +27,7 @@ from requivo.core.errors import ArtifactWriteFailedError, RevisionConflictError
 from requivo.core.persistence import RevisionRecord
 from requivo.providers.anthropic import AnthropicProvider
 from requivo.providers.errors import EngineError
-from requivo.render.markdown import brief_markdown, estimate_markdown, stories_markdown
+from requivo.render.markdown import brief_markdown, estimate_markdown, prd_markdown, stories_markdown
 from requivo.render.terminal import render_session_cost
 from requivo.services.artifacts import ArtifactService
 from requivo.services.discovery import GENERATABLE, DiscoveryService
@@ -308,6 +308,60 @@ def test_estimate_markdown_names_the_areas_no_story_covers():
     md = estimate_markdown(_draft(), [], "medium", ["integrations"])
     assert "## Not covered by any story" in md and "- Integrations & notifications" in md
     assert "**Confidence:** medium" in md and "- integrations" not in md
+
+
+_PRICED_ESTIMATE = dict(
+    items=[dict(story_id="S1", title="Request leave", complexity="M", days_low=2, days_high=4, note="One form and the queue.")],
+    basis=dict(unit="Build, tests, review and QA fixes.", team="One full-stack developer.", excludes=["Licences"]),
+    delivery=[dict(title="Environments, CI and hosting", days_low=2, days_high=3, note="Standard setup."),
+              dict(title="QA and acceptance with HR", days_low=3, days_high=5)],
+    prices="This prices the custom build; a market leave tool would replace it.",
+    day_rate=dict(amount=500, currency="EUR", origin="assumption"),
+    budget=dict(amount=5000, currency="EUR", origin="slot", source_slot="constraints"),
+    swings=[dict(question="Must payroll receive a file or an API feed?", days_low=-1, days_high=4, slots=["workflow"])])
+
+
+def test_the_estimate_prices_delivery_work_and_confronts_the_budget():
+    """#821, through the real completion path: the total adds the delivery work, Python turns it into money and
+    weighs the stated budget, each swing is a question with signed days, and a soft slot no swing prices is named."""
+    sessions = SessionService()
+    slug = _seeded(sessions, workflow=slot(60, "inferred", "high"), integrations=slot(40, "inferred", "high"))
+    stories = json.dumps({"stories": [{"id": "S1", "title": "Request leave", "slots": ["workflow"]}]})
+    client = FakeClient(stories, json.dumps(_PRICED_ESTIMATE))
+    DiscoveryService(provider=AnthropicProvider(client=client), sessions=sessions).generate(slug, "estimate")
+    md = ArtifactService(sessions.repo).show(slug, "estimate")
+    assert "**Total:** 7–12 days — stories 2–4, delivery work 5–8" in md, md
+    assert "**Cost:** about 3,500 EUR–6,000 EUR at 500 EUR a day (assumed)." in md, md
+    assert "**Budget:** The stated budget of 5,000 EUR buys about 10 days at this rate: the low end fits, the high end does not." in md
+    assert "| QA and acceptance with HR | 3–5 |" in md and "**What this prices.** This prices the custom build" in md
+    assert "- Must payroll receive a file or an API feed? — -1 to +4 days" in md and "- **Not included:**" in md
+    assert "Also still open, not priced above: Integrations & notifications." in md and "Spread driven by" not in md
+    assert not [sid for sid in ("workflow", "integrations", "constraints") if sid in md], md
+
+
+@pytest.mark.parametrize(("budget", "verdict"), [
+    (dict(amount=9000, currency="eur", origin="slot", source_slot="constraints"), "covers the whole range"),
+    (dict(amount=2000, currency="EUR", origin="slot", source_slot="constraints"), "short of even the low end"),
+    (dict(amount=9000, currency="USD", origin="slot", source_slot="constraints"), "not compared with these days"),
+])
+def test_a_stated_budget_is_weighed_only_in_the_day_rates_currency(budget, verdict):
+    """#821: covered, short, or in another currency and so never compared; an older draft dumps as it did."""
+    draft = EstimateDraft.model_validate(dict(_PRICED_ESTIMATE, budget=budget))
+    assert verdict in estimate_markdown(draft, [], "low")
+    assert set(EstimateDraft(items=_draft().items).model_dump()) == {"items", "risks"}
+
+
+def test_the_prd_and_the_stories_carry_what_a_developer_builds_from():
+    """#821: the data model, the non-functional requirements and each story's developer notes are rendered,
+    and stay off the wire while empty."""
+    prd = PRD(title="T", problem="P", data_model=[dict(name="Leave request", fields=["employee", "dates"], rules=["Locked once approved"])],
+              non_functional=["Usable on a phone"])
+    md = prd_markdown(prd)
+    assert "## Data model" in md and "- **Leave request** — employee, dates\n  - Locked once approved" in md, md
+    assert "## Non-functional requirements" in md and "- Usable on a phone" in md
+    stories = Stories(stories=[Story(id="S1", title="T", dev_notes=["Writes a LeaveRequest; payroll export retried on failure"])])
+    assert "**For the developer**\n\n- Writes a LeaveRequest" in stories_markdown(stories)
+    assert "dev_notes" not in Story(id="S2", title="T").model_dump() and "data_model" not in PRD(title="T", problem="P").model_dump()
 
 
 def test_a_newline_inside_a_provider_field_cannot_open_a_new_heading():

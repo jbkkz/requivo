@@ -28,9 +28,17 @@ Note the `revision` — call it `N`. It is the model this PRD reasons from.
 
 ## 2. Reason → write the PRD
 Turn the model into a PRD (title, summary, problem, goals, users, in/out of scope, requirements with
-priorities, workflow, business rules, permissions, integrations, data protection, edge cases,
-acceptance criteria, assumptions, open questions, risks). The rules:
+priorities, workflow, business rules, data model, permissions, integrations, non-functional
+requirements, data protection, edge cases, acceptance criteria, assumptions, open questions, risks).
+The rules:
 
+- **Write what a developer builds from.** The data model names the entities, their key fields and the
+  rules on them. Each integration is a contract: the other system, the direction, the trigger, the
+  data and format, and what happens on failure. Edge cases include the failure modes (offline, partial
+  sync, duplicate, external system down). Non-functional requirements are concrete: volume, response
+  time, availability, security, retention, accessibility for the actual users. When the model leans
+  towards buying or configuring, the summary says so and the requirements double as the evaluation
+  checklist.
 - **Propose where a senior PM would.** Where the model leaves room — how the core feature works,
   where data is hosted and who can read it, what happens to past results when a rule changes, what is
   recorded — state a concrete requirement or design tagged `[proposed]` with a one-line rationale.

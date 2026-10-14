@@ -32,7 +32,9 @@ both, and keep what the client said apart from what was inferred:
 - Use only what the model supports. Do not invent scope; where the model is thin, keep that section
   short or move the item to `open_questions` rather than fabricating detail.
 - `title`: a short, specific feature name.
-- `summary`: 2–3 sentences — what this is and why, for an executive reader.
+- `summary`: 2–3 sentences — what this is and why, for an executive reader. When the model leans
+  towards buying or configuring an existing tool (`existing_solutions`, a decision, a challenge), say
+  so here, and write the requirements so they double as the checklist that tool is evaluated against.
 - `problem`: the underlying problem being solved (not the requested solution).
 - `goals`: the success criteria, as outcomes.
 - `users`: the actors and roles involved.
@@ -41,8 +43,18 @@ both, and keep what the client said apart from what was inferred:
 - `requirements`: the functional requirements, each with an id (`FR-1`, `FR-2`, …) and a MoSCoW
   `priority` of `must` | `should` | `could`. This is the core of the PRD — be concrete and testable.
 - `workflow`: the lifecycle / process steps, in order.
-- `business_rules`, `permissions`, `integrations`, `edge_cases`: fill from the model; omit an item
-  if the model says nothing about it.
+- `business_rules`, `permissions`: fill from the model; omit an item if the model says nothing about it.
+- `integrations`: each one written as a contract — the other system, the direction, what triggers
+  it, what data moves and in which format, and what happens when it fails (retry, alert, manual
+  fallback). Unknown parts of the contract are open questions, not guesses.
+- `edge_cases`: the business edge cases and the failure modes — offline or partial sync, a duplicate
+  or late message, a concurrent edit, an external system down.
+- `data_model`: the entities the build stores — `name`, its key `fields` (plain words, no types
+  needed) and the `rules` that hold on it (uniqueness, immutability once sent, retention). Only what
+  the model supports or a developer cannot start without; a provisional entity says "to confirm".
+- `non_functional`: the qualities the build must have, each concrete — volume and response time,
+  availability and offline behaviour, security and access, privacy and retention, accessibility for
+  the actual users. Draw them from the model's constraints and actors; leave out what nothing supports.
 - `acceptance_criteria`: checkable statements that define "done".
 - `assumptions`: what is being taken as true but not confirmed.
 - `open_questions`: what still needs a client answer before or during build — pull these from the
@@ -136,6 +148,8 @@ written in that language.
   "permissions": ["…"],
   "integrations": ["…"],
   "edge_cases": ["…"],
+  "data_model": [{ "name": "…", "fields": ["…"], "rules": ["…"] }],
+  "non_functional": ["…"],
   "acceptance_criteria": ["…"],
   "assumptions": ["…"],
   "open_questions": ["…"],

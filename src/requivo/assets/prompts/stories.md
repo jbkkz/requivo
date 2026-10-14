@@ -31,12 +31,29 @@ both, and keep what the client said apart from what was inferred:
 
 - Derive stories from what the model **says**. Do not invent scope the model doesn't support.
 - One story = one shippable slice of behavior, independently testable. Split by workflow step /
-  actor / rule, **not** by technical layer (no "build the DB" story).
-- Aim for 3–8 stories, ordered by delivery priority.
+  actor / rule, **not** by technical layer (no "build the DB" story). Platform work — environments,
+  hosting, CI, design, QA — is not a story: the estimate sizes it separately.
+- As many stories as the build really needs, usually 4–12, ordered by delivery priority. A story
+  that hides a whole integration or a rules engine inside one line is two or three stories.
 - Each story lists the model `slots` it derives from (traceability back to the model).
-- Acceptance criteria: concrete and checkable (Given/When/Then, but terse). 2–5 per story.
+- Acceptance criteria: concrete and checkable (Given/When/Then, but terse), with real values where
+  the model gives them (thresholds, dates, counts). 2–5 per story.
 - If a high-impact slot is still `empty` or `inferred`, still write the story, but keep its
   acceptance criteria honest about the open question — do not paper over the gap.
+
+# What a developer needs
+
+A developer picks a story up and builds it. `dev_notes` carries what the acceptance criteria do not,
+1–4 short lines, only where it applies:
+
+- the data the story creates or changes (the entity and its key fields);
+- the integration contract it relies on: which system, which direction, what triggers it, what data
+  moves, and what happens when the other side fails or answers twice (retry, idempotency, alerting);
+- a non-functional constraint specific to this story (offline, volume, response time, retention,
+  accessibility for its actual users).
+
+A note resting on an inferred or empty slot says "to confirm", like the acceptance criteria. Leave
+`dev_notes` empty for a story that needs none — never restate the acceptance criteria there.
 
 # Certainty
 
@@ -84,7 +101,8 @@ written in that language.
       "i_want": "…",
       "so_that": "…",
       "acceptance": ["…", "…"],
-      "slots": ["workflow", "business_rules"]
+      "slots": ["workflow", "business_rules"],
+      "dev_notes": ["…"]
     }
   ]
 }

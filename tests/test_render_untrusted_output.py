@@ -194,9 +194,12 @@ def _forged_renders() -> dict[str, str]:
     recap = EngineOutput.model_validate({**d, "model": {**d["model"], "actors": actors},
                                          "summary": {**d["summary"], "assumptions": [FORGED]}})
     stories = Stories(stories=[{"id": FORGED, "title": FORGED, "as_a": FORGED, "i_want": FORGED, "so_that": FORGED,
-                                "acceptance": [FORGED], "slots": ["problem"]}])
+                                "acceptance": [FORGED], "slots": ["problem"], "dev_notes": [FORGED]}])
     estimate = EstimateDraft(items=[{"story_id": "S1", "title": FORGED, "complexity": "M", "days_low": 1, "days_high": 2,
-                                     "drives": [FORGED]}], risks=[FORGED])
+                                     "drives": [FORGED]}], risks=[FORGED], prices=FORGED,
+                             delivery=[{"title": FORGED, "days_low": 1, "days_high": 2}],
+                             day_rate={"amount": 500, "currency": FORGED, "origin": "assumption"},
+                             swings=[{"question": FORGED, "days_low": 1, "days_high": 2}])
     # A claim's text, and a source only a newer Requivo knows, as a mix line and a moved line (#751).
     claimed = dict(d["model"])
     claimed["actors"] = dict(slot(60, "inferred", "high"), claims=[dict(text=FORGED, source=FORGED)])

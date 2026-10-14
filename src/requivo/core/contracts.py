@@ -540,6 +540,8 @@ class Story(StrictModel):
     acceptance: list[str] = Field(default_factory=list)
     # The slots this story is traceable to, checked against the schema like every other reference.
     slots: list[str] = Field(default_factory=list)
+    # What a developer needs beyond the acceptance (#821): data touched, integration contract, failure handling.
+    dev_notes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_slot_references(self, info: ValidationInfo):
@@ -548,6 +550,10 @@ class Story(StrictModel):
         if bad:
             raise ValueError(f"story {self.id!r} references unknown slots (not in schema): {bad}")
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_notes(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _without(handler(self), dev_notes=[])
 
 
 class Stories(StrictModel):
@@ -566,6 +572,25 @@ class Complexity(str, Enum):
     L = "L"
 
 
+class EnvelopeOrigin(str, Enum):
+    slot = "slot"
+    assumption = "assumption"
+
+
+def _check_origin(origin: EnvelopeOrigin, source_slot: Optional[str]) -> None:
+    # The enum decides where a figure came from, and the slot it names must agree with it (#603).
+    if origin is EnvelopeOrigin.slot and not source_slot:
+        raise ValueError("an element read from the model must name its source slot")
+    if origin is EnvelopeOrigin.assumption and source_slot:
+        raise ValueError("an assumed element must not name a source slot")
+
+
+def _check_range(label: str, low: float, high: float) -> None:
+    # An inverted range is not a wide estimate, it is a broken one: the totals sum both ends.
+    if low > high:
+        raise ValueError(f"{label} has days_low ({low:g}) above days_high ({high:g}) — low is the optimistic end")
+
+
 class EstimateItem(StrictModel):
     story_id: NonEmpty
     title: NonEmpty
@@ -577,23 +602,87 @@ class EstimateItem(StrictModel):
 
     @model_validator(mode="after")
     def _validate_range(self):
-        # An inverted range is not a wide estimate, it is a broken one: the totals sum both ends.
-        if self.days_low > self.days_high:
-            raise ValueError(
-                f"estimate for {self.story_id!r} has days_low ({self.days_low}) above days_high "
-                f"({self.days_high}) — low is the optimistic end")
+        _check_range(f"estimate for {self.story_id!r}", self.days_low, self.days_high)
+        return self
+
+
+class DeliveryItem(StrictModel):
+    # Work the total needs that no story is (#821): setup and hosting, design, QA and acceptance, rollout.
+    title: NonEmpty
+    days_low: float = Field(ge=0)
+    days_high: float = Field(ge=0)
+    note: str = ""
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        _check_range(f"delivery work {self.title!r}", self.days_low, self.days_high)
+        return self
+
+
+class EstimateBasis(StrictModel):
+    # How to read the figures (#821): what one day covers, the team assumed, what is left out of the total.
+    unit: str = ""
+    team: str = ""
+    excludes: list[str] = Field(default_factory=list)
+
+
+class Money(StrictModel):
+    # An amount the estimate converts with or confronts (#821); `origin` says whether the model stated it.
+    amount: float = Field(gt=0)
+    currency: NonEmpty
+    origin: EnvelopeOrigin
+    source_slot: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _source_slot_matches_origin(self):
+        _check_origin(self.origin, self.source_slot)
+        return self
+
+
+class Swing(StrictModel):
+    # One open question and the days its answer moves the total by, signed (#821); `slots` are those it settles.
+    question: NonEmpty
+    days_low: float
+    days_high: float
+    slots: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        _check_range(f"swing {self.question!r}", self.days_low, self.days_high)
         return self
 
 
 class EstimateDraft(StrictModel):
-    # What the LLM produces; totals, confidence and spread_drivers are computed in Python.
+    """What the LLM produces; totals, money, confidence and the uncovered soft slots are computed in
+    Python. The #821 fields are optional and stay off the wire while empty, so an older draft reads as written."""
+
     items: list[EstimateItem]
     risks: list[str] = Field(default_factory=list)
+    basis: Optional[EstimateBasis] = None
+    delivery: list[DeliveryItem] = Field(default_factory=list[DeliveryItem])
+    prices: str = ""                    # the path this number is for, and what would replace it
+    day_rate: Optional[Money] = None
+    budget: Optional[Money] = None      # a one-off budget the model states for this work
+    swings: list[Swing] = Field(default_factory=list[Swing])
 
     @model_validator(mode="after")
     def _validate_unique_stories(self):
         _reject_duplicate_ids("estimate items", [i.story_id for i in self.items])
         return self
+
+    @model_validator(mode="after")
+    def _validate_slot_vocabulary(self, info: ValidationInfo):
+        allowed, _ = schema_slot_ids(_context_perimeter(info))
+        bad = sorted({sid for s in self.swings for sid in s.slots if sid not in allowed}
+                     | {m.source_slot for m in (self.day_rate, self.budget) if m and m.source_slot
+                        and m.source_slot not in allowed})
+        if bad:
+            raise ValueError(f"estimate references unknown slots (not in schema): {bad}")
+        return self
+
+    @model_serializer(mode="wrap")
+    def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _without(handler(self), basis=None, delivery=[], prices="", day_rate=None, budget=None, swings=[])
 
 
 class Leverage(str, Enum):
@@ -764,11 +853,6 @@ class Requirement(StrictModel):
     priority: Priority
 
 
-class EnvelopeOrigin(str, Enum):
-    slot = "slot"
-    assumption = "assumption"
-
-
 class EnvelopeElement(StrictModel):
     # One resource constraint an artifact worked within (#603); `origin` names the slot it came from,
     # or says the generator assumed it.
@@ -779,10 +863,7 @@ class EnvelopeElement(StrictModel):
 
     @model_validator(mode="after")
     def _source_slot_matches_origin(self):
-        if self.origin is EnvelopeOrigin.slot and not self.source_slot:
-            raise ValueError("an envelope element read from the model must name its source slot")
-        if self.origin is EnvelopeOrigin.assumption and self.source_slot:
-            raise ValueError("an assumed envelope element must not name a source slot")
+        _check_origin(self.origin, self.source_slot)
         return self
 
 
@@ -817,6 +898,13 @@ class GoToMarketPlan(StrictModel):
         return self
 
 
+class DataEntity(StrictModel):
+    # One thing the build stores (#821): its key fields and the rules that hold on it.
+    name: NonEmpty
+    fields: list[str] = Field(default_factory=list)
+    rules: list[str] = Field(default_factory=list)
+
+
 class PRD(StrictModel):
     title: NonEmpty
     summary: str = ""
@@ -837,6 +925,12 @@ class PRD(StrictModel):
     risks: list[str] = Field(default_factory=list)
     # The envelope this document was planned within (#603); empty when the model has no constraint content.
     envelope: list[EnvelopeElement] = Field(default_factory=list[EnvelopeElement])
+    data_model: list[DataEntity] = Field(default_factory=list[DataEntity])  # #821, off the wire while empty
+    non_functional: list[str] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _omit_absent(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        return _without(handler(self), data_model=[], non_functional=[])
 
     @model_validator(mode="after")
     def _validate_unique_requirement_ids(self):
