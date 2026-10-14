@@ -718,25 +718,25 @@ def render_impact(report) -> None:
         return
 
     if report.decisions:
-        print("\nDECISIONS TO RE-VALIDATE")
+        print("\nDECISIONS THAT REST ON WHAT MOVED — check each; one the change does not reach stands")
         for d in report.decisions:
             print(_bullet(d.decision))
             print(f"    ↳ rests on: {', '.join(d.rests_on)}")
 
     if report.challenges:
-        print("\nPREMISES TO RE-EXAMINE")
+        print("\nPREMISES THAT REST ON WHAT MOVED")
         for c in report.challenges:
             print(_bullet(c.headline))
             print(f"    ↳ contests: {', '.join(c.rests_on)}")
 
     if report.exclusions:
-        print("\nEXCLUSIONS TO RECONSIDER")
+        print("\nEXCLUSIONS THAT REST ON WHAT MOVED")
         for e in report.exclusions:
             print(_bullet(e.option))
             print(f"    ↳ rests on: {', '.join(e.rests_on)}")
 
     if report.thresholds:
-        print("\nTHRESHOLDS TO RECONSIDER")
+        print("\nTHRESHOLDS THAT REST ON WHAT MOVED")
         for t in report.thresholds:
             print(_bullet(t.condition))
             print(f"    ↳ rests on: {', '.join(t.rests_on)}")

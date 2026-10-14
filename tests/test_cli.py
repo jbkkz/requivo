@@ -151,7 +151,7 @@ def test_the_demo_shows_the_computed_blast_radius_of_a_changed_answer(demo_text)
     """The keyless activation path renders the saved model, the brief, then the change-impact step (#223)."""
     for needle in ("REQUIVO — DEMO", "freelancers to check guests in", "UNDERSTANDING", "DECISION BRIEF", "epic.md",
                    "④ CHANGE ONE ANSWER", "Computed, not generated", "IMPACT — what rests on: Constraints",
-                   "DECISIONS TO RE-VALIDATE", "PREMISES TO RE-EXAMINE", "ARTIFACTS THAT GO STALE"):
+                   "DECISIONS THAT REST ON WHAT MOVED", "PREMISES THAT REST ON WHAT MOVED", "ARTIFACTS THAT GO STALE"):
         assert needle in demo_text, needle
     assert demo_text.index("DECISION BRIEF") < demo_text.index("④ CHANGE ONE ANSWER")
     # Step ④'s prose names the slot `DEMO_CHANGED_SLOT` changes, in words.

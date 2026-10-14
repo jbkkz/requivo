@@ -288,7 +288,8 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
         turn2 = json.dumps({"model": full_slots(workflow=slot(95, "explicit", "high", "draft → issued → paid → archived")),
                             "questions": [], "summary": {"objective": "Document lifecycle"}})
         text = run_cli(["answer", slug, "It also has an archived state."], client=FakeClient(turn2, json.dumps(_NOTE)))
-        assert "STALE" in text and "prd.md" in text and "Workflow" in text
+        assert "1 document(s) rest on what moved (Workflow" in text and "prd.md" in text   # #827: the note reads the stale list
+        assert "This change unseats" not in text
 
 
 _NOTE = {"summary": "Paid and archived close the lifecycle.", "still_valid": ["Who approves an invoice"], "estimate": "",
