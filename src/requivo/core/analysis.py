@@ -258,8 +258,8 @@ def ranked_questions(out: EngineOutput, perimeter: str = DEFAULT_PERIMETER) -> l
     probes = {s["id"]: s["probe"] for s in schema_slots(perimeter)}
     # An omitted slot (a session older than the slot) blocks at its baseline impact, so it is probed too.
     derived = [Question(q=probes[sid], slot=sid, why=UNASKED_BLOCKER_WHY) for sid in unasked_blockers(out, perimeter)]
-    # What the client said they cannot answer is never asked again, in any wording (#824).
-    asked = [q for q in out.questions if not (q.slot in out.model and is_deferred(out.model[q.slot]))]
+    # What the client delegated or said they cannot answer is never asked again, in any wording (#824).
+    asked = [q for q in out.questions if not (q.slot in out.model and (is_deferred(s := out.model[q.slot]) or is_delegated(s)))]
     ranked = sorted(asked + derived, key=lambda q: -information_value(out, q.slot, perimeter))
     return ranked[:MAX_QUESTIONS]
 

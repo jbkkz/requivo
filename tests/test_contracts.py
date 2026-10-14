@@ -367,12 +367,15 @@ def test_no_turn_can_stop_not_ready_with_nothing_to_ask(workflow, derived):
     assert {b["slot"] for b in status["readiness"]["blocking_slots"]} <= {q["slot"] for q in status["questions"]}
 
 
-@pytest.mark.parametrize("workflow", [slot(50, "inferred", "high", "managers approve"), slot(0, "empty", "high")],
-                         ids=["with-a-working-assumption", "blank"])
-def test_what_the_client_cannot_answer_is_never_asked_again(workflow):
-    """#824: a slot the client said they cannot answer yet is settled for readiness, and no question on it is
-    shown again, the engine's own or a schema probe, whatever the turn returned."""
-    deferred = {**workflow, "evidence": "Client cannot answer yet: finance would know."}
+@pytest.mark.parametrize("workflow, evidence", [
+    (slot(50, "inferred", "high", "managers approve"), "Client cannot answer yet: finance would know."),
+    (slot(0, "empty", "high"), "Client cannot answer yet: finance would know."),
+    (slot(40, "explicit", "high", "managers approve"), _DELEGATED),
+], ids=["with-a-working-assumption", "blank", "delegated"])
+def test_what_the_client_cannot_answer_is_never_asked_again(workflow, evidence):
+    """#824: a slot the client said they cannot answer yet, or delegated, is settled for readiness, and no
+    question on it is shown again, the engine's own or a schema probe, whatever the turn returned."""
+    deferred = {**workflow, "evidence": evidence}
     model = EngineOutput.model_validate({**full_model(workflow=deferred), "questions": [_q("workflow")]})
     status = model_status(model)
     assert "workflow" not in readiness_blockers(model) and "workflow" not in [q["slot"] for q in status["questions"]]
