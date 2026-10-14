@@ -7,6 +7,7 @@ import json
 import pytest
 from _fakes import (
     FakeClient,
+    RaisingClient,
     _model_in_out,
     full_model,
     full_slots,
@@ -37,8 +38,8 @@ from requivo.core.errors import ModelUnreadableError, RevisionConflictError
 from requivo.core.integrity import SEVERITY_NOTE, check_session, inspect_session
 from requivo.providers.anthropic.generators import _GENERATORS, _OP_PROMPTS
 from requivo.services.artifacts import ArtifactService
-from requivo.services.discovery import _WRITERS, GENERATABLE
-from requivo.services.sessions import SessionService
+from requivo.services.discovery import _WRITERS, GENERATABLE, DiscoveryService
+from requivo.services.sessions import SessionService, UpdateResult
 from requivo.web.viewmodels.labels import ARTIFACT_LABELS
 from requivo.web.viewmodels.status import evidence_view
 
@@ -286,8 +287,30 @@ def test_pc_answer_warns_when_a_turn_makes_a_generated_artifact_stale():
         ArtifactService().save(slug, "prd", "# stale PRD", source_revision=2)   # `_model_in_out` applied 1, the line above 2 (#6)
         turn2 = json.dumps({"model": full_slots(workflow=slot(95, "explicit", "high", "draft → issued → paid → archived")),
                             "questions": [], "summary": {"objective": "Document lifecycle"}})
-        text = run_cli(["answer", slug, "It also has an archived state."], client=FakeClient(turn2))
+        text = run_cli(["answer", slug, "It also has an archived state."], client=FakeClient(turn2, json.dumps(_NOTE)))
         assert "STALE" in text and "prd.md" in text and "Workflow" in text
+
+
+_NOTE = {"summary": "Paid and archived close the lifecycle.", "still_valid": ["Who approves an invoice"], "estimate": "",
+         "documents": [{"document": "prd", "edits": [{"where": "Workflow", "now": "draft → issued", "change": "add paid, archived"}]}]}
+
+
+def test_an_answer_that_stales_documents_says_what_to_change_in_each():
+    """#827: an answer leaving a generated document stale writes one note — where to edit, what stays valid — from
+    the stale documents' text; a note naming a document it was not given is retried; nothing stale, no call."""
+    with _model_in_out("clitest-note") as p:
+        slug = p.parent.name
+        store.save_revision(slug, EngineOutput.model_validate(full_model(workflow=slot(60, "inferred", "high", "draft → issued"))))
+        ArtifactService().save(slug, "prd", "# The PRD as written", source_revision=2)
+        turn2 = json.dumps({"model": full_slots(workflow=slot(95, "explicit", "high", "draft → issued → paid → archived")),
+                            "questions": [], "summary": {"objective": "Document lifecycle"}})
+        bogus = dict(_NOTE, documents=[*_NOTE["documents"], {"document": "epic", "edits": []}])
+        fake = FakeClient(turn2, json.dumps(bogus), json.dumps(_NOTE))
+        text = run_cli(["answer", slug, "It also has an archived state."], client=fake)
+        assert len(fake.calls) == 3 and '<document type="prd">\n# The PRD as written' in fake.calls[1]["messages"][0]["content"]
+        assert "WHAT THIS CHANGE MEANS" in text and "Workflow: “draft → issued” → add paid, archived" in text, text
+        assert "Who approves an invoice" in text and "epic" not in text.split("WHAT THIS CHANGE MEANS")[1]
+        assert DiscoveryService(client=RaisingClient()).change_note(slug, UpdateResult("applied", 3, [])) is None
 
 
 # ── thinner evidence (#493): a decision derived while its slot was thinner than it is now ───

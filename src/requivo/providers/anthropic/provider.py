@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from requivo.core.context import CardSummary
-from requivo.core.contracts import ContextJudgment, EngineOutput, PerimeterJudgment
+from requivo.core.contracts import ChangeNote, ContextJudgment, EngineOutput, PerimeterJudgment
 from requivo.core.language import DEFAULT_DOCS_LANGUAGE
 from requivo.core.perimeters import DEFAULT_PERIMETER, PerimeterSummary
 from requivo.providers.anthropic.client import current_model_name, new_client
 from requivo.providers.anthropic.generators import (
     _GENERATORS,
     answer_turn,
+    explain_change,
     judge_context,
     judge_perimeter,
     prompt_version,
@@ -49,6 +50,11 @@ class AnthropicProvider:
     def judge_perimeter(self, request: str, *, perimeters: list[PerimeterSummary]) -> PerimeterJudgment:
         """`PerimeterJudge`, the third protocol this class satisfies (#601)."""
         return judge_perimeter(self.client, request, perimeters, model=self._model)
+
+    def explain_change(self, request: str, *, changes: str, documents: dict[str, str],
+                       language: str = DEFAULT_DOCS_LANGUAGE) -> ChangeNote:
+        """`ChangeExplainer`, the fourth protocol this class satisfies (#827)."""
+        return explain_change(self.client, request, changes, documents, language=language, model=self._model)
 
     def generate(self, artifact_type: str, model: EngineOutput, *, request: str = "",
                  language: str = DEFAULT_DOCS_LANGUAGE, only: list[str] | None = None, **kwargs):
