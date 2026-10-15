@@ -629,6 +629,12 @@ def test_a_denied_session_file_is_not_called_missing_on_py314(monkeypatch, kind)
 
 
 @pytest.mark.parametrize("request_text, expected", [
+    ("Invoice export\n==============\n\n_Drawn by a fictional tool._", "invoice-export"),
+    ("   Invoice export\n   -- \t\n\n_Drawn by a fictional tool._", "invoice-export"),
+    ("```\nWrong title\n===\n```\nInvoice export\n---", "invoice-export"),
+    ("Provenance text.\n\n---\n# Invoice export", "invoice-export"),
+    ("Provenance text.\n    ===\n# Invoice export", "invoice-export"),
+    ("```\nWrong title\n```\n===\n# Invoice export", "invoice-export"),
     ("# Invoice export\n\n_Drawn by a fictional tool from ten threads._\nExport invoices monthly.", "invoice-export"),
     ("\n## Invoice export ##\n\n_Drawn by a fictional tool._", "invoice-export"),
     ("# \t\t\n# Invoice export\n\n_Drawn by a fictional tool._", "invoice-export"),
@@ -639,7 +645,7 @@ def test_a_denied_session_file_is_not_called_missing_on_py314(monkeypatch, kind)
     ("```sh\n~~~\n# install deps\n```\n# Invoice export", "invoice-export"),
     ("  ~~~sh\n# install deps\n   ~~~~ \t\n# Invoice export", "invoice-export"),
     ("Export invoices monthly to the accountant.\n~~~\n# install deps", "export-invoices-monthly-accountant-install"),
-], ids=["provenance", "closing-marker", "empty-heading", "long-whitespace",
+], ids=["setext-equals", "setext-dashes-indented", "setext-outside-fence", "thematic-break", "indented-underline-code", "fence-not-title", "provenance", "closing-marker", "empty-heading", "long-whitespace",
         "fenced-prose", "tilde-fence", "shorter-fence", "different-fence", "indented-fence", "unclosed-fence"])
 def test_request_heading_names_the_session_instead_of_provenance(request_text, expected):
     """A short title does not borrow words from the provenance below it (#774)."""
