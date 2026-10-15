@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 
 from requivo.core.errors import InputTooLargeError
 from requivo.core.perimeters import resolve_perimeter
+from requivo.core.validation import require_input_within_bounds
 from requivo.services.discovery import DiscoveryService
 from requivo.services.sessions import SessionService
 from requivo.web.config import MAX_ANSWERS_CHARS, provider_status
@@ -51,7 +52,9 @@ def submit_answers(
     # A plain form submit carries no `HX-Request` header (#428).
     is_htmx = request.headers.get("HX-Request") == "true"
     text = answers.strip()
-    if len(text) > MAX_ANSWERS_CHARS:
+    try:
+        require_input_within_bounds(text, field="the answers", limit=MAX_ANSWERS_CHARS)
+    except InputTooLargeError as exc:
         # Refused, not truncated (invariant 3), and re-rendered with the submission in it (#30, #428).
         # `test_oversized_answers_come_back_in_the_textarea`.
         if not is_htmx:
@@ -59,16 +62,14 @@ def submit_answers(
             return templates.TemplateResponse(request, "sessions/detail.html", {
                 "pending": False, "s": detail, "is_example": detail["is_example"],
                 "provider": provider_status(),
-                "answers_error": f"the answers exceed {MAX_ANSWERS_CHARS:,} characters — split them "
-                                 "across two turns",
+                "answers_error": exc.message,
                 "answers_error_code": InputTooLargeError.code,
                 "submitted_answers": text,
             }, status_code=413)
         return templates.TemplateResponse(request, "sessions/_session.html", {
             "s": session_detail(sessions, slug),
             "provider": provider_status(),
-            "answers_error": f"the answers exceed {MAX_ANSWERS_CHARS:,} characters — split them "
-                             "across two turns",
+            "answers_error": exc.message,
             "answers_error_code": InputTooLargeError.code,
             "submitted_answers": text,
         }, status_code=413)
