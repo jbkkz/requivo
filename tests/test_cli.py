@@ -605,6 +605,22 @@ def test_open_questions_point_at_answer():
     assert next_command({"slug": "x", "questions": [], "readiness": {"ready": True}}) is None   # a bare model file
 
 
+@pytest.mark.parametrize("provider", [None, "claude-code"])
+def test_a_stale_companion_points_at_its_parents_generation(provider):
+    """#819: a keyless save can refresh the brief while its internal view stays stale."""
+    artifacts = {"brief": {"revision": 2, "filename": "solution-assessment.md", "stale": False},
+                 "consultant_view": {"revision": 1, "filename": "consultant-view.md", "stale": True}}
+    line = next_command(_payload(artifacts=artifacts), provider, " --workspace '/a b'") or ""
+    assert "requivo brief leave-approval --workspace '/a b'" in line
+    assert "regenerates consultant-view.md" in line
+    assert "requivo consultant_view" not in line
+    if provider == "claude-code":
+        assert line.startswith("/requivo:docs leave-approval --workspace '/a b'")
+    assert "requivo answer" in (next_command(_payload(questions=1, artifacts=artifacts), provider) or "")
+    artifacts["consultant_view"]["stale"] = False
+    assert next_command(_payload(artifacts=artifacts), provider) is None
+
+
 def test_a_turn_that_asks_nothing_while_still_blocked_says_how_to_settle_it():
     """#784: no question while readiness blocks printed "converged", and `status` pointed past it. Since
     #815 the blocker the turn left unasked carries the probe from the schema as its question."""
