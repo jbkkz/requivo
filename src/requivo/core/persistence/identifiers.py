@@ -54,8 +54,10 @@ def derive_slug(text: str) -> str:
     # A request title names the session; provenance below it does not (#774).
     title = text
     fence = ""
+    previous = ""
     for line in text.splitlines():
         if fence:
+            previous = ""
             closing = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t]*", line)
             if closing and closing[1][0] == fence[0] and len(closing[1]) >= len(fence):
                 fence = ""
@@ -63,7 +65,12 @@ def derive_slug(text: str) -> str:
         opening = re.match(r" {0,3}(`{3,}|~{3,})(.*)", line)
         if opening and (opening[1][0] != "`" or "`" not in opening[2]):
             fence = opening[1]
+            previous = ""
             continue
+        underline = re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", line)
+        if underline and previous:
+            title = previous.strip(" \t")
+            break
         heading = re.match(r" {0,3}#{1,6}[ \t]", line)
         if heading:
             candidate = line[heading.end():].strip(" \t")
@@ -73,6 +80,8 @@ def derive_slug(text: str) -> str:
             if candidate:
                 title = candidate
                 break
+        # A blank line makes a following dash rule a thematic break, not a title (#808).
+        previous = line if not underline and re.match(r" {0,3}\S", line) else ""
     folded = unicodedata.normalize(
         "NFKD", title.lower().translate(_LATIN_EXPANSIONS)).encode("ascii", "ignore").decode("ascii")
     tokens = re.findall(r"[a-z0-9]+", folded)
