@@ -75,7 +75,7 @@ dependencies = [
 # (test_usage.py) is what surfaced it -- it fails red against a genuine `--resolution
 # lowest-direct` install at the old floor and passes at 0.42.0, so raising the floor is the fix
 # rather than narrowing the pin down to the two fields that happened to always be there.
-anthropic = ["anthropic>=0.42.0,<2"]
+anthropic = ["anthropic>=0.42.0,<3"]
 # Local, single-user, self-hostable web interface: `pip install 'requivo[web]'`, then `requivo web`.
 # A thin FastAPI + Jinja2 + HTMX layer over the same services as the CLI — no Node build, assets ship
 # in the wheel. Not required for the CLI or Claude Code. Add [anthropic] too for provider-backed actions.
