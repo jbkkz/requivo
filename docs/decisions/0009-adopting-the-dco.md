@@ -14,7 +14,9 @@ imposing it on a pull request somebody has already written.
 
 **Adopt the Developer Certificate of Origin 1.1 now.** Every commit in a pull request carries a
 `Signed-off-by:` trailer matching the commit's author email; `.github/workflows/dco.yml` and
-`scripts/check_dco.py` check it, and `CONTRIBUTING.md` states what is certified. **A CLA is refused**:
+`scripts/check_dco.py` check it, and `CONTRIBUTING.md` states what is certified. Dependabot's own
+commits on its own pull requests are exempt (#836): a bot cannot certify, and the exemption keys on
+GitHub's record of the pull request's author, which a commit cannot forge. **A CLA is refused**:
 the hosted product consumes `requivo` as an ordinary Apache-2.0 dependency, so there is no
 relicensing right the project needs, and a CLA is a signing ceremony against a per-commit trailer.
 

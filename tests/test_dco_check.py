@@ -148,7 +148,7 @@ def test_a_merge_commit_is_reported_as_not_checked_rather_than_passed_over(repo,
     _git(repo, "merge", "-q", "--no-ff", "side", "-m", "merge\n\n" + SIGNOFF)
     head = _git(repo, "rev-parse", "HEAD")
     monkeypatch.chdir(repo)
-    unsigned, merges = unsigned_commits(base, head)
+    unsigned, merges, _ = unsigned_commits(base, head)
     assert unsigned == [] and merges == 1
     _range_env(repo, monkeypatch, base, head)
     assert main([]) == 0
@@ -163,3 +163,19 @@ def test_a_git_that_cannot_be_run_at_all_is_could_not_look(repo, monkeypatch):
     monkeypatch.setattr(check_dco, "_git", _absent)
     _range_env(repo, monkeypatch, "a", "b")
     assert main([]) == EXIT_COULD_NOT_LOOK
+
+
+BOT = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
+
+
+@pytest.mark.parametrize("pr_author, author, exempt", [
+    ("dependabot[bot]", BOT, True),
+    ("a-contributor", BOT, False),     # MUST-FIRE: the bot's email claimed on a human's pull request
+    ("dependabot[bot]", AUTHOR, False),  # MUST-FIRE: a human commit pushed onto the bot's branch
+], ids=["bot-on-its-own-pr", "forged-bot-email", "human-on-bot-pr"])
+def test_only_the_bots_own_commit_on_its_own_pull_request_is_exempt(repo, monkeypatch, capsys, pr_author, author, exempt):
+    """A bot cannot certify the DCO: the exemption needs GitHub's PR author and the commit's email."""
+    _range_env(repo, monkeypatch, _git(repo, "rev-parse", "HEAD"), _commit(repo, "bump", author=author))
+    monkeypatch.setenv("PR_AUTHOR", pr_author)
+    assert main([]) == (0 if exempt else EXIT_UNSIGNED)
+    assert ("dependency bot were not checked" in capsys.readouterr().out) == exempt, "the receipt misstates what was skipped"
