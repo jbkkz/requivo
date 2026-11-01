@@ -58,7 +58,7 @@
       ],
       "rollback_on_fail": false,
       "timeout": 15,
-      "env": {
+      "variables": {
         "SUPERTOOL_CHANGELOG_ASSEMBLER": ".oss/assemble_changelog.py"
       }
     },
