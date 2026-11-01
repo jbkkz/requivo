@@ -99,7 +99,7 @@ def main(argv: list[str]) -> int:
     skipped = f" {merges} merge commit(s) were not checked." if merges else ""
     skipped += f" {bots} commit(s) by the pull request's own dependency bot were not checked." if bots else ""
     if not unsigned:
-        print("DCO: every non-merge commit carries a Signed-off-by matching its author." + skipped)
+        print("DCO: every checked non-merge commit carries a Signed-off-by matching its author." + skipped)
         return EXIT_OK
     print(f"DCO: {len(unsigned)} commit(s) carry no Signed-off-by matching their author:",
           file=sys.stderr)
