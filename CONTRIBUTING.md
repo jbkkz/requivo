@@ -271,8 +271,10 @@ under the project's licence — the DCO text linked above is the whole of what y
 a statement about each **commit**, so a sign-off in a pull request description or a comment does not
 stand in for one.
 
-`.github/workflows/dco.yml` checks this on every pull request and names the commits that need it. The
-reasoning, including why a full CLA is refused, is in
+`.github/workflows/dco.yml` checks this on every pull request and names the commits that need it.
+The one exemption is Dependabot's own commits on its own pull requests: a bot cannot certify, and a
+commit anyone else pushes onto its branch still signs off. The reasoning, including why a full CLA
+is refused, is in
 [`docs/decisions/0009-adopting-the-dco.md`](docs/decisions/0009-adopting-the-dco.md).
 
 **There is no Contributor License Agreement.** Contributing does not assign any additional rights

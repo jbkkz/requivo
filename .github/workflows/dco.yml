@@ -39,4 +39,6 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # GitHub's record of who opened the pull request: the half of the bot exemption a commit cannot forge.
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: python3 scripts/check_dco.py

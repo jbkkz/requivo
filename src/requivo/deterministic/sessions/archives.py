@@ -24,8 +24,16 @@ def _cmd_session_export(a, client) -> None:
     The default filename's reserved-stem overlap: `decision: reserved-stem-export-filenames-are-not-a-live-gap`."""
     svc = SessionService()
     slug = svc.resolve_slug(a.session)
+    # `export_archive` holds the session lock. A bad `-o` refuses before that, and a directory
+    # takes the same `<slug>.requivo.zip` the default builds (#682, `tests/test_cli_session_archives.py`).
+    dest = Path(a.output) if a.output else Path.cwd()
+    if not a.output or dest.is_dir():
+        dest = dest / f"{slug}.requivo.zip"
+    if not dest.parent.exists():
+        raise InvalidModelError(
+            f"{display_token(str(dest))}: parent directory does not exist",
+            details={"path": str(dest)})
     data = svc.export_archive(slug)
-    dest = Path(a.output) if a.output else Path.cwd() / f"{slug}.requivo.zip"
     tmp = dest.with_name(f".{dest.name}.{os.getpid()}.part")
     try:
         tmp.write_bytes(data)

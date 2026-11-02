@@ -399,6 +399,30 @@ def test_session_export_still_gives_up_on_a_permanent_permission_error(tmp_path,
     assert not dest.exists() and not list(tmp_path.glob(".*.part"))
 
 
+def test_session_export_into_an_existing_directory_writes_the_default_archive_name(tmp_path, monkeypatch):
+    """`-o` an existing directory is `<dir>/<slug>.requivo.zip`, the no-`-o` name, and the line names it (#682)."""
+    _seeded("s", "Something.", monkeypatch)
+    dest = tmp_path / "s.requivo.zip"
+    text = run_cli(["session", "export", "s", "-o", str(tmp_path)])
+    assert text == f"Exported session 's' → {dest}\n"
+    assert dest.is_file()
+    with zipfile.ZipFile(dest) as z:
+        assert "s/session.json" in z.namelist()
+
+
+def test_session_export_refuses_an_output_whose_parent_is_missing(tmp_path, monkeypatch):
+    """A parent that does not exist is a one-line refusal naming the path, and no `.part` is left (#682)."""
+    _seeded("s", "Something.", monkeypatch)
+    missing = tmp_path / "missing" / "x.zip"
+    err = io.StringIO()
+    with redirect_stderr(err), pytest.raises(SystemExit) as exc:
+        app(["session", "export", "s", "-o", str(missing)], client=None)
+    assert int(exc.value.code or 0) == 1
+    rendered = err.getvalue()
+    assert str(missing) in rendered and "Traceback" not in rendered
+    assert list(tmp_path.rglob("*.part")) == [] and not missing.exists() and not missing.parent.exists()
+
+
 # ── #111: a session created while the archive was being read is not destroyed ───
 
 

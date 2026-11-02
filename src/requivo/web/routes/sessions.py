@@ -17,6 +17,7 @@ from requivo.core.errors import (
     SessionNotFoundError,
 )
 from requivo.core.persistence import validate_slug
+from requivo.core.validation import require_input_within_bounds
 from requivo.http import http_status_for
 from requivo.providers.errors import EngineError
 from requivo.services.artifacts import ArtifactService
@@ -93,10 +94,10 @@ def create_session(
             form={"request_text": text, "slug": typed_slug, "cards": cards, "provider": provider},
         ), status_code=status)
 
-    if len(text) > MAX_REQUEST_CHARS:
-        return refused(413, InputTooLargeError.code,
-                       f"the product request exceeds {MAX_REQUEST_CHARS:,} characters — trim it and "
-                       "resubmit")
+    try:
+        require_input_within_bounds(text, field="the product request", limit=MAX_REQUEST_CHARS)
+    except InputTooLargeError as exc:
+        return refused(413, exc.code, exc.message)
     if len(typed_slug) > MAX_SLUG_CHARS:
         return refused(413, InputTooLargeError.code,
                        f"the session name exceeds {MAX_SLUG_CHARS} characters")

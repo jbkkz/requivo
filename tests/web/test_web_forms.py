@@ -108,7 +108,10 @@ def test_oversized_answers_come_back_in_the_textarea(raw_client, with_provider, 
     r = raw_client.post(f"{_SESSION}/answers", data={"answers": LONG_ANSWERS, "expected_revision": "1", CSRF_FIELD: csrf_token()},
                         headers={} if no_js else {"HX-Request": "true"})
     assert r.status_code == 413 and LONG_ANSWERS in textarea_body(r.text, "answers")
-    assert f"{MAX_ANSWERS_CHARS:,}" in r.text          # the refusal is stated on it
+    assert f"{len(LONG_ANSWERS):,} characters" in r.text   # #804: how much to shorten, on both forms
+    assert f"{len(LONG_ANSWERS) - MAX_ANSWERS_CHARS:,} over" in r.text
+    assert f"{MAX_ANSWERS_CHARS:,}-character limit" in r.text
+    assert "Nothing was truncated" in r.text and "input_too_large" in r.text
     assert ("</html>" in r.text.lower()) if no_js else ('id="session-body"' in r.text)
 
 
@@ -202,7 +205,10 @@ def test_an_oversized_request_comes_back_in_the_textarea(client):
     assert r.status_code == 413 and LONG_REQUEST in textarea_body(r.text, "request_text")
     assert not SessionService().list_entries()          # still refused, not truncated into a session
     assert 'action="/sessions"' in r.text and "Back to sessions" not in r.text   # the form is here to resubmit from
-    assert f"{MAX_REQUEST_CHARS:,}" in r.text           # the limit is still stated
+    assert f"{len(LONG_REQUEST):,} characters" in r.text   # #804: request and overshoot, not just a ceiling
+    assert f"{len(LONG_REQUEST) - MAX_REQUEST_CHARS:,} over" in r.text
+    assert f"{MAX_REQUEST_CHARS:,}-character limit" in r.text
+    assert "Nothing was truncated" in r.text and "input_too_large" in r.text
 
 
 @pytest.mark.parametrize("slug, status", [("a" * (MAX_SLUG_CHARS + 1), 413), ("Not A Slug", 400)],
