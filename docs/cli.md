@@ -103,7 +103,9 @@ on evidence.
 
 **`status` ends by naming one next command**, never a menu: open questions win over a stale
 artifact (regenerating against a model about to move is a paid call thrown away), a stale artifact
-over a missing brief. A converged session with a fresh brief gets no pointer. `--json` never carries it;
+over a missing brief. A stale companion such as the consultant view points at its parent’s
+generation (`requivo brief`), even when the brief itself is fresh. A converged session with a fresh
+brief and no stale artifacts gets no pointer. `--json` never carries it;
 `--recap --json` carries the same line as `next`, since a recap's last item is what to do first.
 
 **The slug is derived from the request**, and it drops function words and folds accents, so
@@ -222,7 +224,7 @@ these apply.
 | `requivo session list` | `--json` | List canonical sessions |
 | `requivo session show <session>` | `--json` | Show a session's metadata + artifacts |
 | `requivo session migrate` | `--json` | Migrate ALL legacy `out/` sessions into `.requivo/sessions/` |
-| `requivo session export <session>` | `-o`/`--output`, `--json` | Export a session as a `.zip` archive; `--output` sets the destination path |
+| `requivo session export <session>` | `-o`/`--output`, `--json` | Export a session as a `.zip` archive. `--output` is the archive file, or an existing directory that receives `<slug>.requivo.zip`. A parent directory that does not exist is refused |
 | `requivo session verify <session>` | `--json` | Check that a session's files agree with each other |
 | `requivo session restore <session>` | `--revision N` | Copy a readable `revisions/NNNN-model.json` over `model.json` — the recovery path for a torn or inconsistent session; see [Recovering a torn or inconsistent session](#recovering-a-torn-or-inconsistent-session). Defaults to the newest revision this build can read |
 | `requivo session rescope <session>` | `--context`/`--cards` (required), `--json` | Re-scope an existing session's context cards — see [context-cards.md](context-cards.md#re-scoping-an-existing-sessions-cards) |

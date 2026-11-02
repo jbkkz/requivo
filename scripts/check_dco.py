@@ -10,7 +10,8 @@ before it is used, so a parse gone wrong raises instead of printing contributor 
 
 Exit codes: 0 every commit signed, 1 at least one is not, 2 the check could not look (no range, git
 refused or could not run, a line that is not a commit id). Merge commits are skipped (their author is
-whoever pressed the button) and counted on the success line rather than passed over in silence."""
+whoever pressed the button) and counted on the success line rather than passed over in silence, and so
+are a dependency bot's own commits on its own pull request: a bot cannot certify the DCO."""
 
 from __future__ import annotations
 
@@ -28,6 +29,10 @@ EXIT_COULD_NOT_LOOK = 2
 
 # A full commit id: the only thing this script prints, asserted on every line git hands back.
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+# Exempt only when GitHub's record of the pull request's author (unforgeable) AND the commit's author email
+# (forgeable alone) both name the bot: a human commit pushed onto its branch still signs off.
+BOT_AUTHORS = {"dependabot[bot]": "49699333+dependabot[bot]@users.noreply.github.com"}
 
 
 def _git(args: list[str]) -> str:
@@ -55,8 +60,8 @@ def _author_and_message(sha: str) -> tuple[str, str]:
     return email, message
 
 
-def unsigned_commits(base: str, head: str) -> tuple[list[str], int]:
-    """`(the SHAs in base..head with no sign-off matching their own author, merge commits skipped)`.
+def unsigned_commits(base: str, head: str, pr_author: str = "") -> tuple[list[str], int, int]:
+    """`(the SHAs in base..head with no sign-off matching their own author, merges skipped, bot commits skipped)`.
 
         Compared on email, case-insensitively: a name has several legitimate spellings, an email is the
         identity git keys on.
@@ -64,13 +69,18 @@ def unsigned_commits(base: str, head: str) -> tuple[list[str], int]:
     shas, merges = _commit_shas(base, head)
     if not shas and not merges:
         raise LookupError("no commits in range")
+    bot_email = BOT_AUTHORS.get(pr_author)
     unsigned: list[str] = []
+    bots = 0
     for sha in shas:
         author_email, message = _author_and_message(sha)
+        if bot_email and author_email.strip().lower() == bot_email:
+            bots += 1
+            continue
         emails = {m.group("email").strip().lower() for m in SIGNOFF.finditer(message)}
         if author_email.strip().lower() not in emails:
             unsigned.append(sha)
-    return unsigned, merges
+    return unsigned, merges, bots
 
 
 def main(argv: list[str]) -> int:
@@ -81,14 +91,15 @@ def main(argv: list[str]) -> int:
               file=sys.stderr)
         return EXIT_COULD_NOT_LOOK
     try:
-        unsigned, merges = unsigned_commits(base, head)
+        unsigned, merges, bots = unsigned_commits(base, head, os.environ.get("PR_AUTHOR", ""))
     except (subprocess.CalledProcessError, LookupError, ValueError, OSError) as exc:
         # A git that cannot run exits 2, not 1: "could not answer" is not "a commit is unsigned".
         print(f"DCO: could not read the commit range ({type(exc).__name__})", file=sys.stderr)
         return EXIT_COULD_NOT_LOOK
     skipped = f" {merges} merge commit(s) were not checked." if merges else ""
+    skipped += f" {bots} commit(s) by the pull request's own dependency bot were not checked." if bots else ""
     if not unsigned:
-        print("DCO: every non-merge commit carries a Signed-off-by matching its author." + skipped)
+        print("DCO: every checked non-merge commit carries a Signed-off-by matching its author." + skipped)
         return EXIT_OK
     print(f"DCO: {len(unsigned)} commit(s) carry no Signed-off-by matching their author:",
           file=sys.stderr)

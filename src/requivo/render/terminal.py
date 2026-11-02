@@ -350,8 +350,9 @@ def next_command(payload: dict, provider: str | None = None, workspace: str = ""
                     f"no question is left, but readiness still blocks on: {', '.join(blocking)}")
     # `stale` is the explicit flag (invariant 1); the first stale artifact is named, `impact` covers the rest.
     for artifact_type, status in artifacts.items():
-        if status.get("stale") and artifact_type not in COMPANION_OF:   # its parent's step refreshes it (#814)
-            return step(f"requivo {artifact_type} {slug}", "/requivo:docs",
+        if status.get("stale"):
+            parent = COMPANION_OF.get(artifact_type, artifact_type)   # the parent refreshes a stale companion (#819)
+            return step(f"requivo {parent} {slug}", "/requivo:docs",
                         f"regenerates {status['filename']}; requivo impact {slug} shows what else moved")
     # Gated on ownership, read off `Perimeter.primary_artifact` rather than a `"brief"` literal (#609):
     # a go-to-market session's primary is `gtm_plan`.
