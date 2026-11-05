@@ -416,7 +416,7 @@ def _cmd_answer(a, client) -> None:
     reasoning_type = get_perimeter(perimeter).primary_artifact  # #609 -- one source, not a third local copy
     if note is not None:   # the note reads the graph document by document, so the blanket stale list gives way to it
         moved = ", ".join(slot_label(sid, perimeter) for sid in result.changed_slots)
-        print(f"\n⚠  {len(result.stale_artifacts)} document(s) rest on what moved ({moved}).")
+        print(f"\n⚠  {len(note.documents)} document(s) rest on what moved ({moved}).")   # companions excluded, as the note does
         render_change_note(note)
     elif result.stale_artifacts:
         render_stale([(t, ARTIFACT_FILENAMES[t]) for t in result.stale_artifacts], [slot_label(sid, perimeter) for sid in result.changed_slots])
