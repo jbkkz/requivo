@@ -1061,6 +1061,29 @@ EngineOutput.model_rebuild()
 # contract nobody twinned is caught by `test_the_persisted_contract_is_permissive_all_the_way_down`.
 
 
+class DocumentEdit(StrictModel):
+    # One place in a stale document and what it must say now (#827).
+    where: NonEmpty
+    now: str = ""
+    change: NonEmpty
+
+
+class DocumentChange(StrictModel):
+    # One stale document by its artifact type; no edits means the graph flagged it but nothing in it moves (#827).
+    document: NonEmpty
+    edits: list[DocumentEdit] = Field(default_factory=list[DocumentEdit])
+
+
+class ChangeNote(StrictModel):
+    """What one applied answer means for the documents it left stale (#827): a reading of the dependency
+    graph's stale list, never a second staleness rule (invariant 1)."""
+
+    summary: NonEmpty
+    documents: list[DocumentChange] = Field(default_factory=list[DocumentChange])
+    still_valid: list[str] = Field(default_factory=list)
+    estimate: str = ""      # the effect on the estimate's days, when one was written
+
+
 def _known_or_raw(enum: type[Enum], v: object) -> object:
     """`v` as a member of `enum` when this build knows it, else the raw string a newer Requivo wrote."""
     try:

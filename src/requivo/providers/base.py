@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from requivo.core.context import CardSummary
-from requivo.core.contracts import ContextJudgment, EngineOutput, PerimeterJudgment
+from requivo.core.contracts import ChangeNote, ContextJudgment, EngineOutput, PerimeterJudgment
 from requivo.core.language import DEFAULT_DOCS_LANGUAGE
 from requivo.core.perimeters import DEFAULT_PERIMETER, PerimeterSummary
 
@@ -75,6 +75,18 @@ class ContextJudge(Protocol):
     def judge_context(self, request: str, *, cards: list[CardSummary]) -> ContextJudgment:
         """One cheap call: the request and one line per installed card in, a verdict out. `cards` is
         passed, since `core` owns that read."""
+        ...
+
+
+@runtime_checkable
+class ChangeExplainer(Protocol):
+    """What an applied answer means for the documents it left stale (#827): `ContextJudge`'s separation,
+    so a provider that cannot say does not implement it and no note is written."""
+
+    def explain_change(self, request: str, *, changes: str, documents: dict[str, str],
+                       language: str = DEFAULT_DOCS_LANGUAGE) -> ChangeNote:
+        """One call: the request, the moved slots (`changes`) and each stale document's text by type in;
+        per document, what to edit, out."""
         ...
 
 

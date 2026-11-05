@@ -16,6 +16,7 @@ from requivo.core.contracts import (
     AcceptanceCriteria,
     Brief,
     Challenge,
+    ChangeNote,
     ContextJudgment,
     DesignDecision,
     EngineOutput,
@@ -44,6 +45,7 @@ from requivo.render.markdown import (
 from requivo.render.terminal import (
     docs_menu_rows,
     render_brief,
+    render_change_note,
     render_claims,
     render_context_judgment,
     render_defaults,
@@ -214,6 +216,8 @@ def _forged_renders() -> dict[str, str]:
         "render_estimate": printed(render_estimate, estimate, ["problem"], "low"),
         "render_dependency_map": printed(render_dependency_map, forged_model),
         "render_impact": printed(render_impact, propagate(forged_model, ["problem"])),
+        "render_change_note": printed(render_change_note, ChangeNote(summary=FORGED, still_valid=[FORGED], estimate=FORGED, documents=[
+            {"document": FORGED, "edits": [{"where": FORGED, "now": FORGED, "change": FORGED}]}, {"document": "prd"}])),
         "render_evidence": printed(render_evidence, _evidence_report(forged_model)),
         "render_session_cost": printed(render_session_cost, [_revision(1, "2026-01-01"), _revision(2, FORGED)]),
         "render_grounding": printed(render_grounding, [FORGED]),
