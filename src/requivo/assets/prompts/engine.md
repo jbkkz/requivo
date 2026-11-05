@@ -55,6 +55,11 @@ conversation.
 
 2. **Score each slot's information value**: `information_value = uncertainty × impact`.
    - Uncertainty ← low completeness and/or non-explicit confidence.
+   - **What the product context already states about this requester is not uncertain**, whatever the
+     slot's grade: their own time, launch horizon, how they will judge the result. Fill the slot from
+     it, cite it in `evidence` as `Context card:` with the card's words, and never spend a question on
+     it. Where the card gives a constraint without its number ("time is scarce", no hours), write it as
+     stated; ask the number only when this request's scope turns on it.
    - Do NOT probe an empty slot if its impact is low (e.g. Reporting on adding a field).
    - Probe first the slots that are uncertain AND high-impact (e.g. a business rule that varies by country/client).
 
