@@ -23,6 +23,7 @@ from requivo.core.errors import (
     InvalidSlugError,
     RevisionConflictError,
     SessionExistsError,
+    SessionHasNoModelError,
     SessionNotFoundError,
     SessionUnreadableError,
 )
@@ -299,7 +300,10 @@ class Store(_ScanMixin, _LockMixin):
         """The current model of a canonical session."""
         p = self.canonical_dir(slug) / "model.json"
         if not _stat_exists(p):
-            raise SessionNotFoundError(
+            if not self.session_exists(slug):
+                raise self._no_session(slug)
+            # Its own code since 4.0.0 (#720): the session is there, only its model is not.
+            raise SessionHasNoModelError(
                 f"session '{slug}' has no model yet (apply a proposal first)", details={"slug": slug})
         # The session's own perimeter; `read_meta` already refused an unknown one by name (#608).
         perimeter = resolve_perimeter(self.read_meta(slug).perimeter)
