@@ -275,11 +275,11 @@ def explain_change(client, request: str, changes: str, documents: dict[str, str]
                    language: str = DEFAULT_DOCS_LANGUAGE, model: str | None = None) -> ChangeNote:
     """What an applied answer means for each document it left stale (#827): one standalone call, every
     input fenced as untrusted data in the user message; a document the note names must be one it was
-    given: `test_an_answer_that_stales_documents_says_what_to_change_in_each`."""
+    given, and every one it was given exactly once: `test_an_answer_that_stales_documents_says_what_to_change_in_each`."""
     def _names_only_given_documents(note: ChangeNote) -> None:
-        unknown = sorted({d.document for d in note.documents} - set(documents))
-        if unknown:
-            raise ValueError(f"documents {unknown} were not given; name only {sorted(documents)}")
+        named = sorted(d.document for d in note.documents)
+        if named != sorted(documents):
+            raise ValueError(f"name each of {sorted(documents)} exactly once; this note named {named}")
 
     said = request if request.strip() else "(no request text was recorded for this session)"
     docs = "\n\n".join(f'<document type="{t}">\n{text}\n</document>' for t, text in documents.items())

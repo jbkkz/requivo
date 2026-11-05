@@ -748,14 +748,16 @@ class DiscoveryService:
 
     def change_note(self, slug: str, result: UpdateResult) -> ChangeNote | None:
         """What an applied answer means for the documents it left stale (#827): one call, from one snapshot,
-        or None when nothing generated went stale, the earlier revision cannot be read, or the provider
-        cannot say. A reading of the graph's stale list, never a staleness rule (invariant 1).
+        or None when nothing generated went stale, a later revision has landed, the earlier revision cannot
+        be read, or the provider cannot say. A reading of the graph's stale list, never a staleness rule (invariant 1).
         `test_an_answer_that_stales_documents_says_what_to_change_in_each`."""
         stale = [t for t in result.stale_artifacts if t not in COMPANION_OF]
         provider = self._need_provider() if stale else None
         if provider is None or not isinstance(provider, ChangeExplainer):
             return None
         snap = self.sessions.snapshot(slug)
+        if snap.revision != result.revision:   # a later apply landed: a note across two revisions is not paid for (invariant 12)
+            return None
         now = _require_a_model(slug, snap)
         try:
             before = self.sessions.load_revision(slug, result.revision - 1)
